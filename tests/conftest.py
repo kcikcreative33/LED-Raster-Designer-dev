@@ -83,6 +83,28 @@ def settled(page, read, ok, timeout_ms=5000):
     return value
 
 
+def pytest_collection_modifyitems(config, items):
+    """LRD_CI_SHARD="k/n" keeps only the modules of shard k (ci_shard.py);
+    CI's browser job runs the shards as parallel jobs. Unset, nothing is
+    dropped."""
+    spec = os.environ.get('LRD_CI_SHARD')
+    if not spec:
+        return
+    from ci_shard import parse_shard, item_weight, assign_shards
+    k, n = parse_shard(spec)
+    weights = {}
+    for item in items:
+        module = item.nodeid.split('::', 1)[0]
+        weights[module] = weights.get(module, 0) + item_weight(item.fixturenames)
+    shards = assign_shards(weights, n)
+    keep, drop = [], []
+    for item in items:
+        (keep if shards[item.nodeid.split('::', 1)[0]] == k else drop).append(item)
+    if drop:
+        config.hook.pytest_deselected(items=drop)
+        items[:] = keep
+
+
 def pytest_addoption(parser):
     """Add --browser CLI option for Playwright browser tests."""
     parser.addoption(
