@@ -57,10 +57,17 @@ TABS = {
              'pref-pull-power-jump-length', 'pref-pull-power-jump-length-h',
              'pref-pull-data-jump-name', 'pref-pull-data-jump-length',
              'pref-pull-data-jump-length-h', 'pref-snake-home-run-length',
-             'pref-loose-port-cable-length', 'pref-power-cable-length'],
+             'pref-loose-port-cable-length', 'pref-power-cable-length',
+             # cable lengths in feet or meters (2026-10-16): the unit a new
+             # show starts in, each length's meters twin, the stock ladders
+             'pref-cable-unit', 'pref-pull-power-jump-length-m',
+             'pref-pull-power-jump-length-h-m', 'pref-pull-data-jump-length-m',
+             'pref-pull-data-jump-length-h-m', 'pref-snake-home-run-length-m',
+             'pref-loose-port-cable-length-m', 'pref-power-cable-length-m',
+             'pref-jumper-stock-ft', 'pref-jumper-stock-m'],
 }
 ALL_IDS = [i for ids in TABS.values() for i in ids]
-assert len(ALL_IDS) == 85
+assert len(ALL_IDS) == 95
 
 # Issue 28: the colour defaults a NEW screen starts with, id -> (the colour
 # the dialog is given, the preference key, the layer property it lands on).
@@ -230,6 +237,16 @@ NEW_FIELDS = [
     ('pref-snake-home-run-length', '175', 'snakeHomeRunFt', 175),
     ('pref-loose-port-cable-length', '75', 'loosePortCableFt', 75),
     ('pref-power-cable-length', '12', 'powerCableFt', 12),
+    ('pref-cable-unit', 'm', 'cableUnit', 'm'),
+    ('pref-pull-power-jump-length-m', '2.5', 'powerJumpLengthM', 2.5),
+    ('pref-pull-power-jump-length-h-m', '1', 'powerJumpLengthHM', 1),
+    ('pref-pull-data-jump-length-m', '0.5', 'dataJumpLengthM', 0.5),
+    ('pref-pull-data-jump-length-h-m', '3', 'dataJumpLengthHM', 3),
+    ('pref-snake-home-run-length-m', '50', 'snakeHomeRunM', 50),
+    ('pref-loose-port-cable-length-m', '25', 'loosePortCableM', 25),
+    ('pref-power-cable-length-m', '4', 'powerCableM', 4),
+    ('pref-jumper-stock-ft', '4, 8, 12', 'jumperStockFt', [4, 8, 12]),
+    ('pref-jumper-stock-m', '1, 2, 5', 'jumperStockM', [1, 2, 5]),
 ]
 
 

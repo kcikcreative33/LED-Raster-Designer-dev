@@ -841,13 +841,32 @@ def sync_next_layer_id():
     next_layer_id = max_id + 1
 
 # The jumper length a new screen starts with when the preferences never said
-# (app-jumpers.js JUMPER_SHIPPED_FT - the two literals are one figure).
+# (app-jumpers.js JUMPER_SHIPPED_FT - the two literals are one figure), and
+# its twin in a meters show (JUMPER_SHIPPED_M: 6 ft to the nearest meter).
 JUMPER_SHIPPED_FT = 6
+JUMPER_SHIPPED_M = 2
+
+
+def cable_unit(project=None):
+    """The unit a show's cable lengths are typed and printed in (2026-10-16,
+    app-cable-units.js): 'm' when the show says so, else 'ft' - a show saved
+    before the setting has none and is feet."""
+    if project is None:
+        project = current_project
+    return 'm' if isinstance(project, dict) and project.get('cableUnit') == 'm' else 'ft'
+
+
+def preferred_cable_unit(prefs=None):
+    """The unit a NEW show starts in: the Preferences setting, else feet."""
+    if prefs is None:
+        prefs = server_preferences
+    return 'm' if isinstance(prefs, dict) and prefs.get('cableUnit') == 'm' else 'ft'
 
 
 def _jumper_length_value(value):
-    """A jumper length as the layer stores it: positive feet, or None (no
-    cable) for a blank, zero, negative or non-numeric value."""
+    """A jumper length as the layer stores it: a positive number in the
+    show's unit, or None (no cable) for a blank, zero, negative or
+    non-numeric value."""
     if value is None or isinstance(value, bool):
         return None
     try:
@@ -859,22 +878,27 @@ def _jumper_length_value(value):
     return int(n) if n.is_integer() else n
 
 
-def jumper_seed(prefs=None):
+def jumper_seed(prefs=None, unit=None):
     """The four per-screen jumper lengths (2026-09-25) a NEW screen takes
     from the preferences - the server's twin of app-jumpers.js
     jumperDefaults: dataJumpLength / powerJumpLength are the VERTICAL links,
     *JumpLengthH the horizontal ones, and a record with no horizontal key
-    reads its vertical figure (shipped: 6 and 6). A layer loaded from a file
+    reads its vertical figure (shipped: 6 and 6). In a meters show (`unit`,
+    else the current show's) the meters twins - dataJumpLengthM,
+    dataJumpLengthHM, ... - shipped 2 and 2. A layer loaded from a file
     is never given them here; the client reads the preferences for a screen
     that lacks them."""
     if prefs is None:
         prefs = server_preferences
     if not isinstance(prefs, dict):
         prefs = {}
+    metric = (unit or cable_unit()) == 'm'
+    suffix = 'M' if metric else ''
+    shipped = JUMPER_SHIPPED_M if metric else JUMPER_SHIPPED_FT
     out = {}
     for side in ('data', 'power'):
-        vkey, hkey = f'{side}JumpLength', f'{side}JumpLengthH'
-        v = _jumper_length_value(prefs[vkey]) if vkey in prefs else JUMPER_SHIPPED_FT
+        vkey, hkey = f'{side}JumpLength{suffix}', f'{side}JumpLengthH{suffix}'
+        v = _jumper_length_value(prefs[vkey]) if vkey in prefs else shipped
         h = _jumper_length_value(prefs[hkey]) if hkey in prefs else v
         out[f'{side}JumpV'] = v
         out[f'{side}JumpH'] = h

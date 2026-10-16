@@ -1798,10 +1798,13 @@ class _Power {
         };
     }
 
+    // "10' True1" in a feet show, "3 m True1" in a meters one: the length
+    // in the show's unit (app-cable-units.js), then the connector.
     cableText(ft, name) {
         const n = Number(ft);
-        const len = Number.isInteger(n) ? String(n) : String(+n.toFixed(1));
-        return `${len}'${name ? ` ${name}` : ''}`;
+        const len = this.cableUnit() === 'm'
+            ? `${this.cableFigure(n)} m` : `${this.cableFigure(n)}'`;
+        return `${len}${name ? ` ${name}` : ''}`;
     }
 
     // Write one circuit's cable. `cable` is { ft, connector } - a blank or
@@ -1810,12 +1813,12 @@ class _Power {
     // updateLayers over every layer it touched itself, so a fill is one
     // undo step the way a length commit is.
     // The length the box sheet's quick fill writes on every circuit: the
-    // Power cable preference (10' as shipped). Read where the cables are
-    // made; a cable already typed is never rewritten by it.
+    // Power cable preference in the show's unit (10' / 3 m as shipped).
+    // Read where the cables are made; a cable already typed is never
+    // rewritten by it.
     defaultPowerCableFt() {
-        const prefs = (typeof this.getPreferences === 'function') ? this.getPreferences() : {};
-        const n = Number(prefs.powerCableFt);
-        return Number.isFinite(n) && n > 0 ? n : 10;
+        const n = Number(this.cablePref('powerCable'));
+        return Number.isFinite(n) && n > 0 ? n : (this.cableUnit() === 'm' ? 3 : 10);
     }
 
     setCircuitCable(layer, circuitNum, cable, record = true) {

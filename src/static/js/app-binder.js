@@ -362,6 +362,7 @@ class _Binder {
     // hidden then (a set of sheets has no canvas list or view ticks), the
     // scope list rebuilt from the screens as they stand.
     syncBinderControls() {
+        if (typeof this.syncCableUnitControls === 'function') this.syncCableUnitControls();
         const fmt = document.getElementById('export-format');
         const on = !!fmt && fmt.value === 'binder';
         const show = (id, v) => {

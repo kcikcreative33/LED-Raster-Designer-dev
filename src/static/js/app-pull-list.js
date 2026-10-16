@@ -206,12 +206,12 @@ class _PullList {
 
     // ---- vocabulary --------------------------------------------------------
 
-    // "100'" for feet, "EA" for each-items, "" for a length nobody typed.
+    // A length in the show's unit as the sheet prints it - "100'" in a
+    // feet show, "30 m" in a meters one (app-cable-units.js) - "EA" for
+    // each-items, "" for a length nobody typed.
     pullLengthText(ft) {
         if (ft === 'EA') return 'EA';
-        const n = Number(ft);
-        if (!Number.isFinite(n) || n <= 0) return '';
-        return `${Number.isInteger(n) ? n : +n.toFixed(1)}'`;
+        return this.cableLengthText(ft);
     }
 
     // What paper calls a breakout box (a CVT, a Tessera XD): its model and
@@ -1631,6 +1631,9 @@ class _PullList {
         if (eng) {
             eng.addEventListener('change', () => { this.setEngineerName(eng.value); });
         }
+        // The show's cable unit - this section's select and the Binder
+        // section's (app-cable-units.js).
+        if (typeof this.initCableUnitControls === 'function') this.initCableUnitControls();
     }
 
     // Fields from state, and the section shown only for the pull-sheet
@@ -1642,6 +1645,7 @@ class _PullList {
         set('export-pull-sheet-power-jump-name', s.powerJumpName);
         set('export-pull-sheet-rev', s.rev);
         set('export-pull-sheet-engineer', this.getEngineerName());
+        if (typeof this.syncCableUnitControls === 'function') this.syncCableUnitControls();
         const formatEl = document.getElementById('export-format');
         const isSheet = !!formatEl && formatEl.value === 'pull-sheet';
         const show = (id, on) => {
