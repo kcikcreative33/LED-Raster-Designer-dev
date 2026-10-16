@@ -300,8 +300,13 @@ class _ScreenGroups {
     // Returns the peer layers that were written to, and remembers them so the
     // next updateLayers() carries them to the server in the SAME request and
     // the SAME undo step.
-    _propagateChangedSharedFields(layers, snapshot) {
+    //
+    // A LOCKED PEER stays unchanged (the owner's ruling, 2026-10-16): it is
+    // skipped and pushed onto `opts.lockedOut` for the caller's one error;
+    // without that list the error is said here.
+    _propagateChangedSharedFields(layers, snapshot, opts = {}) {
         if (!snapshot || snapshot.size === 0) return [];
+        const lockedPeers = new Map();
         const edited = new Set((layers || []).map(l => l && l.id));
         const touched = new Map();
         (layers || []).forEach(layer => {
@@ -316,6 +321,13 @@ class _ScreenGroups {
             if (changed.length === 0) return;
             this.getGroupMembers(group).forEach(peer => {
                 if (!peer || peer.id === layer.id || edited.has(peer.id)) return;
+                if (peer.locked) {
+                    const differs = changed.some(field => JSON.stringify(
+                        peer[field] === undefined ? null : peer[field])
+                        !== JSON.stringify(layer[field] === undefined ? null : layer[field]));
+                    if (differs) lockedPeers.set(peer.id, peer);
+                    return;
+                }
                 changed.forEach(field => {
                     // A peer handed a voltage takes it through
                     // setScreenVoltage, exactly as the edited screen did:
@@ -335,6 +347,13 @@ class _ScreenGroups {
                 touched.set(peer.id, peer);
             });
         });
+        if (lockedPeers.size) {
+            if (Array.isArray(opts.lockedOut)) {
+                lockedPeers.forEach(p => { if (!opts.lockedOut.includes(p)) opts.lockedOut.push(p); });
+            } else if (typeof this._reportLockedEdit === 'function') {
+                this._reportLockedEdit([...lockedPeers.values()]);
+            }
+        }
         if (touched.size === 0) return [];
         if (!this._pendingGroupPeerIds) this._pendingGroupPeerIds = new Set();
         touched.forEach((peer, id) => this._pendingGroupPeerIds.add(id));
@@ -534,6 +553,10 @@ class _ScreenGroups {
     async groupSelectedLayers() {
         const screens = this.getSelectedScreenLayers();
         if (screens.length < 2) return null;
+        // Grouping rewrites each member's group and its shared settings: a
+        // locked screen stays as it is, so the group is not made and the
+        // error names it (the owner's ruling, 2026-10-16).
+        if (this._lockedRefused(screens)) return null;
         const chosen = await this._resolveGroupSettings(screens, 'create');
         if (!chosen) return null;  // Cancel groups nothing and changes nothing
         this._applyGroupSettings(screens, chosen);
@@ -562,6 +585,9 @@ class _ScreenGroups {
         // The same check runs here as on create: a screen joining a group
         // still has to agree with the screens already in it.
         const all = this.getGroupMembers(group).concat(incoming);
+        // Joining can rewrite every member's shared settings: a locked
+        // screen on either side keeps the walls as they are.
+        if (this._lockedRefused(all)) return false;
         const chosen = await this._resolveGroupSettings(all, 'add');
         if (!chosen) return false;
         this._applyGroupSettings(all, chosen);
@@ -579,6 +605,10 @@ class _ScreenGroups {
     async ungroupSelectedLayers(groupId = null) {
         const ids = groupId ? [groupId] : this.getSelectedGroupIds();
         if (ids.length === 0) return false;
+        // A locked member keeps its wall: nothing is ungrouped, and the
+        // error names it.
+        if (this._lockedRefused((this.project.layers || [])
+            .filter(l => l && ids.includes(l.group_id)))) return false;
         (this.project.layers || []).forEach(layer => {
             if (layer && ids.includes(layer.group_id)) layer.group_id = null;
         });
@@ -600,6 +630,17 @@ class _ScreenGroups {
         const layers = this.getSelectedScreenLayers().filter(
             l => l.group_id && (!group || l.group_id === group.id));
         if (layers.length === 0) return false;
+        // A locked screen stays in its group; and a group this would leave
+        // with one member is dissolved, which would take a locked member
+        // out of it too - so either way nothing moves and the error names
+        // the locked screens.
+        const lockedHit = layers.filter(l => l.locked);
+        const going = new Set(layers.map(l => l.id));
+        new Set(layers.map(l => l.group_id)).forEach(gid => {
+            const left = (this.project.layers || []).filter(l => l && l.group_id === gid && !going.has(l.id));
+            if (left.length < 2) left.filter(l => l.locked).forEach(l => lockedHit.push(l));
+        });
+        if (this._lockedRefused(lockedHit)) return false;
         layers.forEach(layer => this._detachLayerFromGroups(
             layer, group ? group.id : null));
         // A group left with a single member is dissolved - by the server, on
@@ -660,6 +701,15 @@ class _ScreenGroups {
     async toggleGroupRouteDataAsOne(groupId) {
         const group = this.resolveGroup(groupId);
         if (!group) return false;
+        // The switch re-routes every member's data, so a locked member keeps
+        // the wall as it is (the owner's ruling, 2026-10-16) and is named;
+        // the box goes back to what the group holds.
+        if (this._lockedRefused(this.getGroupMembers(group))) {
+            if (typeof this.updateGroupRouteControl === 'function') {
+                try { this.updateGroupRouteControl(); } catch (_) {}
+            }
+            return false;
+        }
         group.routeDataAsOne = group.routeDataAsOne === false;
         await this._commitGroupChange('Toggle Group Data Routing');
         return true;
@@ -775,6 +825,10 @@ class _ScreenGroups {
         if (!group) return false;
         const memberIds = new Set(this.getGroupMembers(group).map(l => l.id));
         if (memberIds.size === 0) return false;
+        // The wall goes whole or not at all: a locked member keeps it (the
+        // owner's ruling, 2026-10-16 - a locked screen stays until it is
+        // unlocked), and the error names the locked ones.
+        if (this._lockedRefused(this.getGroupMembers(group))) return false;
         const remaining = (this.project.layers || []).filter(l => !memberIds.has(l.id));
         if (remaining.length === 0) {
             // Same guard deleteLayer applies: a project keeps at least one layer.

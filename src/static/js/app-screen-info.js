@@ -919,6 +919,7 @@ class _ScreenInfo {
         // Power / Cabinet ID would silently drop everything from the
         // non-active canvas.
         this._activateCanvasForLayer(this.currentLayer, { preserveSelection: true });
+        if (typeof this._screenSelectionChanged === 'function') this._screenSelectionChanged();
         this.renderLayers();
         this.loadLayerToInputs();
         this.loadTextLayerToInputs();
@@ -1127,6 +1128,12 @@ class _ScreenInfo {
     }
 
     deleteLayer(layerId) {
+        // A locked screen stays until it is unlocked, and says so.
+        if (typeof this._deletableLayerIds === 'function') {
+            const { ids, locked } = this._deletableLayerIds([layerId]);
+            if (locked.length) this._showLockedError(locked);
+            if (ids.length === 0) return;
+        }
         if (this.project.layers.length === 1) {
             alert('Cannot delete the last layer');
             return;
@@ -1257,6 +1264,9 @@ class _ScreenInfo {
                 }
             }
         }
+        // A hidden screen leaves the Pixel Map cabinet scope; its cabinets
+        // leave the selection with it (and do not come back on Show).
+        if (typeof this._screenSelectionChanged === 'function') this._screenSelectionChanged();
         window.canvasRenderer.render();
         this.renderLayers();
         if (typeof this.updateUI === 'function') {
@@ -1872,6 +1882,14 @@ class _ScreenInfo {
         // user actually changed. The per-member fields this loop writes
         // (cabinet size, columns, rows, offsets, panel weight) are absent from
         // GROUP_SHARED_LAYER_FIELDS and therefore never travel to a peer.
+        // A LOCKED SCREEN STAYS UNCHANGED (the owner's ruling, 2026-10-16;
+        // it used to keep only its position). The hold records every locked
+        // screen in the selection before the writes below and puts it back
+        // after them, so the unlocked screens take the edit and a locked one
+        // is named only when the edit would really have changed it - the
+        // same hold applyToSelectedLayers uses.
+        const lockHold = this._holdLockedLayers ? this._holdLockedLayers(targetLayers) : null;
+        const lockedRefused = [];
         const groupSharedBefore = this._snapshotSharedFields
             ? this._snapshotSharedFields(targetLayers) : null;
 
@@ -1893,7 +1911,14 @@ class _ScreenInfo {
         if (groupMoves) {
             groupMoves.forEach(move => {
                 move.members.forEach(member => {
-                    if (member.locked) return;
+                    if (member.locked) {
+                        // A locked member stays where it is, and is named.
+                        if ((move.dx || move.dy || move.sdx || move.sdy)
+                                && !lockedRefused.includes(member)) {
+                            lockedRefused.push(member);
+                        }
+                        return;
+                    }
                     movedByGroup.add(member.id);
                     const linkedX = Number(member.showOffsetX ?? member.offset_x ?? 0) === Number(member.offset_x ?? 0);
                     const linkedY = Number(member.showOffsetY ?? member.offset_y ?? 0) === Number(member.offset_y ?? 0);
@@ -1916,6 +1941,8 @@ class _ScreenInfo {
                 // its position was set with its group above; the rest of the
                 // fields apply below as for any screen
             } else if (!layer.locked) {
+                // (a locked screen is put back by the hold anyway; skipping
+                // its offset here keeps the footprint math off it)
                 // Capture whether the show offset is currently linked to the
                 // processor offset (i.e. equal). If so, editing the pixel-map
                 // offset should also update showOffset so Show Look / Data /
@@ -1996,6 +2023,11 @@ class _ScreenInfo {
             if (showOffsetBLVal !== null) layer.showOffsetBL = showOffsetBLVal;
             if (showOffsetBRVal !== null) layer.showOffsetBR = showOffsetBRVal;
         });
+        if (lockHold) {
+            lockHold.release().forEach(l => {
+                if (!lockedRefused.includes(l)) lockedRefused.push(l);
+            });
+        }
         
         // Trigger immediate render so changes show up right away
         window.canvasRenderer.render();
@@ -2029,7 +2061,13 @@ class _ScreenInfo {
         // each group. updateLayers() picks the peers up from the pending set,
         // so they land in the same PUT and the same undo step.
         if (groupSharedBefore && this._propagateChangedSharedFields) {
-            this._propagateChangedSharedFields(targetLayers, groupSharedBefore);
+            this._propagateChangedSharedFields(targetLayers, groupSharedBefore,
+                { lockedOut: lockedRefused });
+        }
+        // The locked screens named once, and Screen Info repainted so their
+        // own values snap back into the fields.
+        if (lockedRefused.length && this._reportLockedEdit) {
+            this._reportLockedEdit(lockedRefused);
         }
 
         this.updateLayers(targetLayers);

@@ -291,7 +291,19 @@ class _PhaseBalance {
 
     applyPhaseBalance(moves) {
         const touched = new Set();
+        // A locked screen keeps its breakers (the owner's ruling,
+        // 2026-10-16): a move that would write one is left out - a shared
+        // box's move whole - and the locked screens are named once.
+        const byId = (id) => (this.project.layers || []).find(l => l.id === id);
+        const lockedMet = new Map();
         for (const m of moves || []) {
+            const ids = (m.members && m.members.length)
+                ? m.members.map(mem => mem.layerId) : [m.layerId];
+            const locked = ids.map(byId).filter(l => l && l.locked);
+            if (locked.length) {
+                locked.forEach(l => lockedMet.set(l.id, l));
+                continue;
+            }
             // A shared box's move re-deals the whole set: ascending tails to
             // members in member order, each member's slice stored on its own
             // layer - the same deal write() ran during the search.
@@ -317,6 +329,7 @@ class _PhaseBalance {
             else store[m.soca] = m.to.slice();
             touched.add(layer);
         }
+        this._showLockedError([...lockedMet.values()]);
         this._circuitTailCache = null;
         if (touched.size) this.updateLayers([...touched], true, 'Balance Phase Legs');
         return touched.size;
@@ -883,6 +896,9 @@ class _PhaseBalance {
     // scoped balance dialog's reset).
     clearPhaseBalance(distroId) {
         const screens = (this.project.layers || []).filter(l => (l.type || 'screen') === 'screen');
+        // A locked screen keeps its breaker positions, named when the reset
+        // would have moved one.
+        const hold = this._holdLockedLayers(screens);
         if (!distroId) {
             screens.forEach(l => { l.powerSocaPhaseOffset = {}; l.powerSocaPhasePos = {}; });
         } else {
@@ -896,6 +912,7 @@ class _PhaseBalance {
                 }
             });
         }
+        this._showLockedError(hold.release());
         this._circuitTailCache = null;
         if (screens.length) this.updateLayers(screens, true, 'Reset Phase Offsets');
         return screens.length;

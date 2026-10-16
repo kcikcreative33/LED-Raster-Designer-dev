@@ -407,7 +407,24 @@ class _CanvasUi {
      * exactly where they were. Pass null to clear the override and let
      * Show Look fall back to mirroring canvas_id.
      */
+    // A locked screen stays on its canvas (the owner's ruling, 2026-10-16):
+    // every move verb below lets the unlocked ones go and names the locked
+    // ones. A DUPLICATE leaves the original where it is, so it is not a
+    // change to it and is never refused.
+    _unlockedLayerIds(layerIds) {
+        const layers = (this.project && this.project.layers) || [];
+        const locked = [];
+        const ids = (layerIds || []).filter(id => {
+            const l = layers.find(x => x.id === id);
+            if (l && l.locked) { locked.push(l); return false; }
+            return true;
+        });
+        this._showLockedError(locked);
+        return ids;
+    }
+
     moveLayerShowCanvas(layerId, targetCanvasId) {
+        if (this._unlockedLayerIds([layerId]).length === 0) return Promise.resolve(null);
         return fetch(`/api/layer/${layerId}/show_canvas`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -430,6 +447,8 @@ class _CanvasUi {
      */
     async moveLayersShowCanvas(layerIds, targetCanvasId) {
         if (!Array.isArray(layerIds) || layerIds.length === 0) return;
+        layerIds = this._unlockedLayerIds(layerIds);
+        if (layerIds.length === 0) return;
         let lastData = null;
         for (const id of layerIds) {
             const r = await fetch(`/api/layer/${id}/show_canvas`, {
@@ -454,6 +473,7 @@ class _CanvasUi {
 
     moveLayerCrossCanvas(layerId, targetCanvasId, mode) {
         const wantMove = (mode !== 'duplicate');
+        if (wantMove && this._unlockedLayerIds([layerId]).length === 0) return Promise.resolve(null);
         return fetch(`/api/layer/${layerId}/canvas`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -493,6 +513,10 @@ class _CanvasUi {
     async moveLayersCrossCanvas(layerIds, targetCanvasId, mode) {
         const wantMove = (mode !== 'duplicate');
         if (!Array.isArray(layerIds) || layerIds.length === 0) return;
+        if (wantMove) {
+            layerIds = this._unlockedLayerIds(layerIds);
+            if (layerIds.length === 0) return;
+        }
         // The whole walls inside this batch, snapshotted BEFORE the first PUT
         // because the loop below is what destroys them. /api/layer/<id>/canvas
         // can only ever see ONE layer, so it has to assume the rest of the
@@ -712,6 +736,11 @@ class _CanvasUi {
     }
 
     deleteCanvas(canvasId) {
+        // Deleting a canvas deletes the screens on it: a locked one keeps
+        // the canvas (the owner's ruling, 2026-10-16), and is named.
+        const onCanvas = ((this.project && this.project.layers) || [])
+            .filter(l => l && l.canvas_id === canvasId);
+        if (this._lockedRefused(onCanvas)) return Promise.resolve(null);
         return fetch(`/api/canvas/${canvasId}`, { method: 'DELETE' })
             .then(r => r.json().then(body => ({ ok: r.ok, body })))
             .then(({ ok, body }) => {
@@ -867,6 +896,9 @@ class _CanvasUi {
     }
 
     moveLayerToCanvas(layerId, canvasId, mode = 'move') {
+        if (mode !== 'duplicate' && this._unlockedLayerIds([layerId]).length === 0) {
+            return Promise.resolve(null);
+        }
         return fetch(`/api/layer/${layerId}/canvas`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -1295,7 +1327,12 @@ class _CanvasUi {
         const finishRename = () => {
             if (renameFinished) return;
             renameFinished = true;
-            const newName = input.value.trim() || currentName;
+            let newName = input.value.trim() || currentName;
+            // A locked screen keeps its name, and the error says why.
+            if (newName !== currentName && layer.locked) {
+                this._showLockedError([layer]);
+                newName = currentName;
+            }
             layer.name = newName;
 
             if (newName !== currentName) {

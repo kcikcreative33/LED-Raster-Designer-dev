@@ -373,9 +373,19 @@ class _Jumpers {
                 const selected = this.getSelectedLayers()
                     .filter(l => l && (l.type || 'screen') === 'screen');
                 if (!selected.some(l => l[field] !== val)) return;
-                selected.forEach(l => { l[field] = val; });
+                // A locked screen keeps its jumper (the owner's ruling,
+                // 2026-10-16): named when the figure would change it, and
+                // the fields show what the screens really hold.
+                const lockedMet = selected.filter(l => l.locked && l[field] !== val);
+                const writable = selected.filter(l => !l.locked);
+                if (lockedMet.length) {
+                    this._showLockedError(lockedMet);
+                    this.syncJumperControls(selected);
+                }
+                if (!writable.some(l => l[field] !== val)) return;
+                writable.forEach(l => { l[field] = val; });
                 this.saveClientSideProperties();
-                this.updateLayers(selected, true, action);
+                this.updateLayers(writable, true, action);
                 if (window.canvasRenderer) window.canvasRenderer.render();
             });
         };

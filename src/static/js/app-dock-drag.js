@@ -974,6 +974,10 @@ class _DockDrag {
         const layer = (this.project.layers || [])
             .find(l => l.id === target.layerId);
         if (!layer) return;
+        // A locked screen stays unchanged until unlocked, and says so - for
+        // every kind of output (a face row, an old-distro soca), not only
+        // the face path (_faceDropPlug keeps its own guard).
+        if (this._lockedRefused(layer)) return;
         const plan = this._plugDropPlan(payload, layer);
         if (!plan.ok) {
             this._dockSay(plan.message);
@@ -1186,6 +1190,10 @@ class _DockDrag {
 
     _dockDropPort(payload, target) {
         if (target.kind === 'run') {
+            // Placing a port on a locked screen changes its data map.
+            const runLayer = (this.project.layers || [])
+                .find(l => String(l.id) === String(target.layerId));
+            if (this._lockedRefused(runLayer)) return;
             // The same request, question and undo entry the panels' Place
             // buttons sent: this plugs in there.
             return this._placePort({
@@ -1200,12 +1208,20 @@ class _DockDrag {
             // A mirrored return is not a claim of its own: it follows the
             // main, so the release is refused HERE, pointed at the socket
             // where clearing actually lands.
-            const occupants = all.filter(o => !o.role);
-            if (!occupants.length) {
+            const claimants = all.filter(o => !o.role);
+            if (!claimants.length) {
                 const back = all.find(o => o.role === 'return');
                 if (back) this._dockSay(this._returnFollowsNote(payload, back));
                 return;
             }
+            // A locked screen keeps its port: its claim stays, the rest are
+            // released, and the locked screens are named.
+            const layerOf = (o) => (this.project.layers || [])
+                .find(l => String(l.id) === String(o.layerId));
+            const lockedClaims = claimants.map(layerOf).filter(l => l && l.locked);
+            this._showLockedError(lockedClaims);
+            const occupants = claimants.filter(o => { const l = layerOf(o); return !(l && l.locked); });
+            if (!occupants.length) return;
             // Every claim on a socket is a pin - nothing lands any other
             // way - so every claimant is released. One release per
             // claimant, one history entry for the gesture: the snapshot is
@@ -1258,6 +1274,7 @@ class _DockDrag {
             const layer = (this.project.layers || [])
                 .find(l => l.id === target.layerId);
             if (!layer) return;
+            if (this._lockedRefused(layer)) return;
             // ONE rule for the whole-multi drop and the mid-multi drop
             // (user, 2026-09-04: "drag multi 2 onto 6 ports it only lets
             // me do 1 ... it should allow me to do up to 6"; 2026-09-05:
@@ -1356,6 +1373,9 @@ class _DockDrag {
         const layer = (this.project.layers || [])
             .find(l => l.id === target.layerId);
         if (!layer) return;
+        // A locked screen's circuits stay where they are - onto an
+        // old-distro box or a face direct output alike.
+        if (this._lockedRefused(layer)) return;
         const nm = this._powerNaming(layer);
         const slot = nm.slots.get(target.num);
         const rec = slot ? nm.socas.get(slot.multi) : null;
@@ -1445,6 +1465,7 @@ class _DockDrag {
         const layer = (this.project.layers || [])
             .find(l => l.id === target.layerId);
         if (!layer) return;
+        if (this._lockedRefused(layer)) return;
         if ((layer.type || 'screen') !== 'screen') {
             this._dockSay(`${layer.name || 'That layer'} draws no power.`);
             return;

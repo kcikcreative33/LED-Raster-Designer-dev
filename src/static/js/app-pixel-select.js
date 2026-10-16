@@ -4,6 +4,11 @@
 import { LEDRasterApp } from './app-core.js';
 import { sendClientLog } from './helpers.js';
 
+// getPanelByRowCol's per-screen index: panels array -> { len, map of
+// "row,col" -> panel }. Weak, so a rebuilt screen's old array and its index
+// simply go.
+const PANEL_INDEX = new WeakMap();
+
 class _PixelSelect {
 
     isCustomFlow(layer) {
@@ -300,9 +305,29 @@ class _PixelSelect {
         return `${panel.row},${panel.col}`;
     }
 
+    // A per-screen row/col index (1.5 audit): this was a linear find, and the
+    // Pixel Map selection resolves every selected key through it several
+    // times per mouse move - 6 screens of 80x40 took ~112 ms a move. The
+    // index is keyed by the panels ARRAY, so it goes the moment the panels
+    // are rebuilt (every rebuild hands back a new array), and is rebuilt if
+    // the array was grown or cut in place.
     getPanelByRowCol(layer, row, col) {
-        if (!layer || !layer.panels) return null;
-        return layer.panels.find(p => p.row === row && p.col === col) || null;
+        if (!layer || !Array.isArray(layer.panels)) return null;
+        const panels = layer.panels;
+        let index = PANEL_INDEX.get(panels);
+        if (!index || index.len !== panels.length) {
+            const map = new Map();
+            // Backwards, so a duplicated address keeps the FIRST panel - the
+            // one the find() this replaced returned.
+            for (let i = panels.length - 1; i >= 0; i--) {
+                const p = panels[i];
+                if (p) map.set(`${p.row},${p.col}`, p);
+            }
+            index = { len: panels.length, map };
+            PANEL_INDEX.set(panels, index);
+        }
+        const hit = index.map.get(`${row},${col}`);
+        return (hit && hit.row === row && hit.col === col) ? hit : null;
     }
 
     // v0.11.0: customSelection is keyed by getScopedPanelKey, not getPanelKey -
@@ -364,9 +389,11 @@ class _PixelSelect {
      * to apply on top of that, and applying one would drag the peer's hit-test
      * off the wall.
      *
-     * A LOCKED member's cabinets are never selected (the owner's standing
-     * rule, 2026-10-16: a locked screen stays unchanged until unlocked).
-     * Returns the locked members the rect touched, for the caller to name.
+     * A LOCKED member's cabinets ARE selected: selecting is not changing a
+     * screen (the owner's ruling, 2026-10-16), so the marquee picks them
+     * without a word. The verb that would change them (Apply Pattern, the
+     * fill) leaves them out and names the screen. Returns the locked members
+     * the rect touched, for a caller that wants to know.
      */
     _selectPathPanelsInRect(ownerLayer, rect, selection) {
         selection.clear();
@@ -394,7 +421,7 @@ class _PixelSelect {
                 && panel.x <= x2 && (panel.x + panel.width) >= x1
                 && panel.y <= y2 && (panel.y + panel.height) >= y1);
             if (hit.length === 0) return;
-            if (member.locked) { locked.push(member); return; }
+            if (member.locked) locked.push(member);
             hit.forEach(panel => selection.add(this.getScopedPanelKey(member.id, panel)));
         });
         return locked;
@@ -402,13 +429,12 @@ class _PixelSelect {
 
     // `layer` is the path's OWNER - the screen whose port is being drawn - and
     // its group decides how far the marquee reaches. canvas.js still passes
-    // currentLayer. `opts.reportLocked` (mouse-up only, so the live drag does
-    // not repeat it on every move) names the locked members the rect met.
+    // currentLayer. A selection only: a locked member's cabinets are picked
+    // with no error (the verb names it). `opts` is kept for the callers.
     selectPanelsInRect(layer, rect, opts = {}) {
         if (!layer) return;
         if (!this.isCustomFlowEditing(layer)) return;
-        const locked = this._selectPathPanelsInRect(layer, rect, this.customSelection);
-        if (opts.reportLocked) this._showLockedError(locked);
+        this._selectPathPanelsInRect(layer, rect, this.customSelection);
         this.updateCustomFlowUI();
         window.canvasRenderer.render();
     }
@@ -425,9 +451,12 @@ class _PixelSelect {
     // Restore, the half tiles) write each screen through its own server call
     // and record ONE undo step for the whole action.
     //
-    // A LOCKED SCREEN stays unchanged until it is unlocked: its cabinets are
-    // never selected and never changed, and a gesture or verb that met one
-    // names it in one error (_showLockedError). The other screens still go.
+    // A LOCKED SCREEN stays unchanged until it is unlocked - but SELECTING
+    // its cabinets is not changing it (the owner's ruling, 2026-10-16), so
+    // every selection gesture (marquee, click, Cmd/Ctrl-click, Ctrl+A) picks
+    // them without a word. The verb that would change them (Set Blank,
+    // Restore, the half tiles, Alt-paint) leaves them alone and names the
+    // screen in one error (_showLockedError); the other screens still go.
 
     // The screens a Pixel Map cabinet selection may reach: the current
     // screen, then every other selected screen. A grouped wall is reached
@@ -435,20 +464,28 @@ class _PixelSelect {
     // canvas selects the whole group - so a member left out of the selection
     // (picked alone in the Screens list) stays out, exactly as the ruling
     // reads: the selected screens. A hidden screen is not drawn and cannot
-    // be clicked, so only the current one is kept when hidden - the
-    // single-screen case stays exactly what it was.
+    // be clicked, so it is out of scope - except a hidden current screen
+    // that is the ONLY screen in play, which keeps the single-screen case
+    // exactly what it was (the getSelectionScopeLayers rule). A hidden
+    // current screen used to be kept always, so a drag across the visible
+    // screens of a selection swept up its invisible cabinets too.
     getPixelMapScopeLayers() {
         const out = [];
         const seen = new Set();
-        const add = (l, always) => {
+        const add = (l) => {
             if (!l || seen.has(l.id) || (l.type || 'screen') !== 'screen') return;
-            if (!always && l.visible === false) return;
             seen.add(l.id);
+            if (l.visible === false) return;
             out.push(l);
         };
-        add(this.currentLayer, true);
+        const cur = this.currentLayer;
+        add(cur);
         if (this.selectedLayerIds && this.selectedLayerIds.size > 0) {
             (this.getSelectedLayers() || []).forEach(l => add(l));
+        }
+        if (cur && cur.visible === false && (cur.type || 'screen') === 'screen'
+                && out.length === 0) {
+            out.push(cur);
         }
         return out;
     }
@@ -473,10 +510,14 @@ class _PixelSelect {
     }
 
     // The live selection as {layer, panel} pairs, current screen first. A
-    // key that no longer names a cabinet on an unlocked screen in scope (the
-    // screen left the selection, was deleted or was locked since) is dropped
-    // from the Set here, so every reader - the counts, the highlight, the
-    // verbs - agrees on one selection.
+    // key that no longer names a cabinet on a screen in scope (the screen
+    // left the selection, was hidden or deleted) is simply not a hit, so
+    // every reader - the counts, the highlight, the verbs - agrees on one
+    // selection. READ-ONLY (1.5 audit): this runs from the render, the
+    // overlay, the badge and renderLayers, where currentLayer and
+    // selectedLayerIds can disagree mid-update, and pruning there dropped
+    // keys that were about to be in scope again. The Set is pruned only on a
+    // real selection change (_prunePixelMapSelection).
     _pixelMapSelectionHits() {
         const sel = this.pixelMapSelection;
         if (!sel || sel.size === 0) return [];
@@ -484,12 +525,24 @@ class _PixelSelect {
         const scope = new Map(layers.map(l => [l.id, l]));
         const order = new Map(layers.map((l, i) => [l.id, i]));
         const hits = [];
-        [...sel].forEach(key => {
+        sel.forEach(key => {
             const hit = this._resolvePixelMapKey(key, scope);
-            if (!hit || hit.layer.locked) { sel.delete(key); return; }
-            hits.push(hit);
+            if (hit) hits.push(hit);
         });
         return hits.sort((a, b) => order.get(a.layer.id) - order.get(b.layer.id));
+    }
+
+    // Drop the keys that no longer name a cabinet on a screen in scope, so a
+    // screen that leaves the selection (or is hidden) and comes back does
+    // not bring its old cabinets back with it. Called on a real selection
+    // change only, once currentLayer and selectedLayerIds agree.
+    _prunePixelMapSelection() {
+        const sel = this.pixelMapSelection;
+        if (!sel || sel.size === 0) return;
+        const scope = new Map(this.getPixelMapScopeLayers().map(l => [l.id, l]));
+        [...sel].forEach(key => {
+            if (!this._resolvePixelMapKey(key, scope)) sel.delete(key);
+        });
     }
 
     // The cabinets under a world rect on every screen in scope, per screen.
@@ -497,8 +550,9 @@ class _PixelSelect {
     // offset, then its rotation undone), as the single-screen marquee did.
     // Hidden ("blank") panels are included so they can be selected for bulk
     // restore via the sidebar / Alt+click action. Returns
-    // { keys, locked }: the keys on unlocked screens, and the locked screens
-    // the rect touched.
+    // { keys, locked }: the keys on every screen (a locked screen's cabinets
+    // are selected - selecting is not changing), and the locked screens the
+    // rect touched.
     _pixelMapPanelsInRect(rect) {
         const keys = [];
         const locked = [];
@@ -522,22 +576,20 @@ class _PixelSelect {
             const hit = layer.panels.filter(panel => panel.x <= x2 && (panel.x + panel.width) >= x1
                 && panel.y <= y2 && (panel.y + panel.height) >= y1);
             if (hit.length === 0) return;
-            if (layer.locked) { locked.push(layer); return; }
+            if (layer.locked) locked.push(layer);
             hit.forEach(panel => keys.push(this.getScopedPanelKey(layer.id, panel)));
         });
         return { keys, locked };
     }
 
     // `layer` is kept for the existing callers and no longer limits the
-    // reach - the scope does. `opts.reportLocked` names the locked screens
-    // the rect touched; the live drag leaves it off so the error is said
-    // once, on mouse-up, not on every mouse move.
+    // reach - the scope does. A selection only, so a locked screen's
+    // cabinets are picked with no error; `opts` is kept for the callers.
     selectPixelMapPanelsInRect(layer, rect, opts = {}) {
         if (!rect) return;
         this.pixelMapSelection.clear();
-        const { keys, locked } = this._pixelMapPanelsInRect(rect);
+        const { keys } = this._pixelMapPanelsInRect(rect);
         keys.forEach(k => this.pixelMapSelection.add(k));
-        if (opts.reportLocked) this._showLockedError(locked);
         this.updatePixelMapBulkActionUI();
         window.canvasRenderer.render();
     }
@@ -554,13 +606,12 @@ class _PixelSelect {
                 ? this.currentLayer : null);
     }
 
-    // A plain click on one cabinet: the selection becomes just that cabinet.
-    // A cabinet on a locked screen is refused with the error and the
-    // selection is left as it was.
+    // A plain click on one cabinet: the selection becomes just that cabinet,
+    // on a locked screen too - picking it is not changing it (1.4.1 picked
+    // the screen and the cabinet quietly; 1.5 must as well).
     selectOnlyPixelMapPanel(panel, panelLayer = null) {
         const layer = this._pixelMapPanelLayer(panel, panelLayer);
         if (!layer) return;
-        if (layer.locked) { this._showLockedError([layer]); return; }
         this.pixelMapSelection.clear();
         this.pixelMapSelection.add(this.getScopedPanelKey(layer.id, panel));
         this.updatePixelMapBulkActionUI();
@@ -570,7 +621,7 @@ class _PixelSelect {
     togglePixelMapPanelSelection(panel, panelLayer = null) {
         const layer = this._pixelMapPanelLayer(panel, panelLayer);
         if (!layer) return;
-        if (layer.locked) { this._showLockedError([layer]); return; }
+        this._prunePixelMapSelection();
         const key = this.getScopedPanelKey(layer.id, panel);
         if (this.pixelMapSelection.has(key)) {
             this.pixelMapSelection.delete(key);
@@ -583,20 +634,18 @@ class _PixelSelect {
 
     // Cmd/Ctrl+A while a cabinet selection is open (selectAllInView): every
     // cabinet of every screen in scope, blank ones included - the same set a
-    // marquee over all of them builds, so a bulk restore can follow. Locked
-    // screens are left out and named.
+    // marquee over all of them builds, so a bulk restore can follow. A
+    // locked screen's cabinets are selected too, with no error - the verb
+    // that would change them names it.
     selectAllPixelMapPanels() {
         const layers = this.getPixelMapScopeLayers();
         if (layers.length === 0) return;
         this.pixelMapSelection.clear();
-        const locked = [];
         layers.forEach(layer => {
             if (!Array.isArray(layer.panels) || layer.panels.length === 0) return;
-            if (layer.locked) { locked.push(layer); return; }
             layer.panels.forEach(panel => this.pixelMapSelection.add(
                 this.getScopedPanelKey(layer.id, panel)));
         });
-        this._showLockedError(locked);
         this.updatePixelMapBulkActionUI();
         if (window.canvasRenderer) window.canvasRenderer.render();
     }
@@ -616,11 +665,14 @@ class _PixelSelect {
     // The cabinets a bulk verb was handed, sorted onto their screens in
     // scope order. A panel that is in no screen's array is matched by id on
     // the current screen - the single-screen assumption every older caller
-    // was written against. Locked screens are split out for the error.
+    // was written against. Locked screens are split out for the error:
+    // `locked` the screens, `lockedGroups` their share of the panels, so a
+    // verb can name a locked screen only when it would really change it.
     _pixelMapPanelsByLayer(panels) {
         const want = new Set(panels || []);
         const groups = [];
         const locked = [];
+        const lockedGroups = [];
         const placed = new Set();
         const layers = this.getPixelMapScopeLayers();
         (this.project && this.project.layers || []).forEach(l => {
@@ -631,7 +683,7 @@ class _PixelSelect {
             const mine = layer.panels.filter(p => want.has(p) && !placed.has(p));
             if (mine.length === 0) return;
             mine.forEach(p => placed.add(p));
-            if (layer.locked) { locked.push(layer); return; }
+            if (layer.locked) { locked.push(layer); lockedGroups.push({ layer, panels: mine }); return; }
             groups.push({ layer, panels: mine });
         });
         const strays = (panels || []).filter(p => p && !placed.has(p));
@@ -641,7 +693,9 @@ class _PixelSelect {
             const mine = cur.panels.filter(p => ids.has(p.id));
             if (mine.length) {
                 if (cur.locked) {
-                    if (!locked.includes(cur)) locked.push(cur);
+                    const lg = lockedGroups.find(x => x.layer === cur);
+                    if (lg) mine.forEach(p => { if (!lg.panels.includes(p)) lg.panels.push(p); });
+                    else { locked.push(cur); lockedGroups.push({ layer: cur, panels: mine }); }
                 } else {
                     const g = groups.find(x => x.layer === cur);
                     if (g) mine.forEach(p => { if (!g.panels.includes(p)) g.panels.push(p); });
@@ -649,7 +703,7 @@ class _PixelSelect {
                 }
             }
         }
-        return { groups, locked };
+        return { groups, locked, lockedGroups };
     }
 
     // One bulk verb's server calls: each screen through its own endpoint,
@@ -710,8 +764,17 @@ class _PixelSelect {
     // _pixelMapBulkPost for the one undo step and the snapshot contract).
     async setPanelsHalfTileBulk(panels, halfTile) {
         if (!this.currentLayer || !panels || panels.length === 0) return;
-        const { groups, locked } = this._pixelMapPanelsByLayer(panels);
-        this._showLockedError(locked);
+        const { groups, lockedGroups } = this._pixelMapPanelsByLayer(panels);
+        // A locked screen keeps its cabinets as they are, and is named when
+        // the verb would have changed one of them.
+        const wouldChange = (p) => {
+            const cur = p.halfTile || 'none';
+            if (halfTile === 'none') return cur !== 'none';
+            if (halfTile === 'auto') return cur === 'none';
+            return cur !== halfTile;
+        };
+        this._showLockedError(lockedGroups
+            .filter(g => g.panels.some(wouldChange)).map(g => g.layer));
         if (groups.length === 0) return;
         // For 'auto', vote across each screen's share of the selection: pick
         // the direction the majority of its panels would auto-detect to, then
@@ -761,8 +824,10 @@ class _PixelSelect {
     async setPanelsBlankBulk(panels, blank) {
         if (!this.currentLayer || !panels || panels.length === 0) return;
         const targetHidden = !!blank;
-        const { groups: all, locked } = this._pixelMapPanelsByLayer(panels);
-        this._showLockedError(locked);
+        const { groups: all, lockedGroups } = this._pixelMapPanelsByLayer(panels);
+        // Named only when the verb would have changed one of its cabinets.
+        this._showLockedError(lockedGroups
+            .filter(g => g.panels.some(p => !!p.hidden !== targetHidden)).map(g => g.layer));
         const groups = all
             .map(g => ({ layer: g.layer, panels: g.panels.filter(p => !!p.hidden !== targetHidden) }))
             .filter(g => g.panels.length > 0);
@@ -813,8 +878,7 @@ class _PixelSelect {
     selectPowerPanelsInRect(layer, rect, opts = {}) {
         if (!layer) return;
         if (!this.isCustomPowerEditing(layer)) return;
-        const locked = this._selectPathPanelsInRect(layer, rect, this.powerCustomSelection);
-        if (opts.reportLocked) this._showLockedError(locked);
+        this._selectPathPanelsInRect(layer, rect, this.powerCustomSelection);
         this.updateCustomPowerUI();
         window.canvasRenderer.render();
     }

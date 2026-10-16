@@ -283,6 +283,9 @@ class _Wiring {
         if (replaceImageBtn && addImageInput) {
             replaceImageBtn.addEventListener('click', () => {
                 if (!this.currentLayer || this.currentLayer.type !== 'image') return;
+                // A locked image keeps its picture: refused before the file
+                // picker opens.
+                if (this._lockedRefused(this.currentLayer)) return;
                 this.imageFileAction = 'replace';
                 addImageInput.click();
             });
@@ -374,7 +377,9 @@ class _Wiring {
                 if (layers.length === 0) return;
                 // v0.10.5: snapshot AFTER the reset (see applyDisplayOrder);
                 // taken before, Undo-then-Redo lost the reset.
-                layers.forEach(l => {
+                // Through the edit funnel: a locked screen keeps its Show
+                // Look place and is named.
+                this.applyToSelectedLayers(l => {
                     l.showOffsetX = l.offset_x;
                     l.showOffsetY = l.offset_y;
                     // v0.8.5: also clear the Show Look canvas override so
@@ -439,11 +444,16 @@ class _Wiring {
                 const allLayers = (this.project.layers || []).filter(
                     l => (l.type || 'screen') === 'screen'
                 );
+                // Every screen but a locked one, which keeps its Show Look
+                // place and is named when the reset would have moved it.
+                const resetHold = this._holdLockedLayers(allLayers);
                 allLayers.forEach(l => {
                     l.showOffsetX = l.offset_x;
                     l.showOffsetY = l.offset_y;
                     l.show_canvas_id = null;
                 });
+                const resetLocked = resetHold.release();
+                if (resetLocked.length) this._showLockedError(resetLocked);
                 if (allLayers.length > 0) this.updateLayers(allLayers, false);
                 if (Array.isArray(this.project.canvases)
                         && typeof this.updateCanvas === 'function') {
@@ -484,6 +494,11 @@ class _Wiring {
         if (imageScaleInput && imageScaleRange) {
             const applyLiveScale = (value) => {
                 if (!this.currentLayer || (this.currentLayer.type || 'screen') !== 'image') return;
+                // A locked image keeps its scale; the field snaps back.
+                if (this.currentLayer.locked) {
+                    this._reportLockedEdit([this.currentLayer]);
+                    return;
+                }
                 const pct = Math.max(10, Math.min(500, parseFloat(value) || 100));
                 this.currentLayer.imageScale = pct / 100;
                 window.canvasRenderer.render();
@@ -530,7 +545,10 @@ class _Wiring {
                 if (imageOpacityValue) imageOpacityValue.textContent = `${pct}%`;
                 const targets = imageTargets();
                 if (targets.length === 0) return;
-                targets.forEach(l => { l.imageOpacity = pct; });
+                // The edit funnel holds a locked image as it is, and names it.
+                this.applyToSelectedLayers(l => {
+                    if ((l.type || 'screen') === 'image') l.imageOpacity = pct;
+                });
                 window.canvasRenderer.render();
             };
             imageOpacityRange.addEventListener('input', applyLiveOpacity);
@@ -550,7 +568,10 @@ class _Wiring {
             const targets = (this.getSelectedLayers ? this.getSelectedLayers() : [])
                 .filter(l => (l.type || 'screen') === 'image');
             if (targets.length === 0) return;
-            targets.forEach(mutate);
+            // The edit funnel holds a locked image as it is, and names it.
+            this.applyToSelectedLayers(l => {
+                if ((l.type || 'screen') === 'image') mutate(l);
+            });
             window.canvasRenderer.render();
             if (isFinal) {
                 this.updateLayers(targets);
@@ -1170,7 +1191,9 @@ class _Wiring {
                 const bulkPrimary = portBulkPrimaryInput ? portBulkPrimaryInput.value.trim() : '';
                 const bulkReturn = portBulkReturnInput ? portBulkReturnInput.value.trim() : '';
 
-                targetLayers.forEach(layer => {
+                // Through the edit funnel: a locked screen is held as it
+                // is and named (applyToSelectedLayers).
+                this.applyToSelectedLayers(layer => {
                     if (!layer.portLabelOverridesPrimary) layer.portLabelOverridesPrimary = {};
                     if (!layer.portLabelOverridesReturn) layer.portLabelOverridesReturn = {};
                     orderedPorts.forEach((portNum, index) => {
@@ -1198,7 +1221,9 @@ class _Wiring {
                 const selectedPorts = getSelectedPortNumbers();
                 if (selectedPorts.length === 0) return;
 
-                targetLayers.forEach(layer => {
+                // Through the edit funnel: a locked screen is held as it
+                // is and named (applyToSelectedLayers).
+                this.applyToSelectedLayers(layer => {
                     selectedPorts.forEach(portNum => {
                         if (layer.portLabelOverridesPrimary) {
                             delete layer.portLabelOverridesPrimary[portNum];
@@ -1249,14 +1274,18 @@ class _Wiring {
         if (customPrevPortBtn) {
             customPrevPortBtn.addEventListener('click', () => {
                 if (!this.currentLayer) return;
-                this.ensureCustomFlowState(this.currentLayer);
+                // No ensure* here: stepCustomPort makes the state itself,
+                // after its lock check - a locked screen took a `{}` write
+                // from this line before the check ran.
                 this.stepCustomPort(-1);
             });
         }
         if (customNextPortBtn) {
             customNextPortBtn.addEventListener('click', () => {
                 if (!this.currentLayer) return;
-                this.ensureCustomFlowState(this.currentLayer);
+                // No ensure* here: stepCustomPort makes the state itself,
+                // after its lock check - a locked screen took a `{}` write
+                // from this line before the check ran.
                 this.stepCustomPort(1);
             });
         }
@@ -1316,6 +1345,10 @@ class _Wiring {
         if (customActivePortInput) {
             customActivePortInput.addEventListener('change', () => {
                 if (!this.currentLayer) return;
+                // The number already active is no change, so no error.
+                const typedPort = parseInt(customActivePortInput.value, 10);
+                if (this.currentLayer.locked
+                        && typedPort === (this.currentLayer.customPortIndex || 1)) return;
                 if (this._lockedStepRefused(this.currentLayer)) {
                     customActivePortInput.value = `${this.currentLayer.customPortIndex || 1}`;
                     return;
@@ -1805,7 +1838,9 @@ class _Wiring {
                 const ordered = [...selectedCircuits].sort((a, b) => a - b);
                 const bulk = powerLabelBulkInput ? powerLabelBulkInput.value.trim() : '';
                 if (!bulk) return;
-                targetLayers.forEach(layer => {
+                // Through the edit funnel: a locked screen is held as it
+                // is and named (applyToSelectedLayers).
+                this.applyToSelectedLayers(layer => {
                     if (!layer.powerLabelOverrides) layer.powerLabelOverrides = {};
                     ordered.forEach((circuitNum, index) => {
                         const groupIndex = index + 1;
@@ -1825,7 +1860,9 @@ class _Wiring {
                 if (targetLayers.length === 0) return;
                 const selectedCircuits = getSelectedPowerCircuits();
                 if (selectedCircuits.length === 0) return;
-                targetLayers.forEach(layer => {
+                // Through the edit funnel: a locked screen is held as it
+                // is and named (applyToSelectedLayers).
+                this.applyToSelectedLayers(layer => {
                     selectedCircuits.forEach(circuitNum => {
                         if (layer.powerLabelOverrides) {
                             delete layer.powerLabelOverrides[circuitNum];
@@ -1864,14 +1901,18 @@ class _Wiring {
         if (powerCustomPrev) {
             powerCustomPrev.addEventListener('click', () => {
                 if (!this.currentLayer) return;
-                this.ensureCustomPowerState(this.currentLayer);
+                // No ensure* here: stepCustomPort makes the state itself,
+                // after its lock check - a locked screen took a `{}` write
+                // from this line before the check ran.
                 this.stepCustomPort(-1);
             });
         }
         if (powerCustomNext) {
             powerCustomNext.addEventListener('click', () => {
                 if (!this.currentLayer) return;
-                this.ensureCustomPowerState(this.currentLayer);
+                // No ensure* here: stepCustomPort makes the state itself,
+                // after its lock check - a locked screen took a `{}` write
+                // from this line before the check ran.
                 this.stepCustomPort(1);
             });
         }
@@ -1923,6 +1964,10 @@ class _Wiring {
         if (powerCustomActive) {
             powerCustomActive.addEventListener('change', () => {
                 if (!this.currentLayer) return;
+                // The number already active is no change, so no error.
+                const typedCircuit = parseInt(powerCustomActive.value, 10);
+                if (this.currentLayer.locked
+                        && typedCircuit === (this.currentLayer.powerCustomIndex || 1)) return;
                 if (this._lockedStepRefused(this.currentLayer)) {
                     powerCustomActive.value = `${this.currentLayer.powerCustomIndex || 1}`;
                     return;

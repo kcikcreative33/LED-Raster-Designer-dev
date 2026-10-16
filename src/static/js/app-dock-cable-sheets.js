@@ -92,7 +92,12 @@ class _DockCableSheets {
         const commit = (layer, circuit, ft, connector) => {
             const changed = this.setCircuitCable(
                 layer, circuit, { ft, connector: connector || null });
-            if (!changed) return;
+            if (!changed) {
+                // A locked screen refused it (the setter named it): redraw
+                // so the row shows the cable it kept.
+                if (layer && layer.locked) this._rebuildAfterGesture(() => this.renderHardwareDock());
+                return;
+            }
             this.saveClientSideProperties();
             if (window.canvasRenderer) window.canvasRenderer.render();
             this._rebuildAfterGesture(() => this.renderHardwareDock());

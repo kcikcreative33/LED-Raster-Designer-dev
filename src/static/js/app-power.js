@@ -41,10 +41,21 @@ class _Power {
         btn.addEventListener('keyup', swallow);
     }
 
+    // A locked screen refuses a step that would MOVE its active number -
+    // and only that: Prev / Shift+Tab at port 1 (or Next at the end of an
+    // open override list) changes nothing, so it says nothing (the owner's
+    // ruling, 2026-10-16: the error belongs to a change).
     stepCustomPort(delta) {
         if (!this.currentLayer || !window.canvasRenderer) return;
         const view = window.canvasRenderer.viewMode;
+        const layer = this.currentLayer;
+        const moves = (kind) => {
+            const current = kind === 'power'
+                ? (layer.powerCustomIndex || 1) : (layer.customPortIndex || 1);
+            return this._steppedCustomIndex(layer, kind, delta) !== current;
+        };
         if (view === 'data-flow' && this.isCustomFlowEditing(this.currentLayer)) {
+            if (layer.locked && !moves('data')) return;
             if (this._lockedStepRefused(this.currentLayer)) return;
             this.ensureCustomFlowState(this.currentLayer);
             this.currentLayer.customPortIndex =
@@ -62,6 +73,7 @@ class _Power {
             this.updatePortLabelEditor();
             window.canvasRenderer.render();
         } else if (view === 'power' && this.isCustomPowerEditing(this.currentLayer)) {
+            if (layer.locked && !moves('power')) return;
             if (this._lockedStepRefused(this.currentLayer)) return;
             this.ensureCustomPowerState(this.currentLayer);
             this.currentLayer.powerCustomIndex =
@@ -843,6 +855,9 @@ class _Power {
     // or { ok: false, why, free, tailLen } for the refusal, with nothing
     // moved.
     takeSocaOnto(layer, ordinal, distroId, number, action) {
+        // A locked screen stays unchanged (owner, 2026-10-16) - the setter
+        // refuses and names it, whichever control called it.
+        if (this._lockedRefused(layer)) return { ok: false, why: 'locked', free: 0, tailLen: 0, locked: true };
         const plan = this._socaTakePlan(layer, ordinal, distroId, number);
         if (!plan.ok) return { ok: false, why: plan.why, free: plan.free,
                                tailLen: plan.remaining };
@@ -943,6 +958,9 @@ class _Power {
     // that came from a split simply becomes a natural 6+2.
     unsplitSocaAfter(layer, socaIndex) {
         if (!layer) return false;
+        // A locked screen stays unchanged (owner, 2026-10-16) - the setter
+        // refuses and names it, whichever control called it.
+        if (this._lockedRefused(layer)) return false;
         const count = this.screenCircuits(layer).length;
         const seg = this._socaSegments(layer, count)
             .find(s => s.index === Number(socaIndex));
@@ -1855,6 +1873,9 @@ class _Power {
 
     setCircuitCable(layer, circuitNum, cable, record = true) {
         if (!layer) return false;
+        // A locked screen stays unchanged (owner, 2026-10-16) - the setter
+        // refuses and names it, whichever control called it.
+        if (this._lockedRefused(layer)) return false;
         const store = layer.powerCircuitCables
             || (layer.powerCircuitCables = {});
         const ft = cable ? Number(cable.ft) : NaN;
@@ -2157,6 +2178,9 @@ class _Power {
     // write-through, which issues one updateLayers over every member itself.
     setSocaLength(layer, socaIndex, length, record = true) {
         if (!layer) return;
+        // A locked screen stays unchanged (owner, 2026-10-16) - the setter
+        // refuses and names it, whichever control called it.
+        if (this._lockedRefused(layer)) return;
         const store = layer.powerSocaLengths || (layer.powerSocaLengths = {});
         const v = String(length || '').trim();
         if (v) store[socaIndex] = v; else delete store[socaIndex];
@@ -2545,7 +2569,12 @@ class _Power {
             // so each is gated on its own (a 120V peer beside a 208V
             // current screen is not written L21-30). The ineligible ones
             // are skipped and named once; the rest are written.
-            const list = this._socaPanelTargets(layer);
+            // A locked screen keeps its breakout (the owner's ruling,
+            // 2026-10-16), named when this would have changed it.
+            const all = this._socaPanelTargets(layer);
+            this._showLockedError(all.filter(l => l.locked
+                && this.getPowerBreakout(l).id !== type.id));
+            const list = all.filter(l => !l.locked);
             const skipped = list.filter(l => !this._breakoutEligible(type, l.powerVoltage));
             const write = list.filter(l => !skipped.includes(l));
             if (skipped.length) {
@@ -2567,7 +2596,15 @@ class _Power {
         if (brk) brk.addEventListener('change', () => {
             const layer = this.currentLayer;
             if (!layer) return;
-            const list = this._socaPanelTargets(layer);
+            const all = this._socaPanelTargets(layer);
+            // A locked screen keeps its brackets setting, and is named.
+            this._showLockedError(all.filter(l => l.locked
+                && !!l.showSocaBrackets !== !!brk.checked));
+            const list = all.filter(l => !l.locked);
+            if (!list.length) {
+                brk.checked = !!layer.showSocaBrackets;
+                return;
+            }
             list.forEach(l => { l.showSocaBrackets = brk.checked; });
             this.updateLayers(list, true, 'Toggle Soca Brackets');
             if (window.canvasRenderer) window.canvasRenderer.render();
@@ -2578,7 +2615,19 @@ class _Power {
         const writeAll = (patch) => {
             const layer = this.currentLayer;
             if (!layer) return;
-            const list = this._socaPanelTargets(layer);
+            const all = this._socaPanelTargets(layer);
+            // A locked screen keeps its packing, named when the patch would
+            // have changed it; with nothing writable the knobs snap back.
+            this._showLockedError(all.filter(l => {
+                if (!l.locked) return false;
+                const cur = this.getPowerSplitters(l);
+                return Object.keys(patch).some(k => cur[k] !== patch[k]);
+            }));
+            const list = all.filter(l => !l.locked);
+            if (!list.length) {
+                this.refreshSplitterPanel();
+                return;
+            }
             list.forEach(l => {
                 const cur = this.getPowerSplitters(l);
                 l.powerSplitters = { ...cur, ...patch, manual: cur.manual };
@@ -2743,6 +2792,9 @@ class _Power {
     // and writes nothing - when the amps rule refuses the share.
     mergeSplitterCircuits(layer, circuitNums) {
         if (!layer || !Array.isArray(circuitNums) || circuitNums.length < 2) return false;
+        // A locked screen stays unchanged (owner, 2026-10-16) - the setter
+        // refuses and names it, whichever control called it.
+        if (this._lockedRefused(layer)) return false;
         const chosen = new Set(circuitNums);
         const runIds = [];
         this.screenCircuits(layer).forEach(c => {
@@ -2771,6 +2823,9 @@ class _Power {
     // nothing else: the caller owns the history entry and the refresh.
     splitSplitterCircuits(layer, circuitNums, action, opts) {
         if (!layer || !Array.isArray(circuitNums) || !circuitNums.length) return;
+        // A locked screen stays unchanged (owner, 2026-10-16) - the setter
+        // refuses and names it, whichever control called it.
+        if (this._lockedRefused(layer)) return;
         const chosen = new Set(circuitNums);
         const runIds = [];
         this.screenCircuits(layer).forEach(c => {
@@ -2873,6 +2928,9 @@ class _Power {
 
     batchShareCircuits(layer, circuitNums, n, action) {
         if (!layer || !Array.isArray(circuitNums)) return false;
+        // A locked screen stays unchanged (owner, 2026-10-16) - the setter
+        // refuses and names it, whichever control called it.
+        if (this._lockedRefused(layer)) return false;
         const { runIds, groups } = this.batchShareGroups(layer, circuitNums, n);
         if (runIds.length < 2) return false;
         if (this.shareRefusal(layer, groups)) return false;

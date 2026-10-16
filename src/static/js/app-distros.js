@@ -198,6 +198,12 @@ class _Distros {
         const list = this.getDistros();
         const i = list.findIndex(x => x.id === id);
         if (i === -1) return false;
+        // Removing a distro unfeeds every multi on it, so a locked screen
+        // fed from it keeps the distro in place (the owner's ruling,
+        // 2026-10-16) - whole or not at all, and the error names it.
+        const fedLocked = (this.project.layers || []).filter(l => l && l.locked
+            && Object.values(l.powerSocaDistro || {}).includes(id));
+        if (this._lockedRefused(fedLocked)) return false;
         list.splice(i, 1);
         // orphaned soca assignments fall back to unassigned
         const touched = [];
@@ -229,6 +235,9 @@ class _Distros {
     // the whole drop is one undo entry. Returns the touched layers either way.
     setSocaDistro(layer, socaIndex, distroId, record = true) {
         if (!layer) return [];
+        // A locked screen stays unchanged (owner, 2026-10-16) - the setter
+        // refuses and names it, whichever control called it.
+        if (this._lockedRefused(layer)) return [];
         const map = layer.powerSocaDistro || (layer.powerSocaDistro = {});
         // A multi that carries its pin onto another distro can land on an
         // occupied box there - the same join as pinning, spelled as an
@@ -265,6 +274,9 @@ class _Distros {
     // fold this write into its own single history entry.
     setSocaNumber(layer, socaIndex, number, record = true) {
         if (!layer) return [];
+        // A locked screen stays unchanged (owner, 2026-10-16) - the setter
+        // refuses and names it, whichever control called it.
+        if (this._lockedRefused(layer)) return [];
         // Always leave an object behind, never delete the property: an
         // absent key is missing from the update payload and the server
         // keeps whatever it had, so "back to Auto" would silently not clear.
@@ -413,6 +425,9 @@ class _Distros {
     // shared box) fold this write into its own single history entry.
     setSocaName(layer, socaIndex, name, record = true) {
         if (!layer) return;
+        // A locked screen stays unchanged (owner, 2026-10-16) - the setter
+        // refuses and names it, whichever control called it.
+        if (this._lockedRefused(layer)) return;
         // Always leave an object behind, never delete the property: an absent
         // key is simply missing from the update payload and the server keeps
         // whatever it had, so "clear this" would silently not clear.

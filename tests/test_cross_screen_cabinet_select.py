@@ -16,9 +16,11 @@ itself is under test:
 * Once cabinets are selected, a plain click on a cabinet of any selected
   screen selects just that cabinet and Cmd/Ctrl-click toggles it - the
   screen selection is left alone.
-* LOCKED screens stay unchanged: never selected, never changed, and the
-  gesture or verb that met one names it ("<name> is locked - unlock it to
-  change it."). The other screens still go.
+* LOCKED screens stay unchanged, but SELECTING is not changing (the
+  owner's ruling, 2026-10-16): a marquee or click selects a locked screen's
+  cabinets without a word, and the verb that would change them leaves them
+  alone and names the screen ("<name> is locked - unlock it to change
+  it."). The other screens still go.
 * CUSTOM DATA / POWER on a group: a marquee selects cabinets on every member
   it touches, whichever member it starts on and whichever member is current -
   on a wall shaped like the owner's report (20x4 cabinets of 192x384 over 20x1
@@ -404,13 +406,15 @@ def lock(page, layer_id):
                   layer_id)
 
 
-def test_a_locked_screen_is_left_out_of_the_marquee_and_named(page):
+def test_a_locked_screen_is_selected_by_the_marquee_without_an_error(page):
+    # Selecting is not changing: the locked screen's cabinets join the
+    # selection quietly; Set Blank is what names it.
     a, b = reset(page, PAIR, selected=[0, 1], current=0)
     lock(page, b)
     drag(page, (200, 60), (700, 200))
     got = state(page)
-    assert got['keys'] == keys(a, [(0, 1), (1, 1)]), got
-    assert got['toasts'] == ['Pair Right is locked - unlock it to change it.'], got
+    assert got['keys'] == sorted(keys(a, [(0, 1), (1, 1)]) + keys(b, [(0, 0), (1, 0)])), got
+    assert got['toasts'] == [], got
 
 
 def test_a_bulk_verb_skips_a_locked_screen_and_names_it(page):
@@ -434,25 +438,26 @@ def test_a_bulk_verb_skips_a_locked_screen_and_names_it(page):
     assert state(page)['toasts'] == ['Pair Right is locked - unlock it to change it.']
 
 
-def test_a_click_on_a_locked_cabinet_is_refused(page):
+def test_a_click_on_a_locked_cabinet_selects_it_quietly(page):
     a, b = reset(page, PAIR, selected=[0, 1], current=0)
     page.evaluate("() => window.app.selectOnlyPixelMapPanel("
                   "window.app.getPanelByRowCol(window.app.currentLayer, 0, 0))")
     lock(page, b)
     click(page, (664, 64))
     got = state(page)
-    assert got['keys'] == keys(a, [(0, 0)]), got
-    assert got['toasts'] == ['Pair Right is locked - unlock it to change it.'], got
+    assert got['keys'] == keys(b, [(0, 0)]), got
+    assert got['toasts'] == [], got
 
 
-def test_custom_marquee_leaves_a_locked_member_out(page):
+def test_custom_marquee_selects_a_locked_member_quietly(page):
     up, low = reset(page, WALL, group=True, custom=True, selected=[0, 1],
                     current=0, view='data-flow', zoom=0.15)
     lock(page, low)
     drag(page, (100, 1300), (500, 1650))
     got = state(page, 'customSelection')
-    assert got['keys'] == keys(up, [(3, 0), (3, 1), (3, 2)]), got
-    assert got['toasts'] == ['Wall Lower is locked - unlock it to change it.'], got
+    assert got['keys'] == sorted(keys(up, [(3, 0), (3, 1), (3, 2)])
+                              + keys(low, [(0, 0), (0, 1), (0, 2)])), got
+    assert got['toasts'] == [], got
 
 
 # ═════════════════════════════════════════════════════════════════════════

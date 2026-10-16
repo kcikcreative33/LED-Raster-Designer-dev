@@ -14,6 +14,15 @@ Object.assign(CanvasRenderer.prototype, {
         const mouseY = e.clientY - rect.top;
         const worldY = (mouseY - this.panY) / this.zoom;
         const worldX = this._unmirrorWorldX((mouseX - this.panX) / this.zoom, worldY);
+        // Per-press state: where the press came down (the click/drag
+        // threshold is measured in screen pixels from here), whether the
+        // marquee has gone live, which screen this press picked, and a
+        // locked-screen refusal waiting for the press to become a drag.
+        this._pressClientX = e.clientX;
+        this._pressClientY = e.clientY;
+        this._marqueeLive = false;
+        this._pressPickedLayerId = null;
+        this._lockedDragPending = null;
 
         // A plain left press anywhere drops the sweep selection - the same
         // click-away every selection obeys. A RIGHT press keeps it: the
@@ -44,6 +53,13 @@ Object.assign(CanvasRenderer.prototype, {
             if (_r && _r.viewMode === this.viewMode
                     && worldX >= _r.x1 && worldX <= _r.x2
                     && worldY >= _r.y1 && worldY <= _r.y2) {
+                // The name's place is part of a locked screen too: the press
+                // is held, and if it turns into a drag the error says why
+                // the label stays put (a click on it changes nothing).
+                if (window.app.currentLayer.locked) {
+                    this._armLockedDrag([window.app.currentLayer], e);
+                    return;
+                }
                 this.isDraggingScreenName = true;
                 this.dragScreenNameStartX = worldX;
                 this.dragScreenNameStartY = worldY;
@@ -88,6 +104,13 @@ Object.assign(CanvasRenderer.prototype, {
             if (_gr && _gr.viewMode === this.viewMode
                     && worldX >= _gr.x1 && worldX <= _gr.x2
                     && worldY >= _gr.y1 && worldY <= _gr.y2) {
+                // The wall's headline belongs to every member: a locked one
+                // holds it in place (said once the press becomes a drag).
+                const _lockedMembers = (_plan.members || []).filter(m => m && m.locked);
+                if (_lockedMembers.length) {
+                    this._armLockedDrag(_lockedMembers, e);
+                    return;
+                }
                 this.isDraggingGroupName = true;
                 this._dragGroupNameGroup = _plan.group;
                 this.dragScreenNameStartX = worldX;
@@ -197,6 +220,7 @@ Object.assign(CanvasRenderer.prototype, {
                         // selectLayer takes the layer OBJECT, not the id
                         // (the !layer.id guard rejects raw integers).
                         this._selectLayerFromCanvas(layer);
+                        this._pressPickedLayerId = layer.id;
                     }
                 }
             } else {
@@ -231,6 +255,10 @@ Object.assign(CanvasRenderer.prototype, {
                 const layerType = window.app.currentLayer.type || 'screen';
                 const isScreenLayer = layerType === 'screen';
                 if (isScreenLayer && this.viewMode !== 'pixel-map' && this.viewMode !== 'show-look') {
+                    if (window.app.currentLayer.locked) {
+                        this._armLockedDrag([window.app.currentLayer], e);
+                        return;
+                    }
                     this.isDraggingScreenName = true;
                     this.dragScreenNameStartX = worldX;
                     this.dragScreenNameStartY = worldY;
@@ -403,6 +431,11 @@ Object.assign(CanvasRenderer.prototype, {
                     // ONE delta to every entry in dragLayerOffsets below.
                     this._addGroupPeersToDrag(uniqueSelected);
                     const movable = uniqueSelected.filter(layer => !layer.locked);
+                    // A locked screen stays where it is; once the press is
+                    // really a drag, the error names it - once per gesture,
+                    // not on every move. The unlocked ones still move.
+                    const lockedInDrag = uniqueSelected.filter(layer => layer.locked);
+                    if (lockedInDrag.length) this._armLockedDrag(lockedInDrag, e);
                     if (movable.length === 0) {
                         if (typeof sendClientLog === 'function') {
                             sendClientLog('layer_drag_blocked_locked', { viewMode: this.viewMode });
@@ -463,6 +496,10 @@ Object.assign(CanvasRenderer.prototype, {
                     }
                 } else {
                     // Dragging screen name on cabinet-id, data-flow, power modes
+                    if (window.app.currentLayer.locked) {
+                        this._armLockedDrag([window.app.currentLayer], e);
+                        return;
+                    }
                     this.isDraggingScreenName = true;
                     this.dragScreenNameStartX = worldX;
                     this.dragScreenNameStartY = worldY;
@@ -627,6 +664,16 @@ Object.assign(CanvasRenderer.prototype, {
         const worldY = (mouseY - this.panY) / this.zoom;
         const worldX = this._unmirrorWorldX((mouseX - this.panX) / this.zoom, worldY);
 
+        // A press on a locked screen that has now moved past the click
+        // threshold is a drag the lock refuses: say so, once.
+        if (this._lockedDragPending && this._pressPastClick(e)) {
+            const locked = this._lockedDragPending.layers;
+            this._lockedDragPending = null;
+            if (window.app && typeof window.app._showLockedError === 'function') {
+                window.app._showLockedError(locked);
+            }
+        }
+
         // Slice 5: live canvas-drag, update workspace_x/y on every move,
         // but only PUT to the server on mouseup (avoid flooding).
         if (this.isDraggingCanvas && this.draggingCanvasId) {
@@ -696,6 +743,12 @@ Object.assign(CanvasRenderer.prototype, {
         if (this.isSelectingPanels && this.selectionRect) {
             this.selectionRect.x2 = worldX;
             this.selectionRect.y2 = worldY;
+            // Inside the click threshold the press is still a click: the
+            // live marquee must not replace the selection the click is
+            // about to read (a 1 px jitter used to turn a click into a
+            // one-cabinet marquee).
+            if (!this._marqueeLive && !this._pressPastClick(e)) return;
+            this._marqueeLive = true;
             // currentLayer is the OWNER of the port/circuit being drawn, not a
             // limit on what the rect may cover: since v0.11.0 these two walk
             // every member the owner's path can legally reach, so a live drag
@@ -722,6 +775,8 @@ Object.assign(CanvasRenderer.prototype, {
         if (this.isSelectingPixelMapPanels && this.selectionRect) {
             this.selectionRect.x2 = worldX;
             this.selectionRect.y2 = worldY;
+            if (!this._marqueeLive && !this._pressPastClick(e)) return;
+            this._marqueeLive = true;
             if (window.app && window.app.currentLayer) {
                 window.app.selectPixelMapPanelsInRect(window.app.currentLayer, this.selectionRect);
             }
@@ -732,6 +787,8 @@ Object.assign(CanvasRenderer.prototype, {
         if (this.isSelectingLayers && this.layerSelectionRect) {
             this.layerSelectionRect.x2 = worldX;
             this.layerSelectionRect.y2 = worldY;
+            if (!this._marqueeLive && !this._pressPastClick(e)) return;
+            this._marqueeLive = true;
             this.render();
             return;
         }
@@ -977,6 +1034,16 @@ Object.assign(CanvasRenderer.prototype, {
     },
     
     handleMouseUp(e) {
+        // A locked-screen press that never became a drag changed nothing
+        // and says nothing.
+        this._lockedDragPending = null;
+        // Was this press a click? Measured in SCREEN pixels from where it
+        // came down (the dock drag's 4 px), never in world units: at zoom
+        // 2 or less a 1 px jitter is half a world unit or more, and the old
+        // `w < 0.5 && h < 0.5` turned that click into a marquee.
+        const pressWasClick = !this._marqueeLive && !this._pressPastClick(e);
+        this._marqueeLive = false;
+
         // The armed Alt+press resolves here: a release inside the 4px
         // threshold is the takeover click deferred at mousedown; a release
         // after sweeping keeps the selection lit for the right-click menu
@@ -1089,9 +1156,7 @@ Object.assign(CanvasRenderer.prototype, {
         if (this.isSelectingPanels) {
             this.isSelectingPanels = false;
             if (this.selectionRect && window.app && window.app.currentLayer) {
-                const w = Math.abs(this.selectionRect.x2 - this.selectionRect.x1);
-                const h = Math.abs(this.selectionRect.y2 - this.selectionRect.y1);
-                if (w < 0.5 && h < 0.5) {
+                if (pressWasClick) {
                     if (this.viewMode === 'power' && window.app.isCustomPowerEditing(window.app.currentLayer) && window.app.powerCustomSelection.size > 0) {
                         window.app.powerCustomSelection.clear();
                         window.app.updateCustomPowerUI();
@@ -1128,7 +1193,16 @@ Object.assign(CanvasRenderer.prototype, {
                             ? !!(clickedLayer && window.app.canPathReachLayer(
                                 window.app.currentLayer, clickedLayer))
                             : clickedPanel.layerId === window.app.currentLayer.id;
-                        if (isPower && window.app.isCustomPowerEditing(window.app.currentLayer) && reachable) {
+                        // This press PICKED a locked screen (mouse-down made
+                        // it current): picking is not changing it, so the
+                        // click adds no step and says nothing. A click on a
+                        // locked screen that was already current is the
+                        // draw verb, and that names it.
+                        const pickedLocked = !!(clickedLayer && clickedLayer.locked
+                            && this._pressPickedLayerId === clickedLayer.id);
+                        if (pickedLocked) {
+                            // nothing to draw - the screen is picked
+                        } else if (isPower && window.app.isCustomPowerEditing(window.app.currentLayer) && reachable) {
                             if (window.app.powerCustomSelection.size > 0) {
                                 window.app.powerCustomSelection.clear();
                                 window.app.updateCustomPowerUI();
@@ -1200,9 +1274,7 @@ Object.assign(CanvasRenderer.prototype, {
             const hadCabinets = !!this._pixelMapPressHadCabinets;
             this._pixelMapPressHadCabinets = false;
             if (this.selectionRect && window.app && window.app.currentLayer) {
-                const w = Math.abs(this.selectionRect.x2 - this.selectionRect.x1);
-                const h = Math.abs(this.selectionRect.y2 - this.selectionRect.y1);
-                if (w < 0.5 && h < 0.5) {
+                if (pressWasClick) {
                     // Click without drag.
                     //  - Plain click on a panel: replace the selection with just that panel
                     //    (resets multi-select instead of confusingly toggling one panel out).
@@ -1218,6 +1290,9 @@ Object.assign(CanvasRenderer.prototype, {
                     const inScope = !!clickedLayer
                         && (clickedLayer.id === window.app.currentLayer.id
                             || window.app.isPixelMapScopeLayer(clickedLayer));
+                    // A cabinet on a locked screen is selected like any other:
+                    // selecting is not changing (the verb names the lock).
+                    //
                     // A click on ANOTHER selected UNGROUPED screen while no
                     // cabinet selection is open keeps the canvas's
                     // screen-selection meaning (tests/test_canvas_multiselect.py):
@@ -1251,11 +1326,8 @@ Object.assign(CanvasRenderer.prototype, {
                             }
                             this._selectLayerFromCanvas(clickedLayer);
                             // Picking a locked screen is not changing it, so
-                            // it is picked without the error - its cabinet is
-                            // just not selected.
-                            if (!clickedLayer.locked) {
-                                window.app.selectOnlyPixelMapPanel(clickedPanel.panel, clickedLayer);
-                            }
+                            // the screen and its cabinet are picked quietly.
+                            window.app.selectOnlyPixelMapPanel(clickedPanel.panel, clickedLayer);
                         }
                     } else if (inScope) {
                         // Allow click-select on hidden panels so they can be
@@ -1282,10 +1354,8 @@ Object.assign(CanvasRenderer.prototype, {
         if (this.isSelectingLayers) {
             this.isSelectingLayers = false;
             if (this.layerSelectionRect && window.app) {
-                const w = Math.abs(this.layerSelectionRect.x2 - this.layerSelectionRect.x1);
-                const h = Math.abs(this.layerSelectionRect.y2 - this.layerSelectionRect.y1);
                 const isToggle = e.metaKey || e.ctrlKey;
-                if (w < 0.5 && h < 0.5) {
+                if (pressWasClick) {
                     let layer = this.getLayerAt(this.layerSelectionRect.x1, this.layerSelectionRect.y1);
                     if (!layer) {
                         const clickedPanel = this.getPanelAt(this.layerSelectionRect.x1, this.layerSelectionRect.y1);
@@ -1420,7 +1490,9 @@ Object.assign(CanvasRenderer.prototype, {
                     const cursorWY = ((e.clientY - this.canvas.getBoundingClientRect().top) - this.panY) / this.zoom;
                     const cursorWX = this._unmirrorWorldX(((e.clientX - this.canvas.getBoundingClientRect().left) - this.panX) / this.zoom, cursorWY);
                     const targetCanvas = this._canvasAtPoint(cursorWX, cursorWY);
-                    if (targetCanvas && targetCanvas.id !== primaryCanvasId) {
+                    // A locked primary stays put (the drag already named
+                    // it); only the unlocked screens cross.
+                    if (targetCanvas && targetCanvas.id !== primaryCanvasId && !primary.locked) {
                         const mode = (e.metaKey || e.altKey) ? 'duplicate' : 'move';
                         // v0.8.6.3: in Show Look, include ALL unlocked
                         // selected layers in the multi-canvas drop,
@@ -1952,6 +2024,29 @@ Object.assign(CanvasRenderer.prototype, {
             });
         }
         this.canvas.style.cursor = 'default';
+    },
+
+    // Has the press moved past the click threshold? 4 screen pixels from
+    // where it came down - the dock drag engine's threshold - whatever the
+    // zoom. Inside it the press is still a click.
+    _pressPastClick(e) {
+        if (!e || this._pressClientX === undefined || this._pressClientX === null) return false;
+        return Math.hypot((e.clientX || 0) - this._pressClientX,
+                          (e.clientY || 0) - this._pressClientY) > 4;
+    },
+
+    // A press that would drag a locked screen (or its name label): nothing
+    // moves, and the error waits for the press to become a drag - a click
+    // that only picks the screen is not a change and says nothing. Said
+    // once per gesture (handleMouseMove clears it), never per move.
+    _armLockedDrag(layers, e) {
+        const locked = (layers || []).filter(l => l && l.locked);
+        if (locked.length === 0) return;
+        this._lockedDragPending = { layers: locked };
+        if (e && (this._pressClientX === undefined || this._pressClientX === null)) {
+            this._pressClientX = e.clientX;
+            this._pressClientY = e.clientY;
+        }
     },
 
     getPanelAt(worldX, worldY) {

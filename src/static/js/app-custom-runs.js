@@ -525,18 +525,19 @@ class _CustomRuns {
         const isPower = window.canvasRenderer && window.canvasRenderer.viewMode === 'power';
         if (isPower) {
             if (!this.isCustomPowerEditing(this.currentLayer)) return false;
-            this.ensureCustomPowerState(this.currentLayer);
+            // Read, never ensure*: the step itself (addPanelToCustomPowerPath)
+            // makes the state after its lock check, so a locked screen is
+            // not written by the key.
             const circuitNum = this.currentLayer.powerCustomIndex || 1;
-            const path = this.currentLayer.powerCustomPaths[circuitNum] || [];
+            const path = (this.currentLayer.powerCustomPaths || {})[circuitNum] || [];
             const next = this._stepPathFromLastEntry(this.currentLayer, path, dir);
             if (next === false) return false;
             if (next) this.addPanelToCustomPowerPath(next.panel, next.layer);
             return true;
         }
         if (!this.isCustomFlowEditing(this.currentLayer)) return false;
-        this.ensureCustomFlowState(this.currentLayer);
         const portNum = this.currentLayer.customPortIndex || 1;
-        const path = this.currentLayer.customPortPaths[portNum] || [];
+        const path = (this.currentLayer.customPortPaths || {})[portNum] || [];
         const next = this._stepPathFromLastEntry(this.currentLayer, path, dir);
         if (next === false) return false;
         if (next) this.addPanelToCustomPath(next.panel, next.layer);

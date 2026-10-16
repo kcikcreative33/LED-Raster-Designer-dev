@@ -250,6 +250,13 @@ ${cabinetBtn}
                 nameInput.style.cursor = 'default';
                 nameInput.classList.remove('editing');
                 const newName = nameInput.value.trim() || layer.name;
+                // A locked screen keeps its name (the owner's ruling,
+                // 2026-10-16): the field goes back and the error says why.
+                if (newName !== layer.name && layer.locked) {
+                    nameInput.value = layer.name;
+                    this._showLockedError([layer]);
+                    return;
+                }
                 if (newName !== layer.name) {
                     layer.name = newName;
                     // _putLayer: a rename is a hand on the screen (the

@@ -1516,6 +1516,7 @@ class CanvasRenderer {
                 app._activateCanvasForLayer(layer, { preserveSelection: true });
             }
         }
+        if (typeof app._screenSelectionChanged === 'function') app._screenSelectionChanged();
         if (typeof app.renderLayers === 'function') app.renderLayers();
         if (typeof app.loadLayerToInputs === 'function') app.loadLayerToInputs();
         this.render();

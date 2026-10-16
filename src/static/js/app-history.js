@@ -398,9 +398,17 @@ class _History {
         }
         
         // Collect all selected layer IDs to delete
-        const idsToDelete = this.selectedLayerIds && this.selectedLayerIds.size > 1
+        const requested = this.selectedLayerIds && this.selectedLayerIds.size > 1
             ? [...this.selectedLayerIds]
             : [this.currentLayer.id];
+        // A locked screen stays until it is unlocked (the owner's ruling,
+        // 2026-10-16): Delete removes the unlocked screens of the selection
+        // and names the locked ones; with nothing left to remove it is only
+        // the error.
+        const { ids: idsToDelete, locked } = typeof this._deletableLayerIds === 'function'
+            ? this._deletableLayerIds(requested) : { ids: requested, locked: [] };
+        if (locked.length) this._showLockedError(locked);
+        if (idsToDelete.length === 0) return;
         
         // Don't delete if it would remove ALL layers
         if (idsToDelete.length >= this.project.layers.length) {

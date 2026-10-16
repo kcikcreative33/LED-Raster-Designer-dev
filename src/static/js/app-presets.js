@@ -699,6 +699,12 @@ class _Presets {
     openChangeCabinet(layers) {
         const screens = (layers || []).filter(l => l && (l.type || 'screen') === 'screen');
         if (screens.length === 0) return;
+        // Only locked screens: nothing could change, so the picker does not
+        // open and the error says why.
+        if (screens.every(l => l.locked)) {
+            this._showLockedError(screens);
+            return;
+        }
         const title = screens.length === 1
             ? `Change cabinet for ${screens[0].name}`
             : `Change cabinet for ${screens.length} screens`;
@@ -791,12 +797,16 @@ class _Presets {
     // them, so the Screen Info panel, the totals and the canvas all follow.
     changeCabinetForLayers(layerIds, data) {
         if (!this.project || !this.project.layers || !data) return;
-        const targets = (layerIds || [])
+        let targets = (layerIds || [])
             .map(id => this.project.layers.find(l => l.id === id))
             .filter(l => l && (l.type || 'screen') === 'screen');
         if (targets.length === 0) return;
         const fields = this._cabinetFieldsFrom(data);
         if (Object.keys(fields).length === 0) return;
+        // A locked screen keeps its cabinet (the owner's ruling,
+        // 2026-10-16): the unlocked ones change, the locked ones are named.
+        targets = this._writableLayers(targets);
+        if (targets.length === 0) return;
         targets.forEach(layer => {
             Object.keys(fields).forEach(k => { layer[k] = fields[k]; });
             if (layer.sizeByDimensions) {
@@ -1636,6 +1646,7 @@ class _Presets {
             const img = new Image();
             img.onload = () => {
                 if (this.imageFileAction === 'replace' && this.currentLayer && this.currentLayer.type === 'image') {
+                    if (this._lockedRefused(this.currentLayer)) return;
                     this.currentLayer.imageData = dataUrl;
                     this.currentLayer.imageWidth = img.width;
                     this.currentLayer.imageHeight = img.height;

@@ -188,7 +188,10 @@ class _MenuBar {
     // canvas) - canvases share a coordinate space, so a screen lands where it
     // already was rather than jumping to the corner.
     openMoveToCanvasMenu() {
-        const layers = this.getSelectedLayers().filter(l => !l.locked);
+        // Locked screens are offered with the rest; picking a canvas moves
+        // the unlocked ones and names the locked ones (a locked screen stays
+        // where it is - the owner's ruling, 2026-10-16).
+        const layers = this.getSelectedLayers().filter(Boolean);
         if (layers.length === 0) return;
         const canvases = (this.project && this.project.canvases) || [];
         // Where the selection already lives. With a mixed selection every
@@ -229,6 +232,9 @@ class _MenuBar {
                 e.stopPropagation();
                 const canvasId = btn.dataset.canvasId;
                 close();
+                const going = layers.filter(l => !l.locked);
+                this._showLockedError(layers.filter(l => l.locked && l.canvas_id !== canvasId));
+                if (going.length === 0) return;
                 // ONE BATCH, not a layer at a time, because a group is one
                 // wall. /api/layer/<id>/canvas can only ever see ONE layer,
                 // so it has to assume the rest of the wall is staying where
@@ -246,8 +252,8 @@ class _MenuBar {
                 // a mixed selection they can be members of a wall the rest of
                 // the batch is bringing, and the batch has to see all of it
                 // to recognize a whole wall; the PUT is a no-op move for them.
-                await this.moveLayersCrossCanvas(layers.map(l => l.id), canvasId, 'move');
-                sendClientLog('move_to_canvas', { count: layers.length, canvasId });
+                await this.moveLayersCrossCanvas(going.map(l => l.id), canvasId, 'move');
+                sendClientLog('move_to_canvas', { count: going.length, canvasId });
             });
         });
     }

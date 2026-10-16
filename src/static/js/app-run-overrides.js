@@ -241,6 +241,15 @@ class _RunOverrides {
         }
         const idxKey = kind === 'power' ? 'powerCustomIndex' : 'customPortIndex';
         const idxChanged = (owner[idxKey] || 1) !== num;
+        // A locked screen stays unchanged (the owner's ruling, 2026-10-16):
+        // moving its active port or circuit is a change, so the screen is
+        // picked (selecting is not changing) and the error says why the run
+        // did not become the active one. Alt+click on the run that is
+        // already active changes nothing and says nothing.
+        if (owner.locked && (idxChanged || undoLabel)) {
+            this._showLockedError([owner]);
+            return;
+        }
         owner[idxKey] = num;
         const wholeCustom = kind === 'power'
             ? this.isCustomPower(owner) : this.isCustomFlow(owner);

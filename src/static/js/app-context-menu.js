@@ -133,9 +133,11 @@ class _ContextMenu {
             // positioned: Pixel Map (processor offset) and Show Look (show
             // offset). Data and Power mirror the Show Look position, so
             // they're read-only there.
+            // Offered for a locked selection too: choosing it says why a
+            // locked screen does not move, rather than the item vanishing.
             const canCenter = window.canvasRenderer
                 && ['pixel-map', 'show-look'].includes(window.canvasRenderer.viewMode)
-                && this.getSelectedLayers().some(l => !l.locked);
+                && this.getSelectedLayers().length > 0;
             menu.querySelectorAll('.movable-view-only').forEach(el => {
                 el.style.display = canCenter ? '' : 'none';
             });
@@ -162,7 +164,7 @@ class _ContextMenu {
             // nothing in it.
             const canvases = (this.project && this.project.canvases) || [];
             const canMove = canvases.length > 1
-                && this.getSelectedLayers().some(l => !l.locked);
+                && this.getSelectedLayers().length > 0;
             menu.querySelectorAll('.move-canvas-only').forEach(el => {
                 el.style.display = canMove ? '' : 'none';
             });
@@ -439,12 +441,15 @@ class _ContextMenu {
     centerLayersOnCanvas(axis = 'both') {
         const cr = window.canvasRenderer;
         if (!cr || !['pixel-map', 'show-look'].includes(cr.viewMode)) return;
-        const layers = (this.getSelectedLayers() || []).filter(l => l && !l.locked);
+        // A locked screen stays where it is (the owner's ruling,
+        // 2026-10-16) and is named - when centering would have moved it.
+        const layers = (this.getSelectedLayers() || []).filter(Boolean);
         if (layers.length === 0) return;
 
         const useShow = cr.viewMode === 'show-look';
         const canvases = (this.project && this.project.canvases) || [];
         const moved = [];
+        const lockedMet = [];
 
         layers.forEach(layer => {
             const canvasId = useShow ? (layer.show_canvas_id || layer.canvas_id) : layer.canvas_id;
@@ -467,6 +472,15 @@ class _ContextMenu {
             const centeredX = Math.round((rasterW - fpW) / 2 - fp.dx);
             const centeredY = Math.round((rasterH - fpH) / 2 - fp.dy);
 
+            if (layer.locked) {
+                const curX = Number(useShow ? (layer.showOffsetX ?? layer.offset_x) : layer.offset_x) || 0;
+                const curY = Number(useShow ? (layer.showOffsetY ?? layer.offset_y) : layer.offset_y) || 0;
+                const wouldMove = ((axis === 'x' || axis === 'both') && curX !== centeredX)
+                    || ((axis === 'y' || axis === 'both') && curY !== centeredY);
+                if (wouldMove) lockedMet.push(layer);
+                return;
+            }
+
             if (useShow) {
                 if (axis === 'x' || axis === 'both') layer.showOffsetX = centeredX;
                 if (axis === 'y' || axis === 'both') layer.showOffsetY = centeredY;
@@ -487,6 +501,7 @@ class _ContextMenu {
             moved.push(layer);
         });
 
+        this._showLockedError(lockedMet);
         if (moved.length === 0) return;
         const label = axis === 'x' ? 'Center on Canvas X'
             : axis === 'y' ? 'Center on Canvas Y' : 'Center on Canvas';

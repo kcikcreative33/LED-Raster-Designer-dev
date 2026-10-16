@@ -4,6 +4,11 @@
 // reads as dangling). Also the owner lookups a conflicting click asks.
 import { LEDRasterApp } from './app-core.js';
 
+// The fields of a screen a lock does not hold (_holdLockedLayers): the lock
+// itself, visibility (the eye button is not a change to the screen), and the
+// leading-underscore render caches the canvas keeps on the layer.
+const LOCK_EXEMPT_FIELD = (k) => k === 'locked' || k === 'visible' || k.charAt(0) === '_';
+
 class _CrossLayerPaths {
 
     // ── Cross-member manual paths (v0.11.0, step 6) ──────────────────────
@@ -272,9 +277,16 @@ class _CrossLayerPaths {
         const one = names.length === 1;
         const list = one ? names[0]
             : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
-        this._toast(one
+        const msg = one
             ? `${list} is locked - unlock it to change it.`
-            : `${list} are locked - unlock them to change them.`, true, 5000);
+            : `${list} are locked - unlock them to change them.`;
+        // One gesture, one error: a verb guarded at its entry and again in
+        // the setter it calls would otherwise say the same thing twice in
+        // the same turn. A later action says it again.
+        if (this._lockedErrorThisTurn === msg) return;
+        this._lockedErrorThisTurn = msg;
+        Promise.resolve().then(() => { this._lockedErrorThisTurn = null; });
+        this._toast(msg, true, 5000);
     }
 
     // Stepping the active port or circuit (Tab, [ / ], Prev / Next, the
@@ -285,6 +297,140 @@ class _CrossLayerPaths {
         if (!layer || !layer.locked) return false;
         this._showLockedError([layer]);
         return true;
+    }
+
+    // THE LOCK GUARDS EVERYTHING (the owner's ruling, 2026-10-16): a locked
+    // screen stays unchanged until it is unlocked - not only its position -
+    // and every change that meets one says so. The helpers below are the
+    // shared shape of that rule; the lock toggle itself, visibility and
+    // selection are not changes and never come through here.
+    //
+    // True when any of `layers` (one layer or a list) is locked; the locked
+    // ones are named in the one error. For a change that must happen whole
+    // or not at all.
+    _lockedRefused(layers) {
+        const list = (Array.isArray(layers) ? layers : [layers]).filter(Boolean);
+        const locked = list.filter(l => l.locked);
+        if (locked.length === 0) return false;
+        this._showLockedError(locked);
+        return true;
+    }
+
+    // The screens a change may touch: `layers` less the locked ones, which
+    // are named in the one error. The unlocked ones still take the change.
+    _writableLayers(layers) {
+        const list = (layers || []).filter(Boolean);
+        const locked = list.filter(l => l.locked);
+        if (locked.length === 0) return list;
+        this._showLockedError(locked);
+        return list.filter(l => !l.locked);
+    }
+
+    // A HOLD on the locked screens among `layers` for the edit funnels
+    // (applyToSelectedLayers, updateLayerFromInputs), which run one handler
+    // over the whole selection. Every field of each locked screen is
+    // recorded; release() puts back any field the handler changed and
+    // returns the screens it had to put back. So a locked screen comes out
+    // byte-identical, and it is reported only when the edit would really
+    // have changed it - setting a field to the value it already has is not
+    // a change and says nothing. `locked`, `visible` and the
+    // leading-underscore render caches are not the screen's content and are
+    // never held.
+    _holdLockedLayers(layers) {
+        const held = [];
+        (layers || []).forEach(layer => {
+            if (!layer || !layer.locked) return;
+            const fields = new Map();
+            Object.keys(layer).forEach(k => {
+                if (LOCK_EXEMPT_FIELD(k)) return;
+                fields.set(k, JSON.stringify(layer[k] === undefined ? null : layer[k]));
+            });
+            held.push({ layer, fields });
+        });
+        return {
+            release: () => {
+                const changed = [];
+                held.forEach(({ layer, fields }) => {
+                    let touched = false;
+                    Object.keys(layer).forEach(k => {
+                        if (LOCK_EXEMPT_FIELD(k) || fields.has(k)) return;
+                        // A field the handler added goes again; an empty
+                        // one (an ensure-style `{}` / `[]` / null) reads
+                        // the same as no field and is not reported.
+                        const added = JSON.stringify(layer[k] === undefined ? null : layer[k]);
+                        delete layer[k];
+                        if (added !== 'null' && added !== '{}' && added !== '[]') touched = true;
+                    });
+                    fields.forEach((json, k) => {
+                        const now = JSON.stringify(layer[k] === undefined ? null : layer[k]);
+                        if (now === json) return;
+                        layer[k] = JSON.parse(json);
+                        touched = true;
+                    });
+                    if (touched) changed.push(layer);
+                });
+                return changed;
+            },
+        };
+    }
+
+    // The screens a Delete may remove, out of `ids`: never a locked one, and
+    // never the last unlocked member of a group a locked screen would be
+    // left alone in - a group of one is dissolved, which would change the
+    // locked screen's group. Returns { ids, locked } with the locked screens
+    // that held something back, for the one error.
+    _deletableLayerIds(ids) {
+        const layers = (this.project && this.project.layers) || [];
+        const byId = new Map(layers.map(l => [l.id, l]));
+        const locked = new Map();
+        let keep = (ids || []).filter(id => {
+            const l = byId.get(id);
+            if (l && l.locked) { locked.set(l.id, l); return false; }
+            return true;
+        });
+        const going = new Set(keep);
+        const heldGroups = new Set();
+        keep.forEach(id => {
+            const l = byId.get(id);
+            if (!l || !l.group_id || heldGroups.has(l.group_id)) return;
+            const members = typeof this.groupMembersOf === 'function' ? this.groupMembersOf(l) : [];
+            const left = members.filter(m => !going.has(m.id));
+            const lockedLeft = left.filter(m => m.locked);
+            if (lockedLeft.length && left.length < 2) {
+                heldGroups.add(l.group_id);
+                lockedLeft.forEach(m => locked.set(m.id, m));
+            }
+        });
+        if (heldGroups.size) {
+            keep = keep.filter(id => {
+                const l = byId.get(id);
+                return !(l && l.group_id && heldGroups.has(l.group_id));
+            });
+        }
+        return { ids: keep, locked: [...locked.values()] };
+    }
+
+    // The error for an edit the funnel held back from locked screens, said
+    // once for a burst on one control (a colour drag or typing fires the
+    // handler on every input; one error per stroke would stack a column of
+    // toasts), and Screen Info / the sidebar repainted so the locked
+    // screen's own values snap back into the fields. Another control, or a
+    // pause, says it again.
+    _reportLockedEdit(layers) {
+        const list = (layers || []).filter(Boolean);
+        if (list.length === 0) return;
+        const el = typeof document !== 'undefined' ? document.activeElement : null;
+        const control = el && el !== document.body ? (el.id || el.tagName) : '';
+        const key = [...new Set(list.map(l => l.id))].sort().join(',') + '|' + control;
+        const now = Date.now();
+        const last = this._lastLockedEditReport;
+        if (!last || last.key !== key || now - last.at > 1000) {
+            this._showLockedError(list);
+        }
+        this._lastLockedEditReport = { key, at: now };
+        if (typeof this.loadLayerToInputs === 'function') {
+            try { this.loadLayerToInputs(); } catch (_) {}
+        }
     }
 
     _persistWith(touched) {

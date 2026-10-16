@@ -3069,6 +3069,12 @@ class _HardwareDock {
             },
             (val) => {
                 if (!layer) return;
+                // A locked screen keeps its label: the error says why and
+                // the dock redraws so the field shows the label it kept.
+                if (this._lockedRefused(layer)) {
+                    this._rebuildAfterGesture(() => this.renderHardwareDock());
+                    return;
+                }
                 if (!layer.powerLabelOverrides) {
                     layer.powerLabelOverrides = {};
                 }
@@ -3504,14 +3510,22 @@ class _HardwareDock {
         // Every member's circuits and run ids are read BEFORE any store
         // moves - the wipe itself renumbers the wall it would otherwise
         // be reading.
+        // A locked screen keeps its multis (the owner's ruling, 2026-10-16):
+        // it is skipped and named, and the unlocked members still clear.
         const jobs = [];
+        const lockedMet = [];
         members.forEach(m => {
             const layer = (this.project.layers || [])
                 .find(l => l.id === m.layerId);
             if (!layer) return;
+            if (layer.locked) {
+                if (!lockedMet.includes(layer)) lockedMet.push(layer);
+                return;
+            }
             jobs.push({ layer, soca: m.soca,
                         targets: this._socaClearTargets(layer, m.soca) });
         });
+        this._showLockedError(lockedMet);
         if (!jobs.length) return;
         jobs.forEach(j =>
             this._wipeSocaProgramming(j.layer, j.soca, j.targets));
@@ -3560,6 +3574,8 @@ class _HardwareDock {
     // the cut, which read the wall as shown - the tails held are the
     // tails the user saw. ONE history entry either way.
     _clearCircuitChip(layer, socaIndex, circuitNum) {
+        // A locked screen keeps its circuit, and says so.
+        if (this._lockedRefused(layer)) return;
         sendClientLog('dock_clear', { kind: 'circuit', layerId: layer.id,
                                       soca: socaIndex, circuit: circuitNum });
         const idx = Number(socaIndex);
