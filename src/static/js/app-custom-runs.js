@@ -167,11 +167,23 @@ class _CustomRuns {
             }
             sized = Object.assign({}, cap, this._customRunSizing(owner, kind, layers, cap));
         }
-        const used = sized.unit > 0 ? load / sized.unit : 0;
-        const fill = Object.assign({}, sized, {
-            load, used,
-            full: cap.known && (load + sized.unit > cap.limit + eps),
-        });
+        // NovaStar Armor (a rectangle processor) pays for the rectangle that
+        // encloses the run, so its load is no count of cabinets: an L of 7
+        // read "12/16". `used` there is the cabinets actually placed (their
+        // own pixel areas, a half-tile a fraction) - the figure every other
+        // processor's load already is - and the run is full when no free
+        // cabinet would still be accepted (_customRunCanGrow): one more
+        // cabinet can grow the rectangle by a whole row or column, so
+        // "another cabinet's worth of pixels left" says nothing there.
+        const rect = !isPower && typeof this.usesRectangleConstraint === 'function'
+            && this.usesRectangleConstraint((owner && owner.processorType) || 'novastar-armor');
+        const placed = rect
+            ? hits.reduce((s, h) => s + this.getPanelPixelArea(h.panel), 0) : load;
+        const used = sized.unit > 0 ? placed / sized.unit : 0;
+        const full = cap.known && (rect
+            ? !this._customRunCanGrow(owner, kind, hits)
+            : (load + sized.unit > cap.limit + eps));
+        const fill = Object.assign({}, sized, { load, used, full });
         fill.text = fill.mixed
             ? this._formatRunLoadPair(kind, load, cap.limit)
             : `${this._formatRunUsed(used)}/${sized.count}`;
@@ -241,6 +253,65 @@ class _CustomRuns {
         const cap = this.customRunCapacity(owner, kind, hits.map(h => h.panel));
         if (!cap.known) return true;
         return this.customRunLoad(owner, kind, hits) <= cap.limit + CUSTOM_RUN_EPS;
+    }
+
+    // Would ANY free cabinet still be accepted onto this run? `hits` are the
+    // run's resolved cabinets. A candidate is every visible cabinet on the
+    // run's screens (the owner and the group peers its path may reach) that
+    // no run of this kind holds yet - the cabinets a click could add - judged
+    // exactly as customRunAccepts judges a click: load and limit both, with
+    // the cabinet. The first one that fits answers, holes inside the run's
+    // rectangle (free on Armor) first. On a rectangle processor a cabinet
+    // whose rectangle with the run is bigger than the port's plain figure is
+    // skipped unweighed - no derate ever raises a limit above that figure -
+    // so a full run on a big wall costs one bounding-box sum per cabinet.
+    _customRunCanGrow(owner, kind, hits) {
+        if (!owner) return false;
+        const pathsKey = kind === 'power' ? 'powerCustomPaths' : 'customPortPaths';
+        const scope = typeof this.getPathScopeLayers === 'function'
+            ? this.getPathScopeLayers(owner) : [owner];
+        const taken = new Set();
+        for (const l of scope) {
+            for (const path of Object.values((l && l[pathsKey]) || {})) {
+                for (const e of path || []) {
+                    if (e) taken.add(this.getScopedPanelKey(this.getPathEntryLayerId(l, e), e));
+                }
+            }
+        }
+        const rect = kind !== 'power' && typeof this.usesRectangleConstraint === 'function'
+            && this.usesRectangleConstraint(owner.processorType || 'novastar-armor');
+        const base = rect ? this.customRunCapacity(owner, kind).limit : 0;
+        let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+        for (const h of hits) {
+            const p = h.panel;
+            x1 = Math.min(x1, Number(p.x) || 0);
+            y1 = Math.min(y1, Number(p.y) || 0);
+            x2 = Math.max(x2, (Number(p.x) || 0) + (Number(p.width) || 0));
+            y2 = Math.max(y2, (Number(p.y) || 0) + (Number(p.height) || 0));
+        }
+        const inside = [], outside = [];
+        for (const l of scope) {
+            if (!l || l.visible === false || !Array.isArray(l.panels)) continue;
+            for (const p of l.panels) {
+                if (!p || p.hidden || taken.has(this.getScopedPanelKey(l.id, p))) continue;
+                const px = Number(p.x) || 0, py = Number(p.y) || 0;
+                const qx = px + (Number(p.width) || 0), qy = py + (Number(p.height) || 0);
+                if (rect && hits.length) {
+                    const area = (Math.max(x2, qx) - Math.min(x1, px))
+                        * (Math.max(y2, qy) - Math.min(y1, py));
+                    if (area > base + CUSTOM_RUN_EPS) continue;
+                }
+                const within = hits.length && px >= x1 && py >= y1 && qx <= x2 && qy <= y2;
+                (within ? inside : outside).push({ layer: l, panel: p });
+            }
+        }
+        for (const c of inside.concat(outside)) {
+            const all = hits.concat([c]);
+            const cap = this.customRunCapacity(owner, kind, all.map(h => h.panel));
+            if (!cap.known) return true;
+            if (this.customRunLoad(owner, kind, all) <= cap.limit + CUSTOM_RUN_EPS) return true;
+        }
+        return false;
     }
 
     // "9", "13.7" - a whole count where it is one, a tenth where a half-tile

@@ -439,9 +439,11 @@ Object.assign(CanvasRenderer.prototype, {
                 const cable = window.app.powerCircuitCable(layer, circuitNum);
                 if (cable) cableText = cable.text;
                 // A DIRECT output's own cable, distro to screen (1.5), when
-                // the circuit carries no cable of its own.
-                if (!cableText && typeof window.app.directOutputCable === 'function') {
-                    const direct = window.app.directOutputCable(layer, circuitNum);
+                // the circuit carries no cable of its own - only for a
+                // circuit alone on it: a crowded output's home run is no
+                // one circuit's cable (directCircuitCable).
+                if (!cableText && typeof window.app.directCircuitCable === 'function') {
+                    const direct = window.app.directCircuitCable(layer, circuitNum);
                     if (direct) cableText = direct.text;
                 }
             }
@@ -882,7 +884,12 @@ Object.assign(CanvasRenderer.prototype, {
             }
             // Home-run lengths are paperwork: they print on exported maps
             // (like the Binder's power diagram) but stay off the working view.
-            const homeRun = this.exportMode ? this._homeRunText(s.length) : '';
+            // A circuit alone on a DIRECT output prints its one cable - the
+            // circuit's own when typed - as the tag and the pull sheet do.
+            const lone = this.exportMode && s.distroId && (s.legs || []).length === 1
+                && typeof app.directCircuitCable === 'function'
+                ? app.directCircuitCable(layer, s.legs[0].circuit) : null;
+            const homeRun = this.exportMode ? this._homeRunText(lone ? lone.ft : s.length) : '';
             const label = (dashed ? pend.boxName : s.name)
                 + (homeRun ? ` · ${homeRun}` : '')
                 + ` · ${s.amps.toFixed(1)}A`;

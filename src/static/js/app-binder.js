@@ -4863,6 +4863,7 @@ class _Binder {
             const typed = this.distroBoxType(d, number, members).type;
             if (typed) byType.set(typed.name, (byType.get(typed.name) || 0) + 1);
             let homeRun = null, circuits = 0, amps = 0;
+            let lone = null;    // { layer, circuit } of the last circuit seen
             const names = [];
             for (const m of members) {
                 const layer = book.layers.get(String(m.layerId));
@@ -4877,6 +4878,17 @@ class _Binder {
                 if (!homeRun) homeRun = this.parseCableLength(s.length);
                 circuits += (s.legs || []).length;
                 amps += (s.legs || []).reduce((a, l) => a + (Number(l.amps) || 0), 0);
+                if ((s.legs || []).length) lone = { layer, circuit: s.legs[0].circuit };
+            }
+            // A DIRECT output with one circuit on it has ONE cable, distro
+            // to screen - the circuit's own when typed, else the home run -
+            // read through the helper the map's tag and the pull sheet use,
+            // so this table never contradicts them. A crowded output (the
+            // flagged error state) keeps the output's home run.
+            const fbox = typeof this.faceBox === 'function' ? this.faceBox(d, number) : null;
+            if (fbox && fbox.kind === 'direct' && circuits === 1 && lone) {
+                const one = this.directCircuitCable(lone.layer, lone.circuit);
+                homeRun = one ? one.ft : null;
             }
             allCircuits += circuits;
             boxes.push({ cells: [`${d.name} ${number}`, typed ? typed.name : '—',

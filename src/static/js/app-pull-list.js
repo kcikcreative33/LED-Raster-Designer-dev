@@ -1086,14 +1086,21 @@ class _PullList {
                     cableFt: cable ? cable.ft : null,
                     cableConnector: cable ? this.pullPowerConnectorName(cable.name) : null,
                 });
-                if (cable && box.kind === 'direct') {
-                    // A DIRECT output is one circuit on one cable, distro
-                    // to screen: a cable typed on the circuit IS that
-                    // cable, and wins over the output's home run - what
-                    // the map's cable tag prints (canvas-power.js). Printed
-                    // once, by the direct output's row below.
-                    box.homeRun = cable.ft;
-                    if (cable.name) box.cable = cable.name;
+                // A DIRECT output is one circuit on one cable, distro to
+                // screen: a cable typed on the circuit IS that cable, and
+                // wins over the output's home run - what the map's cable
+                // tag prints (directCircuitCable). Printed once, by the
+                // direct output's row below. Only when the circuit is ALONE
+                // there: a multi left on a direct output (the flagged error
+                // state) lists every circuit's cable and the home run as
+                // their own rows - never one cable standing in for seven.
+                const crowd = box.kind === 'direct'
+                    ? this.directOutputCircuitCount(layer, leg.circuit) : 0;
+                if (crowd > 1) box.crowded = crowd;
+                const one = cable && crowd === 1 ? this.directCircuitCable(layer, leg.circuit) : null;
+                if (one) {
+                    box.homeRun = one.ft;
+                    if (one.name) box.cable = one.name;
                 } else if (cable) {
                     row(cable.name ? this.pullPowerConnectorName(cable.name) : 'Power Cable',
                         this.pullLengthText(cable.ft), 1, leg.label, '', locationOf(d));
@@ -1117,10 +1124,15 @@ class _PullList {
                 // A DIRECT output (1.5): its one cable, distro to screen, in
                 // the show's unit, under the output's name - no breakout.
                 // The circuit's own cable when it has one (set above), else
-                // the output's home run.
+                // the output's home run. A crowded output (several
+                // circuits, the flagged error state) says so in Notes; its
+                // circuits' cables are their own rows above.
                 directSeen.add(seenKey);
+                const notes = [box.homeRun ? '' : 'no length',
+                               box.crowded ? `${box.crowded} circuits on a one-circuit output` : '']
+                    .filter(Boolean).join(' · ');
                 const r = row(this.pullPowerConnectorName(box.cable), this.pullLengthText(box.homeRun),
-                              1, boxLabel, box.homeRun ? '' : 'no length', at);
+                              1, boxLabel, notes, at);
                 hw('distro', box.distroId, distroName).rows.push({ ...r });
                 continue;
             }

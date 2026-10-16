@@ -353,11 +353,16 @@ class _BinderWiring {
             // "SR1 · Multi 208 breakout · 125'"; a multi on no distro has no
             // type to name its breakout by and reads as the band does. A
             // DIRECT output is its own cable, no breakout: "SL5 · True1
-            // 208V · 25'".
+            // 208V · 25'". A direct output carrying several circuits (the
+            // flagged error state) has no one cable: its length is the
+            // output's home run, and the caption says it is crowded.
+            const crowd = box.crowded || 0;
             const caption = [box.name,
                              box.kind === 'direct' ? box.type
                                  : (box.type ? `${box.type} breakout` : 'no distro'),
-                             box.homeRun ? this.pullLengthText(box.homeRun) : 'no length'].join(' · ');
+                             box.homeRun ? this.pullLengthText(box.homeRun) : 'no length',
+                             ...(crowd ? [`${crowd} circuits on a one-circuit output`] : [])]
+                .join(' · ');
             const d = { key: box.key, title: caption, n: slots, sockets: new Map(), notes: new Map() };
             if (box.distroId) {
                 for (const [id, other] of Object.entries(book.list.byScreen)) {

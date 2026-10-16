@@ -213,10 +213,12 @@ def test_armor_l_shape_is_refused_where_the_badge_calls_it_full(page):
     assert out['fill']['limit'] == out['badge']['capacity'], out
     # ...and not the cabinets' own sum, which is what custom used to charge.
     assert out['sum'] == 13 * cab, out
-    # The readout counts the rectangle in cabinets, the way the badge does.
-    assert out['fill']['text'] == '40/40' and out['fill']['full'] is True, out
-    assert out['pill'] == '40/40 on port · full', out
-    assert '40/40 panels · full' in out['readout'], out
+    # The readout counts the cabinets placed against the port's capacity
+    # (the pre-beta ruling, tests/test_audit_final_fixes.py), and the run is
+    # not full: the holes inside its rectangle cost nothing and still fit.
+    assert out['fill']['text'] == '13/40' and out['fill']['full'] is False, out
+    assert out['pill'] == '13/40 on port', out
+    assert '13/40 panels' in out['readout'] and '· full' not in out['readout'], out
     assert any('is full' in e for e in out['errors']), out
 
 

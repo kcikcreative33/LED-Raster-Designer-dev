@@ -715,6 +715,37 @@ class _DistroSystems {
         return { ft, name, text: this.cableText(ft, name) };
     }
 
+    // How many circuits sit on the DIRECT output that circuit `circuitNum`
+    // is on - its own multi's, plus any other screen's pinned to the same
+    // output - or 0 where the circuit is not on a direct output. One is the
+    // legal case; more is a multi left on a one-circuit output (the rows
+    // changed under it), the state distroChecks flags.
+    directOutputCircuitCount(layer, circuitNum) {
+        if (!layer) return 0;
+        const box = this._circuitBox(layer, circuitNum);
+        if (!box.d || box.idx == null) return 0;
+        const fbox = this.faceBox(box.d, box.number);
+        if (!fbox || fbox.kind !== 'direct') return 0;
+        const rec = this._powerNaming(layer).socas.get(box.idx);
+        if (!rec) return 1;
+        if (rec.share) return rec.share.members.reduce((t, m) => t + (Number(m.legs) || 0), 0);
+        return rec.circuits.length;
+    }
+
+    // THE one cable of a circuit alone on a DIRECT output, distro to screen:
+    // the circuit's own cable when one is typed (it wins over the output's
+    // home run), else the output's home run - { ft, name, text }. Null when
+    // the circuit is not on a direct output, when nothing is typed, or when
+    // the output carries more than one circuit (the flagged error state):
+    // then no circuit's cable is the output's one cable, and each circuit's
+    // cable and the home run are their own cables. The map's cable tag, the
+    // pull sheet, the binder's captions and its Distro page all read this.
+    directCircuitCable(layer, circuitNum) {
+        if (this.directOutputCircuitCount(layer, circuitNum) !== 1) return null;
+        return this.powerCircuitCable(layer, circuitNum)
+            || this.directOutputCable(layer, circuitNum);
+    }
+
     // ---- legs ------------------------------------------------------------
 
     // THE one answer to "which legs does this circuit sit on, and is it
