@@ -1,6 +1,6 @@
 """Phase balancing and the ONE power-label authority (v0.12.0).
 
-The user's report (Kelly Clarkson, screen SR), in two rounds:
+The user's report (live show A, screen SR), in two rounds:
 
 Round 1: after #power-distro-balance wrote powerSocaPhasePos {1: [6,2,5,1,3]},
 the canvas showed S1-1, S1-3, S1-5, S1-4, S1-5 - a duplicate S1-5 and no

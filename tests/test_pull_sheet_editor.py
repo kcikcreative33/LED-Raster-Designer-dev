@@ -674,12 +674,12 @@ def test_tab_walks_qty_label_notes_then_the_next_row(page):
 
 # ── the smoke: the user's own show ───────────────────────────────────────
 
-SCREENSHOT = os.path.join(os.path.dirname(SCRATCH_FIXTURE), 'pull-sheet-editor-experts-only.png')
+SCREENSHOT = os.path.join(os.path.dirname(SCRATCH_FIXTURE), 'pull-sheet-editor-live-show-b.png')
 
 
 @pytest.mark.skipif(bool(private_fixture_missing(SCRATCH_FIXTURE)),
                     reason=str(private_fixture_missing(SCRATCH_FIXTURE)))
-def test_smoke_experts_only(page):
+def test_smoke_live_show_b(page):
     """The real show: beach SR's Tru-1 10' row (8 as the show says - six on
     SR - MAIN, two on SR - Return) edited to 9 in the editor; the
     workbook's cell reads 9."""

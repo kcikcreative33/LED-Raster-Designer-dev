@@ -1248,8 +1248,8 @@ def _next_duplicate_canvas_name(src_name):
     sharing that base, and returns "<base> <max+1>". Examples:
 
         "Canvas 2" + ["Canvas 1", "Canvas 2"] → "Canvas 3"
-        "EDC"      + ["EDC"]                  → "EDC 1"
-        "EDC 1"    + ["EDC", "EDC 1"]         → "EDC 2"
+        "MAIN"     + ["MAIN"]                 → "MAIN 1"
+        "MAIN 1"   + ["MAIN", "MAIN 1"]       → "MAIN 2"
     """
     import re
     name = (src_name or 'Canvas').strip()

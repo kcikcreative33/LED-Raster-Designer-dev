@@ -1663,8 +1663,8 @@ class _Processors {
         return (((rec || {}).name) || '').trim();
     }
 
-    // THE UNIT A SOCKET SITS ON, NAMED ONCE (2026-09-09, off the Kelly
-    // Clarkson binder: "IMAG SR IMAG SR · NovaPro UHD Jr · 16 ports").
+    // THE UNIT A SOCKET SITS ON, NAMED ONCE (2026-09-09, off the live
+    // show A binder: "IMAG SR IMAG SR · NovaPro UHD Jr · 16 ports").
     // A processor with no slots - a NovaPro UHD Jr, a Tessera S8 - carries
     // ONE fixed card that IS its face, so the unit has one name, the
     // processor's, and the paperwork says it once. A real slot card is a

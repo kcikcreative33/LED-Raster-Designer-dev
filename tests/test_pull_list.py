@@ -42,7 +42,7 @@ openpyxl = pytest.importorskip('openpyxl', reason='openpyxl not installed')
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 from conftest import private_fixture, private_fixture_missing  # noqa: E402
-SCRATCH_FIXTURE = private_fixture('experts-only-fixture.json', 'LRD_PULL_SMOKE_JSON')
+SCRATCH_FIXTURE = private_fixture('live-show-b.json', 'LRD_PULL_SMOKE_JSON')
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -1012,8 +1012,8 @@ def test_export_saves_the_workbook_through_the_picker_path(page):
 
 @pytest.mark.skipif(bool(private_fixture_missing(SCRATCH_FIXTURE)),
                     reason=str(private_fixture_missing(SCRATCH_FIXTURE)))
-def test_smoke_experts_only(page):
-    """The real show, FROZEN as experts-only-fixture.json - his save of
+def test_smoke_live_show_b(page):
+    """The real show, FROZEN as live-show-b.json - his save of
     2026-09-15 22:55, frozen 2026-09-24 (the file's mtime; the save beside
     it drifts with every save, the fixture never moves). SR - MAIN's 22
     custom circuits on four boxes SR 1-4 (125' / 100' / 125' / 100') with
@@ -1216,7 +1216,7 @@ def test_smoke_experts_only(page):
     r = pg.evaluate("""async (list) => {
         const res = await fetch('/api/export/pull-sheet', {method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({project_name: '2026 Experts Only', pull_list: list,
+            body: JSON.stringify({project_name: 'Live Show B', pull_list: list,
                                   engineer: 'E', rev: '1.0', date_iso: '2026-09-06'})});
         const bytes = new Uint8Array(await (await res.blob()).arrayBuffer());
         let bin = '';
@@ -1234,7 +1234,7 @@ def test_smoke_experts_only(page):
     # two positions: the tan block stays where the template has it, as
     # with any two-position show (test_pull_list's seeded one)
     assert heads == ['SR', 'SL', 'POSITION 3', 'NEW POSITION', None, None], heads
-    assert ws['B2'].value == '2026 Experts Only'
+    assert ws['B2'].value == 'Live Show B'
     # SR's block: its three 125' multis (SR 1, 3, 5), as the list says
     assert ('Multi', "125'", 3) in {(ws.cell(rr, 1).value, ws.cell(rr, 2).value, ws.cell(rr, 3).value)
                                     for rr in range(7, 37)}

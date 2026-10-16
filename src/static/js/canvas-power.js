@@ -1249,7 +1249,7 @@ Object.assign(CanvasRenderer.prototype, {
     // PLACED wins. `taken` is those pills, in the order they were placed:
     // without it a tag hung right off one label and a tag hung left off
     // the next printed clean through each other, each of them clear of
-    // every DISC and neither of them aware of the other (Kelly, SL ·
+    // every DISC and neither of them aware of the other (show A, SL ·
     // POWER, 2026-09-09: "5' True1" and "10' True1" overprinted by 185 x
     // 51 pixels of the map).
     // When no side is clear the spacing gives way before the layout does:
@@ -1350,7 +1350,7 @@ Object.assign(CanvasRenderer.prototype, {
     // is held the lesser of that and the stand-off cableTagRect gave it
     // (`rc.gap`): a pill where cableTagRect hung it is clear, one the
     // screen's edge slid in toward its disc is not - a head on the top
-    // row of a short wall (Kelly's DJ Booth, data, 2026-09-25) had its tag
+    // row of a short wall (show A's DJ Booth, data, 2026-09-25) had its tag
     // pushed down to a third of its height off the disc, the rims reading
     // as one; it goes to the other side instead.
     _tagCover(bounds, discs, own, taken, withOwn) {
