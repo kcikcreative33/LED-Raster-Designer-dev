@@ -1786,7 +1786,7 @@ class _Processors {
     _dataPortCableOn(owner, socket) {
         const snake = this.dataPortSnake(owner, socket);
         const rec = (owner.rec.portCables || {})[String(socket)];
-        const ft = rec ? Number(rec.ft) : NaN;
+        const ft = rec ? this.parseCableLength(rec.ft) : null;
         const hasFt = !!rec && Number.isFinite(ft) && ft > 0;
         if (snake) {
             const ext = hasFt ? ft : null;
@@ -1815,7 +1815,7 @@ class _Processors {
         if (!cable) return '—';
         if (cable.kind !== 'snake') return cable.text || '—';
         const s = cable.snake || {};
-        const ft = Number(s.ft);
+        const ft = this.parseCableLength(s.ft);
         let text = (s.name || 'snake')
             + (Number.isFinite(ft) && ft > 0
                 ? ` ${this.cableText(ft, '')}` : ' · no length');
@@ -1872,7 +1872,7 @@ class _Processors {
         if (ways == null) ways = (snake.members || []).length;
         const name = snake.name || 'snake';
         let text = `${name} · ${this.snakeSizeText(name, ways)}`;
-        const ft = Number(snake.ft);
+        const ft = this.parseCableLength(snake.ft);
         if (withFt && Number.isFinite(ft) && ft > 0) {
             text += ` · ${this.cableText(ft, '')}`;
         }
@@ -2030,8 +2030,7 @@ class _Processors {
         const body = {};
         if ('name' in patch) body.name = (patch.name || '').trim();
         if ('ft' in patch) {
-            const ft = Number(patch.ft);
-            body.ft = Number.isFinite(ft) && ft > 0 ? ft : null;
+            body.ft = this.parseCableLength(patch.ft);
         }
         if ('connector' in patch) {
             body.connector = patch.connector
@@ -2062,7 +2061,7 @@ class _Processors {
         const stores = this._dataCableStores(owner);
         const key = String(parseInt(socket, 10));
         const before = JSON.stringify(stores.portCables[key] || null);
-        const ft = cable ? Number(cable.ft) : NaN;
+        const ft = cable ? this.parseCableLength(cable.ft) : null;
         const connector = cable && cable.connector
             && this.dataCableConnectorName(cable.connector)
             ? cable.connector : null;

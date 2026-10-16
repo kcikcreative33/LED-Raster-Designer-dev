@@ -801,7 +801,7 @@ class _PixelSelect {
         const labelEl = document.getElementById('pixel-map-bulk-label');
         if (count > 0) {
             panel.style.display = 'block';
-            if (countEl) countEl.textContent = count.toLocaleString();
+            if (countEl) countEl.textContent = count.toLocaleString('en-US');
             if (labelEl) labelEl.textContent = count === 1 ? 'panel' : 'panels';
         } else {
             panel.style.display = 'none';

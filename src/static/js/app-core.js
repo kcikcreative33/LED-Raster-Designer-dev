@@ -1341,6 +1341,10 @@ export class LEDRasterApp {
     _layerSavesSettled() {
         const pending = [...(this._inflightLayerPuts || [])]
             .concat([...((this._layerPutChains && this._layerPutChains.values()) || [])]);
+        // the pull sheet's POST queue too (the show's cable unit, its edits)
+        const sheet = typeof this._pullSheetStateSettled === 'function'
+            ? this._pullSheetStateSettled() : null;
+        if (sheet) pending.push(sheet);
         return Promise.all(pending.map(p => Promise.resolve(p).catch(() => {})));
     }
 
@@ -1454,8 +1458,8 @@ export class LEDRasterApp {
         });
         // The pristine show follows the Preferences' cable unit too
         // (2026-10-16): a changed unit lands on the project, and the
-        // screen's jumpers are re-made from the set in the show's unit,
-        // ahead of the layer PUT below. The POST keeps the show pristine.
+        // screen holds no jumper lengths of its own, so it reads the set
+        // in the show's unit. The POST keeps the show pristine.
         const unit = this.preferredCableUnit();
         if (this.cableUnit() !== unit || this.project.cableUnit !== unit) {
             this.project.cableUnit = unit;
@@ -1466,7 +1470,7 @@ export class LEDRasterApp {
             }).catch(() => {});
             if (this.syncCableUnitControls) this.syncCableUnitControls();
         }
-        this.applyJumperDefaults(this.currentLayer, true);
+        this.clearJumperLengths(this.currentLayer);
         this.applyPreferencesToCurrentLayer(prefs);
     }
     
@@ -1665,7 +1669,7 @@ export class LEDRasterApp {
             if (el) el.textContent = value;
         };
         const fmtAmps = (a) => (a > 0) ? `${a.toFixed(2)} A` : '0';
-        const fmtWatts = (w) => (w > 0) ? `${Math.round(w).toLocaleString()} W` : '0';
+        const fmtWatts = (w) => (w > 0) ? `${Math.round(w).toLocaleString('en-US')} W` : '0';
 
         // v0.8.7.7.4: list every visible canvas individually instead of a
         // single "active canvas" column. The old active-canvas readout was
@@ -2136,15 +2140,11 @@ export class LEDRasterApp {
         Object.keys(ensuredDefaults).forEach(k => {
             if (out[k] === undefined) out[k] = ensuredDefaults[k];
         });
-        // A panel preset carries the screen's four jumper lengths - the
-        // figures it reads (a screen from an older file reads the
-        // preferences'), null included: a blank is a decision.
-        if ((layer.type || 'screen') === 'screen' && typeof this.screenJumperLengths === 'function') {
-            const j = this.screenJumperLengths(layer);
-            const read = { dataJumpV: j.data.v, dataJumpH: j.data.h,
-                           powerJumpV: j.power.v, powerJumpH: j.power.h };
-            Object.keys(read).forEach(k => { if (out[k] === undefined) out[k] = read[k]; });
-        }
+        // A panel preset carries the jumper lengths the screen holds -
+        // the ones somebody typed, null included (a blank is a decision).
+        // One nobody typed is left out, so the preset's screens read the
+        // Preferences in whatever unit their show is in (2026-10-16). The
+        // copy above already took exactly those.
         // v0.11.0 (step 6): hand-drawn paths still travel with a preset - the
         // geometry that gives them meaning (columns / rows / cabinet size)
         // travels with it too - but only the entries that mean "a panel in

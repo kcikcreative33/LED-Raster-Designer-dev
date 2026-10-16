@@ -242,7 +242,7 @@ pytest.importorskip("playwright.sync_api", reason="playwright not installed")
 # per member: each 4 × 3 wall is one port over three rows.
 # Jumper lengths per screen (2026-09-25), so each direction is its own
 # figure: WALL-A 2' vertical / 1' horizontal on both sides; WALL-B none of
-# its own (the preferences' 6' / 6' the server seeds); CENTER data 1.5'
+# its own (it reads the preferences' 6' / 6'); CENTER data 1.5'
 # vertical with NO horizontal cable (its panels link themselves), power
 # 3' vertical, no horizontal. Every run here is a serpentine, so every
 # link touches: no long jumps (those are test_jumper_lengths.py's).
@@ -436,7 +436,7 @@ def test_the_per_screen_readings_the_packet_will_print(page):
     assert len(a['boxes']) == 1
     box = a['boxes'][0]
     assert (box['distro'], box['number'], box['homeRun'], box['type'], box['connector'], box['shared']) == (
-        'SR', 1, '125', 'Multi 208', 'Tru-1', False)
+        'SR', 1, 125, 'Multi 208', 'Tru-1', False)
     assert [(c['num'], c['label'], c['tail'], c['cable']) for c in box['circuits']] == [
         (1, 'SR1-1', 1, "10' True1"), (2, 'SR1-2', 2, "10' True1")]
     assert a['gangs'] == {'twofer': 0, 'threefer': 0}
@@ -444,7 +444,7 @@ def test_the_per_screen_readings_the_packet_will_print(page):
     assert [(s['name'], s['ways'], s['ft']) for s in a['snakes']] == [('SNAKE A', 2, 100)]
     b = out['byScreen'][str(ids['b'])]
     assert b['snakes'] == [] and b['ports'][0]['snake'] == 'SNAKE A', 'the snake is said once'
-    assert b['boxes'][0]['homeRun'] == '100' and b['jumpers'] == {'data': 11, 'power': 10}
+    assert b['boxes'][0]['homeRun'] == 100 and b['jumpers'] == {'data': 11, 'power': 10}
     assert b['jumperLengths'] == {'data': {'6': 11}, 'power': {'6': 10}}
     c = out['byScreen'][str(ids['c'])]
     # the ten links beside on CENTER's data run are not counted (blank)

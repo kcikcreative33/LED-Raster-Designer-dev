@@ -882,8 +882,9 @@ Object.assign(CanvasRenderer.prototype, {
             }
             // Home-run lengths are paperwork: they print on exported maps
             // (like the Binder's power diagram) but stay off the working view.
+            const homeRun = this.exportMode ? this._homeRunText(s.length) : '';
             const label = (dashed ? pend.boxName : s.name)
-                + (this.exportMode && s.length ? ` · ${this._homeRunText(s.length)}` : '')
+                + (homeRun ? ` · ${homeRun}` : '')
                 + ` · ${s.amps.toFixed(1)}A`;
             const cx = (s.x1 + s.x2) / 2;
             const tw = this.ctx.measureText(label).width;
@@ -958,15 +959,15 @@ Object.assign(CanvasRenderer.prototype, {
         this.ctx.restore();
     },
 
-    // A multi's typed home run as the exported map's bracket prints it: a
-    // bare number in the show's unit ("100'" / "30 m", app-cable-units.js
-    // - the pull sheet's own reading), anything else as it was typed.
+    // A multi's typed home run as the exported map's bracket prints it,
+    // in the show's unit ("100'" / "30 m"): the pull sheet's own reading
+    // (app-cable-units.js parseCableLength - a number, or one with the
+    // show's unit), '' for no length.
     _homeRunText(raw) {
-        const t = String(raw == null ? '' : raw).trim();
-        if (/^\d+(\.\d+)?$/.test(t) && window.app && typeof window.app.cableLengthText === 'function') {
-            return window.app.cableLengthText(Number(t)) || t;
+        if (window.app && typeof window.app.cableLengthText === 'function') {
+            return window.app.cableLengthText(raw);
         }
-        return t;
+        return String(raw == null ? '' : raw).trim();
     },
 
     // The plug drag's pending box on this screen, off the dock's live drop

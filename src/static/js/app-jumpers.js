@@ -45,7 +45,12 @@
 //     a number or null. null (a blank field) counts NO
 //     cable for that direction - panels that link themselves. A long jump
 //     is always counted: it is a cable whatever the panels do.
-//   * a NEW screen takes them from Preferences > Sheet & cables: the
+//   * a NEW screen stores NONE of them (2026-10-16, "follow the unit"):
+//     until somebody types one it reads Preferences > Sheet & cables in
+//     the show's unit, the way a file saved before the fields always has -
+//     so a unit change gives an untouched screen the new unit's figures,
+//     and only a length somebody typed keeps its number and counts as
+//     typed (app-cable-units.js). The preferences: the
 //     existing dataJumpLength / powerJumpLength are the VERTICAL defaults,
 //     dataJumpLengthH / powerJumpLengthH the horizontal ones - and a
 //     preference record with no horizontal key reads the vertical figure, so
@@ -53,8 +58,8 @@
 //     screen counts every link the same until somebody says otherwise).
 //     A meters show reads the meters twins (dataJumpLengthM ... - 2 m as
 //     shipped, app-cable-units.js CABLE_PREF_KEYS).
-//     A file saved before the fields existed reads them as the preferences'
-//     values at load; nothing is written back until an edit.
+//     A screen without a field - new, or from a file saved before the
+//     fields - reads the preference; nothing is stamped on it.
 //
 // THE MEASURING FRAME. A cabinet's center is its drawn rect's center (the
 // panel's x / y / width / height, which already carry half tiles: a half
@@ -98,13 +103,10 @@ class _Jumpers {
     // ---- lengths ----------------------------------------------------------
 
     // A jumper length as the fields store it: a positive number in the
-    // show's unit, or null (blank, zero, negative or not a number: no
-    // cable).
+    // show's unit, or null (blank, zero, negative or not a length: no
+    // cable) - the one reading every length takes (parseCableLength).
     jumperLengthValue(v) {
-        if (v === null || v === undefined) return null;
-        if (typeof v === 'string' && v.trim() === '') return null;
-        const n = Number(v);
-        return Number.isFinite(n) && n > 0 ? n : null;
+        return this.parseCableLength(v);
     }
 
     // A long jump's raw length (in the show's unit - or `unit` - slack
@@ -119,7 +121,7 @@ class _Jumpers {
         return Math.ceil(Math.round((x / step) * 1e6) / 1e6) * step;
     }
 
-    // The four defaults a NEW screen takes: the preferences (getPreferences
+    // The four figures a screen without its own reads: the preferences (getPreferences
     // already reads a record's vertical figure for a horizontal it never
     // held). A blank preference (null) is kept - new screens then count no
     // cable there.
@@ -143,7 +145,7 @@ class _Jumpers {
 
     // A screen's own lengths, { data: { v, h }, power: { v, h } }: its stored
     // field where it has one (null included - a blank is a decision), else
-    // the preference (a file saved before the fields existed).
+    // the preference in the show's unit (nobody typed one).
     screenJumperLengths(layer) {
         const defaults = this.jumperDefaults();
         const out = {};
@@ -156,15 +158,12 @@ class _Jumpers {
         return out;
     }
 
-    // Stamp the preferences onto a screen that lacks the fields (a new
-    // screen with `force`, or an old file's screen at load). In memory only
-    // - nothing is written to the server here.
-    applyJumperDefaults(layer, force = false) {
+    // A new screen (or the pristine startup one, re-made from the
+    // preferences) holds no jumper length of its own: it reads the
+    // preferences until somebody types one. Nothing is stamped.
+    clearJumperLengths(layer) {
         if (!layer || (layer.type || 'screen') !== 'screen') return;
-        const d = this.jumperDefaults();
-        for (const f of Object.keys(d)) {
-            if (force || layer[f] === undefined) layer[f] = d[f];
-        }
+        for (const f of Object.values(JUMPER_FIELDS).flat()) delete layer[f];
     }
 
     // ---- the link rule ----------------------------------------------------
@@ -349,8 +348,9 @@ class _Jumpers {
     // (never its group peers: the lengths are per screen), one history entry,
     // one PUT batch; a figure every selected screen already holds commits
     // nothing. Blank is null (no cable); anything else must be a positive
-    // number (in the show's unit), or the field is flagged and nothing is
-    // written.
+    // length in the show's unit - a number, one with the show's unit ("2 m"
+    // / "6ft"), or arithmetic on numbers - or the field is flagged and nothing is
+    // written ("2m" in a feet show is flagged, never taken as 2 ft).
     initJumperControls() {
         if (this._jumperControlsWired) return;
         this._jumperControlsWired = true;
@@ -361,8 +361,12 @@ class _Jumpers {
                 const raw = String(el.value == null ? '' : el.value).trim();
                 let val = null;
                 if (raw !== '') {
-                    const n = typeof this.evaluateNumericExpression === 'function'
-                        ? this.evaluateNumericExpression(raw) : parseFloat(raw);
+                    let n = this.parseCableLength(raw);
+                    // no unit word or mark in it: arithmetic ("1.5*2")
+                    if (n === null && !/[a-z'"\u2019]/i.test(raw)
+                            && typeof this.evaluateNumericExpression === 'function') {
+                        n = this.evaluateNumericExpression(raw);
+                    }
                     if (!(Number.isFinite(n) && n > 0)) {
                         el.classList.add('invalid');
                         return;

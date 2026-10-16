@@ -215,7 +215,13 @@ class _PullList {
 
     _sendPullSheetState() {
         const q = this._pullSheetPost;
-        if (!q.keys.size) { q.busy = false; return; }
+        if (!q.keys.size) {
+            q.busy = false;
+            const idle = q.idle || [];
+            q.idle = [];
+            idle.forEach(r => r());
+            return;
+        }
         const p = this.project || {};
         const value = {
             cableUnit: () => this.cableUnit(),
@@ -241,6 +247,17 @@ class _PullList {
         });
     }
 
+    // null when the queue above is idle, else a promise that resolves once
+    // it is: nothing in flight, nothing waiting. What a whole-project
+    // write (undo / redo's restore PUT, New, a file open) waits on, so a
+    // POST of the old project's unit or edits cannot land after it and
+    // put them back (app-history.js _syncRestoredProject).
+    _pullSheetStateSettled() {
+        const q = this._pullSheetPost;
+        if (!q || (!q.busy && !q.keys.size)) return null;
+        return new Promise(resolve => (q.idle || (q.idle = [])).push(resolve));
+    }
+
     // ---- vocabulary --------------------------------------------------------
 
     // A length in the show's unit as the sheet prints it - "100'" in a
@@ -249,8 +266,8 @@ class _PullList {
     pullLengthText(ft) {
         if (ft === 'EA') return 'EA';
         if (this._pullLengthProbe) {
-            const n = Number(ft);
-            if (Number.isFinite(n) && n > 0) this._pullLengthProbe.push(n);
+            const n = this.parseCableLength(ft);
+            if (n !== null) this._pullLengthProbe.push(n);
         }
         return this.cableLengthText(ft);
     }
@@ -355,7 +372,7 @@ class _PullList {
     // A box's fiber trunk as a line: "12 Tac Fiber 250'" (the type, or
     // "Fiber" when untyped, and the length), or '' with no length.
     pullBoxFiberText(box) {
-        const ft = Number(box && box.fiberFt);
+        const ft = this.parseCableLength(box && box.fiberFt);
         if (!Number.isFinite(ft) || ft <= 0) return '';
         return `${(box.fiberType || '').trim() || 'Fiber'} ${this.pullLengthText(ft)}`;
     }
@@ -366,8 +383,8 @@ class _PullList {
     // where it runs past its 10G length ("no length" where none is typed).
     // Rows merge by kind and length like every other cable.
     _pullCopperCells(l) {
-        const ft = Number(l.copper.ft);
-        const has = Number.isFinite(ft) && ft > 0;
+        const ft = this.parseCableLength(l.copper.ft);
+        const has = ft !== null;
         return [l.copper.copper, has ? this.pullLengthText(ft) : '', 1,
                 `${this.pullBoxTitle(l.box)} (${l.title})`,
                 this.copperOverText(l.copper) || (has ? '' : 'no length')];
@@ -874,7 +891,7 @@ class _PullList {
                         const [type, length, qty, label, notes] = this._pullCopperCells(l);
                         r = { type, length, qty, label, notes, side: 'data' };
                     } else {
-                        const ft = Number(l.cable.ft);
+                        const ft = this.parseCableLength(l.cable.ft);
                         const has = Number.isFinite(ft) && ft > 0;
                         r = { type: this.fiberCableTypeText(l.cable), length: this.pullLengthText(ft),
                               qty: 1, label: l.cable.name || '', notes: has ? '' : 'no length', side: 'data' };
@@ -1040,7 +1057,9 @@ class _PullList {
                     connectorId: typed && typed.face ? typed.connectorId : null,
                     cable: typed && typed.face ? typed.cable : null,
                     boxSize: typed ? Number(typed.boxSize) || 6 : null,
-                    homeRun: s.length || null,
+                    // the typed home run as a length: null when none, or
+                    // not one in the show's unit (parseCableLength)
+                    homeRun: this.parseCableLength(s.length),
                     connector: d
                         ? this.pullPowerConnectorName(
                             this.cableConnectorName(this.boxTailConnector(d, s.number, layer)))
@@ -1049,8 +1068,8 @@ class _PullList {
                     shared: false,
                 };
                 boxes.set(key, box);
-            } else if (!box.homeRun && s.length) {
-                box.homeRun = s.length;
+            } else if (!box.homeRun && this.parseCableLength(s.length) !== null) {
+                box.homeRun = this.parseCableLength(s.length);
             }
             const d = box.distroId ? distroById.get(box.distroId) || null : null;
             for (const leg of s.legs) {
@@ -1067,7 +1086,15 @@ class _PullList {
                     cableFt: cable ? cable.ft : null,
                     cableConnector: cable ? this.pullPowerConnectorName(cable.name) : null,
                 });
-                if (cable) {
+                if (cable && box.kind === 'direct') {
+                    // A DIRECT output is one circuit on one cable, distro
+                    // to screen: a cable typed on the circuit IS that
+                    // cable, and wins over the output's home run - what
+                    // the map's cable tag prints (canvas-power.js). Printed
+                    // once, by the direct output's row below.
+                    box.homeRun = cable.ft;
+                    if (cable.name) box.cable = cable.name;
+                } else if (cable) {
                     row(cable.name ? this.pullPowerConnectorName(cable.name) : 'Power Cable',
                         this.pullLengthText(cable.ft), 1, leg.label, '', locationOf(d));
                 }
@@ -1089,6 +1116,8 @@ class _PullList {
             if (box.kind === 'direct') {
                 // A DIRECT output (1.5): its one cable, distro to screen, in
                 // the show's unit, under the output's name - no breakout.
+                // The circuit's own cable when it has one (set above), else
+                // the output's home run.
                 directSeen.add(seenKey);
                 const r = row(this.pullPowerConnectorName(box.cable), this.pullLengthText(box.homeRun),
                               1, boxLabel, box.homeRun ? '' : 'no length', at);
@@ -1194,7 +1223,7 @@ class _PullList {
                     if (fiberSeen.has(key)) { tagOnce(key); continue; }
                     fiberSeen.add(key);
                     const r = l.copper ? row(...this._pullCopperCells(l), at) : (() => {
-                        const ft = Number(l.cable.ft);
+                        const ft = this.parseCableLength(l.cable.ft);
                         const has = Number.isFinite(ft) && ft > 0;
                         return row(this.fiberCableTypeText(l.cable), this.pullLengthText(ft), 1,
                                    l.cable.name || '', has ? '' : 'no length', at);
@@ -1239,7 +1268,7 @@ class _PullList {
                                   connector: connId || null, owner: owner.kind,
                                   ownerId: owner.id, id: s.id });
                 const type = word ? `${word} Snake` : 'Snake';
-                const ft = Number(s.ft);
+                const ft = this.parseCableLength(s.ft);
                 const snakeRow = { type, length: this.pullLengthText(ft),
                                    qty: 1, label: s.name || '',
                                    notes: [typeof this.snakeSizeText === 'function'

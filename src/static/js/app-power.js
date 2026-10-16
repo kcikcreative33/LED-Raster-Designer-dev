@@ -152,7 +152,7 @@ class _Power {
             // .value-normal, so it cannot be mistaken for a fault; the warning
             // colour is the only inline override and the only colour here.
             if (portCapacity > 0) {
-                capacityEl.textContent = portCapacity.toLocaleString();
+                capacityEl.textContent = portCapacity.toLocaleString('en-US');
                 capacityEl.classList.add('value-normal');
                 capacityEl.style.color = '';
                 capacityEl.title = '';
@@ -186,7 +186,7 @@ class _Power {
                 panelsPerPortEl.classList.remove('value-normal');
                 panelsPerPortEl.style.color = '#ff0000';
             } else {
-                panelsPerPortEl.textContent = panelsPerPort.toLocaleString();
+                panelsPerPortEl.textContent = panelsPerPort.toLocaleString('en-US');
                 panelsPerPortEl.classList.add('value-normal');
                 panelsPerPortEl.style.color = '';
             }
@@ -295,8 +295,8 @@ class _Power {
         const amps1El = document.getElementById('power-total-amps-1ph');
         const amps3El = document.getElementById('power-total-amps-3ph');
 
-        if (wattsEl) wattsEl.textContent = wattsPerCircuit > 0 ? wattsPerCircuit.toLocaleString() : '0';
-        if (panelsEl) panelsEl.textContent = panelsPerCircuit > 0 ? panelsPerCircuit.toLocaleString() : '0';
+        if (wattsEl) wattsEl.textContent = wattsPerCircuit > 0 ? wattsPerCircuit.toLocaleString('en-US') : '0';
+        if (panelsEl) panelsEl.textContent = panelsPerCircuit > 0 ? panelsPerCircuit.toLocaleString('en-US') : '0';
         const powerAssignments = this.calculatePowerAssignments(layer);
         // count via the shared authority so a custom-routed screen reports the
         // circuits actually drawn, not what auto routing would have produced
@@ -310,7 +310,7 @@ class _Power {
         // circuit with its neighbour's number.
         layer._powerCircuitNumKeys = powerAssignments.nums || null;
 
-        if (circuitsEl) circuitsEl.textContent = circuitsRequired > 0 ? circuitsRequired.toLocaleString() : '0';
+        if (circuitsEl) circuitsEl.textContent = circuitsRequired > 0 ? circuitsRequired.toLocaleString('en-US') : '0';
         layer._powerCircuitsRequired = circuitsRequired;
         // The screen that carries a wall's circuits reads the WALL's load
         // beside the wall's circuit count - the figure its circuits draw,
@@ -1815,8 +1815,8 @@ class _Power {
     powerCircuitCable(layer, circuitNum) {
         const store = layer && layer.powerCircuitCables;
         const rec = store && store[circuitNum];
-        const ft = rec ? Number(rec.ft) : NaN;
-        if (!rec || !Number.isFinite(ft) || ft <= 0) return null;
+        const ft = rec ? this.parseCableLength(rec.ft) : null;
+        if (!rec || ft === null) return null;
         let id = rec.connector && this.cableConnectorName(rec.connector)
             ? rec.connector : null;
         if (!id) {
@@ -2034,6 +2034,9 @@ class _Power {
                     b.socas.push(fresh);
                 }
                 b.watts += s.watts;
+                // A single-hot distro reads its circuits' own amps (audit).
+                const own = b.distro ? this._singleHotAmps(b.distro, s.watts, circuitV) : null;
+                if (own != null) b.ownAmps = (b.ownAmps || 0) + own;
                 // spread this multi's circuits across the legs - per
                 // CIRCUIT, through the one authority (distroCircuitLegs): a
                 // face box answers from its row and the distro, anything
@@ -2061,7 +2064,8 @@ class _Power {
             const d = b.distro;
             const v = d ? d.voltage : 0;
             const names = d ? this.distroLegNames(d) : [];
-            const balancedAmps = v > 0 ? (d.phase === 3 ? b.watts / (v * 1.73) : b.watts / v) : 0;
+            const balancedAmps = b.ownAmps != null ? b.ownAmps
+                : (v > 0 ? (d.phase === 3 ? b.watts / (v * 1.73) : b.watts / v) : 0);
             const rating = d ? d.ratingA : 0;
             // Per-leg amps are line-to-NEUTRAL: on a 208V wye that is 120V,
             // which is what each leg actually sees.
@@ -2136,6 +2140,8 @@ class _Power {
             pairWatts: {},
         };
         if (!distro) return { X: 0, Y: 0, Z: 0 };
+        const legacy = this._legacyBoxFeedLegAmps(distro, members);
+        if (legacy) return legacy;
         for (const m of (members || [])) {
             if (!m || !m.layer || !m.s) continue;
             const circuitV = parseFloat(m.layer.powerVoltage) || 0;
@@ -2159,7 +2165,11 @@ class _Power {
         if (!layer) return;
         const store = layer.powerSocaLengths || (layer.powerSocaLengths = {});
         const v = String(length || '').trim();
-        if (v) store[socaIndex] = v; else delete store[socaIndex];
+        // "100ft" keeps its number (relabelled by number on a unit
+        // change); text that is no length here stays as typed and prints
+        // as no length.
+        const n = this.parseCableLength(v);
+        if (v) store[socaIndex] = n !== null ? String(n) : v; else delete store[socaIndex];
         if (record) {
             this.updateLayers([layer], true, 'Set Multi Home Run');
         }
@@ -2261,7 +2271,7 @@ class _Power {
             const followOpt = document.createElement('option');
             followOpt.value = '';
             followOpt.textContent =
-                `Follow the circuit voltage — ${ph.derived.name}`;
+                `Follow the circuit voltage — ${this.distroSchemeName(d, ph.derived)}`;
             if (!ph.explicit) followOpt.selected = true;
             derive.appendChild(followOpt);
             sel.appendChild(derive);
@@ -2275,7 +2285,7 @@ class _Power {
             this._distroPhasingOptions(ph, d).forEach(sc => {
                 const opt = document.createElement('option');
                 opt.value = sc.id;
-                opt.textContent = sc.name;
+                opt.textContent = this.distroSchemeName(d, sc);
                 if (ph.explicit && ph.scheme.id === sc.id) opt.selected = true;
                 wired.appendChild(opt);
             });
@@ -2458,7 +2468,7 @@ class _Power {
         if (!err) return null;
         const voltage = parseFloat(layer.powerVoltage) || 0;
         const amperage = parseFloat(layer.powerAmperage) || 0;
-        const fmt = (w) => `${Math.round(w).toLocaleString()} W`;
+        const fmt = (w) => `${Math.round(w).toLocaleString('en-US')} W`;
         const circuit = `a circuit at ${voltage} V / ${amperage} A carries ${fmt(voltage * amperage)}`;
         if (err.unitType) {
             const across = err.unitType === 'row' ? 'column' : 'row';

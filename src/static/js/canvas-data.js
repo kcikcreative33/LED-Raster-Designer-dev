@@ -70,7 +70,7 @@ Object.assign(CanvasRenderer.prototype, {
         const detailWidth = this.ctx.measureText(detailText).width;
         
         this.ctx.font = `24px ${projectFontFamily()}`;
-        const infoText = `Port: ${err.portCapacity.toLocaleString()} px | Panel: ${err.panelPixels.toLocaleString()} px`;
+        const infoText = `Port: ${err.portCapacity.toLocaleString('en-US')} px | Panel: ${err.panelPixels.toLocaleString('en-US')} px`;
         const infoWidth = this.ctx.measureText(infoText).width;
         
         // Size box to fit text with padding

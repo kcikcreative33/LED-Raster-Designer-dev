@@ -2457,12 +2457,12 @@ class _HardwareDock {
         if (num) num.textContent = String(box.number);
         const face = tile.querySelector('.lrd-tile-face');
         const top = tile.querySelector('.lrd-tile-line');
-        const lengths = holders.map(h => h.length).filter(Boolean);
+        const lengths = holders.map(h => this.parseCableLength(h.length)).filter(n => n !== null);
         if (lengths.length && top && !top.querySelector('.hw-dock-chip-cable')) {
             top.classList.add('lrd-tile-line-cable');
             const corner = document.createElement('span');
             corner.className = 'hw-dock-chip-cable';
-            corner.textContent = lengths.map(v => this.cableText(parseFloat(v), type.cable)).join(' / ');
+            corner.textContent = lengths.map(v => this.cableText(v, type.cable)).join(' / ');
             top.appendChild(corner);
         }
         if (face) {

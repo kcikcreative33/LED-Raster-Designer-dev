@@ -4874,7 +4874,7 @@ class _Binder {
                 else if (!names.includes(gp.name)) names.push(gp.name);
                 const s = this.getSocaPlan(layer).find(x => x.soca === m.soca);
                 if (!s) continue;
-                if (!homeRun && s.length) homeRun = s.length;
+                if (!homeRun) homeRun = this.parseCableLength(s.length);
                 circuits += (s.legs || []).length;
                 amps += (s.legs || []).reduce((a, l) => a + (Number(l.amps) || 0), 0);
             }
@@ -5159,7 +5159,7 @@ class _Binder {
                 // ('cable'), its EXTENSION off the snake it rides where it
                 // is snaked ('ext', the snake's name in the last column).
                 for (const [socket, c] of Object.entries(o.rec.portCables || {})) {
-                    const ft = Number(c && c.ft);
+                    const ft = this.parseCableLength(c && c.ft);
                     if (!Number.isFinite(ft) || ft <= 0) continue;
                     const connId = this.dataPortConnectorId({ rec: o.rec }, c.connector);
                     const snake = this.dataPortSnake(o, socket);
@@ -5216,7 +5216,7 @@ class _Binder {
         const out = [];
         for (const cable of this.getFiberCables()) {
             if (firsts.get(cable.id) !== proc.id) continue;
-            const ft = Number(cable.ft);
+            const ft = this.parseCableLength(cable.ft);
             const also = (procsOf.get(cable.id) || []).filter(t => t !== here);
             const title = [`Strand map · ${cable.name || this.fiberKindWord(cable.kind)}`,
                            this.fiberCableTypeText(cable),
@@ -5293,7 +5293,7 @@ class _Binder {
             linked++;
             const input = `${l.title} on ${this._bBoxTitle(l.box)}`;
             if (l.copper) {
-                const ft = Number(l.copper.ft);
+                const ft = this.parseCableLength(l.copper.ft);
                 const over = this.copperOverText(l.copper);
                 const run = [l.copper.copper, Number.isFinite(ft) && ft > 0 ? this.pullLengthText(ft) : '']
                     .filter(Boolean).join(' ') + (over ? ` (${over})` : '');

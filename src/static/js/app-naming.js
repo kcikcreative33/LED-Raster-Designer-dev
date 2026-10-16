@@ -575,8 +575,13 @@ class _Naming {
         if (slot && slot.name) {
             // A DIRECT output (1.5) is one circuit on its own connector: its
             // name is the circuit's name, with no tail to count - "SL5".
+            // A multi of several circuits left on one (the rows changed
+            // under it) keeps its tails, so its circuits never read as
+            // one; the strip says to move it.
             const did = (layer.powerSocaDistro || {})[slot.multi];
+            const rec = nm.socas.get(slot.multi);
             if (did && typeof this._isDirectBox === 'function'
+                    && !(rec && rec.circuits.length > 1)
                     && this._isDirectBox(did, slot.number)) {
                 return `${slot.name}${tpl.suffix}`;
             }

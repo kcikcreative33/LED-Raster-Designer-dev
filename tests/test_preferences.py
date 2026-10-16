@@ -45,7 +45,7 @@ TABS = {
               # the breakout default sits under the default voltage it is
               # gated by (2026-09-22: "that should be set in preferences")
               'pref-breakout-type'],
-    'distros': ['pref-distro-rating', 'pref-distro-voltage', 'pref-distro-phase',
+    'distros': ['pref-distro-rating', 'pref-distro-system',
                 'pref-multi-type', 'pref-splitters-enabled'],
     'binder': ['pref-binder-sheet', 'pref-binder-screen-order', 'pref-binder-colour',
                'pref-binder-printer', 'pref-binder-side-power', 'pref-binder-side-data',
@@ -67,7 +67,8 @@ TABS = {
              'pref-jumper-stock-ft', 'pref-jumper-stock-m'],
 }
 ALL_IDS = [i for ids in TABS.values() for i in ids]
-assert len(ALL_IDS) == 95
+# 1.5 audit: the distro voltage + phase pair became one system picker.
+assert len(ALL_IDS) == 94
 
 # Issue 28: the colour defaults a NEW screen starts with, id -> (the colour
 # the dialog is given, the preference key, the layer property it lands on).
@@ -207,8 +208,7 @@ DIALOG_JS = """() => {
 # are booleans / choices.
 NEW_FIELDS = [
     ('pref-distro-rating', '200', 'distroRatingA', 200),
-    ('pref-distro-voltage', '120', 'distroVoltage', 120),
-    ('pref-distro-phase', '1', 'distroPhase', 1),
+    ('pref-distro-system', '120', 'distroSystem', '120'),
     ('pref-multi-type', 'soca120', 'multiType', 'soca120'),
     ('pref-breakout-type', 'soca-edison', 'breakoutType', 'soca-edison'),
     ('pref-splitters-enabled', True, 'splittersEnabled', True),
@@ -915,7 +915,7 @@ def test_reset_defaults_asks_first_and_lands_on_save(page):
     pg.wait_for_timeout(300)
     assert len(asked) == 2
     assert _read(pg, 'pref-distro-rating') == '400'
-    assert _read(pg, 'pref-distro-voltage') == '208' and _read(pg, 'pref-distro-phase') == '3'
+    assert _read(pg, 'pref-distro-system') == '120/208'
     _tab(pg, 'wall')
     assert _read(pg, 'pref-columns') == '8'
     _tab(pg, 'binder')

@@ -821,11 +821,12 @@ def test_brackets_wear_the_type_badge_on_screen_and_in_export(page):
     pg.wait_for_timeout(600)
     on_screen = pg.evaluate(BRACKET_TEXTS_JS, [ids['aId'], False])
     assert on_screen.count('MULTI 208') == 2, on_screen   # one per multi
-    assert any(t.startswith('PD1 · ') and '100ft' not in t
+    assert any(t.startswith('PD1 · ') and '100' not in t
                for t in on_screen), on_screen
     exported = pg.evaluate(BRACKET_TEXTS_JS, [ids['aId'], True])
     assert exported.count('MULTI 208') == 2, exported
-    assert any(t.startswith('PD1 · 100ft · ') for t in exported), exported
+    # typed "100ft" in a feet show is 100 ft, printed the papers' way
+    assert any(t.startswith("PD1 · 100' · ") for t in exported), exported
     assert 'L21-30' in pg.evaluate(BRACKET_TEXTS_JS, [ids['bId'], True])
     # Edison screen: MULTI 120 off the default breakout
     pg.evaluate("""(ids) => {
