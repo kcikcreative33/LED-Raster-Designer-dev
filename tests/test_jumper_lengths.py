@@ -338,9 +338,9 @@ def test_a_run_over_a_group_seam_counts_short_jumpers(page):
     assert out['lengths'] == {'1': 5}, out
 
 
-# ── the NYL shape: a vertical-flow wall of 500 x 1000 mm cabinets ───────
+# ── the tall shape: a vertical-flow wall of 500 x 1000 mm cabinets ──────
 
-NYL_JS = """(name) => {
+TALL_JS = """(name) => {
     const app = window.app;
     app._circuitTailCache = null;
     const layer = app.project.layers.find(l => l.name === name);
@@ -368,11 +368,11 @@ def test_a_vertical_flow_wall_of_tall_cabinets_counts_one_foot_links(page):
     non-touching jump: the run steps over it, two cabinets down (2000 mm
     + 1 ft = 7.56 ft -> 10'), and nothing else changes."""
     pg, _ = page
-    _reset(pg, [_screen('NYL', 21, 6, 104, 208, panel_width_mm=500, panel_height_mm=1000,
+    _reset(pg, [_screen('TALL', 21, 6, 104, 208, panel_width_mm=500, panel_height_mm=1000,
                         flowPattern='tl-v', powerFlowPattern='tl-v', powerOrganized=True,
                         powerVoltage=208, powerAmperage=20, panelWatts=150,
                         dataJumpV=1, dataJumpH=1, powerJumpV=1, powerJumpH=1)])
-    out = pg.evaluate(NYL_JS, 'NYL')
+    out = pg.evaluate(TALL_JS, 'TALL')
     assert out['panels'] == 126
     for side in ('data', 'power'):
         n = out['panels'] - out['runs'][side]
@@ -386,13 +386,13 @@ def test_a_vertical_flow_wall_of_tall_cabinets_counts_one_foot_links(page):
     # hide row 2 of column 10: the run walks over it
     pg.evaluate("""async () => {
         """ + J + """
-        const layer = app.project.layers.find(l => l.name === 'NYL');
+        const layer = app.project.layers.find(l => l.name === 'TALL');
         const p = layer.panels.find(x => x.row === 2 && x.col === 10);
         const res = await j('POST', `/api/layer/${layer.id}/panels/set_hidden`,
                             {panels: [{id: p.id, hidden: true}]});
         app.applyServerLayer(res.layer);
     }""")
-    out = pg.evaluate(NYL_JS, 'NYL')
+    out = pg.evaluate(TALL_JS, 'TALL')
     assert out['panels'] == 125
     for side in ('data', 'power'):
         longs = [x for x in out['links'][side] if x['kind'] == 'long']

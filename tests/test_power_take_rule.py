@@ -751,7 +751,7 @@ def test_a_redrop_onto_its_own_box_counts_at_what_stays(page):
 
 
 def test_shared_box_still_holds_its_incumbents_tails(page):
-    """The 2026 NCMF shape through the take rule: OFF's four circuits on
+    """Live show C's shape through the take rule: OFF's four circuits on
     box 2 (tails 1-4, rendered, unstored) and SR 2 dropped on CEN's
     eighth circuit: CEN [7-8] joins on tails 5-6 and OFF's rendered tails
     are stamped first, so nothing it may have cabled moves."""

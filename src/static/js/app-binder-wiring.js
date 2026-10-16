@@ -1,6 +1,6 @@
 // app-binder-wiring: the WIRING sheets - a screen's POWER WIRING sheet right
 // behind its Power sheet, its DATA WIRING sheet right behind its Data sheet
-// (2026-09-08, on the last page of the NACUBO packet: "he gave an example
+// (2026-09-08, on the last page of a client's packet: "he gave an example
 // his binder and we could do this for power and data drawing from a port to
 // port … the last page is what i was talking about").
 //
@@ -136,7 +136,7 @@ const PROTO_W = 1000;
 const MARGIN = 22;
 // The wall's height is held to what rev 1.1 drew it at, even on a page of its
 // own. Grown to fill the page, the wall spread under its own blocks and the
-// runs to them had to go round it - 55 crossings on Experts Only's SR - MAIN
+// runs to them had to go round it - 55 crossings on live show B's SR - MAIN
 // power became 73, and the fans that used to leave at their row and drop
 // straight into the socket below had to travel. The user, shown both:
 // "The original way we had it was the best" (2026-09-12).
@@ -658,8 +658,8 @@ class _BinderWiring {
         // Within a column, the breakout whose circuits stand HIGHER goes
         // further OUT: first on the wall's left half, last on its right. Its
         // runs leave above the other's, so standing outside them they nest
-        // round the other fan instead of cutting through it. On Experts
-        // Only's SR - MAIN power sheet that puts SR2 before SR1 - the runs
+        // round the other fan instead of cutting through it. On live
+        // show B's SR - MAIN power sheet that puts SR2 before SR1 - the runs
         // between the two breakouts stop crossing altogether, 55 crossings
         // become 25, and the 25 left are each fan's own. The user, shown
         // both: "the less crosings is better" (2026-09-13). Two breakouts at

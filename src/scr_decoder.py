@@ -222,7 +222,7 @@ def _decode_section(data: bytes, offset: int, size: int, s_idx: int):
                      else FORMAT_B_OVERHEAD)
     else:
         # Neither fits: not a 17-byte-record section at all. Older files use a
-        # 16-byte cabinet record (seen in 2025 Rezz / Nocturnal) and are not
+        # 16-byte cabinet record (seen in two 2025 reference files) and are not
         # supported yet - say so rather than returning nonsense.
         return None
 

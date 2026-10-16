@@ -1,6 +1,6 @@
 // app-binder: the binder packet - a DRAWING SET. The show's power and data
 // maps, the pull tables and the hardware, laid out on numbered SHEETS the
-// way a Vectorworks drawing set reads (2026-09-08, on the NCMF packet he
+// way a Vectorworks drawing set reads (2026-09-08, on a client packet he
 // held up: "this is a great example to base our binder off of"): every
 // sheet a landscape page of one size - Tabloid 17 x 11 by default ("17x11
 // i think is great . nice middle gound. but maybe have option for all
@@ -2162,7 +2162,7 @@ class _Binder {
     // the backup), each shrinking on its own, so a run is never cut to
     // "…". THE SEPARATOR STAYS ON THE FIRST LINE: two ends stacked with
     // the " / " dropped read as one thing said twice, which is what the
-    // Kelly binder's HOME RUN column did (2026-09-09). Logged as one text,
+    // live show A binder's HOME RUN column did (2026-09-09). Logged as one text,
     // the whole cell, so a reader of the sheet's texts still sees one
     // entry per cell.
     _bTextTwoLines(book, text, x, y, o) {
@@ -2927,7 +2927,7 @@ class _Binder {
         // The type used to be swept down from its largest, giving room back
         // to the map only where that filled more of the sheet's HEIGHT. A
         // short table therefore grew until it filled the height by itself
-        // and the wall never got its room back: on Experts Only, SR - MAIN
+        // and the wall never got its room back: on live show B, SR - MAIN
         // DATA (8 ports) printed its table at 1.7x beside a wall a third of
         // the sheet wide, while SR - MAIN POWER (22 circuits, a table that
         // cannot grow) printed the same wall at nearly twice the size - "power
