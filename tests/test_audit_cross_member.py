@@ -1592,7 +1592,9 @@ def test_route_switch_panel_row_checks_toggles_and_greys_out(page):
     assert out['second']['checked'] is False, out
     assert out['restored'] is True, out
     assert out['third']['enabled'] is False, out
-    assert 'never route as one' in out['third']['hint'], out
+    # Mixed cabinet sizes are said in plain words (owner, 2026-10-16).
+    assert out['third']['hint'] == (
+        'Cabinet sizes differ - runs stay per screen. Use Custom to run across.'), out
 
 
 def test_route_switch_row_exists_only_while_a_grouped_screen_is_shown(page):

@@ -37,6 +37,11 @@ import { LEDRasterApp } from './app-core.js';
 import { sendClientLog } from './helpers.js';
 import { stripScreenFeeds } from './app-clipboard.js';
 
+// What the greyed "Route <group> as one screen" switch says when the
+// members' cabinet sizes differ (updateGroupRouteControl).
+const ROUTE_SIZES_DIFFER_TEXT =
+    'Cabinet sizes differ - runs stay per screen. Use Custom to run across.';
+
 class _ScreenGroups {
 
     // The settings every member must agree on BEFORE it can be a group.
@@ -673,6 +678,22 @@ class _ScreenGroups {
         return !!(member && this._autoCrossMembers(member, 'data', true));
     }
 
+    // Do the group's members differ in cabinet size (pixel resolution)? The
+    // same visible screen members, and the same comparison, as the walk's
+    // own gate in _autoCrossMembers - read here so the greyed switch can say
+    // WHY in plain words. Only mixed sizes stay apart (the owner's ruling,
+    // 2026-10-16); same-size groups keep the switch.
+    _groupCabinetSizesDiffer(group) {
+        const g = this.resolveGroup(group);
+        if (!g) return false;
+        const sizes = new Set(this.getGroupMembers(g)
+            .filter(l => l && (l.type || 'screen') === 'screen'
+                && l.visible !== false
+                && Array.isArray(l.panels) && l.panels.length > 0)
+            .map(l => `${Number(l.cabinet_width) || 0}x${Number(l.cabinet_height) || 0}`));
+        return sizes.size > 1;
+    }
+
     // The switch's face in the UI: the #route-group-as-one row in Data
     // Settings, next to Port Mapping, because a routing decision belongs with
     // the routing controls whose readout it changes. Shown only while the
@@ -689,12 +710,14 @@ class _ScreenGroups {
         const row = document.getElementById('route-group-as-one-row');
         const box = document.getElementById('route-group-as-one');
         const label = document.getElementById('route-group-as-one-label');
+        const note = document.getElementById('route-group-as-one-note');
         if (!row || !box || !label) return;
         const layer = this.currentLayer;
         const group = (layer && (layer.type || 'screen') === 'screen')
             ? this.getGroupOfLayer(layer) : null;
         if (!group) {
             row.style.display = 'none';
+            if (note) note.style.display = 'none';
             return;
         }
         row.style.display = '';
@@ -705,9 +728,19 @@ class _ScreenGroups {
         const canRoute = this._groupCanRouteDataAsOne(group);
         box.disabled = !canRoute;
         label.textContent = `Route ${group.name} as one screen`;
+        // Mixed cabinet sizes are the one reason that is said out loud, in
+        // a line under the switch and not only in the tooltip: it is
+        // permanent for the group, and the way across (Custom) is not
+        // obvious from a greyed box.
+        const sizesDiffer = !canRoute && this._groupCabinetSizesDiffer(group);
         row.title = canRoute
             ? 'Off: each screen cables on its own'
-            : 'These screens never route as one - the cabinets differ, or a member is hand-wired';
+            : (sizesDiffer ? ROUTE_SIZES_DIFFER_TEXT
+                : 'These screens never route as one - the cabinets differ, or a member is hand-wired');
+        if (note) {
+            note.textContent = sizesDiffer ? ROUTE_SIZES_DIFFER_TEXT : '';
+            note.style.display = sizesDiffer ? '' : 'none';
+        }
     }
 
     // One lock for the wall, same "any unlocked => lock them all" rule

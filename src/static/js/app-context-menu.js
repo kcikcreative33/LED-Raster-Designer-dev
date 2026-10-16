@@ -100,6 +100,11 @@ class _ContextMenu {
         // dock - and stored here at open time.
         const cabinet = !inDock ? this._prepareChangeCabinetMenu() : null;
         this._changeCabinetMenuAction = cabinet;
+        // Custom mode on/off for the tab on screen: Data Flow (runs) or
+        // Power (circuits), on the screen under the cursor or the selected
+        // one; never on the dock or another tab.
+        const customMode = !inDock ? this._prepareCustomModeMenu(x, y) : null;
+        this._customModeMenuAction = customMode;
         if (inDock && !clear && !merge && !sharing.share
                 && !sharing.unshare && !outs && !snake) {
             this.hideContextMenu();
@@ -167,6 +172,14 @@ class _ContextMenu {
             menu.querySelectorAll('.change-cabinet-only').forEach(el => {
                 el.style.display = cabinet ? '' : 'none';
             });
+            menu.querySelectorAll('.custom-mode-only').forEach(el => {
+                el.style.display = customMode ? '' : 'none';
+            });
+            const customItem = menu.querySelector('[data-action="custom-mode-toggle"]');
+            if (customItem && customMode) {
+                customItem.textContent = customMode.label;
+                customItem.title = customMode.title;
+            }
             if (typeof this._fillBeachSubmenu === 'function') {
                 this._fillBeachSubmenu(menu.querySelector('#beach-submenu'), beach);
             }
@@ -307,6 +320,75 @@ class _ContextMenu {
         const screens = (this.getSelectedLayers() || [])
             .filter(l => l && (l.type || 'screen') === 'screen');
         return screens.length > 0 ? { layers: screens } : null;
+    }
+
+    // "Custom runs: Off" / "Custom circuits: On" - the custom mode of the
+    // tab on screen, for the screen the right-click landed on (hit-tested,
+    // because the wiring views do not select on right-click), else the
+    // shown screen. A screen in a group answers for the group: the pattern
+    // is a shared field. Null on any other tab, or with no screen.
+    _prepareCustomModeMenu(x, y) {
+        const r = window.canvasRenderer;
+        const view = r && r.viewMode;
+        if (view !== 'data-flow' && view !== 'power') return null;
+        const isScreen = l => !!l && (l.type || 'screen') === 'screen';
+        let layer = null;
+        if (r.canvas && document.elementFromPoint(x, y) === r.canvas) {
+            const rect = r.canvas.getBoundingClientRect();
+            const worldY = ((y - rect.top) - r.panY) / r.zoom;
+            const worldX = r._unmirrorWorldX(((x - rect.left) - r.panX) / r.zoom, worldY);
+            let hit = r.getLayerAt(worldX, worldY);
+            if (!isScreen(hit) && typeof r.getPanelAt === 'function') {
+                const p = r.getPanelAt(worldX, worldY);
+                hit = p ? ((this.project && this.project.layers) || [])
+                    .find(l => l.id === p.layerId) || null : null;
+            }
+            if (isScreen(hit)) layer = hit;
+        }
+        if (!layer && isScreen(this.currentLayer)) layer = this.currentLayer;
+        if (!layer) return null;
+        const kind = view === 'power' ? 'power' : 'data';
+        const on = kind === 'power' ? this.isCustomPower(layer) : this.isCustomFlow(layer);
+        const noun = kind === 'power' ? 'circuits' : 'runs';
+        const group = typeof this.getGroupOfLayer === 'function' ? this.getGroupOfLayer(layer) : null;
+        const who = group ? group.name : layer.name;
+        return {
+            kind, layer, on,
+            label: `Custom ${noun}: ${on ? 'On' : 'Off'}`,
+            title: `Turn custom ${noun} ${on ? 'off' : 'on'} for ${who}`,
+        };
+    }
+
+    // The item's click goes through the SAME path as the Enable Custom Mode
+    // box: the box is set to the new state and its own change handler runs
+    // the idempotent toggle, so the box, the custom panels and the model
+    // cannot disagree, and it is one undo step. The right-clicked screen is
+    // selected first (widened to its group, as a canvas click does) when it
+    // is not already in the selection, so the toggle acts on it.
+    runCustomModeMenu() {
+        const armed = this._customModeMenuAction;
+        this._customModeMenuAction = null;
+        this.hideContextMenu();
+        if (!armed || !armed.layer) return;
+        const layer = ((this.project && this.project.layers) || [])
+            .find(l => l.id === armed.layer.id) || null;
+        if (!layer) return;
+        const ids = this.selectedLayerIds;
+        if (!ids || !ids.has(layer.id)) {
+            const r = window.canvasRenderer;
+            if (r && typeof r._selectLayerFromCanvas === 'function') r._selectLayerFromCanvas(layer);
+            else this.selectLayer(layer);
+        }
+        const box = document.getElementById(armed.kind === 'power'
+            ? 'power-custom-toggle' : 'custom-flow-toggle');
+        const on = armed.kind === 'power' ? this.isCustomPower(layer) : this.isCustomFlow(layer);
+        if (!box) {
+            if (armed.kind === 'power') this.toggleCustomPowerMode(!on);
+            else this.toggleCustomFlowMode(!on);
+            return;
+        }
+        box.checked = !on;
+        box.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
     // The item's click. handleMenuAction (app-menubar.js) is the menu's

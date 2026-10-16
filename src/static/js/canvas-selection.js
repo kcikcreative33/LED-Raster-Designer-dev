@@ -401,8 +401,12 @@ Object.assign(CanvasRenderer.prototype, {
         const isFull = capped && !!fill.full;
         const usedText = capped && window.app && typeof window.app._formatRunUsed === 'function'
             ? window.app._formatRunUsed(fill.used) : `${committed}`;
+        // fill.text is "9/17", or the load pair - "622,592 / 659,722 px" for
+        // a port over two cabinet sizes, "1,230 / 4,160 W" for a circuit
+        // over two wattages (app-custom-runs.js customRunFill).
+        const capText = capped ? (fill.text || `${usedText}/${fill.count}`) : '';
         const committedText = capped
-            ? `${usedText}/${fill.count} on ${noun}${isFull ? ' · full' : ''}`
+            ? `${capText} on ${noun}${isFull ? ' · full' : ''}`
             : `${committed} on ${noun}`;
         this._lastActiveBadge = { label, pill: committedText, full: isFull, selected };
         this._activeBadgeShown = true;
