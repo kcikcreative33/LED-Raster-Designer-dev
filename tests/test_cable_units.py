@@ -39,24 +39,23 @@ sys.path.insert(0, HERE)
 
 def test_a_new_show_starts_in_the_preference_unit(client):
     """POST /api/project/new stamps the Preferences' unit on the new show -
-    feet when the preferences say nothing - and its first screen's jumpers
-    come from the set in that unit (the meters twins, shipped 2)."""
+    feet when the preferences say nothing. Its screens hold no jumper
+    lengths (2026-10-16): they read the set in the show's unit in the page
+    (app-jumpers.js screenJumperLengths)."""
     import app as app_module
+    jumps = ('dataJumpV', 'dataJumpH', 'powerJumpV', 'powerJumpH')
     app_module.server_preferences = {}
     p = client.post('/api/project/new').get_json()
     assert p['cableUnit'] == 'ft'
-    assert {k: p['layers'][0][k] for k in ('dataJumpV', 'dataJumpH', 'powerJumpV', 'powerJumpH')} \
-        == {'dataJumpV': 6, 'dataJumpH': 6, 'powerJumpV': 6, 'powerJumpH': 6}
+    assert not [k for k in jumps if k in p['layers'][0]]
     app_module.server_preferences = {'cableUnit': 'm', 'dataJumpLengthM': 1.5,
                                      'dataJumpLength': 9}
     p = client.post('/api/project/new').get_json()
     assert p['cableUnit'] == 'm'
-    assert {k: p['layers'][0][k] for k in ('dataJumpV', 'dataJumpH', 'powerJumpV', 'powerJumpH')} \
-        == {'dataJumpV': 1.5, 'dataJumpH': 1.5, 'powerJumpV': 2, 'powerJumpH': 2}
-    # a screen added to the meters show takes the meters set too
+    assert not [k for k in jumps if k in p['layers'][0]]
     r = client.post('/api/layer/add', json={'name': 'S', 'columns': 2, 'rows': 2,
                                             'cabinet_width': 100, 'cabinet_height': 100})
-    assert r.get_json()['dataJumpV'] == 1.5 and r.get_json()['powerJumpV'] == 2
+    assert not [k for k in jumps if k in r.get_json()]
 
 
 def test_an_old_show_opens_in_feet(client):
@@ -77,14 +76,15 @@ def test_an_old_show_opens_in_feet(client):
 
 
 def test_the_shipped_jumper_literals_agree():
-    """The meters shipped jumper length is one figure on both sides."""
+    """The meters shipped jumper length (2 m) is one figure in app-jumpers.js
+    and the preferences' defaults."""
     import re
-    import app as app_module
     js = open(os.path.join(HERE, '..', 'src', 'static', 'js', 'app-jumpers.js'), encoding='utf-8').read()
-    assert float(re.search(r'const JUMPER_SHIPPED_M = ([\d.]+);', js).group(1)) == app_module.JUMPER_SHIPPED_M
+    shipped = int(re.search(r'const JUMPER_SHIPPED_M = (\d+);', js).group(1))
+    assert shipped == 2
     prefs_js = open(os.path.join(HERE, '..', 'src', 'static', 'js', 'app-preferences.js'), encoding='utf-8').read()
     for key in ('powerJumpLengthM', 'powerJumpLengthHM', 'dataJumpLengthM', 'dataJumpLengthHM'):
-        assert re.search(rf'\b{key}: {app_module.JUMPER_SHIPPED_M},', prefs_js), key
+        assert re.search(rf'\b{key}: {shipped},', prefs_js), key
 
 
 # ── the browser ──────────────────────────────────────────────────────────
@@ -454,7 +454,8 @@ def test_a_new_show_takes_the_preference_unit_and_its_lengths(page):
     pg.evaluate("() => window.app.createNewProject()")
     pg.wait_for_timeout(1500)
     st = pg.evaluate("""() => { const app = window.app, l = app.project.layers[0];
-        return [app.project.cableUnit, l.dataJumpV, l.dataJumpH, l.powerJumpV,
+        const j = app.screenJumperLengths(l);
+        return [app.project.cableUnit, j.data.v, j.data.h, j.power.v,
                 app.defaultPowerCableFt(), document.querySelector('#data-jump-v + span').textContent]; }""")
     assert st == ['m', 1, 1.5, 2, 4, 'm'], st
     pg.evaluate("() => { window.app.openPreferencesModal(); window.app.showPreferencesTab('pull'); }")
@@ -464,6 +465,7 @@ def test_a_new_show_takes_the_preference_unit_and_its_lengths(page):
     pg.evaluate("() => window.app.createNewProject()")
     pg.wait_for_timeout(1500)
     st = pg.evaluate("""() => { const app = window.app, l = app.project.layers[0];
-        return [app.project.cableUnit, l.dataJumpV, l.powerJumpH, app.defaultPowerCableFt()]; }""")
+        const j = app.screenJumperLengths(l);
+        return [app.project.cableUnit, j.data.v, j.power.h, app.defaultPowerCableFt()]; }""")
     assert st == ['ft', 6, 6, 10], st
     assert errors == [], errors

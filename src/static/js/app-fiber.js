@@ -129,8 +129,8 @@ class _Fiber {
         if (!cable) return '';
         const parts = [cable.name || this.fiberKindWord(cable.kind)];
         if (this.fiberCableIsStranded(cable)) parts.push(String(cable.strands));
-        const ft = Number(cable.ft);
-        if (Number.isFinite(ft) && ft > 0) parts.push(this.pullLengthText(ft));
+        const ft = this.parseCableLength(cable.ft);
+        if (ft !== null) parts.push(this.pullLengthText(ft));
         if (cable.kind === 'tac' && String(cable.connector || '').trim()) {
             parts.push(String(cable.connector).trim());
         }
@@ -165,7 +165,7 @@ class _Fiber {
     // no length.
     copperOverText(copper) {
         const max = copper ? this.copperLinkMax(copper.copper) : null;
-        const ft = Number(copper && copper.ft);
+        const ft = this.parseCableLength(copper && copper.ft);
         if (!max || !Number.isFinite(ft) || ft <= max) return '';
         return `${copper.copper} runs ${this.cableLengthWords(max)} max at 10G`;
     }
@@ -295,7 +295,7 @@ class _Fiber {
         const typed = new Set();
         const say = (m) => [...m.values()].map(({ cable, copper, strands, titles }) => {
             if (copper) {
-                const ft = Number(copper.ft);
+                const ft = this.parseCableLength(copper.ft);
                 const over = this.copperOverText(copper);
                 return [titles[0], copper.copper,
                         Number.isFinite(ft) && ft > 0 ? this.pullLengthText(ft) : '']

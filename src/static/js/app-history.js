@@ -201,6 +201,12 @@ class _History {
     // and redo never pass it: an undone edit is still an edit.
     _syncRestoredProject(entry, label, { keepPristine = false } = {}) {
         const inflight = [...(this._inflightLayerPuts || [])];
+        // And behind the pull sheet's POST queue (app-pull-list.js): a
+        // cable-unit or edits POST still in flight carries the state being
+        // undone, and landing after this PUT it would put it back.
+        const sheet = typeof this._pullSheetStateSettled === 'function'
+            ? this._pullSheetStateSettled() : null;
+        if (sheet) inflight.push(sheet);
         const restoresPristine = keepPristine === true
             && !!this.project && this.project.is_pristine === true;
         // While this restore is on its way to the server, layer_updated

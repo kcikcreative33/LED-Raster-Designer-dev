@@ -32,8 +32,9 @@ class _CustomRuns {
     //          charges, at the cabinet's OWN member's wattage the way
     //          getSocaPlan charges a crossing circuit.
     //   data   "Panels/Port" - pixels per port (calculatePortCapacity, Low
-    //          Latency factor included) against each cabinet's pixel area,
-    //          and then, for the run's OWN cabinets, the two per-port rules
+    //          Latency factor included) against the run's load as the port's
+    //          badge charges it (customRunLoad: the enclosing rectangle on
+    //          NovaStar Armor, the sum of pixel areas elsewhere), and then, for the run's OWN cabinets, the two per-port rules
     //          the automatic walk applies (calculatePortAssignments): the
     //          NovaStar Low Latency (1 - Y/H) derate from the run's topmost
     //          cabinet, and the NovaStar 5G 128 px narrow-port penalty from
@@ -77,7 +78,7 @@ class _CustomRuns {
         const unit = this.getFullPanelPixels(layer);
         if (!(limit > 0 && unit > 0)) return none;
         const count = Math.floor(limit / unit);
-        const at = `${limit.toLocaleString()} px/port`;
+        const at = `${limit.toLocaleString('en-US')} px/port`;
         return { known: true, limit, unit, count, at,
             describe: `${count} panels at ${at}` };
     }
@@ -93,7 +94,9 @@ class _CustomRuns {
         return limit > 0 ? limit : 0;
     }
 
-    // What ONE cabinet costs against the run it is being drawn onto.
+    // What ONE cabinet costs against the run it is being drawn onto. A data
+    // run is NOT always the sum of these - see customRunLoad, which is what
+    // every judgement of a whole run goes through.
     customHitLoad(kind, hitLayer, panel) {
         if (!panel) return 0;
         if (kind === 'power') {
@@ -101,6 +104,31 @@ class _CustomRuns {
                 * this.getPanelLoadFactor(hitLayer, panel);
         }
         return this.getPanelPixelArea(panel);
+    }
+
+    // What a whole run costs: `hits` are {layer, panel} pairs, the shape
+    // getResolvedPathPanels and the pattern fill's picks both carry.
+    //   power  the sum of each cabinet's watt-equivalent (customHitLoad).
+    //   data   the renderer's getPortPixelLoad over the run's cabinets - the
+    //          very number the port's load badge is drawn from, so the click,
+    //          the cut, the readout and the badge use ONE load rule for every
+    //          processor: NovaStar Armor pays for the pixel rectangle that
+    //          encloses the run's cabinets, holes and all (its reserved-
+    //          rectangle rule, as the automatic map charges it); every other
+    //          processor pays the sum of the cabinets' pixel areas (1.5 audit:
+    //          custom summed on Armor too, so an L along the top row and down
+    //          the side took 19 cabinets onto a port the badge called 248%).
+    //          Without a renderer, the plain sum.
+    // Owned by `owner` - the processor the port is on decides the rule.
+    customRunLoad(owner, kind, hits) {
+        const list = (hits || []).filter(h => h && h.panel);
+        if (kind !== 'power') {
+            const cr = (typeof window !== 'undefined') ? window.canvasRenderer : null;
+            if (owner && cr && typeof cr.getPortPixelLoad === 'function') {
+                return cr.getPortPixelLoad(owner, list.map(h => h.panel)) || 0;
+            }
+        }
+        return list.reduce((s, h) => s + this.customHitLoad(kind, h.layer, h.panel), 0);
     }
 
     // One run's fill: the load drawn so far, the cap it is drawn against, and
@@ -126,8 +154,7 @@ class _CustomRuns {
         const path = (owner && owner[pathsKey] && owner[pathsKey][num]) || [];
         const hits = this.getResolvedPathPanels(owner, path);
         const cap = this.customRunCapacity(owner, kind, hits.map(h => h.panel));
-        const load = hits
-            .reduce((s, hit) => s + this.customHitLoad(kind, hit.layer, hit.panel), 0);
+        const load = this.customRunLoad(owner, kind, hits);
         const eps = CUSTOM_RUN_EPS;
         let sized = Object.assign({ mixed: false }, cap);
         if (cap.known) {
@@ -156,7 +183,7 @@ class _CustomRuns {
     // unit the cut weighs, whole numbers with thousands separators.
     _formatRunLoadPair(kind, load, limit) {
         const unit = kind === 'power' ? 'W' : 'px';
-        return `${Math.round(load).toLocaleString()} / ${Math.round(limit).toLocaleString()} ${unit}`;
+        return `${Math.round(load).toLocaleString('en-US')} / ${Math.round(limit).toLocaleString('en-US')} ${unit}`;
     }
 
     // The kinds of cabinet a run (or a selection) is made of, and the count
@@ -192,7 +219,7 @@ class _CustomRuns {
             out.mixed = true;
             out.unit = Math.min(...found);
             out.count = Math.floor(cap.limit / out.unit);
-            out.describe = `${Math.round(cap.limit).toLocaleString()} ${isPower ? 'W a circuit' : 'px a port'}`;
+            out.describe = `${Math.round(cap.limit).toLocaleString('en-US')} ${isPower ? 'W a circuit' : 'px a port'}`;
             return out;
         }
         out.unit = found[0];
@@ -201,19 +228,19 @@ class _CustomRuns {
         return out;
     }
 
-    // Does this cabinet still fit on the run? Judged against the limit the
-    // run would have WITH it - on Low Latency or 5G a cabinet can move the
-    // port's limit as well as its load, exactly as the automatic walk and
-    // the pattern fill's cut weigh it.
+    // Does this cabinet still fit on the run? Judged as the run would be
+    // WITH it, load and limit both - on Low Latency or 5G a cabinet can move
+    // the port's limit, and on Armor it can grow the rectangle the port pays
+    // for by a whole row or column (customRunLoad), exactly as the automatic
+    // walk and the pattern fill's cut weigh it.
     customRunAccepts(owner, kind, num, hitLayer, panel) {
         const pathsKey = kind === 'power' ? 'powerCustomPaths' : 'customPortPaths';
         const path = (owner && owner[pathsKey] && owner[pathsKey][num]) || [];
-        const hits = this.getResolvedPathPanels(owner, path);
-        const cap = this.customRunCapacity(owner, kind,
-            hits.map(h => h.panel).concat(panel ? [panel] : []));
+        const hits = this.getResolvedPathPanels(owner, path)
+            .concat(panel ? [{ layer: hitLayer, panel }] : []);
+        const cap = this.customRunCapacity(owner, kind, hits.map(h => h.panel));
         if (!cap.known) return true;
-        const load = hits.reduce((s, h) => s + this.customHitLoad(kind, h.layer, h.panel), 0);
-        return load + this.customHitLoad(kind, hitLayer, panel) <= cap.limit + CUSTOM_RUN_EPS;
+        return this.customRunLoad(owner, kind, hits) <= cap.limit + CUSTOM_RUN_EPS;
     }
 
     // "9", "13.7" - a whole count where it is one, a tenth where a half-tile
@@ -861,15 +888,20 @@ class _CustomRuns {
         const idxKey = isPower ? 'powerCustomIndex' : 'customPortIndex';
         const noun = isPower ? 'circuit' : 'port';
         const keyOf = (layer, panel) => this.getScopedPanelKey(layer.id, panel);
-        const toast = (msg, isError) => {
-            if (typeof this._toast === 'function') this._toast(msg, isError);
+        const toast = (msg, isError, ms) => {
+            if (typeof this._toast === 'function') this._toast(msg, isError, ms);
         };
         // Every locked screen this fill met, named once at the end.
         const lockedMet = new Map();
         const meet = (layers) => (layers || []).forEach(l => lockedMet.set(l.id, l));
         const sayLocked = () => this._showLockedError([...lockedMet.values()]);
 
-        let picks = this._selectedPathPanels(owner, selection).filter(pick => {
+        const allPicks = this._selectedPathPanels(owner, selection);
+        // The screens the user selected cabinets on - a run redone here that
+        // also crossed onto ANOTHER screen is named when it lets go of that
+        // screen's cabinets (_customFillUnwiredScreens).
+        const selectedOn = new Set(allPicks.map(p => p.layer.id));
+        let picks = allPicks.filter(pick => {
             if (!pick.layer.locked) return true;
             meet([pick.layer]);
             return false;
@@ -979,6 +1011,9 @@ class _CustomRuns {
             return false;
         }
 
+        // Worked out before anything is cleared or overwritten.
+        const unwiredOn = this._customFillUnwiredScreens(owner, kind, clears, chunks, selectedOn);
+
         // The refill's clears land now, inside the same undo step as the
         // fill. A peer's run lets go of its override with it, the way Clear
         // does (_dropRunOverride).
@@ -1032,10 +1067,10 @@ class _CustomRuns {
                 owner, kind, c.picks.map(p => p.panel)).limit);
             const varies = limits.some(l => Math.round(l) !== Math.round(cap.limit));
             const each = varies
-                ? `each cut at its own port capacity, ${Math.round(Math.min(...limits)).toLocaleString()}`
-                    + ` to ${Math.round(Math.max(...limits)).toLocaleString()} px`
+                ? `each cut at its own port capacity, ${Math.round(Math.min(...limits)).toLocaleString('en-US')}`
+                    + ` to ${Math.round(Math.max(...limits)).toLocaleString('en-US')} px`
                 : (sizing.mixed
-                    ? `up to ${Math.round(cap.limit).toLocaleString()} ${isPower ? 'W' : 'px'} each`
+                    ? `up to ${Math.round(cap.limit).toLocaleString('en-US')} ${isPower ? 'W' : 'px'} each`
                     : `up to ${sizing.count} panels each at ${cap.at}`);
             const lineNoun = String(pattern).endsWith('-v') ? 'column' : 'row';
             // The toast names the rule it used - the screen's mode decides
@@ -1050,6 +1085,9 @@ class _CustomRuns {
                     + replaced.map(n => this._customRunLabel(owner, kind, n)).join(', ');
             }
             toast(`${msg}.`, false);
+        }
+        if (unwiredOn.length > 0) {
+            toast(this._customFillUnwiredMessage(kind, unwiredOn), true, 6000);
         }
         sayLocked();
         if (isPower ? this.powerCustomDebug : this.customDebug) {
@@ -1080,6 +1118,49 @@ class _CustomRuns {
         }
         window.canvasRenderer.render();
         return true;
+    }
+
+    // A PARTIAL GROUP FILL (the owner's ruling, 2026-10-16: "Warn and do
+    // it"). A run is one cable, so a fill that redoes a run touching the
+    // selection - a refill's clear, or an owner's run the fill overwrites -
+    // redoes all of it, and a run that crossed onto a screen with nothing
+    // selected lets go of that screen's cabinets. That stays; the screens it
+    // happened to are named. Returns those screens, in wall order: every
+    // screen holding a cabinet that is on a run being cleared or
+    // overwritten, is not one the user selected cabinets on, and is not
+    // wired again by the fill itself. Read BEFORE the clears land.
+    _customFillUnwiredScreens(owner, kind, clears, chunks, selectedOn) {
+        const pathsKey = kind === 'power' ? 'powerCustomPaths' : 'customPortPaths';
+        const rewired = new Set();
+        (chunks || []).forEach(c => c.picks.forEach(p =>
+            rewired.add(this.getScopedPanelKey(p.layer.id, p.panel))));
+        const runs = (clears || []).map(c => ({ layer: c.layer, num: c.num }))
+            .concat((chunks || []).map(c => ({ layer: owner, num: c.num })));
+        const hit = new Set();
+        runs.forEach(({ layer, num }) => {
+            const path = (layer && layer[pathsKey] && layer[pathsKey][num]) || [];
+            path.forEach(e => {
+                if (!e) return;
+                const id = this.getPathEntryLayerId(layer, e);
+                if (selectedOn.has(id)) return;
+                if (rewired.has(this.getScopedPanelKey(id, e))) return;
+                hit.add(id);
+            });
+        });
+        if (hit.size === 0) return [];
+        return this.getPathScopeLayers(owner).filter(l => l && hit.has(l.id));
+    }
+
+    // "Runs that crossed into LOWER were redone — LOWER's cabinets on them
+    // are now unwired." Power says circuits.
+    _customFillUnwiredMessage(kind, layers) {
+        const names = layers.map(l => l.name || `Screen ${l.id}`);
+        const one = names.length === 1;
+        const list = one ? names[0]
+            : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+        const runs = kind === 'power' ? 'Circuits' : 'Runs';
+        const whose = one ? `${list}'s cabinets` : `those screens' cabinets`;
+        return `${runs} that crossed into ${list} were redone — ${whose} on them are now unwired.`;
     }
 
     // The next number a fill may step into after `num`: the open number line
@@ -1168,14 +1249,17 @@ class _CustomRuns {
         const eps = CUSTOM_RUN_EPS;
         const noun = kind === 'power' ? 'circuit' : 'port';
         const fmt = (v) => (kind === 'power'
-            ? `${Math.round(v).toLocaleString()} W` : `${Math.round(v).toLocaleString()} px`);
+            ? `${Math.round(v).toLocaleString('en-US')} W` : `${Math.round(v).toLocaleString('en-US')} px`);
         const perRun = cap.known && kind !== 'power';
         const limitFor = (picks) => {
             if (!cap.known) return Infinity;
             if (!perRun) return cap.limit;
             return this.customRunCapacity(owner, kind, picks.map(p => p.panel)).limit;
         };
-        const loadOf = (pick) => this.customHitLoad(kind, pick.layer, pick.panel);
+        // A run's load is weighed whole (customRunLoad): on Armor a cabinet
+        // can cost a row of the rectangle, so loads do not simply add up.
+        const loadFor = (picks) => this.customRunLoad(owner, kind, picks);
+        const loadOf = (pick) => loadFor([pick]);
         // The cap in words for the "taken-over runs" refusal: the cabinet
         // count for one kind of cabinet, pixels or watts for a selection of
         // two (the readout's own rule - customRunFill).
@@ -1207,10 +1291,8 @@ class _CustomRuns {
             return null;
         };
         const lay = (seq) => {
-            for (const pick of seq) {
-                cur.picks.push(pick);
-                cur.load += loadOf(pick);
-            }
+            cur.picks.push(...seq);
+            cur.load = loadFor(cur.picks);
         };
         const tooBig = (pick) => {
             const load = loadOf(pick);
@@ -1230,14 +1312,12 @@ class _CustomRuns {
             for (const pick of snake) {
                 const big = tooBig(pick);
                 if (big) return { error: big, skipped };
-                const load = loadOf(pick);
-                if (cur.picks.length > 0
-                        && cur.load + load > limitFor(cur.picks.concat([pick])) + eps) {
+                const next = cur.picks.concat([pick]);
+                if (cur.picks.length > 0 && loadFor(next) > limitFor(next) + eps) {
                     const why = closeRun();
                     if (why) return { error: why, skipped };
                 }
-                cur.picks.push(pick);
-                cur.load += load;
+                lay([pick]);
             }
             chunks.push(cur);
             return { chunks, skipped };
@@ -1253,12 +1333,11 @@ class _CustomRuns {
                 const big = tooBig(pick);
                 if (big) return { error: big, skipped };
             }
-            const lineLoad = line.reduce((s, pick) => s + loadOf(pick), 0);
-            if (lineLoad <= limitFor(line) + eps) {
+            if (loadFor(line) <= limitFor(line) + eps) {
                 // A whole line: onto the run in hand if it fits, else it
                 // opens the next run from the start side.
-                if (cur.picks.length > 0
-                        && cur.load + lineLoad > limitFor(cur.picks.concat(line)) + eps) {
+                const next = cur.picks.concat(line);
+                if (cur.picks.length > 0 && loadFor(next) > limitFor(next) + eps) {
                     const why = closeRun();
                     if (why) return { error: why, skipped };
                 }
@@ -1277,11 +1356,9 @@ class _CustomRuns {
             while (cells.length > 0) {
                 let took = 0;
                 for (const pick of cells) {
-                    const load = loadOf(pick);
-                    if (cur.picks.length > 0
-                            && cur.load + load > limitFor(cur.picks.concat([pick])) + eps) break;
-                    cur.picks.push(pick);
-                    cur.load += load;
+                    const next = cur.picks.concat([pick]);
+                    if (cur.picks.length > 0 && loadFor(next) > limitFor(next) + eps) break;
+                    lay([pick]);
                     took += 1;
                 }
                 cells = cells.slice(took);

@@ -40,16 +40,14 @@ class _Distros {
     }
 
     // What a new distro is, short of what the caller says: the Distros &
-    // multis preferences (rating, voltage, phase), read here at creation
-    // and nowhere else - a distro that exists keeps what it has.
+    // multis preferences (rating, system), read here at creation and
+    // nowhere else - a distro that exists keeps what it has.
     _distroPreferenceDefaults() {
         const prefs = (typeof this.getPreferences === 'function') ? this.getPreferences() : {};
         const rating = Number(prefs.distroRatingA);
-        const voltage = Number(prefs.distroVoltage);
         return {
             ratingA: Number.isFinite(rating) && rating > 0 ? rating : 400,
-            voltage: Number.isFinite(voltage) && voltage > 0 ? voltage : 208,
-            phase: Number(prefs.distroPhase) === 1 ? 1 : 3,
+            system: this.preferenceDistroSystem(prefs),
         };
     }
 
@@ -61,16 +59,17 @@ class _Distros {
             id: 'd' + n,
             name: opts.name || `DISTRO ${n}`,
             ratingA: Number(opts.ratingA) || dflt.ratingA,
-            voltage: Number(opts.voltage) || dflt.voltage,
-            phase: opts.phase == null ? dflt.phase : (Number(opts.phase) === 1 ? 1 : 3)
         };
         // A new distro is a SYSTEM from the start: the one asked for, else
-        // the one its preference voltage and phase migrate to, else
-        // 120/208 (a preference pair naming no system unambiguously - a
-        // new distro needs one, and 120/208 is the app's own default).
+        // the one a caller's voltage and phase migrate to (scripts, old
+        // callers; 120/208 where the pair names none), else the one
+        // Preferences pick.
         const asked = opts.system && this.distroSystemById(opts.system);
-        const sysId = asked ? asked.id
-            : (this._systemForVoltagePhase(d.voltage, d.phase).id || '120/208');
+        const byPair = !asked && (opts.voltage != null || opts.phase != null)
+            ? (this._systemForVoltagePhase(Number(opts.voltage) || 208,
+                                           Number(opts.phase) === 1 ? 1 : 3).id || '120/208')
+            : null;
+        const sysId = asked ? asked.id : (byPair || dflt.system);
         const sys = this.distroSystemById(sysId);
         d.system = sys.id;
         d.voltage = sys.voltage;

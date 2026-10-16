@@ -181,6 +181,16 @@ const MIGRATE_NEAREST = {
     '110/3': '120/208', '110/1': '120',
     '415/3': '230/400', '220/1': '230',
 };
+// The old Preferences voltage + phase pair -> the system a new distro
+// takes (owner, 2026-10-16). Unlike a distro on the page, a preference
+// always lands somewhere: anything absent here is 120/208.
+const PREF_SYSTEM_FROM_OLD = {
+    '120/3': '120/208', '110/3': '120/208', '208/3': '120/208',
+    '120/1': '120', '110/1': '120',
+    '240/1': '120/240',
+    '230/3': '230/400', '400/3': '230/400', '415/3': '230/400',
+    '230/1': '230', '220/1': '230',
+};
 
 class _DistroSystems {
 
@@ -210,6 +220,15 @@ class _DistroSystems {
         if (!d || typeof d !== 'object') return d;
         if (Object.prototype.hasOwnProperty.call(d, 'system')) {
             if (d.system && !this.distroSystemById(d.system)) d.system = null;
+            // A record carrying its system but not the voltage and phase
+            // that follow it (written by hand, a script, a partial
+            // paste) takes them from the system - every reader of the old
+            // fields, the header's amps among them, sees the service.
+            const sys = d.system ? this.distroSystemById(d.system) : null;
+            if (sys && (Number(d.voltage) !== sys.voltage || Number(d.phase) !== sys.phase)) {
+                d.voltage = sys.voltage;
+                d.phase = sys.phase;
+            }
             return d;
         }
         const m = this._systemForVoltagePhase(d.voltage, d.phase);
@@ -516,8 +535,19 @@ class _DistroSystems {
 
     // A face box's tail as the PHYSICAL circuit it is: its primary row's
     // box and tail, and the key every connector of that circuit shares.
+    // A tail PAST the connector's own circuits - a six-circuit multi left
+    // on a one-circuit direct output, or on a three-circuit L21-30, after
+    // the rows changed under it - is no circuit on this face. It keys to
+    // its own connector and tail, never to the next connector's circuits
+    // (index x size + tail - 1 would walk into them and read as a pairing
+    // that is not there). distroChecks says it; its legs stay the
+    // connector's own (_faceCircuitLegs), the way an L21-30 wraps.
     _facePhysical(face, box, tail) {
         const t = Math.max(1, parseInt(tail, 10) || 1);
+        if (t > box.size) {
+            const first = this._facePhysical(face, box, 1);
+            return { pbox: first.pbox, ptail: t, over: true, key: `over:${box.number}:${t}` };
+        }
         if (!box.paired) {
             return { pbox: box, ptail: t, key: `${box.rowId}:${box.index * box.size + t - 1}` };
         }
@@ -679,8 +709,8 @@ class _DistroSystems {
         if (!box.d || box.idx == null) return null;
         const fbox = this.faceBox(box.d, box.number);
         if (!fbox || fbox.kind !== 'direct') return null;
-        const ft = parseFloat((layer.powerSocaLengths || {})[box.idx]);
-        if (!Number.isFinite(ft) || ft <= 0) return null;
+        const ft = this.parseCableLength((layer.powerSocaLengths || {})[box.idx]);
+        if (ft === null) return null;
         const name = fbox.conn.cable;
         return { ft, name, text: this.cableText(ft, name) };
     }
@@ -770,8 +800,11 @@ class _DistroSystems {
             return;
         }
         const vll = this.distroLineVolts(d) || 1;
-        const amps = watts / vll;
         if (names.length === 2) {
+            // Single-phase reads the way its circuits read (audit, 1.5):
+            // a 240V circuit draws its watts at the circuit's own voltage,
+            // so the legs and the header agree with the circuit lines.
+            const amps = watts / (circuitV > 0 ? circuitV : vll);
             this._addLegPhasor(store.legPhasor, legs[0], amps, 0);
             this._addLegPhasor(store.legPhasor, legs[1], amps, 0);
             store.legWatts[legs[0]] += watts / 2;
@@ -779,6 +812,9 @@ class _DistroSystems {
             store.pairWatts.XY = (store.pairWatts.XY || 0) + watts;
             return;
         }
+        // Three-phase line-to-line stays on the distro's line figure
+        // (bug fix 3).
+        const amps = watts / vll;
         const [first, second] = this._cyclicPair(legs[0], legs[1]);
         this._addLegPhasor(store.legPhasor, first, amps, 30);
         this._addLegPhasor(store.legPhasor, second, amps, -30);
@@ -796,6 +832,72 @@ class _DistroSystems {
     }
 
     _wholeMultiScheme() { return WHOLE_MULTI_SCHEME; }
+
+    // A phasing scheme's name as this distro reads its legs: an EU distro
+    // says "L1 L2 L3 L1 L2 L3" where a US one says "X Y Z X Y Z" (the
+    // direct-outputs select already did).
+    distroSchemeName(d, sc) {
+        if (!sc || !sc.name) return '';
+        if (this.distroRegion(d) !== 'eu' || !sc.pattern) return sc.name;
+        const L = { X: 'L1', Y: 'L2', Z: 'L3' };
+        const pattern = sc.pattern.split(' ').map(w => (/^[XYZ]+$/.test(w)
+            ? w.split('').map(k => L[k]).join('-') : w)).join(' ');
+        return sc.name.split(`(${sc.pattern})`).join(`(${pattern})`);
+    }
+
+    // The amps one multi draws on a SINGLE-HOT distro (120V, 230V): its
+    // watts at the circuits' own voltage, the way its circuit lines read
+    // them, so an old 110V show keeps its figure after its distro became
+    // 120V. Null where the header keeps its own arithmetic: a distro
+    // with legs, or an old record with no system.
+    _singleHotAmps(d, watts, circuitV) {
+        const sys = this.distroSystem(d);
+        if (!sys || sys.legs.length) return null;
+        return watts / (circuitV > 0 ? circuitV : sys.vln);
+    }
+
+    // An L21-30 box's feed legs on an old single-phase record with no
+    // system (a 208V 1φ distro from an older show): the 1.4.1 walk, which
+    // read every box as three legs whatever the distro's phase, so the
+    // 30 A/leg check keeps the figure it had. Null for any other distro.
+    _legacyBoxFeedLegAmps(distro, members) {
+        if (!distro || this.distroSystem(distro) || this.distroLegNames(distro).length) return null;
+        const phasor = { X: { re: 0, im: 0 }, Y: { re: 0, im: 0 }, Z: { re: 0, im: 0 } };
+        const vln = (Number(distro.voltage) || 0) / Math.sqrt(3);
+        for (const m of (members || [])) {
+            if (!m || !m.layer || !m.s) continue;
+            const circuitV = parseFloat(m.layer.powerVoltage) || 0;
+            const scheme = this._circuitSchemeFor(distro, circuitV);
+            const boxSize = this.socaBoxSize(m.layer);
+            const pos = this.socaCircuitPositions(m.layer, m.s.soca, m.s.legs.length);
+            for (let li = 0; li < m.s.legs.length; li++) {
+                const leg = m.s.legs[li];
+                const legs = this._circuitLegs(pos[li], scheme.id, 0, boxSize);
+                if (legs.length === 1) {
+                    this._addLegPhasor(phasor, legs[0],
+                        leg.watts / (circuitV > 0 ? circuitV : vln), 0);
+                } else {
+                    const [first, second] = this._cyclicPair(legs[0], legs[1]);
+                    const amps = leg.watts / (Number(distro.voltage) || 1);
+                    this._addLegPhasor(phasor, first, amps, 30);
+                    this._addLegPhasor(phasor, second, amps, -30);
+                }
+            }
+        }
+        const mag = (p) => Math.sqrt(p.re * p.re + p.im * p.im);
+        return { X: mag(phasor.X), Y: mag(phasor.Y), Z: mag(phasor.Z) };
+    }
+
+    // The system a new distro takes from Preferences: the stored system,
+    // else the old voltage + phase pair the Preferences used to keep,
+    // mapped (owner, 2026-10-16), else 120/208.
+    preferenceDistroSystem(prefs) {
+        const p = prefs || {};
+        if (this.distroSystemById(p.distroSystem)) return p.distroSystem;
+        if (p.distroVoltage == null && p.distroPhase == null) return '120/208';
+        const key = `${Math.round(Number(p.distroVoltage) || 0)}/${Number(p.distroPhase) === 1 ? 1 : 3}`;
+        return PREF_SYSTEM_FROM_OLD[key] || '120/208';
+    }
 
     // ---- the screen's three-phase figure (bug fix 3) -------------------
 
@@ -898,6 +1000,17 @@ class _DistroSystems {
                         + `it has ${face.boxes.length} output${face.boxes.length === 1 ? '' : 's'}.`);
                     continue;
                 }
+                // A multi of several circuits on a one-circuit direct
+                // output (the rows changed under it). A multi past a
+                // smaller multi's circuits is the box's own strip line
+                // (the dock's "more circuits than the three ...").
+                if (c.box.kind === 'direct' && c.s.legs.length > c.box.size) {
+                    const conn = c.box.conn.short;
+                    const an = /^(?:[aeiou]|L\d)/i.test(conn) ? 'an' : 'a';
+                    say(`dir:${c.layer.id}:${c.s.soca}`, `${c.layer.name}'s ${c.s.legs.length} `
+                        + `circuits are on ${c.s.name || `${name} ${c.box.number}`}, ${an} ${conn} `
+                        + '— one circuit only. Move it to a multi output.');
+                }
                 const elig = this.faceBoxEligible(d, c.box, c.layer);
                 if (!elig.ok && !/breakout/.test(elig.why)) say(`fv:${c.layer.id}:${c.box.number}`, elig.why);
                 const key = this._facePhysical(face, c.box, c.tail).key;
@@ -980,27 +1093,34 @@ class _DistroSystems {
         const d = this.getDistros().find(x => x.id === distroId);
         const clean = String(name || '').trim();
         if (!d || !clean) return Promise.resolve(null);
-        return fetch('/api/distro-presets', {
-            method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: clean, distro: this._distroPresetBody(d) }),
-        }).then(r => r.json().then(j => ({ ok: r.ok, j })))
-          .then(({ ok, j }) => {
-              if (!ok) throw new Error(j.error || 'not saved');
-              this._customDistroPresets = j.presets || [];
-              return this._customDistroPresets;
-          });
+        return this._distroPresetRequest('PUT',
+            { name: clean, distro: this._distroPresetBody(d) }, 'Preset not saved');
     }
 
     deleteDistroPreset(name) {
+        return this._distroPresetRequest('DELETE', { name }, 'Preset not deleted');
+    }
+
+    // One preset request. A refusal rejects with a sentence that says why:
+    // the server's own reason when it sent one, its status when the reply
+    // is not JSON (an error page), and plainly when it could not be reached.
+    _distroPresetRequest(method, payload, failed) {
         return fetch('/api/distro-presets', {
-            method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name }),
-        }).then(r => r.json().then(j => ({ ok: r.ok, j })))
-          .then(({ ok, j }) => {
-              if (!ok) throw new Error(j.error || 'not deleted');
-              this._customDistroPresets = j.presets || [];
-              return this._customDistroPresets;
-          });
+            method, headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        }).catch(() => {
+            throw new Error(`${failed} - the app's server could not be reached.`);
+        }).then(r => r.text().then(text => {
+            let j = null;
+            try { j = JSON.parse(text); } catch (e) { j = null; }
+            if (!r.ok || !j || typeof j !== 'object') {
+                const why = j && typeof j.error === 'string' && j.error
+                    ? j.error : `the server said ${r.status}`;
+                throw new Error(`${failed} - ${why}.`);
+            }
+            this._customDistroPresets = Array.isArray(j.presets) ? j.presets : [];
+            return this._customDistroPresets;
+        }));
     }
 
     // ---- the gear popover's sections ---------------------------------------
@@ -1343,9 +1463,20 @@ class _DistroSystems {
                 ps.appendChild(gc);
             }
         };
+        // The popover can be rebuilt while a request is out (any dock
+        // render does it); a reply then lands on the rebuilt one, which
+        // reads the list just cached, not on these detached lists.
+        const relist = (list) => {
+            if (ps.isConnected) {
+                fill(list);
+                fillDelete(list);
+            } else if (this._hwPopoverRefresh) {
+                this._hwPopoverRefresh();
+            }
+        };
         fill(this._customDistroPresets || []);
         if (!this._customDistroPresets) {
-            this.loadCustomDistroPresets().then(list => fill(list));
+            this.loadCustomDistroPresets().then(relist);
         }
         ps.addEventListener('change', () => {
             const v = ps.value;
@@ -1370,12 +1501,51 @@ class _DistroSystems {
             const name = window.prompt('Name this preset', d.name || '');
             if (!name || !name.trim()) return;
             this.saveDistroPreset(d.id, name).then(list => {
-                fill(list);
+                relist(list);
                 this._dockSay && this._dockSay(`Saved preset "${name.trim()}".`);
             }).catch(err => this._dockSay && this._dockSay(String(err.message || err)));
         });
         pr.appendChild(save);
         sec.appendChild(pr);
+
+        // Deleting a saved preset (the built-in ones cannot be): a list of
+        // the saved ones only, shown while there are any; picking one asks
+        // first. Distros already laid from it keep their outputs.
+        const dr = document.createElement('div');
+        dr.className = 'hw-pop-row hw-pop-row-actions';
+        const del = document.createElement('select');
+        del.className = 'info-select';
+        del.dataset.lrdField = `distro-preset-delete-${d.id}`;
+        del.title = 'Delete a saved preset for everyone connected. '
+            + 'Distros already set from it keep their outputs.';
+        const fillDelete = (custom) => {
+            del.innerHTML = '';
+            const head = document.createElement('option');
+            head.value = '';
+            head.textContent = 'Delete a saved preset…';
+            del.appendChild(head);
+            (custom || []).forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.name;
+                opt.textContent = p.name;
+                del.appendChild(opt);
+            });
+            dr.style.display = custom && custom.length ? '' : 'none';
+        };
+        fillDelete(this._customDistroPresets || []);
+        del.addEventListener('change', () => {
+            const name = del.value;
+            del.value = '';
+            if (!name) return;
+            if (!window.confirm(`Delete the preset "${name}"? `
+                    + 'Distros already set from it keep their outputs.')) return;
+            this.deleteDistroPreset(name).then(list => {
+                relist(list);
+                this._dockSay && this._dockSay(`Deleted preset "${name}".`);
+            }).catch(err => this._dockSay && this._dockSay(String(err.message || err)));
+        });
+        dr.appendChild(del);
+        sec.appendChild(dr);
         wrap.appendChild(sec);
     }
 }

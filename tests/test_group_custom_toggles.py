@@ -17,7 +17,7 @@ vertical, Organized. The owner's rulings, 2026-10-16:
    rather than dropped. Data and power. (The reversed-echo guard has its
    own module, tests/test_custom_audit_1_5.py.)
 4. THE READOUT reads pixels for a run over two cabinet sizes,
-   "589,824 / 659,722 px", watts for a circuit over two wattages,
+   "442,368 / 659,722 px", watts for a circuit over two wattages,
    "1,660 / 4,160 W", and a cabinet count for one kind of cabinet.
 5. RIGHT-CLICK on a screen or group in Data / Power toggles custom mode for
    that tab through the same path as the box, as one undo step.
@@ -398,7 +398,11 @@ def test_mixed_run_reads_pixels_and_one_size_reads_cabinets(page):
         };
         const own = [0, 1, 2, 3].map(c => ({ row: 0, col: c }));
         const peer = [0, 1, 2, 3, 4, 5].map(c => ({ row: 3, col: c, layerId: ids.up }));
-        const mixed = read(own.concat(peer));
+        // The four upper cabinets straight above the lower four: a
+        // rectangle, so the Armor port pays exactly the cabinets' own
+        // pixels. (An uneven run pays for the rectangle round it, Armor's
+        // reserved-rectangle rule - tests/test_custom_audit_fixes.py.)
+        const mixed = read(own.concat(peer.slice(0, 4)));
         const lowerOnly = read(own);
         const upperOnly = read(peer.slice(0, 3));
         // A pending marquee of the other size turns a one-size run's
@@ -414,7 +418,7 @@ def test_mixed_run_reads_pixels_and_one_size_reads_cabinets(page):
                  cap: app.calculatePortCapacity(8, 60, 'novastar-armor', false) };
     """)
     cap = out['cap']
-    load = 4 * 192 * 192 + 6 * 192 * 384
+    load = 4 * 192 * 192 + 4 * 192 * 384
     assert out['mixed']['pill'] == f"{load:,} / {cap:,} px on port", out
     assert out['mixed']['line'].endswith(f": {load:,} / {cap:,} px"), out
     assert out['lowerOnly']['pill'] == f"4/{cap // (192 * 192)} on port", out

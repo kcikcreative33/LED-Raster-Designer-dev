@@ -235,7 +235,7 @@ Object.assign(CanvasRenderer.prototype, {
         const count = (typeof window.app._pixelMapSelectionHits === 'function')
             ? window.app._pixelMapSelectionHits().length : selection.size;
         if (count === 0) return;
-        const label = `${count.toLocaleString()} panel${count === 1 ? '' : 's'} selected`;
+        const label = `${count.toLocaleString('en-US')} panel${count === 1 ? '' : 's'} selected`;
 
         // Draw in screen-space (above the world transform) so size doesn't depend on zoom.
         this.ctx.save();

@@ -204,10 +204,9 @@ class _ClientProps {
             // Per-circuit cables ({circuit: {ft, connector}}) - the
             // paperwork's 10' True1 on circuit 1 (2026-09-06).
             if (layer.powerCircuitCables === undefined) layer.powerCircuitCables = {};
-            // Per-screen jumper lengths (2026-09-25): a file saved before
-            // them reads the preferences' figures (in memory - nothing is
-            // written back until an edit).
-            this.applyJumperDefaults(layer);
+            // Per-screen jumper lengths (2026-09-25): a screen without them
+            // reads the preferences' figures (app-jumpers.js
+            // screenJumperLengths) - nothing is stamped on it.
             if (layer.powerSocaNames === undefined) layer.powerSocaNames = {};
             // Reads the template it just defaulted above, so it has to run
             // after it: the shift it applies is the template's own start
@@ -303,10 +302,11 @@ class _ClientProps {
             layer.powerAmperageCustom = prefs.powerAmperage;
             layer.panelWatts = prefs.powerWatts;
             // The pristine show is a NEW show: it takes the Preferences'
-            // cable unit (2026-10-16), ahead of the jumpers so they come
-            // from the set in that unit. Rides the POST below.
+            // cable unit (2026-10-16), and its screen holds no jumper
+            // lengths, so it reads the set in that unit. Rides the POST
+            // below.
             this.project.cableUnit = this.preferredCableUnit();
-            this.applyJumperDefaults(layer, true);
+            this.clearJumperLengths(layer);
             layer.dataFlowLabelSize = prefs.dataLabelSize || 30;
             layer.powerLabelSize = prefs.powerLabelSize || 14;
             layer.primaryTextColor = layer.primaryTextColor || '#000000';

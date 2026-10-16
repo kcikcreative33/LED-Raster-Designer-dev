@@ -350,7 +350,7 @@ class _Presets {
             }
             if (countEl) {
                 const total = Object.values(this._panelCatalog).reduce((s, a) => s + a.length, 0);
-                countEl.textContent = `· ${total.toLocaleString()} panels · ${Object.keys(this._panelCatalog).length} mfrs`;
+                countEl.textContent = `· ${total.toLocaleString('en-US')} panels · ${Object.keys(this._panelCatalog).length} mfrs`;
             }
             this._renderPanelCatalogList();
             this._renderCatalogSourceTag();
@@ -403,7 +403,7 @@ class _Presets {
                 if (picker && picker.style.display !== 'none') this._loadPanelCatalog();
                 else this._renderCatalogSourceTag();
                 const count = payload.panelCount || 0;
-                this._toast(`Panel catalog updated, ${count.toLocaleString()} panels`);
+                this._toast(`Panel catalog updated, ${count.toLocaleString('en-US')} panels`);
                 return;
             }
             // No catalog in the answer: offer it on the badge as before.
@@ -457,7 +457,7 @@ class _Presets {
                 this._renderCatalogSourceTag();
                 if (!opts.silent) {
                     const count = payload.panelCount || 0;
-                    this._toast(`Catalog refreshed, ${count.toLocaleString()} panels`);
+                    this._toast(`Catalog refreshed, ${count.toLocaleString('en-US')} panels`);
                 }
             })
             .catch((err) => {
@@ -630,7 +630,7 @@ class _Presets {
         if (total > MAX) {
             const more = document.createElement('div');
             more.style.cssText = 'padding: 8px 10px; color: #888; font-size: 11px; text-align: center; background: #1d1d1d;';
-            more.textContent = `Showing first ${MAX} of ${total.toLocaleString()}. Refine search or pick a manufacturer.`;
+            more.textContent = `Showing first ${MAX} of ${total.toLocaleString('en-US')}. Refine search or pick a manufacturer.`;
             listEl.appendChild(more);
         }
         this._highlightPickerSelection();
@@ -1742,9 +1742,10 @@ class _Presets {
         layer.powerLabelTemplate = 'S1-#';
         layer.powerLabelOverrides = {};
         layer.powerCircuitCables = {};
-        // The jumper lengths a new screen starts with (Preferences > Sheet
-        // & cables; a preset carrying its own overlays them after this).
-        this.applyJumperDefaults(layer, true);
+        // A new screen holds no jumper lengths: it reads Preferences >
+        // Sheet & cables in the show's unit until somebody types one (a
+        // preset carrying its own overlays them after this).
+        this.clearJumperLengths(layer);
         layer.powerSocaNames = {};
         // Born keyed by the multi's stable index, so the one-time rekey never
         // runs over a screen that was already built the new way.

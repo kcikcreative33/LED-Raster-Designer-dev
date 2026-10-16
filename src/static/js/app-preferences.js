@@ -94,8 +94,10 @@ class _Preferences {
             // screen starts with for its breakout and splitter packing
             // (app-core addLayer). Applied at creation only.
             distroRatingA: 400,
-            distroVoltage: 208,
-            distroPhase: 3,
+            // The system a new distro starts on (the distro gear's own
+            // list). Replaced the old voltage + phase pair, which still
+            // reads through preferenceDistroSystem.
+            distroSystem: '120/208',
             multiType: 'soca208',
             breakoutType: 'soca-true1',
             splittersEnabled: false,
@@ -226,6 +228,13 @@ class _Preferences {
                 if (saved && saved[h] === undefined && saved[v] !== undefined) out[h] = saved[v];
             }
         }
+        // A record from before the system picker (1.5) kept a voltage and
+        // a phase; it reads as the system they map to.
+        if (saved && saved.distroSystem === undefined
+                && (saved.distroVoltage !== undefined || saved.distroPhase !== undefined)
+                && typeof this.preferenceDistroSystem === 'function') {
+            out.distroSystem = this.preferenceDistroSystem(saved);
+        }
         return out;
     }
 
@@ -306,6 +315,9 @@ class _Preferences {
         }
         if (typeof this.getPowerBreakoutTypes === 'function') {
             fill('pref-breakout-type', this.getPowerBreakoutTypes());
+        }
+        if (typeof this.distroSystems === 'function') {
+            fill('pref-distro-system', this.distroSystems());
         }
     }
 
@@ -696,8 +708,7 @@ class _Preferences {
         setVal('pref-canvas-gap', prefs.canvasGap);
         // Distros & multis
         setVal('pref-distro-rating', prefs.distroRatingA);
-        setVal('pref-distro-voltage', String(prefs.distroVoltage));
-        setVal('pref-distro-phase', Number(prefs.distroPhase) === 1 ? '1' : '3');
+        setVal('pref-distro-system', this.preferenceDistroSystem(prefs));
         setVal('pref-multi-type', prefs.multiType);
         setVal('pref-breakout-type', prefs.breakoutType);
         // The stored pair seeds the figure in force for the custom box and
@@ -863,8 +874,8 @@ class _Preferences {
             font: readStr('pref-font', defaults.font),
             // Distros & multis
             distroRatingA: readNum('pref-distro-rating', defaults.distroRatingA),
-            distroVoltage: readNum('pref-distro-voltage', defaults.distroVoltage),
-            distroPhase: readNum('pref-distro-phase', defaults.distroPhase) === 1 ? 1 : 3,
+            distroSystem: this.distroSystemById(readStr('pref-distro-system', defaults.distroSystem))
+                ? readStr('pref-distro-system', defaults.distroSystem) : defaults.distroSystem,
             multiType: readStr('pref-multi-type', defaults.multiType),
             // Gated on the voltage read above, the way the select is: a
             // pair no screen could carry is never stored.

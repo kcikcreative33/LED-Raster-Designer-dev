@@ -68,6 +68,7 @@ any other):
     python -m pytest tests/test_power_phase_labels.py -v --browser chromium
 """
 
+import re
 import sys
 import os
 
@@ -1162,7 +1163,9 @@ def test_deriving_and_the_schemes_are_visibly_different_kinds_of_entry(page):
 def test_the_resolved_volts_follow_the_distro_not_the_scheme(page):
     """A EU 400V service: line-to-neutral is 230V there, 120V on a 208V one.
     The figures are shown against the GROUP, derived from that distro's own
-    system - the scheme names stay identical on both services.
+    system - the scheme names stay the same on both services, save that an
+    EU distro reads its legs L1/L2/L3 where a US one reads X/Y/Z (1.5
+    audit: the select said X Y Z on a 230/400 distro).
 
     1.5 (owner, 2026-10-16): a 400V 3φ distro is 230/400, where "everything
     single-phase is LN at 230" - so its list offers the line-to-neutral
@@ -1171,7 +1174,12 @@ def test_the_resolved_volts_follow_the_distro_not_the_scheme(page):
     na = page.evaluate(NAMING_JS, {'circuitV': 120})
     eu = page.evaluate(NAMING_JS,
                        {'circuitV': 230, 'distro': {'voltage': 400}})
-    assert eu['groups'][1]['options'][:2] == na['groups'][1]['options'], (
+    eu_letters = {'L1': 'X', 'L2': 'Y', 'L3': 'Z'}
+    as_us = [re.sub(r'L[123]', lambda m: eu_letters[m.group(0)], o)
+             for o in eu['groups'][1]['options'][:2]]
+    assert all('L1' in o and 'X' not in o.split('(')[1]
+               for o in eu['groups'][1]['options'][:2]), eu
+    assert as_us == na['groups'][1]['options'], (
         f"the scheme names changed with the service voltage: "
         f"{na['groups'][1]} vs {eu['groups'][1]}")
     assert eu['groups'][1]['options'][2:] == [

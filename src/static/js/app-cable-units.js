@@ -53,10 +53,20 @@ export const CABLE_PREF_KEYS = {
     powerCable: { ft: 'powerCableFt', m: 'powerCableM' },
     jumperStock: { ft: 'jumperStockFt', m: 'jumperStockM' },
 };
+// What may follow a typed length's number, per unit: nothing, or the
+// show's own unit ("30m", "30 m"; "100ft", "100 ft", "100'"). The other
+// unit's suffix is not on the list: "30m" in a feet show is unreadable -
+// no length, flagged as one - never 30 ft.
+const LENGTH_SUFFIXES = {
+    ft: new Set(['', "'", '\u2019', 'ft', 'ft.', 'feet', 'foot']),
+    m: new Set(['', 'm', 'meter', 'meters', 'metre', 'metres']),
+};
 // The project keys that hold a typed length somewhere in the show - what
 // a unit change counts before it asks. `ft` / `ext` / `homeRun` /
 // `fiberFt` are the hardware and cable records' own; the four jumper
-// fields and the multi home runs are the screens'.
+// fields and the multi home runs are the screens'. A jumper field is only
+// there when somebody typed it: a screen that never had one reads the
+// Preferences (app-jumpers.js screenJumperLengths).
 const TYPED_LENGTH_KEYS = new Set(['ft', 'ext', 'homeRun', 'fiberFt',
     'dataJumpV', 'dataJumpH', 'powerJumpV', 'powerJumpH']);
 
@@ -101,11 +111,29 @@ class _CableUnits {
         return String(+v.toFixed(this.cableUnitAbbr(unit) === 'm' ? 2 : 1));
     }
 
+    // THE one reading of a typed length, everywhere a length is read: a
+    // positive number in the show's unit (or `unit`), or null for no
+    // length. A number is itself; text is a number alone or followed by
+    // the unit's own suffix (LENGTH_SUFFIXES), any case, a space or none
+    // between. Blank, zero, negative, anything else - and the OTHER unit's
+    // suffix - is null. Relabelling by number on a unit change is
+    // untouched: a length is still stored as the number typed.
+    parseCableLength(value, unit) {
+        if (value === null || value === undefined || typeof value === 'boolean') return null;
+        if (typeof value === 'number') return Number.isFinite(value) && value > 0 ? value : null;
+        const m = /^(\d+(?:\.\d*)?|\.\d+)\s*(.*)$/.exec(String(value).trim());
+        if (!m) return null;
+        const suffix = m[2].trim().toLowerCase();
+        if (!LENGTH_SUFFIXES[this.cableUnitAbbr(unit)].has(suffix)) return null;
+        const n = Number(m[1]);
+        return Number.isFinite(n) && n > 0 ? n : null;
+    }
+
     // A length as every paper prints it: "100'" in feet, "30 m" in
-    // meters, "" for a length nobody typed (blank, zero, not a number).
+    // meters, "" for a length nobody typed (blank, zero, not a length).
     cableLengthText(n, unit) {
-        const v = Number(n);
-        if (!Number.isFinite(v) || v <= 0) return '';
+        const v = this.parseCableLength(n, unit);
+        if (v === null) return '';
         const u = this.cableUnitAbbr(unit);
         return u === 'm' ? `${this.cableFigure(v, u)} m` : `${this.cableFigure(v, u)}'`;
     }
@@ -189,10 +217,11 @@ class _CableUnits {
 
     // How many typed lengths the show holds - what a unit change says
     // before it relabels them. A walk over the project for the record keys
-    // that hold one (positive numbers only), plus every multi home run.
+    // that hold one (readable lengths only, parseCableLength), plus every
+    // multi home run.
     typedCableLengthCount() {
         let n = 0;
-        const positive = (v) => { const x = Number(v); return v !== null && v !== '' && Number.isFinite(x) && x > 0; };
+        const positive = (v) => this.parseCableLength(v) !== null;
         const walk = (node, depth) => {
             if (!node || typeof node !== 'object' || depth > 12) return;
             if (Array.isArray(node)) { node.forEach(v => walk(v, depth + 1)); return; }

@@ -991,8 +991,8 @@ class _DockCableSheets {
         f.className = 'hw-dock-cable-ft';
         f.placeholder = this.cableUnitAbbr();
         f.dataset.lrdField = `fiber-copper-ft-${box.id}-${l.key}`;
-        const ft = Number(l.copper.ft);
-        f.value = Number.isFinite(ft) && ft > 0 ? String(ft) : '';
+        const ft = this.parseCableLength(l.copper.ft);
+        f.value = ft !== null ? String(ft) : '';
         const max = this.copperLinkMax(l.copper.copper);
         f.title = `The ${l.copper.copper} run's length in ${this.cableUnitWord()}`
             + (max ? ` - ${this.cableLengthWords(max)} is its 10G maximum.` : '.');
