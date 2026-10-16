@@ -65,7 +65,7 @@ def test_the_menu_item_the_modal_the_button_and_the_gear_list_are_served(client)
     for word in ('Tru-1', 'Multi', 'Ether-con Snake', 'Tru-1 2fer'):
         assert word in v['types'], word
     assert 'EA' in v['lengths'] and "100'" in v['lengths']
-    assert v == pull_sheet.gear_list()
+    assert v == dict(pull_sheet.gear_list(), meter_lengths=pull_sheet.meter_gear_lengths())
 
 
 # ── the browser ──────────────────────────────────────────────────────────

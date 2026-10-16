@@ -494,10 +494,10 @@ def test_the_pruner_applies_the_servers_rule_not_the_renderers(page):
 # Clearing hand-drawn runs on a grouped screen (2026-09-22). A run a member
 # owns may sit on a peer's cabinets; Clear Circuit / Clear Port and Clear All
 # on the peer used to leave it there with no way to remove it from that screen
-# (the Orlando file: SL's circuit 1 was 13 cabinets of SR). Since 2026-09-23
-# the peer's run goes WHOLE, not just its steps on this screen ("a group is
-# one screen and a circuit is one circuit" - the Quantico file, where every
-# circuit was 7 cabinets of one member and 7 of the other, and Clear left
+# (a two-member wall where SL's circuit 1 was 13 cabinets of SR). Since
+# 2026-09-23 the peer's run goes WHOLE, not just its steps on this screen ("a
+# group is one screen and a circuit is one circuit" - a two-member wall where
+# every circuit was 7 cabinets of one member and 7 of the other, and Clear left
 # each one half-drawn). tests/test_clear_run_whole_circuit.py builds that
 # exact shape; here the fixture's run 1 mixes the two so the whole-run rule
 # is exercised by every Clear test below.

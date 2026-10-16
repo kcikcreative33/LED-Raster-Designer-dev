@@ -76,14 +76,14 @@ class _CrossLayerPaths {
     // cabinets: the owner is whichever screen was current when it was drawn.
     // Clear Circuit / Clear Port and Clear All used to reach only the current
     // layer's own runs, so a run a peer drew across this screen stayed put with
-    // nothing on this screen able to remove it (Matt, 2026-09-22, the Orlando
-    // file: SL's circuit 1 was 13 cabinets of SR - "S1-1 can't be cleared ...
-    // nor have a way to delete it").
+    // nothing on this screen able to remove it (Matt, 2026-09-22, on a
+    // two-member wall where SL's circuit 1 was 13 cabinets of SR - "S1-1
+    // can't be cleared ... nor have a way to delete it").
     //
     // clearCustomRun: the current layer's run `num` goes, and every peer's run
     // `num` that lands on this layer goes WHOLE - its steps on the peer and
     // on any third member included, with its override for `num` let go
-    // (Matt's ruling, 2026-09-23, the Quantico file: Screen3's 16 circuits
+    // (Matt's ruling, 2026-09-23, on a two-member wall: Screen3's 16 circuits
     // each ran 7 cabinets of Screen2 then 7 of its own, and Clear Circuit on
     // Screen2 left every one of them half-drawn - "a group is one screen and
     // a circuit is one circuit"). Until then a peer's run only LOST the steps
@@ -275,6 +275,16 @@ class _CrossLayerPaths {
         this._toast(one
             ? `${list} is locked - unlock it to change it.`
             : `${list} are locked - unlock them to change them.`, true, 5000);
+    }
+
+    // Stepping the active port or circuit (Tab, [ / ], Prev / Next, the
+    // menu items, typing a number in the active box) is a change too, so a
+    // locked screen refuses it with the same error (the owner's ruling,
+    // 2026-10-16: "Block it too"). True when the step must not happen.
+    _lockedStepRefused(layer) {
+        if (!layer || !layer.locked) return false;
+        this._showLockedError([layer]);
+        return true;
     }
 
     _persistWith(touched) {

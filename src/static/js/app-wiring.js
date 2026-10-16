@@ -1316,6 +1316,10 @@ class _Wiring {
         if (customActivePortInput) {
             customActivePortInput.addEventListener('change', () => {
                 if (!this.currentLayer) return;
+                if (this._lockedStepRefused(this.currentLayer)) {
+                    customActivePortInput.value = `${this.currentLayer.customPortIndex || 1}`;
+                    return;
+                }
                 this.ensureCustomFlowState(this.currentLayer);
                 const nextVal = parseInt(customActivePortInput.value, 10);
                 // With an overridden port open, the editable ports ARE the
@@ -1919,6 +1923,10 @@ class _Wiring {
         if (powerCustomActive) {
             powerCustomActive.addEventListener('change', () => {
                 if (!this.currentLayer) return;
+                if (this._lockedStepRefused(this.currentLayer)) {
+                    powerCustomActive.value = `${this.currentLayer.powerCustomIndex || 1}`;
+                    return;
+                }
                 this.ensureCustomPowerState(this.currentLayer);
                 const nextVal = parseInt(powerCustomActive.value, 10);
                 // Pinned to the override list while one is open - see the

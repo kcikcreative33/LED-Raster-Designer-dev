@@ -5,9 +5,12 @@
     prints it: "STRAND MAP · TAC A · TAC 8 · LC DUPLEX · 100 m", never
     "100 M". A feet show reads as it always has ("100'").
   * The workbook is a feet template. In a meters show the copy's GEAR LIST
-    Length dropdown offers the meters ladder (the long jumper's, the same
-    lengths the in-app editor's picker offers) plus the lengths used, never
-    the template's feet; the READ ME gives meters examples; and the calc
+    Length dropdown offers 1, 2, 3, 5, 10, 15, 20, 25, 30, 50, 75, 100,
+    150, 200, 250, 300 m, then EA, then any other length the show uses,
+    never the template's feet (the owner's ruling, 2026-10-16). It is a
+    list of its own, not the long jumper's rounding ladder, and the in-app
+    editor's picker offers the same one; the READ ME gives meters
+    examples; and the calc
     tab's sort key reads " m", so TOTALS and Spares list meters lengths in
     size order. A feet export is the 1.4.1 workbook, untouched.
 
@@ -63,37 +66,53 @@ FEET_SHOW = {'positions': [{'name': 'SR', 'rows': _rows("7.5'", "100'", "12'", '
 
 # ── the workbook ─────────────────────────────────────────────────────────
 
+METER_DROPDOWN = ['1 m', '2 m', '3 m', '5 m', '10 m', '15 m', '20 m', '25 m', '30 m',
+                  '50 m', '75 m', '100 m', '150 m', '200 m', '250 m', '300 m']
+
+
 def test_a_meters_workbook_offers_meters_lengths_in_its_dropdown():
-    """GEAR LIST lengths in a meters show: the meters ladder as shipped,
-    EA, then the lengths the sheet uses - no feet. The Length dropdown
-    still reads the GEAR LIST column."""
+    """GEAR LIST lengths in a meters show: 1 m to 300 m, EA, then any other
+    length the sheet uses - no feet. The Length dropdown still reads the
+    GEAR LIST column."""
     wb, warnings = _book(METERS_SHOW, cable_unit='m')
     assert warnings == []
-    assert _gear_lengths(wb) == ['1 m', '2 m', '3 m', '5 m', '10 m', 'EA', '7.5 m', '30 m'], _gear_lengths(wb)
+    assert _gear_lengths(wb) == METER_DROPDOWN + ['EA', '7.5 m'], _gear_lengths(wb)
+    assert pull_sheet.meter_gear_lengths() == METER_DROPDOWN
     sources = sorted(dv.formula1 for dv in wb[pull_sheet.SHEET].data_validations.dataValidation)
     assert sources == ["'GEAR LIST'!$A$4:$A$200", "'GEAR LIST'!$B$4:$B$60"], sources
 
 
-def test_the_meters_ladder_is_the_preferences_one_when_set():
-    """The Preferences' meters ladder (jumperStockM) replaces the shipped
-    one, kept as the app keeps it - ascending, once each, lengths only."""
-    assert pull_sheet.meter_stock({}) == [1, 2, 3, 5, 10]
-    assert pull_sheet.meter_stock({'jumperStockM': 'x'}) == [1, 2, 3, 5, 10]
-    assert pull_sheet.meter_stock({'jumperStockM': [4, 1.5, 0.5, 1.5, -1, 'x', True]}) == [0.5, 1.5, 4]
+def test_the_meters_dropdown_is_not_the_jumper_ladder():
+    """The dropdown is its own list: a meters show's long jumpers round to
+    the jumper ladder (Preferences jumperStockM), which neither adds to nor
+    replaces it. A jumper length off the list arrives as a length the show
+    uses, after EA."""
     wb, _ = _book(METERS_SHOW, cable_unit='m', meter_stock=[4, 1.5, 0.5])
-    assert _gear_lengths(wb) == ['0.5 m', '1.5 m', '4 m', 'EA', '7.5 m', '30 m', '2 m'], _gear_lengths(wb)
+    assert _gear_lengths(wb) == METER_DROPDOWN + ['EA', '7.5 m'], _gear_lengths(wb)
+    show = {'positions': [{'name': 'SR', 'rows': _rows('4 m', '1.5 m', '400 m')}]}
+    wb, _ = _book(show, cable_unit='m')
+    assert _gear_lengths(wb) == METER_DROPDOWN + ['EA', '4 m', '1.5 m', '400 m'], _gear_lengths(wb)
     # as app-cable-units.js cableLengthText prints them (toFixed rounds half up)
     assert [pull_sheet.meter_text(n) for n in (2, 2.0, 7.62, 0.3, 7.625, 1.005)] == \
         ['2 m', '2 m', '7.62 m', '0.3 m', '7.63 m', '1 m']
 
 
-def test_the_shipped_meters_ladder_is_the_app_s():
-    """One figure on both sides: app-cable-units.js JUMPER_STOCK_SHIPPED.m
-    is the ladder the workbook falls back to."""
-    js = open(os.path.join(HERE, '..', 'src', 'static', 'js', 'app-cable-units.js'), encoding='utf-8').read()
-    m = re.search(r'JUMPER_STOCK_SHIPPED = \{ ft: \[[^\]]*\], m: \[([^\]]*)\] \}', js)
-    assert m, 'JUMPER_STOCK_SHIPPED not found in app-cable-units.js'
-    assert [float(x) for x in m.group(1).split(',')] == pull_sheet.METER_STOCK_SHIPPED
+def test_the_meters_dropdown_has_one_source(client):
+    """The list lives in pull_sheet.py alone: the gear-list route serves it
+    to the in-app editor, whose picker reads it from there - no copy of it
+    in the client to drift. The long jumper's ladder stays 1, 2, 3, 5, 10 m."""
+    r = client.get('/api/pull-sheet/gear-list')
+    assert r.status_code == 200
+    assert r.get_json()['meter_lengths'] == METER_DROPDOWN
+    js_dir = os.path.join(HERE, '..', 'src', 'static', 'js')
+    editor = open(os.path.join(js_dir, 'app-pull-sheet-editor.js'), encoding='utf-8').read()
+    assert 'v.meter_lengths' in editor and 'jumperStockLadder' not in editor
+    for name in os.listdir(js_dir):
+        if name.endswith('.js'):
+            text = open(os.path.join(js_dir, name), encoding='utf-8').read()
+            assert '150, 200, 250, 300' not in text, name
+    cable = open(os.path.join(js_dir, 'app-cable-units.js'), encoding='utf-8').read()
+    assert 'JUMPER_STOCK_SHIPPED = { ft: [3, 6, 10, 15, 25], m: [1, 2, 3, 5, 10] };' in cable
 
 
 def test_a_meters_read_me_gives_meters_examples():
@@ -155,9 +174,10 @@ def test_a_feet_workbook_keeps_the_template_s_feet():
                 for r in range(CALC_FIRST_ROW, CALC_LAST_ROW + 1)] == tpl_keys
 
 
-def test_the_route_writes_the_show_s_unit_and_the_preferences_ladder(client):
+def test_the_route_writes_the_show_s_unit_and_the_meters_dropdown(client):
     """POST /api/export/pull-sheet reads the show's unit off the server's
-    project and the meters ladder off the Preferences."""
+    project; the meters dropdown is the same whatever the Preferences'
+    jumper ladder says."""
     import app as app_module
     app_module.server_preferences = {'jumperStockM': [0.5, 1.5, 4]}
     body = {'project_name': 'Units', 'pull_list': METERS_SHOW, 'date': '', 'date_iso': ''}
@@ -165,7 +185,7 @@ def test_the_route_writes_the_show_s_unit_and_the_preferences_ladder(client):
     resp = client.post('/api/export/pull-sheet', json=body)
     assert resp.status_code == 200, resp.get_data(as_text=True)[:300]
     wb = openpyxl.load_workbook(io.BytesIO(resp.data))
-    assert _gear_lengths(wb) == ['0.5 m', '1.5 m', '4 m', 'EA', '7.5 m', '30 m', '2 m'], _gear_lengths(wb)
+    assert _gear_lengths(wb) == METER_DROPDOWN + ['EA', '7.5 m'], _gear_lengths(wb)
     app_module.current_project['cableUnit'] = 'ft'
     resp = client.post('/api/export/pull-sheet', json=dict(body, pull_list=FEET_SHOW))
     wb = openpyxl.load_workbook(io.BytesIO(resp.data))
@@ -269,6 +289,29 @@ def test_the_strand_map_heading_keeps_meters_lower_case(page):
     texts = pg.evaluate(PROCESSOR_SHEET_JS)['texts']
     maps = [t for t in texts if t.startswith('STRAND MAP')]
     assert maps == ["STRAND MAP · TAC A · TAC 8 · LC DUPLEX · 100'"], maps
+    assert errors == [], errors
+
+
+def test_the_editor_picker_offers_the_meters_dropdown(page):
+    """The in-app editor's Length picker in a meters show offers what the
+    workbook's dropdown does: 1 m to 300 m, EA, then the show's own lengths;
+    a feet show keeps the template's feet."""
+    pg, errors = page
+    pg.evaluate(UNIT_JS, 'm')
+    got = pg.evaluate("""async () => {
+        const app = window.app;
+        app._pullSheetVocab = null;
+        app._pullSheetVocabLoading = null;
+        app._pullSheetLoadVocab();
+        await app._pullSheetVocabLoading;
+        const list = { positions: [{ rows: [{ type: 'Tru-1', length: '7.5 m' },
+                                            { type: 'Tru-1', length: '30 m' }] }] };
+        return app.pullSheetVocabulary(list).lengths;
+    }""")
+    assert got == METER_DROPDOWN + ['EA', '7.5 m'], got
+    pg.evaluate(UNIT_JS, 'ft')
+    got = pg.evaluate("() => window.app.pullSheetVocabulary({ positions: [] }).lengths")
+    assert got == pull_sheet.gear_list()['lengths'], got
     assert errors == [], errors
 
 

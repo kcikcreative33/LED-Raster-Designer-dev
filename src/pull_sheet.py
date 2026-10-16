@@ -40,7 +40,6 @@ import copy
 import datetime
 import decimal
 import io
-import math
 import os
 import sys
 
@@ -77,11 +76,14 @@ GEAR_TYPE_LAST_ROW, GEAR_LENGTH_LAST_ROW = 200, 60   # the validations' ranges
 # would sort with EA. A meters export rewrites those three in the copy;
 # a feet export never touches them.
 #
-# The meters ladder is the long jumper's (app-cable-units.js
-# JUMPER_STOCK_SHIPPED.m, the Preferences' jumperStockM when set) - the
-# same lengths the in-app editor's picker offers in a meters show
-# (app-pull-sheet-editor.js pullSheetVocabulary).
-METER_STOCK_SHIPPED = [1, 2, 3, 5, 10]
+# The meters Length dropdown (the owner's ruling, 2026-10-16): these
+# lengths, then EA, then any other length the show uses. A list of its own,
+# NOT the long jumper's rounding ladder (app-cable-units.js
+# JUMPER_STOCK_SHIPPED.m / the Preferences' jumperStockM), which stays as
+# it is. The one source: GET /api/pull-sheet/gear-list serves it to the
+# in-app editor's picker (app-pull-sheet-editor.js pullSheetVocabulary), so
+# the editor offers what the workbook's dropdown does.
+METER_GEAR_LENGTHS = [1, 2, 3, 5, 10, 15, 20, 25, 30, 50, 75, 100, 150, 200, 250, 300]
 CALC = 'calc'
 CALC_FIRST_ROW, CALC_LAST_ROW, CALC_SORTKEY_COL = 5, 364, 4
 README = 'READ ME'
@@ -213,25 +215,6 @@ def _add_gear(ws, col, last_row, wanted, warnings, what):
         free += 1
 
 
-def meter_stock(prefs=None):
-    """The meters ladder as stored in the Preferences (jumperStockM) -
-    positive numbers, ascending, once each, as app-cable-units.js
-    normalizeJumperStock keeps it - else the shipped one."""
-    raw = (prefs or {}).get('jumperStockM') if isinstance(prefs, dict) else None
-    out = set()
-    for v in raw if isinstance(raw, list) else []:
-        if isinstance(v, bool):
-            continue
-        try:
-            n = float(v)
-        except (TypeError, ValueError):
-            continue
-        if math.isfinite(n) and n > 0:
-            n = round(n * 1e6) / 1e6
-            out.add(int(n) if n.is_integer() else n)
-    return sorted(out) or list(METER_STOCK_SHIPPED)
-
-
 def meter_text(n):
     """A meters length as every paper prints it (app-cable-units.js
     cableLengthText): whole numbers bare, else to the centimeter - "2 m",
@@ -243,12 +226,18 @@ def meter_text(n):
     return f"{str(cm).rstrip('0').rstrip('.')} m"
 
 
-def _metric_gear_lengths(ws, ladder):
-    """The GEAR LIST lengths of a meters show: the meters ladder, then
+def meter_gear_lengths():
+    """The meters Length dropdown's own lengths as the sheet prints them
+    ("1 m" ... "300 m")."""
+    return [meter_text(n) for n in METER_GEAR_LENGTHS]
+
+
+def _metric_gear_lengths(ws):
+    """The GEAR LIST lengths of a meters show: METER_GEAR_LENGTHS, then
     whatever the template lists that is not feet (EA). The template's feet
     are dropped; the cells keep their styling."""
     have, _ = _gear_column(ws, GEAR_LENGTH_COL, GEAR_LENGTH_LAST_ROW)
-    wanted = list(dict.fromkeys([meter_text(n) for n in ladder]
+    wanted = list(dict.fromkeys(meter_gear_lengths()
                                 + [v for v in have if not v.endswith("'")]))
     for i, r in enumerate(range(GEAR_FIRST_ROW, GEAR_LENGTH_LAST_ROW + 1)):
         cell = ws.cell(r, GEAR_LENGTH_COL)
@@ -274,10 +263,10 @@ def _sort_keys(row):
     return feet, meters
 
 
-def _metric_workbook(wb, ladder):
+def _metric_workbook(wb):
     """A meters show's copy: GEAR LIST lengths, the READ ME's examples and
     the calc tab's sort key in meters."""
-    _metric_gear_lengths(wb[GEAR], ladder)
+    _metric_gear_lengths(wb[GEAR])
     if README in wb.sheetnames:
         for row in wb[README].iter_rows():
             for cell in row:
@@ -467,7 +456,7 @@ def build_workbook(pull_list, meta=None, template_path=TEMPLATE_PATH):
     # A meters show's GEAR LIST, READ ME and sort key; then anything the
     # GEAR LIST lacks, so the dropdowns accept what was written.
     if meta.get('cable_unit') == 'm':
-        _metric_workbook(wb, meter_stock({'jumperStockM': meta.get('meter_stock')}))
+        _metric_workbook(wb)
     _add_gear(gear, GEAR_TYPE_COL, GEAR_TYPE_LAST_ROW, list(dict.fromkeys(types)), warnings, 'Cable Type')
     _add_gear(gear, GEAR_LENGTH_COL, GEAR_LENGTH_LAST_ROW, list(dict.fromkeys(lengths)), warnings, 'Length')
 

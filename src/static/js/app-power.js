@@ -45,6 +45,7 @@ class _Power {
         if (!this.currentLayer || !window.canvasRenderer) return;
         const view = window.canvasRenderer.viewMode;
         if (view === 'data-flow' && this.isCustomFlowEditing(this.currentLayer)) {
+            if (this._lockedStepRefused(this.currentLayer)) return;
             this.ensureCustomFlowState(this.currentLayer);
             this.currentLayer.customPortIndex =
                 this._steppedCustomIndex(this.currentLayer, 'data', delta);
@@ -61,6 +62,7 @@ class _Power {
             this.updatePortLabelEditor();
             window.canvasRenderer.render();
         } else if (view === 'power' && this.isCustomPowerEditing(this.currentLayer)) {
+            if (this._lockedStepRefused(this.currentLayer)) return;
             this.ensureCustomPowerState(this.currentLayer);
             this.currentLayer.powerCustomIndex =
                 this._steppedCustomIndex(this.currentLayer, 'power', delta);

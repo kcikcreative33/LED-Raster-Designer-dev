@@ -17,7 +17,7 @@ upper screen of 20 x 4 cabinets at 192 x 384 px over a lower screen of
 4. The mac double-fire: a reversed `change` with no pointer or key press in
    between is ignored and the box re-synced; two real clicks both apply.
 5. Locked screens stay unchanged and an error names them (the owner's
-   ruling, 2026-10-16).
+   ruling, 2026-10-16) - stepping the active port or circuit included.
 6. Custom data capacity is the automatic one: the Low Latency (1 - Y/H)
    derate and the 5G 128 px narrow-port penalty.
 7. (a) a tile with no layer at all leaves the highlight alone; (b) the
@@ -541,6 +541,61 @@ def test_taking_over_a_run_on_a_locked_screen_is_refused(page, kind, view):
     """, {'kind': kind, 'view': view})
     assert out['overrides'] == [], out
     assert out['errors'] == [LOCKED], out
+
+
+# Stepping the active port or circuit is a change too (the owner's ruling,
+# 2026-10-16: "Block it too"). Every way to step - the call the shortcuts and
+# menu items share, Tab and ] on the canvas, the Next button, a number typed
+# in the active box - leaves a locked screen's index where it was, takes no
+# undo step and names the screen.
+STEP_JS = r"""
+    const app = window.app;
+    const ids = await ca.wall({ custom: true, view: arg.view });
+    const U = ca.layer(ids[0]);
+    U.locked = arg.locked;
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    const steps = app.historyIndex;
+    const key = (code) => document.dispatchEvent(
+        new KeyboardEvent('keydown', { code, key: code === 'Tab' ? 'Tab' : ']', bubbles: true }));
+    const nextId = arg.kind === 'power' ? 'power-custom-next' : 'custom-next-port';
+    const boxId = arg.kind === 'power' ? 'power-custom-active' : 'custom-active-port-input';
+    const seen = [];
+    const record = () => seen.push(ca.index(ca.layer(ids[0]), arg.kind));
+    if (arg.way === 'call') { app.stepCustomPort(1); record(); }
+    if (arg.way === 'tab') { key('Tab'); record(); }
+    if (arg.way === 'bracket') { key('BracketRight'); record(); }
+    if (arg.way === 'button') { document.getElementById(nextId).click(); record(); }
+    if (arg.way === 'box') {
+        const box = document.getElementById(boxId);
+        box.value = '3';
+        box.dispatchEvent(new Event('change', { bubbles: true }));
+        record();
+        seen.push(Number(box.value));
+    }
+    await ca.settle(200);
+    return { seen, errors: ca.errors(), steps, after: app.historyIndex };
+"""
+
+STEP_WAYS = ['call', 'tab', 'bracket', 'button', 'box']
+
+
+@pytest.mark.parametrize('way', STEP_WAYS)
+@pytest.mark.parametrize('kind,view', KINDS)
+def test_stepping_the_active_run_on_a_locked_screen_is_refused(page, kind, view, way):
+    _tab(page, view)
+    out = _run(page, STEP_JS, {'kind': kind, 'view': view, 'way': way, 'locked': True})
+    assert all(v == 1 for v in out['seen']), out
+    assert out['errors'] == ['Upper is locked - unlock it to change it.'], out
+    assert out['after'] == out['steps'], out
+
+
+@pytest.mark.parametrize('way', STEP_WAYS)
+@pytest.mark.parametrize('kind,view', KINDS)
+def test_stepping_the_active_run_on_an_unlocked_screen_still_steps(page, kind, view, way):
+    _tab(page, view)
+    out = _run(page, STEP_JS, {'kind': kind, 'view': view, 'way': way, 'locked': False})
+    assert out['seen'][0] == (3 if way == 'box' else 2), out
+    assert out['errors'] == [], out
 
 
 # ── 6. custom data capacity is the automatic one ──────────────────────────
