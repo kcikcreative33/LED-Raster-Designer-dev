@@ -2666,7 +2666,7 @@ class _HardwareDock {
             const len = this._dockHeadName({
                 value: (first.layer.powerSocaLengths || {})[first.m.soca]
                     || (first.s && first.s.length) || '',
-                placeholder: '100ft',
+                placeholder: this.cableUnit() === 'm' ? '30m' : '100ft',
                 key: `power-soca-length-${first.layer.id}-${first.m.soca}`,
                 title: `The home-run length of this ${boxType.name} - one run `
                     + 'for every screen sharing it. It flows into the gear checklist '

@@ -1952,19 +1952,19 @@ class _Processors {
             });
     }
 
-    // The Pull sheet & cables preferences the data cables are made with:
-    // the home run a new snake takes (null = none), and the length the
-    // sheet's loose-port quick fill writes (100' as shipped).
+    // The Pull sheet & cables preferences the data cables are made with,
+    // in the show's unit (each kept per unit, app-cable-units.js): the
+    // home run a new snake takes (null = none), and the length the
+    // sheet's loose-port quick fill writes (100' / 30 m as shipped).
     defaultSnakeHomeRunFt() {
-        const prefs = (typeof this.getPreferences === 'function') ? this.getPreferences() : {};
-        const n = Number(prefs.snakeHomeRunFt);
-        return prefs.snakeHomeRunFt != null && Number.isFinite(n) && n > 0 ? n : null;
+        const v = this.cablePref('snakeHomeRun');
+        const n = Number(v);
+        return v != null && Number.isFinite(n) && n > 0 ? n : null;
     }
 
     defaultLoosePortCableFt() {
-        const prefs = (typeof this.getPreferences === 'function') ? this.getPreferences() : {};
-        const n = Number(prefs.loosePortCableFt);
-        return Number.isFinite(n) && n > 0 ? n : 100;
+        const n = Number(this.cablePref('loosePortCable'));
+        return Number.isFinite(n) && n > 0 ? n : (this.cableUnit() === 'm' ? 30 : 100);
     }
 
     // Ahead of a new snake: the members leave whatever snake held them,

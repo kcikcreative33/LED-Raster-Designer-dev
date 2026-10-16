@@ -302,6 +302,10 @@ class _ClientProps {
             layer.powerAmperage = prefs.powerAmperage;
             layer.powerAmperageCustom = prefs.powerAmperage;
             layer.panelWatts = prefs.powerWatts;
+            // The pristine show is a NEW show: it takes the Preferences'
+            // cable unit (2026-10-16), ahead of the jumpers so they come
+            // from the set in that unit. Rides the POST below.
+            this.project.cableUnit = this.preferredCableUnit();
             this.applyJumperDefaults(layer, true);
             layer.dataFlowLabelSize = prefs.dataLabelSize || 30;
             layer.powerLabelSize = prefs.powerLabelSize || 14;
@@ -351,6 +355,7 @@ class _ClientProps {
                     show_raster_width: prefs.rasterWidth,
                     show_raster_height: prefs.rasterHeight,
                     app_version: this.project.app_version,
+                    cableUnit: this.project.cableUnit,
                     keep_pristine: true
                 })
             });

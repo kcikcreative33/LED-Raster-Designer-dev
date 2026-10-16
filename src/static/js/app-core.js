@@ -1452,6 +1452,21 @@ export class LEDRasterApp {
             bitDepth: prefs.bitDepth,
             frameRate: prefs.frameRate
         });
+        // The pristine show follows the Preferences' cable unit too
+        // (2026-10-16): a changed unit lands on the project, and the
+        // screen's jumpers are re-made from the set in the show's unit,
+        // ahead of the layer PUT below. The POST keeps the show pristine.
+        const unit = this.preferredCableUnit();
+        if (this.cableUnit() !== unit || this.project.cableUnit !== unit) {
+            this.project.cableUnit = unit;
+            fetch('/api/project', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cableUnit: unit, keep_pristine: true }),
+            }).catch(() => {});
+            if (this.syncCableUnitControls) this.syncCableUnitControls();
+        }
+        this.applyJumperDefaults(this.currentLayer, true);
         this.applyPreferencesToCurrentLayer(prefs);
     }
     
@@ -1468,6 +1483,9 @@ export class LEDRasterApp {
         // Same for the NAMES (Screens / Group / Both) switch, so undo and
         // file open land the buttons on the project's stored choice.
         if (this.refreshNameDisplayButtons) this.refreshNameDisplayButtons();
+        // And the cable unit's words ("ft" / "m") on the page's own fields,
+        // so a file open or an undo lands them on the show's unit.
+        if (this.syncCableUnitControls) this.syncCableUnitControls();
 
         // Load project notes
         const notesEl = document.getElementById('project-notes');

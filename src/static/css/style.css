@@ -979,6 +979,9 @@ body { font-family: Arial, sans-serif; background: #1a1a1a; color: #e0e0e0; over
     color: #c0c0c0 !important;
 }
 #preferences-modal .prefs-row.pm-choices { gap: 14px; flex-wrap: wrap; }
+/* a length's feet and meters figures side by side: the unit words keep
+   one width so the two sets line up row to row */
+#preferences-modal .prefs-row span.pm-unit { min-width: 14px; }
 #preferences-modal .prefs-flow-grid { grid-template-columns: repeat(8, 40px); gap: 4px; }
 #preferences-modal .pref-flow-pattern-btn { min-height: 38px; }
 #preferences-modal .pm-logo-none { color: #777; font-size: 12px; }

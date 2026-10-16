@@ -2136,6 +2136,10 @@
         SHEET_PREFIXES.forEach(function (p) { lsKeys(p).forEach(function (e) { lsPut(e.k, null); }); });
         return j('GET', '/api/project').then(function (proj) {
             proj.name = seed.name || 'Demo Show';
+            // The guides are written in feet - the lengths they type and
+            // the words they say - so the scratch show is a feet show
+            // whatever the person's own is (it goes back on exit).
+            proj.cableUnit = 'ft';
             proj.layers = []; proj.groups = []; proj.processors = []; proj.distros = [];
             proj.beaches = []; proj.snakes = [];
             delete proj.fiberCables;

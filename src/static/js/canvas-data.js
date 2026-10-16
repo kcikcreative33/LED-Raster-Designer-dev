@@ -266,7 +266,8 @@ Object.assign(CanvasRenderer.prototype, {
                 const ft = inner ? inner.get(b.srcPanel || b) : null;
                 if (ft == null) continue;
                 pendingJumps.push({
-                    text: `${ft}'`,
+                    // in the show's unit: "10'" / "3 m"
+                    text: window.app.cableLengthText(ft),
                     x: (a.x + a.width / 2 + b.x + b.width / 2) / 2,
                     y: (a.y + a.height / 2 + b.y + b.height / 2) / 2,
                 });
