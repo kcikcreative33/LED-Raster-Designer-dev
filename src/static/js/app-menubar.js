@@ -232,8 +232,13 @@ class _MenuBar {
                 e.stopPropagation();
                 const canvasId = btn.dataset.canvasId;
                 close();
-                const going = layers.filter(l => !l.locked);
-                this._showLockedError(layers.filter(l => l.locked && l.canvas_id !== canvasId));
+                // A locked screen stays, and so does a member of a wall
+                // that has a locked member (_canvasMovePlan): one error
+                // names them all.
+                const plan = this._canvasMovePlan(layers.map(l => l.id), canvasId);
+                this._showLockedError(plan.locked);
+                const goingIds = new Set(plan.ids);
+                const going = layers.filter(l => goingIds.has(l.id));
                 if (going.length === 0) return;
                 // ONE BATCH, not a layer at a time, because a group is one
                 // wall. /api/layer/<id>/canvas can only ever see ONE layer,

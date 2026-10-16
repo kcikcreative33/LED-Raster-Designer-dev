@@ -9,6 +9,15 @@ import { LEDRasterApp } from './app-core.js';
 // leading-underscore render caches the canvas keeps on the layer.
 const LOCK_EXEMPT_FIELD = (k) => k === 'locked' || k === 'visible' || k.charAt(0) === '_';
 
+// The events of a control that is still moving: a keystroke in a field, a
+// slider or colour drag. An edit the funnel holds back from a locked screen
+// during one of these is reported, but the fields are not repainted until
+// the commit (change, blur, pointer up) - a repaint mid-edit rewrote the very
+// field being typed in.
+const LIVE_EDIT_EVENTS = new Set(['input', 'mousemove', 'pointermove', 'touchmove', 'drag']);
+// The moves of a pointer drag: its attempt ends on the button's release.
+const POINTER_MOVE_EVENTS = new Set(['mousemove', 'pointermove', 'touchmove', 'drag']);
+
 class _CrossLayerPaths {
 
     // ── Cross-member manual paths (v0.11.0, step 6) ──────────────────────
@@ -282,11 +291,28 @@ class _CrossLayerPaths {
             : `${list} are locked - unlock them to change them.`;
         // One gesture, one error: a verb guarded at its entry and again in
         // the setter it calls would otherwise say the same thing twice in
-        // the same turn. A later action says it again.
+        // the same turn. An action that runs on across awaits (a chain of
+        // server requests) opens a scope (_beginLockedAction) and says each
+        // error once for the whole action. A later action says it again.
         if (this._lockedErrorThisTurn === msg) return;
+        const scopes = this._lockedActions;
+        if (scopes && scopes.size) {
+            for (const scope of scopes) if (scope.said.has(msg)) return;
+            scopes.forEach(scope => scope.said.add(msg));
+        }
         this._lockedErrorThisTurn = msg;
         Promise.resolve().then(() => { this._lockedErrorThisTurn = null; });
         this._toast(msg, true, 5000);
+    }
+
+    // One action for the locked error, from here until the returned end()
+    // is called - however many awaits lie between: each error is said once
+    // within it. Call end() in a finally.
+    _beginLockedAction() {
+        if (!this._lockedActions) this._lockedActions = new Set();
+        const scope = { said: new Set() };
+        this._lockedActions.add(scope);
+        return () => { this._lockedActions.delete(scope); };
     }
 
     // Stepping the active port or circuit (Tab, [ / ], Prev / Next, the
@@ -411,26 +437,119 @@ class _CrossLayerPaths {
     }
 
     // The error for an edit the funnel held back from locked screens, said
-    // once for a burst on one control (a colour drag or typing fires the
-    // handler on every input; one error per stroke would stack a column of
-    // toasts), and Screen Info / the sidebar repainted so the locked
-    // screen's own values snap back into the fields. Another control, or a
-    // pause, says it again.
+    // ONCE PER ATTEMPT on a control: a colour drag or typing fires the
+    // handler on every input, and the commit (change / blur / release) runs
+    // it once more - one error for all of it, Tab or Enter included.
+    //
+    // The fields are repainted so a locked screen's own values snap back -
+    // but only on the commit, never mid-edit (a repaint on every keystroke
+    // rewrote the field being typed in to the selection's "mixed" value, and
+    // a slider snapped back under the pointer), and never into the focused
+    // field. The repaint waits for the commit's own event sequence to finish
+    // (a Tab's change, blur and focus), so it sees where focus landed.
+    //
+    // The attempt is read from the event being handled (window.event): an
+    // `input` or a pointer move is live; anything else - a change, a key, a
+    // release, or no event at all (a programmatic call) - is a commit.
     _reportLockedEdit(layers) {
         const list = (layers || []).filter(Boolean);
-        if (list.length === 0) return;
-        const el = typeof document !== 'undefined' ? document.activeElement : null;
-        const control = el && el !== document.body ? (el.id || el.tagName) : '';
-        const key = [...new Set(list.map(l => l.id))].sort().join(',') + '|' + control;
-        const now = Date.now();
+        const ev = (typeof window !== 'undefined' && window.event) || null;
+        const live = !!(ev && LIVE_EDIT_EVENTS.has(ev.type));
+        if (list.length) {
+            const ids = [...new Set(list.map(l => l.id))].sort().join(',');
+            const target = ev && ev.target && ev.target.nodeType === 1 ? ev.target : null;
+            const now = Date.now();
+            const last = this._lastLockedEditReport;
+            // A native colour input fires `change` over and over while the
+            // macOS picker is dragged: each is a commit, but one drag is one
+            // attempt, so a change on the same colour input moments after
+            // the last says nothing more.
+            const colourStream = !!(last && target && target.type === 'color'
+                && last.el === target && now - last.at < 1500);
+            const sameAttempt = !!(last && last.ids === ids && (last.open || colourStream
+                || (ev && (last.ev === ev || last.closedBy === ev))));
+            if (!sameAttempt) this._showLockedError(list);
+            this._lastLockedEditReport = {
+                ids, ev, open: live, el: target, at: now,
+                pointer: !!(ev && POINTER_MOVE_EVENTS.has(ev.type)),
+            };
+            this._lockedRepaintPending = true;
+            if (live) {
+                this._watchLockedEditEnd();
+                return;
+            }
+        }
+        if (!live) this._lockedEditSettled();
+    }
+
+    // A commit reached the funnel (or an attempt ended without one): close
+    // the open attempt, so the next one says its error again, and repaint
+    // the fields if a held-back edit is waiting for it.
+    _lockedEditSettled() {
         const last = this._lastLockedEditReport;
-        if (!last || last.key !== key || now - last.at > 1000) {
-            this._showLockedError(list);
+        if (last) {
+            last.open = false;
+            // A second handler of the same commit event is the same attempt.
+            const ev = (typeof window !== 'undefined' && window.event) || null;
+            if (ev) last.closedBy = ev;
         }
-        this._lastLockedEditReport = { key, at: now };
-        if (typeof this.loadLayerToInputs === 'function') {
-            try { this.loadLayerToInputs(); } catch (_) {}
+        if (!this._lockedRepaintPending) return;
+        this._lockedRepaintPending = false;
+        if (this._lockedRepaintTimer) clearTimeout(this._lockedRepaintTimer);
+        this._lockedRepaintTimer = setTimeout(() => {
+            this._lockedRepaintTimer = null;
+            this._repaintLockedFields();
+        }, 0);
+    }
+
+    // True while a held-back edit's repaint is still to come (tests wait on
+    // it going false).
+    _lockedRepaintBusy() {
+        return !!(this._lockedRepaintPending || this._lockedRepaintTimer);
+    }
+
+    // Screen Info and the sidebar repainted from the screens as they are,
+    // except the field that has focus: it keeps what is in it, and the
+    // baseline updateLayerFromInputs compares against is told so, so the
+    // field does not read as edited later.
+    _repaintLockedFields() {
+        if (typeof this.loadLayerToInputs !== 'function') return;
+        const el = typeof document !== 'undefined' ? document.activeElement : null;
+        const keep = (el && el !== document.body && 'value' in el)
+            ? { el, value: el.value, checked: el.checked } : null;
+        if (keep) {
+            try { keep.start = el.selectionStart; keep.end = el.selectionEnd; } catch (_) {}
         }
+        try { this.loadLayerToInputs(); } catch (_) {}
+        if (!keep) return;
+        if (el.value !== keep.value) el.value = keep.value;
+        if (el.checked !== keep.checked) el.checked = keep.checked;
+        if (keep.start != null) {
+            try { el.setSelectionRange(keep.start, keep.end); } catch (_) {}
+        }
+        if (el.id && this._screenInfoShown && typeof this._screenInfoState === 'function') {
+            this._screenInfoShown.set(el.id, this._screenInfoState(el));
+        }
+    }
+
+    // An attempt that never reaches a committing funnel call still ends:
+    // when its field loses focus, or when the pointer drag that drove it is
+    // released. Checked a task later, so a change event fired by the same
+    // blur is the commit it should be.
+    _watchLockedEditEnd() {
+        if (this._lockedEditWatch || typeof document === 'undefined') return;
+        this._lockedEditWatch = true;
+        const end = (ev) => {
+            const last = this._lastLockedEditReport;
+            if (!last || !last.open) return;
+            if (ev.type === 'focusout' ? last.el !== ev.target : !last.pointer) return;
+            setTimeout(() => {
+                if (this._lastLockedEditReport === last && last.open) this._lockedEditSettled();
+            }, 0);
+        };
+        document.addEventListener('focusout', end, true);
+        document.addEventListener('mouseup', end, true);
+        document.addEventListener('pointerup', end, true);
     }
 
     _persistWith(touched) {

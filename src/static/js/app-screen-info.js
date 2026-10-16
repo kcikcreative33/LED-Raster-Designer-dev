@@ -1315,6 +1315,7 @@ class _ScreenInfo {
                 const panelIndex = layer.panels.findIndex(p => p.id === panelId);
                 if (panelIndex >= 0) {
                     layer.panels[panelIndex] = panel;
+                    this._panelsReplaced(layer);
                     window.canvasRenderer.render();
                 }
             }
@@ -2066,9 +2067,7 @@ class _ScreenInfo {
         }
         // The locked screens named once, and Screen Info repainted so their
         // own values snap back into the fields.
-        if (lockedRefused.length && this._reportLockedEdit) {
-            this._reportLockedEdit(lockedRefused);
-        }
+        if (this._reportLockedEdit) this._reportLockedEdit(lockedRefused);
 
         this.updateLayers(targetLayers);
         // v0.10.5: every caller of this method is a 'change' handler, i.e. an

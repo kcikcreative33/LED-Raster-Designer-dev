@@ -3475,15 +3475,36 @@ class _HardwareDock {
     // One release per pin, ONE history entry for the gesture - the snapshot
     // rides the last request the way the drag-back's does, so a single
     // Ctrl+Z puts the whole card back.
+    //
+    // A LOCKED screen keeps its port (the owner's ruling, 2026-10-16): its
+    // pins are left out HERE, before the chain, so the one error names every
+    // locked screen at once and the undo step lands on the last release that
+    // really goes out (the request guard skips a locked pin without sending
+    // anything, so a locked pin last in the chain used to take the step with
+    // it). The chain is one action for the locked error (_beginLockedAction).
     _dockReleasePins(pins, action) {
+        const layers = (this.project && this.project.layers) || [];
+        const layerOf = (p) => layers.find(l => String(l.id) === String(p.layerId));
+        const lockedMet = [];
+        const going = (pins || []).filter(p => {
+            const l = layerOf(p);
+            if (l && l.locked) {
+                if (!lockedMet.includes(l)) lockedMet.push(l);
+                return false;
+            }
+            return true;
+        });
+        this._showLockedError(lockedMet);
+        if (going.length === 0) return Promise.resolve();
+        const end = this._beginLockedAction();
         let chain = Promise.resolve();
-        pins.forEach((p, i) => {
+        going.forEach((p, i) => {
             chain = chain.then(() => this._assignmentRequest(
                 '/api/port-assignments/unpin', 'POST',
                 { layerId: p.layerId, index: p.index },
-                null, i === pins.length - 1 ? action : null));
+                null, i === going.length - 1 ? action : null));
         });
-        return chain;
+        return chain.finally(end);
     }
 
     // Clear a set of multis as ONE gesture with ONE history entry: a

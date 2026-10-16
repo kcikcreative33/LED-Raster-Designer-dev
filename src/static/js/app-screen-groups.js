@@ -526,6 +526,11 @@ class _ScreenGroups {
             } else {
                 this._adoptRepairedProject(repaired);
             }
+            // Every group verb rewrites the screen selection (hide, delete,
+            // duplicate, the cross-canvas regroup, the adopt above): the
+            // Pixel Map cabinet selection is pruned to match, so keys on a
+            // screen that left it cannot come back with it later.
+            if (typeof this._screenSelectionChanged === 'function') this._screenSelectionChanged();
             this.saveState(actionLabel);
             sendClientLog('screen_group_change', {
                 action: actionLabel,

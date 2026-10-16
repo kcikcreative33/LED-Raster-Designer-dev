@@ -18,6 +18,12 @@ Also pinned here, from the same audit, on Pixel Map selection:
 * the render path only reads the cabinet selection; it is pruned on a real
   selection change.
 
+And from the re-audit: a live control (typing, a slider drag) over a mixed
+selection writes the unlocked screens, says the error once per attempt and
+never repaints the field mid-edit; Clear card keeps a locked screen's ports
+with one undo step; a canvas move never takes a member out of a wall that has
+a locked member.
+
 Driven through real mouse and keyboard gestures wherever the gesture itself
 is under test.
 
@@ -116,6 +122,12 @@ RESET_JS = """async ([specs, opts]) => {
     project.layers = [];
     project.groups = [];
     project.distros = [];
+    // One canvas, active: a test that adds a second one must not leave the
+    // next test's screens landing on it.
+    if (Array.isArray(project.canvases) && project.canvases.length) {
+        project.canvases = project.canvases.slice(0, 1);
+        project.active_canvas_id = project.canvases[0].id;
+    }
     await fetch('/api/project', {
         method: 'PUT', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(project),
@@ -188,7 +200,10 @@ RESET_JS = """async ([specs, opts]) => {
     app.loadLayerToInputs();
     app.updatePixelMapBulkActionUI();
     app.resetHistory('Lock guard test reset');
-    app._lastLockedEditReport = null;   // a new test is a new burst
+    app._lastLockedEditReport = null;   // a new test is a new attempt
+    app._lockedRepaintPending = false;
+    if (app._lockedRepaintTimer) { clearTimeout(app._lockedRepaintTimer); app._lockedRepaintTimer = null; }
+    if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
     window.__toasts = [];
     // The last test's toasts stack up the middle of the window for five
     // seconds; they must not sit over the canvas this test presses on.
@@ -439,6 +454,7 @@ def test_screen_info_edit_skips_the_locked_screen_and_snaps_back(page):
         el.dispatchEvent(new Event('change', { bubbles: true }));
     }""")
     saves_settled(page)
+    repaint_settled(page)
     assert layer(page, b)['number_size'] == 33
     assert server_layer(page, b)['number_size'] == 33
     assert layer(page, a) == before_a, 'the locked screen changed'
@@ -461,6 +477,7 @@ def test_a_sidebar_funnel_edit_on_only_locked_screens_changes_nothing(page):
         el.dispatchEvent(new Event('change', { bubbles: true }));
     }""")
     saves_settled(page)
+    repaint_settled(page)
     assert layer(page, a) == before
     assert history_len(page) == h0
     assert toasts(page) == [locked_msg('Lock A')]
@@ -568,11 +585,20 @@ def test_dock_drops_refuse_a_locked_screen(page):
         const app = window.app;
         const d = app.getDistros()[0];
         app._dockDropDistro({ type: 'distro', distroId: d.id }, { kind: 'screen', layerId: id });
+    }""", a)
+    assert layer(page, a) == before
+    assert toasts(page) == [locked_msg('Lock A')]
+    # A second drop is its own attempt: counted, so a duplicate inside one
+    # drop cannot hide behind a set.
+    page.evaluate("() => { window.__toasts = []; }")
+    page.evaluate("""(id) => {
+        const app = window.app;
+        const d = app.getDistros()[0];
         app._dockDropPlug({ type: 'plug', distroId: d.id, output: 'soca208', title: 'LK' },
                           { kind: 'screen', layerId: id });
     }""", a)
     assert layer(page, a) == before
-    assert set(toasts(page)) == {locked_msg('Lock A')}
+    assert toasts(page) == [locked_msg('Lock A')]
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -738,3 +764,515 @@ def test_cross_screen_marquee_is_fast_on_six_large_screens(page):
           f"indexed {timing['after']:.1f} ms ({timing['count']} cabinets)")
     assert timing['count'] == 6 * 80 * 40
     assert timing['after'] < timing['before'], timing
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Live controls with a locked screen in the selection (re-audit item 1)
+#
+# A keystroke or a slider move is LIVE: the unlocked screens take it, the
+# locked one is held, the error is said once - and the fields are NOT
+# repainted mid-edit (the repaint rewrote the very field being typed in).
+# The snap-back waits for the commit and never lands in the focused field.
+# ═════════════════════════════════════════════════════════════════════════
+
+def repaint_settled(page):
+    """The held-back edit's snap-back repaint has run (it waits for the
+    commit's own event sequence - a Tab's change, blur and focus)."""
+    page.wait_for_function(
+        "() => !(window.app._lockedRepaintBusy && window.app._lockedRepaintBusy())")
+
+
+def lock(page, lock_ids, selected, current):
+    """Lock screens through the app's own lock verb (so a test can dress a
+    screen first and lock it after), then set the selection under test."""
+    page.evaluate("""async ([lockIds, sel, cur]) => {
+        const app = window.app;
+        const find = (id) => app.project.layers.find(l => l.id === id);
+        await app._layerSavesSettled();
+        app.selectedLayerIds = new Set(lockIds);
+        app.currentLayer = find(lockIds[0]);
+        app.setLockOnSelected(true);
+        await app._layerSavesSettled();
+        app.selectedLayerIds = new Set(sel);
+        app.currentLayer = find(cur);
+        app.lastSelectedLayerId = cur;
+        app.loadLayerToInputs();
+        app.resetHistory('Lock guard test lock');
+        app._lastLockedEditReport = null;
+        window.__toasts = [];
+    }""", [lock_ids, selected, current])
+
+
+def type_into(page, field_id, text, commit='Tab'):
+    page.evaluate("""(id) => {
+        const el = document.getElementById(id);
+        el.scrollIntoView({ block: 'center' });
+    }""", field_id)
+    page.locator(f'#{field_id}').click()
+    page.keyboard.press(f'{MODIFIER}+a')
+    page.keyboard.type(text, delay=40)
+    typed = page.evaluate("(id) => document.getElementById(id).value", field_id)
+    page.keyboard.press(commit)
+    saves_settled(page)
+    repaint_settled(page)
+    saves_settled(page)
+    return typed
+
+
+def test_typing_a_label_size_over_a_locked_screen_writes_the_unlocked_one(page):
+    a, b, c = reset(page, locked=[0], selected=[0, 1], current=0)
+    before_a = server_layer(page, a)
+    typed = type_into(page, 'info-label-size', '22')
+    assert typed == '22', f'the field was rewritten mid-typing: {typed!r}'
+    assert layer(page, b)['infoLabelSize'] == 22
+    assert server_layer(page, b)['infoLabelSize'] == 22
+    assert server_layer(page, a).get('infoLabelSize') == before_a.get('infoLabelSize')
+    assert layer(page, a).get('infoLabelSize') == before_a.get('infoLabelSize')
+    assert toasts(page) == [locked_msg('Lock A')], 'one attempt, one error (Tab too)'
+    # A second attempt over the first, committed with Enter: its own error,
+    # once, and B takes the new value.
+    page.evaluate("() => { window.__toasts = []; }")
+    typed = type_into(page, 'info-label-size', '30', commit='Enter')
+    assert typed == '30', typed
+    assert server_layer(page, b)['infoLabelSize'] == 30
+    assert server_layer(page, a).get('infoLabelSize') == before_a.get('infoLabelSize')
+    assert toasts(page) == [locked_msg('Lock A')]
+
+
+def _drag_range(page, sel, frac_from, frac_to, steps=10):
+    """A real mouse drag on a range input, from one fraction of its track to
+    another. Returns the slider's value read mid-drag (just before the
+    release) - a snap-back during the drag shows up there."""
+    page.evaluate("(sel) => document.querySelector(sel).scrollIntoView({ block: 'center' })", sel)
+    box = page.locator(sel).bounding_box()
+    y = box['y'] + box['height'] / 2
+    x0 = box['x'] + 6 + (box['width'] - 12) * frac_from
+    x1 = box['x'] + 6 + (box['width'] - 12) * frac_to
+    page.mouse.move(x0, y)
+    page.mouse.down()
+    page.mouse.move(x1, y, steps=steps)
+    mid = page.evaluate("(sel) => document.querySelector(sel).value", sel)
+    page.mouse.up()
+    return mid
+
+
+def test_dragging_the_gradient_opacity_over_a_locked_screen_saves_the_unlocked_one(page):
+    a, b, c = reset(page, selected=[0, 1], current=0)
+    page.evaluate("""() => {
+        const app = window.app;
+        app.applyToSelectedLayers(l => {
+            app._ensureGradientDefaults(l);
+            l.gradientEnabled = true;
+            l.gradientOpacity = 0.2;
+        });
+        app.updateLayers(app.getSelectedLayers());
+    }""")
+    lock(page, [a], [a, b], a)
+    page.evaluate("""() => {
+        const sec = document.getElementById('gradient-controls');
+        if (sec) sec.style.display = 'block';
+        window.app.loadGradientEditor();
+    }""")
+    before_a = server_layer(page, a)['gradientOpacity']
+    mid = _drag_range(page, '#gradient-opacity', 0.2, 0.9)
+    saves_settled(page)
+    repaint_settled(page)
+    saves_settled(page)
+    assert int(mid) > 60, f'the slider snapped back under the pointer: {mid}'
+    final = int(page.evaluate("() => document.getElementById('gradient-opacity').value"))
+    assert final > 60, final
+    got_b = server_layer(page, b)['gradientOpacity']
+    assert got_b == pytest.approx(final / 100), (got_b, final)
+    assert layer(page, b)['gradientOpacity'] == pytest.approx(final / 100)
+    assert server_layer(page, a)['gradientOpacity'] == before_a
+    assert layer(page, a)['gradientOpacity'] == before_a
+    assert toasts(page) == [locked_msg('Lock A')]
+
+
+IMAGES_JS = """async () => {
+    const app = window.app, r = window.canvasRenderer;
+    await app._layerSavesSettled();
+    let project = await (await fetch('/api/project')).json();
+    project.layers = []; project.groups = []; project.distros = [];
+    if (Array.isArray(project.canvases) && project.canvases.length) {
+        project.canvases = project.canvases.slice(0, 1);
+        project.active_canvas_id = project.canvases[0].id;
+    }
+    await fetch('/api/project', { method: 'PUT',
+        headers: {'Content-Type': 'application/json'}, body: JSON.stringify(project) });
+    const src = document.createElement('canvas');
+    src.width = 40; src.height = 40;
+    const ctx = src.getContext('2d');
+    ctx.fillStyle = '#ff0000'; ctx.fillRect(0, 0, 40, 40);
+    const ids = [];
+    for (const [name, x] of [['Lock Img A', 0], ['Lock Img B', 300]]) {
+        const res = await fetch('/api/layer/add-image', { method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name, imageData: src.toDataURL('image/png'),
+                imageWidth: 40, imageHeight: 40, offset_x: x, offset_y: 0,
+                imageShadowEnabled: true, imageShadowDistance: 10 }) });
+        ids.push((await res.json()).id);
+    }
+    app.project = await (await fetch('/api/project')).json();
+    app.dedupeProjectLayers('lock_guard_images');
+    app.currentLayer = app.project.layers.find(l => l.id === ids[1]);
+    app.selectedLayerIds = new Set([ids[1]]);
+    r.viewMode = 'pixel-map';
+    r.zoom = 0.5; r.panX = 60; r.panY = 60;
+    app.renderLayers();
+    app.loadLayerToInputs();
+    app.resetHistory('Lock guard images');
+    window.__toasts = [];
+    r.render();
+    return ids;
+}"""
+
+
+def test_dragging_image_opacity_and_typing_a_shadow_over_a_locked_image(page):
+    a, b = page.evaluate(IMAGES_JS)
+    lock(page, [a], [a, b], a)
+    before_a = server_layer(page, a)
+    mid = _drag_range(page, '#image-opacity-range', 0.95, 0.3)
+    saves_settled(page)
+    repaint_settled(page)
+    saves_settled(page)
+    assert int(mid) < 50, f'the slider snapped back under the pointer: {mid}'
+    final = int(page.evaluate("() => document.getElementById('image-opacity-range').value"))
+    assert server_layer(page, b)['imageOpacity'] == final
+    assert server_layer(page, a).get('imageOpacity') == before_a.get('imageOpacity')
+    assert toasts(page) == [locked_msg('Lock Img A')]
+    page.evaluate("() => { window.__toasts = []; }")
+    typed = type_into(page, 'image-shadow-distance', '40')
+    assert typed == '40', f'the shadow field was blanked mid-typing: {typed!r}'
+    assert server_layer(page, b)['imageShadowDistance'] == 40
+    assert server_layer(page, a)['imageShadowDistance'] == before_a['imageShadowDistance']
+    assert toasts(page) == [locked_msg('Lock Img A')]
+
+
+def test_image_scale_on_a_locked_image_errors_only_on_a_change(page):
+    a, b = page.evaluate(IMAGES_JS)
+    lock(page, [a], [a], a)
+    type_into(page, 'image-scale', '100')
+    assert toasts(page) == [], 'the value it already has is no change'
+    typed = type_into(page, 'image-scale', '150')
+    assert typed == '150'
+    assert toasts(page) == [locked_msg('Lock Img A')]
+    assert layer(page, a)['imageScale'] == 1
+    assert server_layer(page, a)['imageScale'] == 1
+    # The commit snapped the field back to what the locked image holds.
+    assert page.evaluate("() => document.getElementById('image-scale').value") == '100'
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Errors only when something would change (re-audit item 5)
+# ═════════════════════════════════════════════════════════════════════════
+
+def test_change_cabinet_to_the_cabinet_a_locked_screen_has_says_nothing(page):
+    a, b, c = reset(page, locked=[0], selected=[0, 1], current=1)
+    page.evaluate("""(ids) => window.app.changeCabinetForLayers(ids,
+        { cabinet_width: 128, cabinet_height: 128 })""", [a, b])
+    saves_settled(page)
+    assert toasts(page) == []
+
+
+def test_power_setters_on_a_locked_screen_say_nothing_for_the_same_value(page):
+    a, b, c = reset(page, selected=[0], current=0, view='power')
+    page.evaluate("""async (id) => {
+        const app = window.app;
+        const l = app.project.layers.find(x => x.id === id);
+        app.setCircuitCable(l, 1, { ft: 50, connector: null });
+        app.setSocaLength(l, 0, '100ft');
+        await app._layerSavesSettled();
+    }""", a)
+    lock(page, [a], [a], a)
+    before = layer(page, a)
+    page.evaluate("""(id) => {
+        const app = window.app;
+        const l = app.project.layers.find(x => x.id === id);
+        app.setCircuitCable(l, 1, { ft: 50, connector: null });
+        app.setSocaLength(l, 0, '100ft');
+    }""", a)
+    assert layer(page, a) == before
+    assert toasts(page) == []
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Clear card over mixed locked and unlocked screens (re-audit item 2)
+# ═════════════════════════════════════════════════════════════════════════
+
+CARD_SPECS = [
+    dict(name='Lock A', columns=4, rows=4, cabinet_width=200, cabinet_height=200),
+    dict(name='Lock B', columns=10, rows=5, cabinet_width=200, cabinet_height=200,
+         offset_x=2400),
+    dict(name='Lock C', columns=2, rows=2, cabinet_width=200, cabinet_height=200,
+         offset_x=5000),
+]
+
+CARD_SEED_JS = """async (ids) => {
+    const app = window.app;
+    for (const id of ids) {
+        await fetch(`/api/layer/${id}`, { method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ processorType: 'novastar-coex-1g' }) });
+    }
+    const p0 = await (await fetch('/api/project')).json();
+    p0.processors = [];
+    delete p0.port_assignments;
+    await fetch('/api/project', { method: 'PUT',
+        headers: {'Content-Type': 'application/json'}, body: JSON.stringify(p0) });
+    await fetch('/api/processors', { method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ deviceId: 'novastar-mx40-pro' }) });
+    app.project = await (await fetch('/api/project')).json();
+    app.dedupeProjectLayers('lock_guard_card_seed');
+    await app.refreshProcessors();
+    const proc = app._processorsResolved[0];
+    const cardId = proc.slots.map(s => s.card).find(Boolean).id;
+    for (const id of ids.slice(0, 2)) {
+        await app._assignmentRequest('/api/port-assignments/place-overflow', 'POST',
+                                     { layerId: String(id), cardId });
+    }
+    return cardId;
+}"""
+
+
+def pins(page):
+    return page.evaluate("""async () => {
+        const p = await (await fetch('/api/project')).json();
+        return ((p.port_assignments || {}).pins || []).map(x => String(x.layerId));
+    }""")
+
+
+def test_clear_card_keeps_a_locked_screens_ports_and_records_one_step(page):
+    a, b, c = reset(page, CARD_SPECS, selected=[0], current=0, view='data-flow')
+    card_id = page.evaluate(CARD_SEED_JS, [a, b, c])
+    seeded = pins(page)
+    assert seeded.count(str(a)) == 1 and seeded.count(str(b)) >= 2, seeded
+    # B - the screen whose pins come LAST, several of them - is locked.
+    lock(page, [b], [a], a)
+    page.evaluate("() => window.app.saveState('Baseline')")
+    h0 = history_len(page)
+    page.evaluate("""async (cardId) => {
+        const item = window.app._clearMenuForDock(
+            { type: 'card', cardId, title: 'the card' });
+        await item.run();
+    }""", card_id)
+    saves_settled(page)
+    after = pins(page)
+    assert str(a) not in after, after
+    assert after.count(str(b)) == seeded.count(str(b)), after
+    assert history_len(page) == h0 + 1, 'the release lost its undo step'
+    assert page.evaluate("() => window.app.history.map(h => h.action).slice(-1)") == ['Release Ports']
+    assert toasts(page) == [locked_msg('Lock B')]
+    # One Undo puts A's port back.
+    page.evaluate("() => window.app.undo()")
+    restored = settled(page, lambda: pins(page), lambda v: str(a) in v)
+    assert str(a) in restored, restored
+
+
+def test_the_locked_error_is_said_once_across_a_chained_action(page):
+    a, b, c = reset(page, locked=[0], selected=[0], current=0)
+    page.evaluate("""async () => {
+        const app = window.app;
+        const A = app.project.layers.find(l => l.name === 'Lock A');
+        const end = app._beginLockedAction();
+        try {
+            app._showLockedError([A]);
+            await new Promise(r => setTimeout(r, 0));
+            await fetch('/api/project');
+            app._showLockedError([A]);
+        } finally { end(); }
+        // A later action says it again.
+        await new Promise(r => setTimeout(r, 0));
+        app._showLockedError([A]);
+    }""")
+    assert toasts(page) == [locked_msg('Lock A')] * 2
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Canvas moves (re-audit items 3 and 4)
+# ═════════════════════════════════════════════════════════════════════════
+
+SECOND_CANVAS_JS = """async () => {
+    const app = window.app;
+    const r = await (await fetch('/api/canvas', { method: 'POST',
+        headers: {'Content-Type': 'application/json'}, body: '{}' })).json();
+    const id = r.active_canvas_id;
+    await fetch(`/api/canvas/${id}`, { method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ workspace_x: 3000, workspace_y: 0 }) });
+    const p = await (await fetch('/api/project')).json();
+    app.project.canvases = p.canvases;
+    app.project.active_canvas_id = p.canvases[0].id;
+    window.canvasRenderer.render();
+    return id;
+}"""
+
+
+def test_a_cross_canvas_drag_with_a_locked_current_screen_moves_the_unlocked(page):
+    a, b, c = reset(page, locked=[0], selected=[0, 1], current=0, zoom=0.25)
+    cid = page.evaluate(SECOND_CANVAS_JS)
+    home = server_layer(page, a)['canvas_id']
+    drag(page, (700, 100), (3200, 100), modifier='Shift', steps=15)
+    got = settled(page, lambda: server_layer(page, b)['canvas_id'], lambda v: v == cid)
+    saves_settled(page)
+    assert got == cid, 'the unlocked screen did not cross'
+    assert server_layer(page, a)['canvas_id'] == home
+    assert layer(page, a)['canvas_id'] == home
+    assert toasts(page) == [locked_msg('Lock A')]
+
+
+def _dress_locked_group(page):
+    """A wall of Lock A (locked) and Lock B, with a hand-drawn data path on A
+    that steps onto B - the step a move of B out of the wall would cut."""
+    a, b, c = reset(page, group=[0, 1], selected=[1], current=1)
+    page.evaluate("""async ([a, b]) => {
+        const app = window.app;
+        const A = app.project.layers.find(l => l.id === a);
+        A.flowPattern = 'custom';
+        A.customPortPaths = { 1: [{ row: 0, col: 0 }, { row: 0, col: 0, layerId: b }] };
+        app.updateLayers([A]);
+        await app._layerSavesSettled();
+    }""", [a, b])
+    lock(page, [a], [b], b)
+    cid = page.evaluate(SECOND_CANVAS_JS)
+    return a, b, c, cid, server_layer(page, a), server_layer(page, b)
+
+
+def _assert_wall_untouched(page, a, b, before_a, before_b):
+    after_a = server_layer(page, a)
+    assert after_a['group_id'] == before_a['group_id'] == 'g_lk'
+    assert after_a.get('customPortPaths') == before_a.get('customPortPaths')
+    after_b = server_layer(page, b)
+    assert after_b['canvas_id'] == before_b['canvas_id']
+    assert after_b['group_id'] == 'g_lk'
+    assert after_b['offset_x'] == before_b['offset_x']
+    assert toasts(page) == [locked_msg('Lock A')]
+
+
+def test_moving_a_member_of_a_wall_with_a_locked_member_is_refused(page):
+    a, b, c, cid, before_a, before_b = _dress_locked_group(page)
+    page.evaluate("async ([b, cid]) => { await window.app.moveLayersCrossCanvas([b], cid, 'move'); }",
+                  [b, cid])
+    saves_settled(page)
+    _assert_wall_untouched(page, a, b, before_a, before_b)
+
+
+def test_move_to_canvas_menu_refuses_a_member_of_a_locked_wall(page):
+    a, b, c, cid, before_a, before_b = _dress_locked_group(page)
+    page.evaluate("() => window.app.openMoveToCanvasMenu()")
+    page.locator(f'[data-canvas-id="{cid}"]').first.click()
+    saves_settled(page)
+    _assert_wall_untouched(page, a, b, before_a, before_b)
+
+
+def test_dragging_a_member_of_a_locked_wall_to_another_canvas_is_refused(page):
+    a, b, c, cid, before_a, before_b = _dress_locked_group(page)
+    page.evaluate("() => { window.canvasRenderer.zoom = 0.25; window.canvasRenderer.render(); }")
+    drag(page, (700, 100), (3200, 100), modifier='Shift', steps=15)
+    saves_settled(page)
+    _assert_wall_untouched(page, a, b, before_a, before_b)
+    assert layer(page, b)['offset_x'] == before_b['offset_x'], 'B was left where it was dropped'
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# The group headline, Alt-click and selection mechanics (items 6-10)
+# ═════════════════════════════════════════════════════════════════════════
+
+def test_the_group_headline_drags_with_a_locked_member(page):
+    a, b, c = reset(page, group=[0, 1], locked=[1], selected=[0, 1], current=0, zoom=1)
+    rect = page.evaluate("""() => {
+        const app = window.app, r = window.canvasRenderer;
+        delete app.project.groupNameDisplayByView;
+        app.project.groupNameDisplay = 'both';
+        r.render();
+        const plan = r._groupLabelPlan(app.currentLayer);
+        return plan && plan.cfg._groupNameHitRect;
+    }""")
+    assert rect, 'the headline drew no hit rect'
+    before_b = layer(page, b)
+    cx, cy = (rect['x1'] + rect['x2']) / 2, (rect['y1'] + rect['y2']) / 2
+    drag(page, (cx, cy), (cx + 100, cy + 50), steps=10)
+    group = page.evaluate("() => window.app.project.groups[0]")
+    assert group.get('screenNameOffsetXPixelMap', 0) == pytest.approx(100, abs=2), group
+    assert layer(page, b) == before_b
+    assert toasts(page) == []
+
+
+def test_alt_click_reads_the_toggle_direction_off_the_unlocked_cabinets(page):
+    a, b, c = reset(page, selected=[0, 1], current=0)
+    page.evaluate("""async (b) => {
+        const app = window.app;
+        const B = app.project.layers.find(l => l.id === b);
+        await app.setPanelsBlankBulk(B.panels.slice(), true);
+        await app._layerSavesSettled();
+    }""", b)
+    settled(page, lambda: [p['hidden'] for p in server_layer(page, b)['panels']],
+            lambda v: all(v))
+    lock(page, [a], [a, b], a)
+    page.evaluate("""() => {
+        const app = window.app;
+        app.pixelMapSelection.clear();
+        app.getPixelMapScopeLayers().forEach(l => l.panels.forEach(p =>
+            app.pixelMapSelection.add(app.getScopedPanelKey(l.id, p))));
+        app.updatePixelMapBulkActionUI();
+    }""")
+    click(page, (664, 64), modifier='Alt')
+    got = settled(page, lambda: [p['hidden'] for p in server_layer(page, b)['panels']],
+                  lambda v: not any(v))
+    assert not any(got), 'the unlocked blanks were not shown'
+    assert not any(p['hidden'] for p in server_layer(page, a)['panels'])
+    assert toasts(page) == [], 'showing visible cabinets changes nothing on the locked screen'
+
+
+def test_row_col_lookup_follows_a_panel_replaced_in_place(page):
+    a, b, c = reset(page, selected=[0], current=0)
+    out = page.evaluate("""(id) => {
+        const app = window.app;
+        const l = app.project.layers.find(x => x.id === id);
+        app.getPanelByRowCol(l, 1, 1);                    // build the index
+        const i = l.panels.findIndex(p => p.row === 1 && p.col === 1);
+        const old = l.panels[i];
+        const fresh = Object.assign({}, old);
+        l.panels[i] = fresh;                              // same array, new object
+        const same = app.getPanelByRowCol(l, 1, 1) === fresh;
+        // A swap of two slots in place: each address still finds its panel.
+        const j = l.panels.findIndex(p => p.row === 0 && p.col === 0);
+        const pj = l.panels[j];
+        l.panels[j] = fresh; l.panels[i] = pj;
+        const swapped = app.getPanelByRowCol(l, 1, 1) === fresh
+            && app.getPanelByRowCol(l, 0, 0) === pj;
+        l.panels[i] = old; l.panels[j] = pj;
+        return { same, swapped };
+    }""", a)
+    assert out == {'same': True, 'swapped': True}, out
+
+
+def test_a_group_verb_prunes_the_cabinets_of_screens_it_drops(page):
+    a, b, c = reset(page, group=[1, 2], selected=[0, 1, 2], current=0)
+    page.evaluate("""([a, b]) => {
+        const app = window.app;
+        app.pixelMapSelection.add(`${a}:0,0`);
+        app.pixelMapSelection.add(`${b}:0,0`);
+    }""", [a, b])
+    page.evaluate("async () => { await window.app.toggleGroupVisibility('g_lk'); }")
+    assert sel_state(page)['keys'] == [f'{a}:0,0']
+    # Shown again and picked again: its old cabinets do not come back.
+    page.evaluate("async () => { await window.app.toggleGroupVisibility('g_lk'); }")
+    page.evaluate("(b) => window.app.toggleLayerSelection("
+                  "window.app.project.layers.find(l => l.id === b))", b)
+    assert sel_state(page)['keys'] == [f'{a}:0,0']
+
+
+def test_a_release_past_the_threshold_applies_the_marquee(page):
+    a, b, c = reset(page, selected=[0, 1], current=0, zoom=1)
+    sx, sy = to_client(page, 20, 20)
+    ex, ey = to_client(page, 230, 230)
+    page.mouse.move(sx, sy)
+    page.mouse.down()
+    page.mouse.move(sx + 2, sy + 2)          # inside the click threshold
+    # The release lands far away with no move event between.
+    page.evaluate("""([x, y]) => window.dispatchEvent(new MouseEvent('mouseup',
+        { clientX: x, clientY: y, button: 0, bubbles: true }))""", [ex, ey])
+    page.mouse.up()
+    assert sel_state(page)['keys'] == keys(a, [(0, 0), (0, 1), (1, 0), (1, 1)])

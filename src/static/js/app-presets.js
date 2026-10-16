@@ -804,8 +804,13 @@ class _Presets {
         const fields = this._cabinetFieldsFrom(data);
         if (Object.keys(fields).length === 0) return;
         // A locked screen keeps its cabinet (the owner's ruling,
-        // 2026-10-16): the unlocked ones change, the locked ones are named.
-        targets = this._writableLayers(targets);
+        // 2026-10-16): the unlocked ones change, and a locked one is named
+        // only when the pick would really change it - one that already has
+        // this cabinet changes nothing and says nothing.
+        const changes = (l) => Object.keys(fields)
+            .some(k => String(l[k] ?? '') !== String(fields[k]));
+        this._showLockedError(targets.filter(l => l.locked && changes(l)));
+        targets = targets.filter(l => !l.locked);
         if (targets.length === 0) return;
         targets.forEach(layer => {
             Object.keys(fields).forEach(k => { layer[k] = fields[k]; });

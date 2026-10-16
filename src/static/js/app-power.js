@@ -1873,22 +1873,24 @@ class _Power {
 
     setCircuitCable(layer, circuitNum, cable, record = true) {
         if (!layer) return false;
+        const ft = cable ? Number(cable.ft) : NaN;
+        const next = (!Number.isFinite(ft) || ft <= 0) ? null : {
+            ft,
+            connector: cable.connector && this.cableConnectorName(cable.connector)
+                ? cable.connector : null,
+        };
+        const before = JSON.stringify((layer.powerCircuitCables || {})[circuitNum] || null);
+        const changed = JSON.stringify(next) !== before;
         // A locked screen stays unchanged (owner, 2026-10-16) - the setter
-        // refuses and names it, whichever control called it.
-        if (this._lockedRefused(layer)) return false;
+        // refuses and names it, whichever control called it - when the cable
+        // would really change; setting the one it has says nothing.
+        if (layer.locked) {
+            if (changed) this._showLockedError([layer]);
+            return false;
+        }
         const store = layer.powerCircuitCables
             || (layer.powerCircuitCables = {});
-        const ft = cable ? Number(cable.ft) : NaN;
-        const before = JSON.stringify(store[circuitNum] || null);
-        if (!Number.isFinite(ft) || ft <= 0) {
-            delete store[circuitNum];
-        } else {
-            const connector = cable.connector
-                && this.cableConnectorName(cable.connector)
-                ? cable.connector : null;
-            store[circuitNum] = { ft, connector };
-        }
-        const changed = JSON.stringify(store[circuitNum] || null) !== before;
+        if (next) store[circuitNum] = next; else delete store[circuitNum];
         if (record && changed) {
             this.updateLayers([layer], true, 'Set Circuit Cable');
         }
@@ -2178,11 +2180,16 @@ class _Power {
     // write-through, which issues one updateLayers over every member itself.
     setSocaLength(layer, socaIndex, length, record = true) {
         if (!layer) return;
-        // A locked screen stays unchanged (owner, 2026-10-16) - the setter
-        // refuses and names it, whichever control called it.
-        if (this._lockedRefused(layer)) return;
-        const store = layer.powerSocaLengths || (layer.powerSocaLengths = {});
         const v = String(length || '').trim();
+        // A locked screen stays unchanged (owner, 2026-10-16) - the setter
+        // refuses and names it, whichever control called it - when the
+        // length would really change.
+        if (layer.locked) {
+            const cur = String((layer.powerSocaLengths || {})[socaIndex] || '').trim();
+            if (cur !== v) this._showLockedError([layer]);
+            return;
+        }
+        const store = layer.powerSocaLengths || (layer.powerSocaLengths = {});
         if (v) store[socaIndex] = v; else delete store[socaIndex];
         if (record) {
             this.updateLayers([layer], true, 'Set Multi Home Run');

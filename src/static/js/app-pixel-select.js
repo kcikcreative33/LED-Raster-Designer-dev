@@ -5,8 +5,8 @@ import { LEDRasterApp } from './app-core.js';
 import { sendClientLog } from './helpers.js';
 
 // getPanelByRowCol's per-screen index: panels array -> { len, map of
-// "row,col" -> panel }. Weak, so a rebuilt screen's old array and its index
-// simply go.
+// "row,col" -> the panel's SLOT in the array }. Weak, so a rebuilt screen's
+// old array and its index simply go.
 const PANEL_INDEX = new WeakMap();
 
 class _PixelSelect {
@@ -307,27 +307,47 @@ class _PixelSelect {
 
     // A per-screen row/col index (1.5 audit): this was a linear find, and the
     // Pixel Map selection resolves every selected key through it several
-    // times per mouse move - 6 screens of 80x40 took ~112 ms a move. The
-    // index is keyed by the panels ARRAY, so it goes the moment the panels
-    // are rebuilt (every rebuild hands back a new array), and is rebuilt if
-    // the array was grown or cut in place.
+    // times per mouse move - 6 screens of 80x40 took ~112 ms a move.
+    //
+    // It can never hand back a stale panel. The index is keyed by the panels
+    // ARRAY, so a rebuild (a new array) starts a new one; it is rebuilt when
+    // the array was grown or cut in place; and it holds each address's SLOT,
+    // not the panel object - a hit reads whatever panel is in that slot NOW
+    // and checks its address, so a panel replaced in place is found as the
+    // new object, and a slot whose panel moved address rebuilds the index.
+    // A replacement that gives a slot a NEW address is announced with
+    // _panelsReplaced(layer) by the code that makes it.
     getPanelByRowCol(layer, row, col) {
         if (!layer || !Array.isArray(layer.panels)) return null;
         const panels = layer.panels;
-        let index = PANEL_INDEX.get(panels);
-        if (!index || index.len !== panels.length) {
-            const map = new Map();
-            // Backwards, so a duplicated address keeps the FIRST panel - the
-            // one the find() this replaced returned.
-            for (let i = panels.length - 1; i >= 0; i--) {
-                const p = panels[i];
-                if (p) map.set(`${p.row},${p.col}`, p);
+        const key = `${row},${col}`;
+        for (let attempt = 0; attempt < 2; attempt++) {
+            let index = attempt === 0 ? PANEL_INDEX.get(panels) : null;
+            if (!index || index.len !== panels.length) {
+                const map = new Map();
+                // Backwards, so a duplicated address keeps the FIRST panel -
+                // the one the find() this replaced returned.
+                for (let i = panels.length - 1; i >= 0; i--) {
+                    const p = panels[i];
+                    if (p) map.set(`${p.row},${p.col}`, i);
+                }
+                index = { len: panels.length, map };
+                PANEL_INDEX.set(panels, index);
+                attempt = 1;
             }
-            index = { len: panels.length, map };
-            PANEL_INDEX.set(panels, index);
+            const slot = index.map.get(key);
+            if (slot === undefined) return null;
+            const hit = panels[slot];
+            if (hit && hit.row === row && hit.col === col) return hit;
+            // The slot's panel is not at this address any more: rebuild once.
         }
-        const hit = index.map.get(`${row},${col}`);
-        return (hit && hit.row === row && hit.col === col) ? hit : null;
+        return null;
+    }
+
+    // Panels were replaced in place on `layer` (same array, new objects that
+    // may sit at other addresses): its row/col index starts again.
+    _panelsReplaced(layer) {
+        if (layer && Array.isArray(layer.panels)) PANEL_INDEX.delete(layer.panels);
     }
 
     // v0.11.0: customSelection is keyed by getScopedPanelKey, not getPanelKey -

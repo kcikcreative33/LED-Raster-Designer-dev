@@ -492,19 +492,33 @@ class _Wiring {
         const imageScaleInput = document.getElementById('image-scale');
         const imageScaleRange = document.getElementById('image-scale-range');
         if (imageScaleInput && imageScaleRange) {
-            const applyLiveScale = (value) => {
+            const applyLiveScale = (value, typed = false) => {
                 if (!this.currentLayer || (this.currentLayer.type || 'screen') !== 'image') return;
-                // A locked image keeps its scale; the field snaps back.
+                const pct = Math.max(10, Math.min(500, parseFloat(value) || 100));
+                // A locked image keeps its scale, named only when the value
+                // would change it; the field snaps back on the commit. A
+                // keystroke is not the value yet ("1" on the way to "100"):
+                // the typed field is judged on its commit, by the Screen
+                // Info funnel (updateLayerFromInputs) - the slider names it
+                // as it moves.
                 if (this.currentLayer.locked) {
-                    this._reportLockedEdit([this.currentLayer]);
+                    const cur = Number(this.currentLayer.imageScale) || 1;
+                    if (!typed && Math.abs(cur - pct / 100) > 1e-9) {
+                        this._reportLockedEdit([this.currentLayer]);
+                    }
                     return;
                 }
-                const pct = Math.max(10, Math.min(500, parseFloat(value) || 100));
                 this.currentLayer.imageScale = pct / 100;
                 window.canvasRenderer.render();
             };
             const commitScale = () => {
                 if (!this.currentLayer || (this.currentLayer.type || 'screen') !== 'image') return;
+                // A locked image wrote nothing: the commit only ends the
+                // attempt and lets the field snap back.
+                if (this.currentLayer.locked) {
+                    this._lockedEditSettled();
+                    return;
+                }
                 this.updateLayers([this.currentLayer]);
                 this.debouncedSaveState('Image Scale');
             };
@@ -512,7 +526,7 @@ class _Wiring {
                 const val = parseFloat(imageScaleInput.value);
                 if (!Number.isNaN(val)) {
                     imageScaleRange.value = String(Math.max(10, Math.min(500, val)));
-                    applyLiveScale(val);
+                    applyLiveScale(val, true);
                 }
             });
             imageScaleInput.addEventListener('change', () => {

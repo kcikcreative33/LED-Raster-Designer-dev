@@ -23,6 +23,7 @@ Object.assign(CanvasRenderer.prototype, {
         this._marqueeLive = false;
         this._pressPickedLayerId = null;
         this._lockedDragPending = null;
+        this._lockedDragSaid = null;
 
         // A plain left press anywhere drops the sweep selection - the same
         // click-away every selection obeys. A RIGHT press keeps it: the
@@ -104,13 +105,9 @@ Object.assign(CanvasRenderer.prototype, {
             if (_gr && _gr.viewMode === this.viewMode
                     && worldX >= _gr.x1 && worldX <= _gr.x2
                     && worldY >= _gr.y1 && worldY <= _gr.y2) {
-                // The wall's headline belongs to every member: a locked one
-                // holds it in place (said once the press becomes a drag).
-                const _lockedMembers = (_plan.members || []).filter(m => m && m.locked);
-                if (_lockedMembers.length) {
-                    this._armLockedDrag(_lockedMembers, e);
-                    return;
-                }
+                // The headline's place is stored on the GROUP record, a
+                // project-level setting, not on any member: a locked member
+                // does not hold it, so the drag goes ahead.
                 this.isDraggingGroupName = true;
                 this._dragGroupNameGroup = _plan.group;
                 this.dragScreenNameStartX = worldX;
@@ -599,8 +596,18 @@ Object.assign(CanvasRenderer.prototype, {
                         : []);
                     if (selected.length > 0) {
                         // Toggle direction: if any selected panel is currently
-                        // visible, hide all; otherwise show all.
-                        const anyVisible = selected.some(p => !p.hidden);
+                        // visible, hide all; otherwise show all. Read off the
+                        // UNLOCKED screens' cabinets - a locked screen's are
+                        // not going to change, so they do not pick the
+                        // direction (and setPanelsBlankBulk names a locked
+                        // screen only when it would have changed one). With
+                        // only locked cabinets selected they decide it.
+                        const split = typeof window.app._pixelMapPanelsByLayer === 'function'
+                            ? window.app._pixelMapPanelsByLayer(selected) : null;
+                        const unlocked = split
+                            ? split.groups.reduce((acc, g) => acc.concat(g.panels), []) : [];
+                        const basis = unlocked.length ? unlocked : selected;
+                        const anyVisible = basis.some(p => !p.hidden);
                         window.app.setPanelsBlankBulk(selected, anyVisible);
                         return;
                     }
@@ -669,6 +676,7 @@ Object.assign(CanvasRenderer.prototype, {
         if (this._lockedDragPending && this._pressPastClick(e)) {
             const locked = this._lockedDragPending.layers;
             this._lockedDragPending = null;
+            this._lockedDragSaid = new Set(locked.map(l => l.id));
             if (window.app && typeof window.app._showLockedError === 'function') {
                 window.app._showLockedError(locked);
             }
@@ -1043,6 +1051,18 @@ Object.assign(CanvasRenderer.prototype, {
         // `w < 0.5 && h < 0.5` turned that click into a marquee.
         const pressWasClick = !this._marqueeLive && !this._pressPastClick(e);
         this._marqueeLive = false;
+        // Not a click: the marquee ends where the button came up. Every move
+        // may have stayed inside the threshold (so none of them applied the
+        // rect) while the release itself lands past it - the rect then
+        // takes the release point, and the marquee branches below apply it.
+        if (!pressWasClick && e && typeof e.clientX === 'number'
+                && (this.isSelectingPanels || this.isSelectingPixelMapPanels || this.isSelectingLayers)) {
+            const r = this.canvas.getBoundingClientRect();
+            const upY = ((e.clientY - r.top) - this.panY) / this.zoom;
+            const upX = this._unmirrorWorldX(((e.clientX - r.left) - this.panX) / this.zoom, upY);
+            const rect = this.isSelectingLayers ? this.layerSelectionRect : this.selectionRect;
+            if (rect) { rect.x2 = upX; rect.y2 = upY; }
+        }
 
         // The armed Alt+press resolves here: a release inside the 4px
         // threshold is the takeover click deferred at mousedown; a release
@@ -1484,15 +1504,18 @@ Object.assign(CanvasRenderer.prototype, {
                     ? window.app.project.canvases.find(c => c && c.id === primaryCanvasId)
                     : null;
                 let crossCanvasHandled = false;
+                let crossRefused = false;
                 if (primaryCanvas) {
                     // Mouse cursor world coords at drop (already computed
                     // above for the offset delta).
                     const cursorWY = ((e.clientY - this.canvas.getBoundingClientRect().top) - this.panY) / this.zoom;
                     const cursorWX = this._unmirrorWorldX(((e.clientX - this.canvas.getBoundingClientRect().left) - this.panX) / this.zoom, cursorWY);
                     const targetCanvas = this._canvasAtPoint(cursorWX, cursorWY);
-                    // A locked primary stays put (the drag already named
-                    // it); only the unlocked screens cross.
-                    if (targetCanvas && targetCanvas.id !== primaryCanvasId && !primary.locked) {
+                    // A locked screen stays put (the drag already named it
+                    // once); only the unlocked screens cross - a locked
+                    // CURRENT screen included: it still says which canvas
+                    // the drag came from, but it is not in movedIds.
+                    if (targetCanvas && targetCanvas.id !== primaryCanvasId) {
                         const mode = (e.metaKey || e.altKey) ? 'duplicate' : 'move';
                         // v0.8.6.3: in Show Look, include ALL unlocked
                         // selected layers in the multi-canvas drop,
@@ -1507,7 +1530,7 @@ Object.assign(CanvasRenderer.prototype, {
                         const peerCanvasId = (l) => isShowMode
                             ? (l.show_canvas_id || l.canvas_id)
                             : l.canvas_id;
-                        const movedIds = [primary.id];
+                        const movedIds = primary.locked ? [] : [primary.id];
                         if (window.app.selectedLayerIds && window.app.selectedLayerIds.size > 1) {
                             window.app.selectedLayerIds.forEach(id => {
                                 if (id === primary.id) return;
@@ -1521,7 +1544,42 @@ Object.assign(CanvasRenderer.prototype, {
                                 }
                             });
                         }
-                        if (isShowMode) {
+                        // A member of a wall with a locked member does not
+                        // leave it for another processor canvas
+                        // (_canvasMovePlan): it goes back where it started,
+                        // and the locked member is named - unless this drag
+                        // has named it already (one error per gesture).
+                        if (!isShowMode && mode === 'move' && movedIds.length
+                                && typeof window.app._canvasMovePlan === 'function') {
+                            const plan = window.app._canvasMovePlan(movedIds, targetCanvas.id);
+                            if (plan.ids.length !== movedIds.length) {
+                                const keep = new Set(plan.ids);
+                                movedIds.filter(id => !keep.has(id)).forEach(id => {
+                                    const item = movable.find(it => it.id === id);
+                                    const l = window.app.project.layers.find(x => x.id === id);
+                                    if (!item || !l) return;
+                                    l.offset_x = item.startX;
+                                    l.offset_y = item.startY;
+                                    const startMap = new Map((item.panelStarts || []).map(p => [p.id, p]));
+                                    (l.panels || []).forEach(panel => {
+                                        const start = startMap.get(panel.id);
+                                        if (!start) return;
+                                        panel.x = start.x;
+                                        panel.y = start.y;
+                                    });
+                                });
+                                movedIds.splice(0, movedIds.length, ...plan.ids);
+                                crossRefused = true;
+                            }
+                            const said = this._lockedDragSaid || new Set();
+                            if (plan.locked.some(l => !said.has(l.id))) {
+                                window.app._showLockedError(plan.locked);
+                            }
+                        }
+                        if (movedIds.length === 0) {
+                            // Nothing unlocked crosses: the within-canvas
+                            // save below records the drag as it stands.
+                        } else if (isShowMode) {
                             // Show Look drag: persist the freshly-dragged
                             // showOffsetX/Y first (no saveState on this PUT
                             //, the moveLayerShowCanvas .then() will snapshot
@@ -1571,8 +1629,8 @@ Object.assign(CanvasRenderer.prototype, {
                             window.app.updateLayers(toUpdate, false);
                             if (movedIds.length > 1 && typeof window.app.moveLayersShowCanvas === 'function') {
                                 window.app.moveLayersShowCanvas(movedIds, targetCanvas.id);
-                            } else if (typeof window.app.moveLayerShowCanvas === 'function') {
-                                window.app.moveLayerShowCanvas(primary.id, targetCanvas.id);
+                            } else if (movedIds.length === 1 && typeof window.app.moveLayerShowCanvas === 'function') {
+                                window.app.moveLayerShowCanvas(movedIds[0], targetCanvas.id);
                             }
                             crossCanvasHandled = true;
                         } else {
@@ -1582,11 +1640,28 @@ Object.assign(CanvasRenderer.prototype, {
                             if (movedIds.length > 1 && typeof window.app.moveLayersCrossCanvas === 'function') {
                                 window.app.moveLayersCrossCanvas(movedIds, targetCanvas.id, mode);
                                 crossCanvasHandled = true;
-                            } else if (typeof window.app.moveLayerCrossCanvas === 'function') {
-                                window.app.moveLayerCrossCanvas(primary.id, targetCanvas.id, mode);
+                            } else if (movedIds.length === 1 && typeof window.app.moveLayerCrossCanvas === 'function') {
+                                window.app.moveLayerCrossCanvas(movedIds[0], targetCanvas.id, mode);
                                 crossCanvasHandled = true;
                             }
                         }
+                    }
+                }
+
+                // A refused crossing put its screens back: when nothing is
+                // left moved, there is nothing to save and no undo step.
+                if (!crossCanvasHandled && crossRefused) {
+                    const stillMoved = movable.some(item => {
+                        const l = window.app.project.layers.find(x => x.id === item.id);
+                        if (!l || l.locked) return false;
+                        return showMode
+                            ? (l.showOffsetX !== item.startX || l.showOffsetY !== item.startY)
+                            : (l.offset_x !== item.startX || l.offset_y !== item.startY);
+                    });
+                    if (!stillMoved) {
+                        crossCanvasHandled = true;
+                        if (window.app.loadLayerToInputs) window.app.loadLayerToInputs();
+                        this.render();
                     }
                 }
 

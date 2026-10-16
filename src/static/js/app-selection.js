@@ -79,7 +79,9 @@ class _Selection {
         if (snapshot && this._propagateChangedSharedFields) {
             this._propagateChangedSharedFields(layers, snapshot, { lockedOut: refused });
         }
-        if (refused.length && this._reportLockedEdit) this._reportLockedEdit(refused);
+        // Called with nothing refused too: a commit that reaches the funnel
+        // ends the attempt and lets a waiting snap-back repaint run.
+        if (this._reportLockedEdit) this._reportLockedEdit(refused);
     }
 
     setSelectedLayersByIds(ids, primaryId = null) {

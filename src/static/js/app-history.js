@@ -327,6 +327,9 @@ class _History {
         if (this.selectionAnchorLayerId != null && !byId.has(this.selectionAnchorLayerId)) {
             this.selectionAnchorLayerId = this.currentLayer ? this.currentLayer.id : null;
         }
+        // The restored project may have dropped or hidden screens the
+        // cabinet selection named.
+        if (typeof this._screenSelectionChanged === 'function') this._screenSelectionChanged();
     }
 
     // Undo/redo's half of the power feature's refresh discipline. Every write
@@ -454,6 +457,7 @@ class _History {
                             this.lastSelectedLayerId = null;
                             this.selectionAnchorLayerId = null;
                         }
+                        if (typeof this._screenSelectionChanged === 'function') this._screenSelectionChanged();
 
                         // v0.8.7.6: refresh the layer-property inputs from
                         // the newly-promoted currentLayer. Without this the
