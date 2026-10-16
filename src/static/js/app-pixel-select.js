@@ -32,8 +32,31 @@ class _PixelSelect {
         if (!layer.customPortIndex) layer.customPortIndex = 1;
     }
 
+    // The screens a custom toggle acts on: the selected screen layers (the
+    // group's peers follow through applyToSelectedLayers). An image or text
+    // layer has no runs to draw, so it never decides the answer.
+    _customModeTargets() {
+        return (this.getSelectedLayers() || [])
+            .filter(l => l && (l.type || 'screen') === 'screen');
+    }
+
+    // IDEMPOTENT, not time-guarded (2026-10-16). The model follows the
+    // state the caller asks for - the checkbox's own `checked` - and a call
+    // that would change nothing is a no-op that only re-syncs the controls.
+    // That covers both ways the old 600 ms drop went wrong: a platform that
+    // fires `change` twice for one click hands the same state twice, so the
+    // second is a no-op; and a real second click hands the opposite state,
+    // which is applied instead of dropped (dropping it left the box showing
+    // the opposite of the model).
     toggleCustomFlowMode(enabled) {
         if (!this.currentLayer) return;
+        enabled = !!enabled;
+        const targets = this._customModeTargets();
+        if (targets.length === 0
+                || targets.every(l => this.isCustomFlow(l) === enabled)) {
+            this.syncCustomModeControls();
+            return;
+        }
         this.applyToSelectedLayers(layer => {
             if (enabled) {
                 if (layer.flowPattern && layer.flowPattern !== 'custom') {
@@ -55,11 +78,35 @@ class _PixelSelect {
         // _portsRequired is fresh when preservedProps captures it.
         this.updatePortCapacityDisplay();
         this.updateLayers(this.getSelectedLayers());
-        this.updateCustomFlowUI();
+        this.syncCustomModeControls();
         window.canvasRenderer.render();
     }
 
+    // Both custom checkboxes and both custom panels, from the shown screen.
+    // Called wherever a pattern or custom state can change - the toggles,
+    // the pattern tiles, the right-click item - so a box can never show a
+    // mode the screen is not in. updateCustomFlowUI / updateCustomPowerUI
+    // each set their own box, so every older caller of those resyncs too.
+    syncCustomModeControls() {
+        this.updateCustomFlowUI();
+        this.updateCustomPowerUI();
+    }
+
+    // The checkbox face of one side: ticked exactly when the shown screen is
+    // in whole-screen custom mode (the pattern reads 'custom'). An open
+    // per-run override is not custom mode, so it leaves the box unticked.
+    _syncCustomModeBox(kind) {
+        const box = document.getElementById(kind === 'power'
+            ? 'power-custom-toggle' : 'custom-flow-toggle');
+        if (!box) return;
+        const layer = this.currentLayer;
+        const on = !!layer && (layer.type || 'screen') === 'screen'
+            && (kind === 'power' ? this.isCustomPower(layer) : this.isCustomFlow(layer));
+        if (box.checked !== on) box.checked = on;
+    }
+
     updateCustomFlowUI() {
+        this._syncCustomModeBox('data');
         if (this.currentLayer && (this.currentLayer.type || 'screen') === 'image') {
             const container = document.getElementById('custom-flow-controls');
             if (container) container.style.display = 'none';
@@ -112,8 +159,17 @@ class _PixelSelect {
     // dormant with the drawn paths (the id-space doctrine) and come back
     // with custom mode, where they are allowed. Only a share the auto
     // screen actually reads can be past the amps here.
+    // Idempotent like its data twin above: a call that changes nothing only
+    // re-syncs the controls.
     toggleCustomPowerMode(enabled) {
         if (!this.currentLayer) return;
+        enabled = !!enabled;
+        const targets = this._customModeTargets();
+        if (targets.length === 0
+                || targets.every(l => this.isCustomPower(l) === enabled)) {
+            this.syncCustomModeControls();
+            return;
+        }
         const undone = [];
         this.applyToSelectedLayers(layer => {
             if (enabled) {
@@ -141,7 +197,7 @@ class _PixelSelect {
         this.saveClientSideProperties();
         this.updateLayers(this.getSelectedLayers());
         this.updatePowerCapacityDisplay();
-        this.updateCustomPowerUI();
+        this.syncCustomModeControls();
         if (undone.length) {
             this._circuitTailCache = null;
             this._rebuildAfterGesture(() => {
@@ -167,6 +223,7 @@ class _PixelSelect {
     }
 
     updateCustomPowerUI() {
+        this._syncCustomModeBox('power');
         if (this.currentLayer && (this.currentLayer.type || 'screen') === 'image') {
             const container = document.getElementById('power-custom-controls');
             if (container) container.style.display = 'none';

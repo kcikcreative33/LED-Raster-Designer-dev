@@ -79,18 +79,97 @@ class _CustomRuns {
     // One run's fill: the load drawn so far, the cap it is drawn against, and
     // whether another whole cabinet still fits. `used` is in whole-cabinet
     // equivalents so the badge can read "9/14".
+    //
+    // A RUN OVER TWO KINDS OF CABINET (2026-10-16, the owner: "Pixels" for
+    // data, "watts for mixed" for power). The cap is pixels (data) or watts
+    // (power) either way, but a cabinet COUNT only means something for one
+    // kind of cabinet: a 192x384 and a 192x192 cabinet are two different
+    // fractions of a port, a 200 W and a 115 W cabinet two different
+    // fractions of a circuit. So the count is taken in the cabinets the run
+    // is actually made of (_customRunSizing): one kind reads "9/17" exactly
+    // as before - in that kind's cabinets, which is the owner's own for
+    // every run that never leaves its screen - and a run, or the selection
+    // being drawn onto it, that covers more than one reads load against
+    // cap, "622,592 / 659,722 px" or "1,230 / 4,160 W", the very figures
+    // the cut weighs. `mixed` says which; `text` is the "used/count" or the
+    // load pair.
     customRunFill(owner, kind, num) {
+        const isPower = kind === 'power';
         const cap = this.customRunCapacity(owner, kind);
-        const pathsKey = kind === 'power' ? 'powerCustomPaths' : 'customPortPaths';
+        const pathsKey = isPower ? 'powerCustomPaths' : 'customPortPaths';
         const path = (owner && owner[pathsKey] && owner[pathsKey][num]) || [];
-        const load = this.getResolvedPathPanels(owner, path)
+        const hits = this.getResolvedPathPanels(owner, path);
+        const load = hits
             .reduce((s, hit) => s + this.customHitLoad(kind, hit.layer, hit.panel), 0);
-        const used = cap.unit > 0 ? load / cap.unit : 0;
         const eps = CUSTOM_RUN_EPS;
-        return Object.assign({}, cap, {
+        let sized = Object.assign({ mixed: false }, cap);
+        if (cap.known) {
+            const layers = hits.map(h => h.layer);
+            // The pending marquee is drawn onto this run next, so it counts
+            // toward what the readout has to describe.
+            const sel = isPower ? this.powerCustomSelection : this.customSelection;
+            if (owner && owner === this.currentLayer && sel && sel.size > 0) {
+                this._selectedPathPanels(owner, sel).forEach(p => layers.push(p.layer));
+            }
+            sized = Object.assign({}, cap, this._customRunSizing(owner, kind, layers));
+        }
+        const used = sized.unit > 0 ? load / sized.unit : 0;
+        const fill = Object.assign({}, sized, {
             load, used,
-            full: cap.known && (load + cap.unit > cap.limit + eps),
+            full: cap.known && (load + sized.unit > cap.limit + eps),
         });
+        fill.text = fill.mixed
+            ? this._formatRunLoadPair(kind, load, cap.limit)
+            : `${this._formatRunUsed(used)}/${sized.count}`;
+        if (fill.mixed) fill.describe = fill.text;
+        return fill;
+    }
+
+    // "622,592 / 659,722 px", "1,230 / 4,160 W" - load against cap in the
+    // unit the cut weighs, whole numbers with thousands separators.
+    _formatRunLoadPair(kind, load, limit) {
+        const unit = kind === 'power' ? 'W' : 'px';
+        return `${Math.round(load).toLocaleString()} / ${Math.round(limit).toLocaleString()} ${unit}`;
+    }
+
+    // The kinds of cabinet a run (or a selection) is made of, and the count
+    // its readout is taken in. `layers` are the members its cabinets sit
+    // on, repeats welcome. A kind is the cabinet SIZE for data (its full
+    // pixel area is what a port weighs) and the member's panelWatts for
+    // power (what a circuit weighs).
+    //   one kind     unit/count/describe in THAT kind's cabinets (the
+    //                owner's own when the run never leaves its screen)
+    //   two or more  mixed: no honest count. The unit kept is the smallest
+    //                cabinet, so "full" still means not one more whole
+    //                cabinet of the run's own kinds fits.
+    //   none         the owner's figures, as before.
+    _customRunSizing(owner, kind, layers) {
+        const cap = this.customRunCapacity(owner, kind);
+        const out = { mixed: false, unit: cap.unit, count: cap.count, describe: cap.describe };
+        if (!cap.known) return out;
+        const isPower = kind === 'power';
+        const units = new Map();
+        (layers || []).forEach(l => {
+            if (!l) return;
+            const unit = isPower ? (parseFloat(l.panelWatts) || 0) : this.getFullPanelPixels(l);
+            const key = isPower
+                ? `${unit}`
+                : `${Number(l.cabinet_width) || 0}x${Number(l.cabinet_height) || 0}`;
+            if (!units.has(key)) units.set(key, unit);
+        });
+        const found = [...units.values()].filter(u => u > 0);
+        if (found.length === 0) return out;
+        if (found.length > 1) {
+            out.mixed = true;
+            out.unit = Math.min(...found);
+            out.count = Math.floor(cap.limit / out.unit);
+            out.describe = `${Math.round(cap.limit).toLocaleString()} ${isPower ? 'W a circuit' : 'px a port'}`;
+            return out;
+        }
+        out.unit = found[0];
+        out.count = Math.floor(cap.limit / out.unit);
+        out.describe = `${out.count} panels at ${cap.at}`;
+        return out;
     }
 
     // Does this cabinet still fit on the run?
@@ -118,7 +197,7 @@ class _CustomRuns {
     // NOT advance on its own: a click that silently moved the cursor to the
     // next circuit would put the cabinet somewhere the user did not look.
     _customRunFullMessage(owner, kind, num) {
-        const cap = this.customRunCapacity(owner, kind);
+        const cap = this.customRunFill(owner, kind, num);
         const noun = kind === 'power' ? 'Circuit' : 'Port';
         return `${noun} ${this._customRunLabel(owner, kind, num)} is full — `
             + `${cap.describe}. Step to the next ${noun.toLowerCase()} (Tab / ]).`;
@@ -154,8 +233,9 @@ class _CustomRuns {
             el.style.color = '';
             return;
         }
-        el.textContent = `${head}: ${this._formatRunUsed(fill.used)}/${fill.count} panels`
-            + `${fill.full ? ' · full' : ''} (${fill.at})`;
+        el.textContent = fill.mixed
+            ? `${head}: ${fill.text}${fill.full ? ' · full' : ''}`
+            : `${head}: ${fill.text} panels${fill.full ? ' · full' : ''} (${fill.at})`;
         el.style.color = fill.full ? '#ffcc00' : '';
     }
 
@@ -556,6 +636,58 @@ class _CustomRuns {
         this._applyPatternFill('data', pattern);
     }
 
+    // A pattern tile pressed while the shown screen is drawn by hand. Returns
+    // true when the tile is spent here and must NOT fall through to the
+    // automatic pattern write - which is always the case in custom mode: a
+    // tile never takes a screen out of custom mode (the owner's ruling,
+    // 2026-10-16). Before this, a tile with no cabinets selected fell
+    // through, wrote the pattern to the selection and its group, and the
+    // screen left custom mode while the box stayed ticked.
+    //
+    //   cabinets selected        the selection is filled, as it always was
+    //   no cabinets, a screen    every cabinet of the selected screens the
+    //   or group selected        owner's runs can reach is filled, exactly
+    //                            as if they had been marquee-selected and
+    //                            the tile pressed ("if a group is selected,
+    //                            then it should [fill]")
+    //   nothing selected         nothing happens ("if the group is not
+    //                            selected, then it should do nothing")
+    //
+    // An overridden run open for redrawing on an AUTOMATIC screen keeps its
+    // old split: with cabinets selected the tile fills them, with none it
+    // falls through and sets the screen's automatic pattern, because that
+    // screen is not in custom mode.
+    applyPatternTileInCustom(kind, pattern) {
+        const isPower = kind === 'power';
+        const owner = this.currentLayer;
+        if (!owner || (owner.type || 'screen') !== 'screen') return false;
+        const editing = isPower ? this.isCustomPowerEditing(owner) : this.isCustomFlowEditing(owner);
+        if (!editing) return false;
+        const selection = isPower ? this.powerCustomSelection : this.customSelection;
+        if (selection && selection.size > 0) {
+            this._applyPatternFill(kind, pattern);
+            return true;
+        }
+        const custom = isPower ? this.isCustomPower(owner) : this.isCustomFlow(owner);
+        if (!custom) return false;
+        // The LAYER selection as stored - getSelectedLayers falls back to
+        // currentLayer when it is empty, and an empty one means "nothing
+        // selected" here.
+        const ids = this.selectedLayerIds;
+        if (!selection || !ids || ids.size === 0) return true;
+        const keys = [];
+        this.getSelectionScopeLayers(owner).forEach(member => {
+            if (!member || !ids.has(member.id) || !Array.isArray(member.panels)) return;
+            member.panels.forEach(panel => {
+                if (!panel.hidden) keys.push(this.getScopedPanelKey(member.id, panel));
+            });
+        });
+        if (keys.length === 0) return true;
+        keys.forEach(k => selection.add(k));
+        this._applyPatternFill(kind, pattern);
+        return true;
+    }
+
     applyPowerPatternToSelection(pattern) {
         this._applyPatternFill('power', pattern);
     }
@@ -671,6 +803,14 @@ class _CustomRuns {
         this.updateLayers(this._pathPersistLayers(owner));
         if (chunks.length > 1) {
             const cap = this.customRunCapacity(owner, kind);
+            // Counted in the cabinets the selection is made of; a selection
+            // of two cabinet sizes (data) or wattages (power) has no honest
+            // count and names the cap the cut used instead, in pixels or
+            // watts (see customRunFill).
+            const sizing = this._customRunSizing(owner, kind, ordered.map(p => p.layer));
+            const each = sizing.mixed
+                ? `up to ${Math.round(cap.limit).toLocaleString()} ${isPower ? 'W' : 'px'} each`
+                : `up to ${sizing.count} panels each at ${cap.at}`;
             const lineNoun = String(pattern).endsWith('-v') ? 'column' : 'row';
             // The toast names the rule it used - the screen's mode decides
             // it (see _chunkPicksByCapacity).
@@ -678,7 +818,7 @@ class _CustomRuns {
                 ? 'packed full' : `whole ${lineNoun}s`;
             let msg = `Filled ${noun}s ${this._customRunLabel(owner, kind, chunks[0].num)} to `
                 + `${this._customRunLabel(owner, kind, lastNum)} from the selection`
-                + ` (${rule}, up to ${cap.count} panels each at ${cap.at})`;
+                + ` (${rule}, ${each})`;
             if (replaced.length > 0) {
                 msg += `; replaced ${noun}${replaced.length === 1 ? '' : 's'} `
                     + replaced.map(n => this._customRunLabel(owner, kind, n)).join(', ');

@@ -982,13 +982,13 @@ class _Wiring {
         document.querySelectorAll('.flow-pattern-btn:not(.power-flow-pattern-btn)').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const pattern = btn.getAttribute('data-pattern');
-                // Editing predicate: with an overridden port open and a
-                // selection made, the tile applies the pattern to the
-                // selection exactly as it does in whole-screen custom -
-                // falling through here would silently change the SCREEN's
-                // flow pattern mid-edit.
-                if (this.currentLayer && this.isCustomFlowEditing(this.currentLayer) && this.customSelection.size > 0) {
-                    this.applyPatternToSelection(pattern);
+                // Custom mode, or an overridden port open with a selection
+                // made: the tile fills runs and never touches the screen's
+                // pattern (applyPatternTileInCustom says how). Falling
+                // through here used to set flowPattern on the selection and
+                // its group - the screen silently left custom mode while
+                // the box stayed ticked (2026-10-16).
+                if (this.applyPatternTileInCustom('data', pattern)) {
                     this._dropPatternTileFocus(btn, e);
                     return;
                 }
@@ -1009,6 +1009,7 @@ class _Wiring {
                     this.updatePortCapacityDisplay();  // Update port calculation with new pattern
                     this.updatePortLabelEditor();
                     this.updateLayers(this.getSelectedLayers(), true, 'Change Data Flow Pattern');
+                    this.syncCustomModeControls();
                     window.canvasRenderer.render();
                 }
             });
@@ -1018,9 +1019,8 @@ class _Wiring {
         document.querySelectorAll('.power-flow-pattern-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const pattern = btn.getAttribute('data-pattern');
-                // Editing predicate - same reason as the data tiles above.
-                if (this.currentLayer && this.isCustomPowerEditing(this.currentLayer) && this.powerCustomSelection.size > 0) {
-                    this.applyPowerPatternToSelection(pattern);
+                // Same rule as the data tiles above.
+                if (this.applyPatternTileInCustom('power', pattern)) {
                     this._dropPatternTileFocus(btn, e);
                     return;
                 }
@@ -1032,7 +1032,7 @@ class _Wiring {
                     });
                     this.saveClientSideProperties();
                     this.updatePowerCapacityDisplay();
-                    this.updateCustomPowerUI();
+                    this.syncCustomModeControls();
                     this.updateLayers(this.getSelectedLayers(), true, 'Change Power Flow Pattern');
                     window.canvasRenderer.render();
                 }
@@ -1159,20 +1159,18 @@ class _Wiring {
 
         if (customModeToggle) {
             customModeToggle.addEventListener('change', () => {
-                if (!this.currentLayer) return;
-                // v0.8.2 Re-entrancy guard: when the change event re-fires
-                // mid-flight (browser quirk on some platforms, observed on
-                // mac WKWebView clicking the toggle once produced two change
-                // events 367ms apart), the second invocation immediately
-                // flips the state back so the user's single click ended up
-                // disabling Custom mode. Drop the second event entirely.
-                if (this._customFlowToggleInFlight) return;
-                this._customFlowToggleInFlight = true;
-                try {
-                    this.toggleCustomFlowMode(customModeToggle.checked);
-                } finally {
-                    setTimeout(() => { this._customFlowToggleInFlight = false; }, 600);
+                if (!this.currentLayer) {
+                    this.syncCustomModeControls();
+                    return;
                 }
+                // The model follows the box's ACTUAL state, and
+                // toggleCustomFlowMode is idempotent. A platform that fires
+                // two change events for one click (seen on mac WKWebView,
+                // v0.8.2) hands the same state twice, so the second is a
+                // no-op. The 600 ms drop that used to cover it also dropped
+                // a real second click, leaving the box showing the opposite
+                // of the model (2026-10-16).
+                this.toggleCustomFlowMode(customModeToggle.checked);
             });
         }
         // Routed through stepCustomPort so there is ONE stepping rule shared
@@ -1776,18 +1774,12 @@ class _Wiring {
 
         if (powerCustomToggle) {
             powerCustomToggle.addEventListener('change', () => {
-                if (!this.currentLayer) return;
-                // v0.8.2: re-entrancy guard, single click was producing two
-                // change events 367ms apart, with the second flipping the
-                // state back to the opposite of what the user wanted. See
-                // matching guard in customModeToggle handler above.
-                if (this._customPowerToggleInFlight) return;
-                this._customPowerToggleInFlight = true;
-                try {
-                    this.toggleCustomPowerMode(powerCustomToggle.checked);
-                } finally {
-                    setTimeout(() => { this._customPowerToggleInFlight = false; }, 600);
+                if (!this.currentLayer) {
+                    this.syncCustomModeControls();
+                    return;
                 }
+                // Idempotent, no time guard - see the data toggle above.
+                this.toggleCustomPowerMode(powerCustomToggle.checked);
             });
         }
         // Routed through stepCustomPort - see the matching comment on the

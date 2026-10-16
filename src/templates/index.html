@@ -136,6 +136,13 @@
                  right-click lands on a screen on the canvas. -->
             <div class="menu-divider screen-export-only"></div>
             <div class="menu-option screen-export-only" data-action="export-screen-binder" data-label="Export this screen…"></div>
+            <!-- Custom mode for the tab on screen (2026-10-16, "right click
+                 the screen/group to be able to enable custom mode"). Armed
+                 by _prepareCustomModeMenu (app-context-menu.js) on a screen
+                 in Data Flow or Power only. No data-label: the text carries
+                 the current state and is written at open time. -->
+            <div class="menu-divider custom-mode-only" style="display: none;"></div>
+            <div class="menu-option custom-mode-only" data-action="custom-mode-toggle" style="display: none;"></div>
             <div class="menu-divider movable-view-only"></div>
             <div class="menu-option movable-view-only" data-action="center-x" data-label="Center on Canvas X"></div>
             <div class="menu-option movable-view-only" data-action="center-y" data-label="Center on Canvas Y"></div>
@@ -801,6 +808,10 @@
                                 <input type="checkbox" id="route-group-as-one" data-lrd-field="route-group-as-one" checked>
                                 <label for="route-group-as-one" id="route-group-as-one-label">Route group as one screen</label>
                             </div>
+                            <!-- Why the switch is greyed, said plainly when the
+                                 group's cabinet sizes differ (filled by
+                                 updateGroupRouteControl). -->
+                            <p id="route-group-as-one-note" style="display: none; font-size: 11px; color: #888; margin: 0 0 8px 0;"></p>
 
                             <!-- v0.11.0: per-layer Low Latency. What it costs
                                  depends on the processor family, so the note

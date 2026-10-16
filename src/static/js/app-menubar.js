@@ -317,6 +317,9 @@ class _MenuBar {
             case 'remove-from-group':
                 this.removeSelectedFromGroup();
                 break;
+            case 'custom-mode-toggle':
+                this.runCustomModeMenu();
+                break;
             case 'center-x':
                 this.centerLayersOnCanvas('x');
                 break;
