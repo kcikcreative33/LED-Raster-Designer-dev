@@ -14,6 +14,21 @@
  *   h - short heading, d - one or two plain sentences. No markup, no emoji.
  */
 window.WHATS_NEW_CONTENT = {
+    '1.5': {
+        title: 'Cable lengths in meters, and custom mode that stays on',
+        items: [
+            { h: 'Feet or meters',
+              d: 'Preferences > Pull sheet & cables sets the unit new shows start in, and the Export dialog sets it for the show in front of you. Every cable length, tag, pull sheet row and binder table follows the show.' },
+            { h: 'Metric long jumpers',
+              d: 'A long jumper in a meters show is measured along the panels plus 0.3 m and rounded up to 1, 2, 3, 5 or 10 m. Both stock lists can be edited in Preferences.' },
+            { h: 'Custom from a right-click',
+              d: 'Right-click a screen or a group for Custom runs on the Data tab, or Custom circuits on the Power tab.' },
+            { h: 'Custom mode stays on',
+              d: 'A pattern button never takes a screen out of custom mode. With a screen or group selected and no cabinets, it fills the whole screen or group as custom runs.' },
+            { h: 'Mixed cabinet sizes, read plainly',
+              d: 'A custom run over two cabinet sizes reads its load in pixels, and a circuit over cabinets drawing different watts reads in watts. A group with different cabinet sizes says why its runs stay per screen.' }
+        ]
+    },
     '1.4': {
         title: 'Fiber by the strand, a backup processor in one switch, and panels you can move',
         items: [
