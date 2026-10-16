@@ -935,11 +935,12 @@ class _ScreenInfo {
         // v0.11.0 audit fix: a live cabinet selection must not survive a
         // change of screen.
         //
-        // Every one of the three Sets is addressed against the layer that was
-        // current when it was filled: customSelection / powerCustomSelection
+        // Every one of the three Sets is addressed against the selection that
+        // was live when it was filled: customSelection / powerCustomSelection
         // hold `${layerId}:${row},${col}` keys that only mean anything inside
-        // the OWNER's path scope, and pixelMapSelection holds bare
-        // `${row},${col}` keys that silently re-address the new screen's grid.
+        // the OWNER's path scope, and pixelMapSelection (scoped the same way
+        // since 1.5) names cabinets on the screens that were selected - and
+        // selectLayer narrows the selection to this one screen.
         // Left alone, a marquee drawn as member A stayed live after clicking
         // member B in the layers list and Apply Pattern then filled B's port 1
         // with A's 18 cabinets - with an identical highlight either side of the

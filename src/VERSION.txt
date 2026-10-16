@@ -49,6 +49,16 @@ measured again: along the panels plus 0.3 m of slack, rounded up to 1, 2,
 Preferences, and Preferences keeps its own default lengths for each
 unit.
 
+CABINETS ACROSS SCREENS
+
+On the Pixel Map a drag over several selected screens, grouped or not,
+selects cabinets on every screen it touches, and Set Blank, Restore and
+the half-tile buttons change all of them as one undo step. A screen group
+acts as one screen: a click selects a cabinet on any of its screens and
+never narrows the selection to one of them. In custom mode on the Data
+and Power tabs the same drag selects across a group, whichever screen it
+starts on.
+
 CUSTOM RUNS ACROSS A GROUP
 
 Right-click a screen or a group on the Data tab for Custom runs: On or

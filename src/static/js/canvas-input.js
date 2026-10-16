@@ -174,13 +174,25 @@ Object.assign(CanvasRenderer.prototype, {
                 const layer = window.app && window.app.project
                     && window.app.project.layers.find(l => l.id === hitPanel.layerId);
                 if (layer) {
-                    if (layer.canvas_id
+                    // A cabinet gesture on a screen the current gesture can
+                    // already reach - a group peer while a custom path is
+                    // drawn, another selected screen on Pixel Map - leaves
+                    // the canvas and the screen selection alone. Activating
+                    // the peer's processor canvas here culled the selection
+                    // to that canvas (setActiveCanvas without
+                    // preserveSelection): a group member on another
+                    // processor canvas lost the owner mid-draw, and a
+                    // selected screen on another canvas dropped the rest of
+                    // the selection before its cabinets could be picked.
+                    const reachGesture = this._isCustomPathGesture(layer)
+                        || this._isPixelMapCabinetGesture(layer);
+                    if (!reachGesture && layer.canvas_id
                         && window.app.project.active_canvas_id !== layer.canvas_id
                         && typeof window.app.setActiveCanvas === 'function') {
                         window.app.setActiveCanvas(layer.canvas_id);
                     }
                     if ((!window.app.currentLayer || window.app.currentLayer.id !== layer.id)
-                        && !this._isCustomPathGesture(layer)
+                        && !reachGesture
                         && typeof window.app.selectLayer === 'function') {
                         // selectLayer takes the layer OBJECT, not the id
                         // (the !layer.id guard rejects raw integers).
@@ -280,33 +292,47 @@ Object.assign(CanvasRenderer.prototype, {
             }
         }
 
-        // Pixel Map: drag-select panels of the current layer for bulk
-        // Set-Blank / Set-Half-tile actions. Falls through to layer selection
-        // when the drag starts in empty space (so layer multi-select still works).
+        // Pixel Map: drag-select panels for bulk Set-Blank / Set-Half-tile
+        // actions. Falls through to layer selection when the drag starts in
+        // empty space (so layer multi-select still works).
+        //
+        // 1.5: the drag may start on ANY screen in the Pixel Map scope - the
+        // current one or another selected screen (the owner's ruling,
+        // 2026-10-16) - and the marquee then reaches all of them. It used to
+        // require the current screen, so the second screen of a selection
+        // could never be dragged from.
         if (e.button === 0 && !this.spacePressed && !e.shiftKey && !e.altKey
                 && this.viewMode === 'pixel-map'
                 && window.app && window.app.currentLayer) {
             const startPanel = this.getPanelAt(worldX, worldY);
+            const layers = (window.app.project && window.app.project.layers) || [];
+            const startLayer = startPanel
+                ? (layers.find(l => l.id === startPanel.layerId) || null) : null;
             // Allow drag-start on hidden ("blank") panels too, selecting them
             // is the only way to bulk-restore via the sidebar buttons.
-            const onCurrentLayer = startPanel
-                && startPanel.layerId === window.app.currentLayer.id;
+            const inScope = !!startLayer
+                && (startLayer.id === window.app.currentLayer.id
+                    || (typeof window.app.isPixelMapScopeLayer === 'function'
+                        && window.app.isPixelMapScopeLayer(startLayer)));
             // Don't capture the click for panel-select if there's a HIGHER-Z
             // layer (image / text / another screen later in project.layers)
-            // sitting on top of the current layer at this point, the user is
+            // sitting on top of the pressed screen at this point, the user is
             // clicking the visible top layer, not the panel buried beneath it.
             // Bug: with a text layer over a selected screen, clicks on text
             // were grabbed by the screen's panel-select instead of selecting
             // the text layer.
             const topLayer = this.getLayerAt(worldX, worldY);
-            const topIsHigher = topLayer && window.app.project
-                && window.app.project.layers.indexOf(topLayer)
-                    > window.app.project.layers.indexOf(window.app.currentLayer);
-            if (onCurrentLayer && !topIsHigher) {
+            const topIsHigher = !!(topLayer && startLayer
+                && layers.indexOf(topLayer) > layers.indexOf(startLayer));
+            if (inScope && !topIsHigher) {
                 this.isSelectingPixelMapPanels = true;
                 this.selectionRect = { x1: worldX, y1: worldY, x2: worldX, y2: worldY };
+                // Was a cabinet selection already open when this press came
+                // down? Decides what a CLICK (no drag) on another selected
+                // screen means at mouse-up - see the click branch there.
+                this._pixelMapPressHadCabinets = window.app.getPixelMapSelectedPanels().length > 0;
                 if (typeof sendClientLog === 'function') {
-                    sendClientLog('panel_selection_start', { viewMode: this.viewMode, layerId: window.app.currentLayer.id });
+                    sendClientLog('panel_selection_start', { viewMode: this.viewMode, layerId: startLayer.id });
                 }
                 return;
             }
@@ -468,8 +494,14 @@ Object.assign(CanvasRenderer.prototype, {
             // instead of just the clicked panel.
             if (this.viewMode === 'pixel-map') {
                 const clickedPanel = this.getPanelAt(worldX, worldY);
-                if (clickedPanel && window.app && window.app.currentLayer
-                        && clickedPanel.layerId === window.app.currentLayer.id
+                const clickedLayer = (clickedPanel && window.app && window.app.project)
+                    ? (window.app.project.layers.find(l => l.id === clickedPanel.layerId) || null)
+                    : null;
+                // Any screen in the Pixel Map scope (1.5), not only the
+                // current one; the verb itself refuses a locked screen.
+                if (clickedLayer && window.app.currentLayer
+                        && (clickedLayer.id === window.app.currentLayer.id
+                            || window.app.isPixelMapScopeLayer(clickedLayer))
                         && !clickedPanel.panel.hidden) {
                     e.preventDefault();
                     const p = clickedPanel.panel;
@@ -533,6 +565,17 @@ Object.assign(CanvasRenderer.prototype, {
                         // visible, hide all; otherwise show all.
                         const anyVisible = selected.some(p => !p.hidden);
                         window.app.setPanelsBlankBulk(selected, anyVisible);
+                        return;
+                    }
+                    // A locked screen stays unchanged until it is unlocked
+                    // (the owner's standing rule): no paint, and the error
+                    // says why.
+                    const paintLayer = window.app.project
+                        && window.app.project.layers.find(l => l.id === clickedPanel.layerId);
+                    if (paintLayer && paintLayer.locked) {
+                        if (typeof window.app._showLockedError === 'function') {
+                            window.app._showLockedError([paintLayer]);
+                        }
                         return;
                     }
                     this.isAltPainting = true;
@@ -1130,16 +1173,17 @@ Object.assign(CanvasRenderer.prototype, {
                     // Sets are now keyed by getScopedPanelKey,
                     // `${layerId}:${row},${col}`, which is what makes a
                     // cross-member selection expressible at all.
-                    // (pixelMapSelection stays unscoped - it is a single-screen
-                    // feature and its overlay still parses the plain key.)
+                    // (pixelMapSelection took the same scoped key in 1.5.)
                     //
                     // currentLayer stays the OWNER of the port/circuit being
                     // drawn even when the rect covers a peer; selectPanelsInRect
                     // hit-tests every layer the owner's path may legally reach.
+                    // reportLocked: a locked member the rect met is named
+                    // once, here, not on every move of the live drag.
                     if (this.viewMode === 'power') {
-                        window.app.selectPowerPanelsInRect(window.app.currentLayer, this.selectionRect);
+                        window.app.selectPowerPanelsInRect(window.app.currentLayer, this.selectionRect, { reportLocked: true });
                     } else {
-                        window.app.selectPanelsInRect(window.app.currentLayer, this.selectionRect);
+                        window.app.selectPanelsInRect(window.app.currentLayer, this.selectionRect, { reportLocked: true });
                     }
                 }
             }
@@ -1153,6 +1197,8 @@ Object.assign(CanvasRenderer.prototype, {
 
         if (this.isSelectingPixelMapPanels) {
             this.isSelectingPixelMapPanels = false;
+            const hadCabinets = !!this._pixelMapPressHadCabinets;
+            this._pixelMapPressHadCabinets = false;
             if (this.selectionRect && window.app && window.app.currentLayer) {
                 const w = Math.abs(this.selectionRect.x2 - this.selectionRect.x1);
                 const h = Math.abs(this.selectionRect.y2 - this.selectionRect.y1);
@@ -1162,24 +1208,68 @@ Object.assign(CanvasRenderer.prototype, {
                     //    (resets multi-select instead of confusingly toggling one panel out).
                     //  - Cmd/Ctrl+click: additive, toggle that panel in/out of the selection.
                     //  - Plain click on empty space: clear the selection.
+                    // Both work on any screen in the Pixel Map scope; a
+                    // cabinet on a locked screen is refused with the error.
                     const clickedPanel = this.getPanelAt(this.selectionRect.x1, this.selectionRect.y1);
                     const additive = e.metaKey || e.ctrlKey;
-                    // Allow click-select on hidden panels so they can be
-                    // bulk-restored via the sidebar.
-                    if (clickedPanel && clickedPanel.layerId === window.app.currentLayer.id) {
+                    const clickedLayer = clickedPanel
+                        ? (window.app.project.layers.find(l => l.id === clickedPanel.layerId) || null)
+                        : null;
+                    const inScope = !!clickedLayer
+                        && (clickedLayer.id === window.app.currentLayer.id
+                            || window.app.isPixelMapScopeLayer(clickedLayer));
+                    // A click on ANOTHER selected UNGROUPED screen while no
+                    // cabinet selection is open keeps the canvas's
+                    // screen-selection meaning (tests/test_canvas_multiselect.py):
+                    // a plain click narrows the selection to that screen and
+                    // selects the clicked cabinet - what the press used to do
+                    // on mouse-down, deferred here so a DRAG from that screen
+                    // can still be the cross-screen marquee - and Cmd/Ctrl+click
+                    // takes that screen out of the selection. Once cabinets
+                    // are selected, a click on any selected screen is a
+                    // cabinet click (the owner's ruling, 2026-10-16).
+                    //
+                    // A GROUP member never takes the screen meaning (the
+                    // owner's ruling, 2026-10-16: "when grouped they need to
+                    // be treated as 1 screen of sorts"): a click on any
+                    // member is always a cabinet click, so a click never
+                    // narrows the selection to one member and Cmd/Ctrl+click
+                    // never takes a member out of it.
+                    const grouped = !!clickedLayer && !!clickedLayer.group_id
+                        && typeof window.app.groupMembersOf === 'function'
+                        && window.app.groupMembersOf(clickedLayer).length > 1;
+                    const screenClick = inScope && !hadCabinets && !grouped
+                        && clickedLayer.id !== window.app.currentLayer.id;
+                    if (screenClick) {
                         if (additive) {
-                            window.app.togglePixelMapPanelSelection(clickedPanel.panel);
+                            this._toggleLayerSelectionFromCanvas(clickedLayer);
                         } else {
-                            window.app.pixelMapSelection.clear();
-                            window.app.pixelMapSelection.add(window.app.getPanelKey(clickedPanel.panel));
-                            window.app.updatePixelMapBulkActionUI();
-                            this.render();
+                            if (clickedLayer.canvas_id
+                                    && window.app.project.active_canvas_id !== clickedLayer.canvas_id
+                                    && typeof window.app.setActiveCanvas === 'function') {
+                                window.app.setActiveCanvas(clickedLayer.canvas_id);
+                            }
+                            this._selectLayerFromCanvas(clickedLayer);
+                            // Picking a locked screen is not changing it, so
+                            // it is picked without the error - its cabinet is
+                            // just not selected.
+                            if (!clickedLayer.locked) {
+                                window.app.selectOnlyPixelMapPanel(clickedPanel.panel, clickedLayer);
+                            }
+                        }
+                    } else if (inScope) {
+                        // Allow click-select on hidden panels so they can be
+                        // bulk-restored via the sidebar.
+                        if (additive) {
+                            window.app.togglePixelMapPanelSelection(clickedPanel.panel, clickedLayer);
+                        } else {
+                            window.app.selectOnlyPixelMapPanel(clickedPanel.panel, clickedLayer);
                         }
                     } else if (!additive) {
                         window.app.clearPixelMapSelection();
                     }
                 } else {
-                    window.app.selectPixelMapPanelsInRect(window.app.currentLayer, this.selectionRect);
+                    window.app.selectPixelMapPanelsInRect(window.app.currentLayer, this.selectionRect, { reportLocked: true });
                 }
             }
             this.selectionRect = null;
@@ -1565,9 +1655,16 @@ Object.assign(CanvasRenderer.prototype, {
             const worldX = this._unmirrorWorldX(((e.clientX - rect.left) - this.panX) / this.zoom, worldY);
             const clicked = this.getPanelAt(worldX, worldY);
             // Right-click works on hidden panels too, the menu shows
-            // "Restore From Blank" so they can be brought back.
-            if (clicked && clicked.layerId === window.app.currentLayer.id) {
-                const key = window.app.getPanelKey(clicked.panel);
+            // "Restore From Blank" so they can be brought back. Any screen
+            // in the Pixel Map scope (1.5); a locked one is left out of the
+            // selection, so the menu's cabinet items do not offer to change it.
+            const clickedLayer = clicked
+                ? (window.app.project.layers.find(l => l.id === clicked.layerId) || null)
+                : null;
+            if (clickedLayer && !clickedLayer.locked
+                    && (clickedLayer.id === window.app.currentLayer.id
+                        || window.app.isPixelMapScopeLayer(clickedLayer))) {
+                const key = window.app.getScopedPanelKey(clickedLayer.id, clicked.panel);
                 if (!window.app.pixelMapSelection.has(key)) {
                     window.app.pixelMapSelection.clear();
                     window.app.pixelMapSelection.add(key);

@@ -14,7 +14,15 @@ class _LayersPanel {
             console.error('RENDER LAYERS ERROR: No project or no layers array!');
             return;
         }
-        
+
+        // The layer list is redrawn on every change of the screen selection,
+        // and the Pixel Map cabinet selection reaches exactly the selected
+        // screens (1.5), so its bulk bar count is refreshed with it: a screen
+        // taken out of the selection takes its cabinets out of the count.
+        if (typeof this.updatePixelMapBulkActionUI === 'function') {
+            this.updatePixelMapBulkActionUI();
+        }
+
         // Debug: Log all layer IDs to check for duplicates
         const layerIds = this.project.layers.map(l => l.id);
         const uniqueIds = [...new Set(layerIds)];

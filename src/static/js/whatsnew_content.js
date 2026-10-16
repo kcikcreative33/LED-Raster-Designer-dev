@@ -25,6 +25,8 @@ window.WHATS_NEW_CONTENT = {
               d: 'Preferences > Pull sheet & cables sets the unit new shows start in, and the Export dialog sets it for the show in front of you. Every cable length, tag, pull sheet row and binder table follows the show.' },
             { h: 'Metric long jumpers',
               d: 'A long jumper in a meters show is measured along the panels plus 0.3 m and rounded up to 1, 2, 3, 5 or 10 m. Both stock lists can be edited in Preferences.' },
+            { h: 'Cabinets across screens',
+              d: 'Drag over several selected screens on the Pixel Map to select cabinets on all of them, then blank or half-tile them in one step. A group acts as one screen.' },
             { h: 'Custom from a right-click',
               d: 'Right-click a screen or a group for Custom runs on the Data tab, or Custom circuits on the Power tab.' },
             { h: 'Custom mode stays on',

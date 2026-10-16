@@ -147,7 +147,7 @@ class _Selection {
 
     // Cmd/Ctrl+A (app-menubar's handleMenuShortcut). Selects everything in
     // the current view: on Pixel Map with a cabinet selection already open,
-    // every cabinet of that screen (selectAllPixelMapPanels); otherwise
+    // every cabinet of the selected screens (selectAllPixelMapPanels); otherwise
     // every visible layer on the ACTIVE canvas - the same set a marquee
     // over the whole canvas would build, so the Screens panel rows follow
     // through setSelectedLayersByIds. Layers on other canvases are left
@@ -165,7 +165,7 @@ class _Selection {
         const renderer = window.canvasRenderer;
         const viewMode = renderer ? renderer.viewMode : 'pixel-map';
         if (viewMode === 'pixel-map' && this.currentLayer
-                && this.pixelMapSelection && this.pixelMapSelection.size > 0
+                && this.getPixelMapSelectedPanels().length > 0
                 && typeof this.selectAllPixelMapPanels === 'function') {
             this.selectAllPixelMapPanels();
             return 'cabinets';

@@ -384,15 +384,13 @@ class _CrossLayerPaths {
         return entry;
     }
 
-    // The address of ONE cabinet on the wall. Path ownership, path dedupe and
-    // (since v0.11.0's marquee) customSelection / powerCustomSelection are all
-    // keyed on this, because inside a group `${row},${col}` names two cabinets
-    // at once and every one of those jobs has to tell them apart.
-    //
-    // getPanelKey stays `${row},${col}` regardless: pixelMapSelection still
-    // uses it - one screen, nothing grouped about it - and its overlay parses
-    // the key back with `key.split(',').map(parseInt)`, which a layer id in
-    // front would turn into the WRONG panel silently, with no error anywhere.
+    // The address of ONE cabinet on the wall. Path ownership, path dedupe,
+    // (since v0.11.0's marquee) customSelection / powerCustomSelection and
+    // (since 1.5's cross-screen Pixel Map selection) pixelMapSelection are all
+    // keyed on this, because across two screens `${row},${col}` names two
+    // cabinets at once and every one of those jobs has to tell them apart.
+    // getPanelKey stays `${row},${col}` for any caller that wants one
+    // screen's own grid address.
     getScopedPanelKey(layerId, panel) {
         return `${layerId}:${panel.row},${panel.col}`;
     }

@@ -124,7 +124,7 @@ class _ContextMenu {
         if (!inDock) {
             // Show/hide pixel-map-only menu group based on view + selection.
             const inPixelMap = window.canvasRenderer && window.canvasRenderer.viewMode === 'pixel-map';
-            const haveSelection = this.pixelMapSelection && this.pixelMapSelection.size > 0;
+            const haveSelection = this.getPixelMapSelectedPanels().length > 0;
             const showPixelMapItems = inPixelMap && haveSelection;
             menu.querySelectorAll('.pixel-map-only').forEach(el => {
                 el.style.display = showPixelMapItems ? '' : 'none';
