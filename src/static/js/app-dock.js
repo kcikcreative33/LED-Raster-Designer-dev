@@ -3411,7 +3411,7 @@ class _HardwareDock {
     }
 
     // The backup processor's pill (2026-09-25), beside the redundancy one:
-    // "Backup: USC SR BU" - the backup unit is an option ON this processor,
+    // "Backup: WALL SR BU" - the backup unit is an option ON this processor,
     // never a unit of its own in the tray, so its name rides the main's
     // header, in the gold redundancy family, and a click opens the main's
     // ⚙ where it is switched and named. Nothing without one.

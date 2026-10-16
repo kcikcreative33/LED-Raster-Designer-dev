@@ -536,7 +536,7 @@ class _Binder {
     }
 
     // The dialog's Groups row: one line per grouped wall whose Power or Data
-    // tab says Both on the Names switch, routed as one on that side - "USC
+    // tab says Both on the Names switch, routed as one on that side - "WALL
     // Data: [Group] [Screens]", both sides on the line where both ask. The
     // buttons show the saved answer, Group where there is none.
     _renderBinderGroupRows() {
@@ -1188,7 +1188,7 @@ class _Binder {
     // set made a sheet per member with something on it printed the carrier
     // alone, its map the carrier's wall alone, its tables the whole group's
     // (owner, 2026-10-01: "when i print a grouped screen it doesnt include
-    // USC SL in the binder. this is bad and needs fixing"). Such a group now
+    // WALL SL in the binder. this is bad and needs fixing"). Such a group now
     // prints by its tab's NAMES switch, each side on its own ("say power is
     // set to label by group name then power will be by group and if data is
     // set to screens then it will be 2 different"):
@@ -1199,7 +1199,7 @@ class _Binder {
     //   screens  a sheet per member, titled by the member, its map that
     //            member alone, its tables what lands on its cabinets - a port
     //            or circuit crossing members listed on each, saying where the
-    //            rest of it is ("also on USC SL")
+    //            rest of it is ("also on WALL SL")
     //   both     asked per group at export ("if set to both then ask per
     //            group"): the dialog's Groups row, saved in
     //            project.binder.groupSheets, read through readBinderOptions
@@ -1344,7 +1344,7 @@ class _Binder {
     }
 
     // Where the rest of a crossing item is, on a member's sheet: "also on
-    // USC SL" - the snake heading's "also" (snakeElsewhere) said of a
+    // WALL SL" - the snake heading's "also" (snakeElsewhere) said of a
     // screen; '' where it is all on this member.
     _bAlsoOn(s, ls) {
         if (s.kind !== 'member') return '';
@@ -1434,7 +1434,7 @@ class _Binder {
     }
 
     // The CABLES THIS SCREEN table: CABLE, LEN, QTY - a cable crossing into
-    // another member reading "Data Cable · also on USC SL", wrapped under
+    // another member reading "Data Cable · also on WALL SL", wrapped under
     // its type.
     _bCableTable(book, s, side) {
         const rows = this._bSubjectRows(book, s, side);
@@ -3798,7 +3798,7 @@ class _Binder {
     // the title block's sheet title and the CONTENTS line alike, the plan
     // title "WALL-A - Power - Rear View". The wiring sheets keep their own
     // titles (app-binder-wiring.js); the overview stays OVERVIEW.
-    // A group printed as one names the GROUP ("USC · DATA · FRONT VIEW") and
+    // A group printed as one names the GROUP ("WALL · DATA · FRONT VIEW") and
     // a member printed by screens names the member; `target` is a screen or
     // a sheet subject (_bSubject).
     _bScreenPage(book, target, pos, view) {
@@ -4110,7 +4110,7 @@ class _Binder {
     // The redundancy bar's reading for a processor: "Per card", "Per port",
     // "Backed up → MX20 B" (the unit its one card mirrors onto), "A to B"
     // (an SX40 running one loop), "Off" - then its backup processor, "·
-    // backed up by USC SR BU".
+    // backed up by WALL SR BU".
     _bRedundancyText(proc) {
         const level = (typeof this._procRedundancyLevel === 'function') ? this._procRedundancyLevel(proc) : 'off';
         let text = REDUNDANCY_WORDS[level] || level;
@@ -4218,7 +4218,7 @@ class _Binder {
     // `target` is a screen or a sheet subject (_bSubject): a group's sheet
     // lists every member's ports, a member's the ports landing on its
     // cabinets - a port crossing into another member says where the rest of
-    // it is ("also on USC SL"), under its label.
+    // it is ("also on WALL SL"), under its label.
     _bDataBlocks(book, target, scr) {
         const subject = this._bSubject(target);
         const layer = subject.layers[0];
@@ -5000,7 +5000,7 @@ class _Binder {
         if (!cards.length) return null;
         // The unit's own name heads its column: a processor nobody named
         // whose FIXED card is its own face goes by the card's name
-        // ("USC A"), not by its model twice over. A processor with slots
+        // ("WALL A"), not by its model twice over. A processor with slots
         // keeps its own name - a card in it is a part, not the unit.
         const unit = cards.length === 1 && cards[0].card.fixed
             && typeof this.dataUnitTitle === 'function'
@@ -5009,8 +5009,8 @@ class _Binder {
         return { kind: 'processor', name: procTitle, blocks: this._bProcessorBlocks(book, proc, cards, procTitle) };
     }
 
-    // A processor's BACKUP UNIT as its own column (owner, 2026-09-25): "USC
-    // SR BU · backup of USC SR Main", its cards - the main's again, slot
+    // A processor's BACKUP UNIT as its own column (owner, 2026-09-25): "WALL
+    // SR BU · backup of WALL SR Main", its cards - the main's again, slot
     // for slot, each backing up the main's - the switches it keeps of its
     // own (a HELIOS's RS12s, any box with no documented backup input),
     // and its redundancy, which is the main's. null without one.
@@ -5059,7 +5059,7 @@ class _Binder {
             return count ? count.taken : 0;
         };
         // A card by name: its own where it is in this processor, else the
-        // unit it belongs to (a 1:1 partner in ANOTHER processor - "USC B",
+        // unit it belongs to (a 1:1 partner in ANOTHER processor - "WALL B",
         // never the raw id the sheet used to print).
         const nameOf = (cardId) => {
             const hit = cards.find(c => c.card.id === cardId);

@@ -305,7 +305,7 @@ FIXES
   pull sheet's power and data lines each follow their own tab. A group
   is always one section of the pull sheet, on the beach of its first
   screen that is on one, and its jumpers are listed by the screen they
-  sit on: "Data Jump 2' 115 USC SR" and "110 USC SL".
+  sit on: "Data Jump 2' 115 WALL SR" and "110 WALL SL".
 - FIX: A Screen Info edit changes only the field you edit, on every
   screen selected or in the group. Before, any edit also wrote every
   other field the panel showed, so changing a group's cabinet height
@@ -1245,7 +1245,7 @@ the short of it.
 
 - FIX (IMPORTANT): A unit is named once. A device with no name of its own
   had its model stood in for it and the sheet then printed the model again
-  beside it, so a header read "NovaPro UHD Jr USC A - NovaPro UHD Jr - 16
+  beside it, so a header read "NovaPro UHD Jr WALL A - NovaPro UHD Jr - 16
   ports" and every cell under it ran out of room. A fixed card that is its
   processor's face reads as one unit; a card in a slot still reads as its
   own. Where a port's two ends are the same run it is stated once, with

@@ -1540,7 +1540,7 @@ body { font-family: Arial, sans-serif; background: #1a1a1a; color: #e0e0e0; over
 }
 /* The processor's strip leads with its NAME (2026-09-25, option 2 "Framed
    unit"): the name field at heading size, the model after it in the
-   secondary colour - "USC SR Main  Tessera SX40", where it used to read a
+   secondary colour - "WALL SR Main  Tessera SX40", where it used to read a
    small grey "TESSERA SX40" and then the name. One line at the 440px
    track: the model and the pills give way (ellipsis) before the name
    does, and the name itself shrinks to a floor rather than push the gear

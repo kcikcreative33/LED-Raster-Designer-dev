@@ -1361,7 +1361,7 @@ class _PullList {
     }
 
     // A group member's jumper row (`split`) is keyed with its screen, so an
-    // edit to "Data Jump 2' USC SL" never lands on USC SR's.
+    // edit to "Data Jump 2' WALL SL" never lands on WALL SR's.
     pullRowKey(row) {
         return `${row && row.type != null ? row.type : ''}|${row && row.length != null ? row.length : ''}`
             + (row && row.split ? `|${row.split}` : '');

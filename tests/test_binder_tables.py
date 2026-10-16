@@ -9,7 +9,7 @@ Measured on the user's own export of live show A, its binder rev 1.1 PDF
   * the unit a port lands on was named TWICE ("IMAG SR IMAG SR", the
     processor's name and its card's - a NovaPro UHD Jr's card IS the
     processor), and where nobody typed a name the MODEL stood in for it and
-    was then printed again as the model ("NovaPro UHD Jr USC A · NovaPro UHD
+    was then printed again as the model ("NovaPro UHD Jr WALL A · NovaPro UHD
     Jr · 16 ports"). That doubling is what pushed most of those 69 cells past
     their column;
   * the data sheet's HOME RUN cell, holding both ends, was drawn as two
@@ -202,7 +202,7 @@ def test_no_cell_on_any_sheet_is_cut_off(shows):
 
 # ── 2. a name is said once ───────────────────────────────────────────────
 
-# "IMAG SR IMAG SR", "SR SR", "USC A USC A" - a run of words immediately
+# "IMAG SR IMAG SR", "SR SR", "WALL A WALL A" - a run of words immediately
 # repeating itself inside one cell.
 DOUBLED = re.compile(r'(?<![^\s·])(\S+(?: \S+){0,3}) \1(?![^\s·])')
 
@@ -220,7 +220,7 @@ def test_no_cell_says_a_name_twice(shows):
 
 def test_no_cell_prints_a_model_twice(shows):
     """A blank name must not become the MODEL only for the model to be printed
-    beside it: "NovaPro UHD Jr USC A · NovaPro UHD Jr · 16 ports" says one
+    beside it: "NovaPro UHD Jr WALL A · NovaPro UHD Jr · 16 ports" says one
     device's model twice and its name not at all."""
     bad = {}
     for nm, show in shows.items():
@@ -282,7 +282,7 @@ def test_a_snake_states_its_home_run_once_on_a_data_sheet(shows):
 
     "Why is the same data written multiple times under the snake under a
     specific port number" (2026-09-09). The UPSTAGE data sheet printed
-    "USC A 100' +10' / SNAKE A 100' +10'" on four rows in a row: A-1..A-4
+    "WALL A 100' +10' / SNAKE A 100' +10'" on four rows in a row: A-1..A-4
     all ride the one 4-way, and its return end all rides the one backup
     4-way, so the pair of runs was printed four times over. The ports on a
     snake belong under a GROUP HEADING that names it once - the way the
