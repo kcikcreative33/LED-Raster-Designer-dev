@@ -135,7 +135,11 @@ SEED_JS = """async (spec) => {
         const l = project.layers.find(x => x.name === 'TK ' + s.name);
         ids[s.name] = l.id;
         Object.assign(l, {
-            powerVoltage: '100', powerAmperage: '5', panelWatts: '100',
+            // 110V, not 100V: a 120/208 distro gives 120V or 208V and a 100V
+            // screen is refused (owner, 2026-10-16: 110, 115 and 120 are 120V;
+            // anything else that does not fit the system is refused). 110V x 5A
+            // still fits five 100W cabinets a circuit, so the plans are unchanged.
+            powerVoltage: '110', powerAmperage: '5', panelWatts: '100',
             powerOrganized: true, powerMaximize: false,
             powerFlowPattern: 'tl-v',
         }, s.fields || {});

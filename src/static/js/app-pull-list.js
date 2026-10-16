@@ -701,6 +701,9 @@ class _PullList {
         // hold circuits of several screens) and a snake (its ports can feed
         // several screens).
         const boxesSeen = new Set();
+        // The DIRECT outputs among them (1.5): one circuit, one cable - not
+        // a hole a multi plugs into, so the distro's "N way" never counts them.
+        const directSeen = new Set();
         const snakesSeen = new Set();
         // A row said once for several runs (a snake, a box's fiber) is
         // tagged with every screen those runs land on, whichever screen's
@@ -761,7 +764,7 @@ class _PullList {
         for (const base of bases) {
             for (const layer of base.layers) {
                 const scr = this._pullScreenList(layer, {
-                    settings, distroById, boxesSeen, snakesSeen, fiberSeen, hw, saidOnce,
+                    settings, distroById, boxesSeen, directSeen, snakesSeen, fiberSeen, hw, saidOnce,
                     distroFirstLayer, boxFirstLayer, procFirstLayer,
                 });
                 byScreen[layer.id] = scr;
@@ -885,15 +888,23 @@ class _PullList {
             }
         }
         const boxesOn = new Map();            // String(distroId) -> boxes in use
+        const directOn = new Map();           // String(distroId) -> direct outputs in use
         for (const key of boxesSeen) {
             const distroId = key.split('|')[0];
-            boxesOn.set(distroId, (boxesOn.get(distroId) || 0) + 1);
+            const into = directSeen.has(key) ? directOn : boxesOn;
+            into.set(distroId, (into.get(distroId) || 0) + 1);
         }
         for (const d of distros) {
             const n = boxesOn.get(String(d.id)) || 0;
-            if (!n) continue;
-            const r = { type: this.pullDistroWayType(n), length: 'EA', qty: 1,
-                        label: d.name || '', notes: n > 8 ? `${n} multis` : '', side: 'power' };
+            const k = directOn.get(String(d.id)) || 0;
+            if (!n && !k) continue;
+            // A distro feeding direct outputs only has no multi holes to
+            // count: it is "Distro", its outputs said in Notes.
+            const r = n
+                ? { type: this.pullDistroWayType(n), length: 'EA', qty: 1,
+                    label: d.name || '', notes: n > 8 ? `${n} multis` : '', side: 'power' }
+                : { type: 'Distro', length: 'EA', qty: 1, label: d.name || '',
+                    notes: `${k} direct output${k === 1 ? '' : 's'}`, side: 'power' };
             if (!gearAt(r, this.pullLocationOf(d), distroFirstLayer.get(String(d.id)))) continue;
             hw('distro', d.id, d.name).rows.push({ ...r });
         }
@@ -938,6 +949,7 @@ class _PullList {
     // per-screen readings the packet prints.
     _pullScreenList(layer, ctx) {
         const { settings, distroById, boxesSeen, snakesSeen, fiberSeen, hw } = ctx;
+        const directSeen = ctx.directSeen || new Set();
         const distroFirstLayer = ctx.distroFirstLayer || new Map();
         const boxFirstLayer = ctx.boxFirstLayer || new Map();
         const procFirstLayer = ctx.procFirstLayer || new Map();
@@ -1022,6 +1034,12 @@ class _PullList {
                     distroId: s.distroId || null, distro: d ? d.name : null,
                     type: typed ? typed.name : null,
                     typeId: typed ? typed.id : null,
+                    // A face box (1.5) says what connector it is: a direct
+                    // output is one cable, a multi row its own kind.
+                    kind: typed && typed.face ? typed.kind : 'multi',
+                    connectorId: typed && typed.face ? typed.connectorId : null,
+                    cable: typed && typed.face ? typed.cable : null,
+                    boxSize: typed ? Number(typed.boxSize) || 6 : null,
                     homeRun: s.length || null,
                     connector: d
                         ? this.pullPowerConnectorName(
@@ -1068,12 +1086,24 @@ class _PullList {
             }
             const boxLabel = `${distroName}${box.number}`;
             on = boxOn.get(box.key) || [layer.id];
-            const isL2130 = String(box.typeId || '').startsWith('l2130');
-            const homeType = isL2130 ? 'L21-30' : 'Multi';
+            if (box.kind === 'direct') {
+                // A DIRECT output (1.5): its one cable, distro to screen, in
+                // the show's unit, under the output's name - no breakout.
+                directSeen.add(seenKey);
+                const r = row(this.pullPowerConnectorName(box.cable), this.pullLengthText(box.homeRun),
+                              1, boxLabel, box.homeRun ? '' : 'no length', at);
+                hw('distro', box.distroId, distroName).rows.push({ ...r });
+                continue;
+            }
+            const isL2130 = String(box.typeId || '').startsWith('l2130')
+                || box.connectorId === 'l2130';
+            const isHarting = box.connectorId === 'harting';
+            const homeType = isL2130 ? 'L21-30' : (isHarting ? 'Harting 16E' : 'Multi');
             const r = row(homeType, this.pullLengthText(box.homeRun), 1, boxLabel,
                           box.homeRun ? '' : 'no length', at);
             const breakoutType = isL2130
-                ? `L21-30 ${box.connector} Breakout` : `${box.connector} Breakout`;
+                ? `L21-30 ${box.connector} Breakout`
+                : (isHarting ? `Harting ${box.connector} Breakout` : `${box.connector} Breakout`);
             const b = row(breakoutType, 'EA', 1, boxLabel, '', at);
             const hrec = hw('distro', box.distroId, distroName);
             hrec.rows.push({ ...r }, { ...b });

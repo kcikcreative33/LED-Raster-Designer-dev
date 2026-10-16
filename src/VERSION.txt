@@ -4,9 +4,32 @@ LED RASTER DESIGNER - VERSION HISTORY
 v1.5.0 - October 16, 2026
 ----------------------------
 
-Cable lengths can now be in meters. Each show keeps its own unit, and
-Preferences sets the unit new shows start in. Custom mode stays on until
-you turn it off, and a right-click on a screen or group turns it on.
+Distros are now built from their real outputs: Socapex, L21-30 and
+direct True1, powerCON, Edison and CEE outlets on the same face, on a US
+or EU power system, from a preset or from scratch. Cable lengths can be
+in meters. Custom mode stays on until you turn it off, and a right-click
+on a screen or group turns it on.
+
+DISTROS BUILT FROM THEIR OUTPUTS
+
+A distro's gear picks its power system - 120/208V 3-phase, 120/240V
+split, 120V, 230/400V 3-phase or 230V - its input and its amps per leg,
+then lists its outputs, a connector and a count per row. Multis break out
+at the screen as before; a direct output on the distro face is one
+circuit with its own cable to the screen, and can feed a 2fer or 3fer.
+Start from one of eleven presets of common US and EU distros, or save
+your own. US distros read their legs X, Y and Z and EU distros L1, L2
+and L3; an EU distro can put a whole Socapex on one phase, and a UK
+distro's Socapex can be paired with the outlets it shares circuits with,
+so those circuits count once.
+
+Each circuit is checked against its breaker: on a US distro at 80% of
+the breaker unless the distro has 100% rated breakers, on an EU distro
+at the breaker. True1 is held to 16A on an EU distro, powerCON XX at 208V
+gets a warning that it is only US-listed to 127V, and stage pin is
+refused at 208V. A screen is refused by a distro that does not give its
+voltage, and says why: "WALL B runs at 230V - PD gives 120V or 208V. Set
+the screen to 208V." A distro from an older show opens as it was.
 
 CABLE LENGTHS IN FEET OR METERS
 
@@ -46,6 +69,14 @@ circuit". A run of one cabinet size counts its own cabinets.
   and Power.
 - FIX: Two quick clicks on the Custom box no longer leave it showing the
   opposite of the screen's real state. Data and Power.
+- FIX: A distro's header amps, its OVER warning and the binder's Load
+  line now read the busiest leg, "87.1 A on leg X", not the average of
+  the three, so one overloaded leg can no longer hide behind the others.
+- FIX: A 230V 3-phase distro feeding 230V screens is a 230/400V system:
+  each circuit sits on one leg, line to neutral, where it was counted
+  across two legs.
+- FIX: A screen's 3-phase amps are worked from the distro's line-to-line
+  voltage, not the screen's own.
 - FIX: A custom data run is held to the same port capacity as an
   automatic one: the NovaStar Low Latency reduction and the 5G narrow
   port penalty now apply to custom runs too.

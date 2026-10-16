@@ -15,8 +15,12 @@
  */
 window.WHATS_NEW_CONTENT = {
     '1.5': {
-        title: 'Cable lengths in meters, and custom mode that stays on',
+        title: 'Distros built from their outputs, cable lengths in meters, and custom mode that stays on',
         items: [
+            { h: 'Distros built from their outputs',
+              d: 'Pick a power system, an input and amps per leg, then list the outputs: Socapex, L21-30, or True1, powerCON, Edison and CEE outlets straight off the distro face. Start from a preset of a common US or EU distro, or save your own.' },
+            { h: 'Every circuit checked against its breaker',
+              d: 'US distros hold circuits to 80% of the breaker unless the breakers are 100% rated; EU distros to the breaker. The distro header and OVER warning read the busiest leg.' },
             { h: 'Feet or meters',
               d: 'Preferences > Pull sheet & cables sets the unit new shows start in, and the Export dialog sets it for the show in front of you. Every cable length, tag, pull sheet row and binder table follows the show.' },
             { h: 'Metric long jumpers',

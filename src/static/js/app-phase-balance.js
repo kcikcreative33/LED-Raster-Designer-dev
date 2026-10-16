@@ -29,8 +29,12 @@ class _PhaseBalance {
             const circuitV = parseFloat(layer.powerVoltage) || 0;
             for (const s of this.getSocaPlan(layer)) {
                 const d = distros.find(x => x.id === assign[s.soca]);
-                if (!d || d.phase !== 3) continue;
+                if (!d || this.distroLegNames(d).length < 2) continue;
                 if (distroId && d.id !== distroId) continue;
+                // A face box (1.5) is as big as its connector: a direct
+                // output is one circuit and always full, and nothing on a
+                // box can move past its own tails.
+                const faceBox = this.faceBox(d, s.number);
                 const share = this.getSocaShare(layer, s.soca);
                 if (share) {
                     // A shared box is ONE multi to the balancer: its
@@ -56,7 +60,8 @@ class _PhaseBalance {
                     // member breakout's size, the same capacity the shared
                     // deal answers to. Six for socas, three for an L21-30.
                     const boxSize = Math.min(...members
-                        .map(m => this.socaBoxSize(m.layer)));
+                        .map(m => this.socaBoxSize(m.layer)),
+                        faceBox ? faceBox.size : Infinity);
                     if (total >= boxSize) continue;
                     // per-circuit amps and labels, member order - index k of
                     // from/to below is the k-th circuit of this walk
@@ -81,11 +86,13 @@ class _PhaseBalance {
                     });
                     continue;
                 }
-                if (s.legs.length >= this.socaBoxSize(layer)) continue;
+                const ownSize = Math.min(this.socaBoxSize(layer),
+                                         faceBox ? faceBox.size : Infinity);
+                if (s.legs.length >= ownSize) continue;
                 out.push({
                     layer, soca: s.soca, name: s.name, distroId: d.id,
                     legs: s.legs.length,
-                    boxSize: this.socaBoxSize(layer),
+                    boxSize: ownSize,
                     positions: this.socaCircuitPositions(layer, s.soca, s.legs.length),
                     amps: s.legs.map(l => l.amps),
                     // The circuits' CURRENT labels through the one authority,
@@ -620,11 +627,21 @@ class _PhaseBalance {
     // Default scheme for a distro: line-to-line when the circuit voltage
     // matches the service voltage (208V circuits on a 208V wye), otherwise
     // line-to-neutral.
+    // 1.5: on a distro with a SYSTEM, "matches" is which of the system's
+    // figures the circuit voltage is, by nominal name (_distroLineToLine)
+    // - a 230V circuit on 230/400 is line-to-neutral (bug fix 1). An old
+    // record with no system keeps the old test, within a volt of the
+    // service voltage. An EU distro can also be wired whole multi on one
+    // leg (_distroExtraSchemes).
     powerPhasingFor(distro, circuitVoltage) {
         const schemes = this.powerPhasingSchemes();
-        const explicit = distro && distro.phasing && schemes.find(s => s.id === distro.phasing);
+        const extra = distro && distro.system && typeof this._distroExtraSchemes === 'function'
+            ? this._distroExtraSchemes(distro) : [];
+        const explicit = distro && distro.phasing
+            && (schemes.find(s => s.id === distro.phasing)
+                || extra.find(s => s.id === distro.phasing));
         if (explicit) return explicit;
-        const ll = distro && circuitVoltage > 0 && Math.abs(circuitVoltage - distro.voltage) < 1;
+        const ll = !!distro && circuitVoltage > 0 && this._distroLineToLine(distro, circuitVoltage);
         return schemes.find(s => s.id === (ll ? 'paired-ll' : 'rotating-ln'));
     }
 
@@ -658,15 +675,22 @@ class _PhaseBalance {
     // change. Without this distinction on screen "a manual choice overrides
     // the default" is a rule the user cannot see operating.
     distroPhasingState(distro) {
+        if (distro && typeof this._ensureDistroSystem === 'function') {
+            this._ensureDistroSystem(distro);
+        }
         const schemes = this.powerPhasingSchemes();
+        const extra = distro && typeof this._distroExtraSchemes === 'function'
+            ? this._distroExtraSchemes(distro) : [];
         const chosen = distro && distro.phasing
-            && schemes.find(s => s.id === distro.phasing);
+            && (schemes.find(s => s.id === distro.phasing)
+                || extra.find(s => s.id === distro.phasing));
         const circuitV = this.distroCircuitVoltage(distro);
         // Ask for the derived answer explicitly rather than reading it off
         // powerPhasingFor(distro, ...), which would hand back the explicit
         // choice and hide what the voltage would have chosen.
         const derived = this.powerPhasingFor(
-            { voltage: distro && distro.voltage, phasing: null }, circuitV);
+            { voltage: distro && distro.voltage, system: distro && distro.system,
+              phasing: null }, circuitV);
         return {
             explicit: !!chosen,
             derived,
@@ -788,8 +812,12 @@ class _PhaseBalance {
     // explicit choice and says so - paperwork is displayed, never obeyed
     // into an impossible hookup.
     _circuitSchemeFor(distro, circuitVoltage) {
+        if (distro && typeof this._ensureDistroSystem === 'function') {
+            this._ensureDistroSystem(distro);
+        }
         const derived = this.powerPhasingFor(
-            { voltage: distro && distro.voltage, phasing: null },
+            { voltage: distro && distro.voltage, system: distro && distro.system,
+              phasing: null },
             circuitVoltage);
         const chosen = this.powerPhasingFor(distro, circuitVoltage);
         return chosen.lineToLine === derived.lineToLine ? chosen : derived;

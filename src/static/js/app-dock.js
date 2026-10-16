@@ -2260,12 +2260,13 @@ class _HardwareDock {
         unit.className = 'hw-dock-unit hw-dock-distro';
         // The tray reads its stored order off these (drag-reorder).
         unit.dataset.lrdDistro = d.id;
-        const phase = Number(d.phase) === 3 ? '3φ' : '1φ';
+        // The supply as the system names it (1.5): "120/208V·3φ",
+        // "230V·1φ"; an old record its old "208V·1φ".
         const head = this._dockBuildHandle(
             { type: 'distro', distroId: d.id, title: d.name || d.id },
             `distro-${d.id}`,
             '',
-            `${d.voltage || '?'}V·${phase}`,
+            this.distroSupplyText(d),
             'Drag onto a screen to assign its ports; drag along the tray to '
             + 'reorder.',
             load && load.ratingA > 0
@@ -2273,12 +2274,20 @@ class _HardwareDock {
                     text: `${load.amps.toFixed(1)}/${load.ratingA} A` }
                 : null);
         // An over-loaded service is a strip question, not just a red bar.
+        // The figure is the WORST LEG against the per-leg rating (1.5, bug
+        // fix 2), and the strip names the leg.
         if (load && load.over) {
+            const leg = load.legs && load.worstLeg
+                ? ` worst leg ${this.distroLegLabel(d, load.worstLeg)}` : '';
             this._dockPowerWarnings.push({
-                text: `${d.name || d.id} — ${load.amps.toFixed(1)} A / `
+                text: `${d.name || d.id} —${leg} ${load.amps.toFixed(1)} A / `
                     + `${load.ratingA} A (${Math.round(load.pct)}%) — OVER`,
             });
         }
+        // The system's own checks (1.5): voltages it does not have, the
+        // breaker and connector limits, powerCON XX at 208V, a paired
+        // circuit patched twice, a multi past the face.
+        for (const w of this.distroChecks(d)) this._dockPowerWarnings.push(w);
         // Balance sits ON the header (legs never interact across services,
         // so each distro carries its own), and the electrical setup -
         // rating, voltage, phase, phasing, location, remove - lives behind
@@ -2288,7 +2297,7 @@ class _HardwareDock {
         // Balance · ⚙. (The first pass tried Balance ahead of the bar;
         // seeing it real, the user swapped it back.)
         let bal = null;
-        if (Number(d.phase) === 3) {
+        if (this.distroLegNames(d).length >= 2) {
             bal = document.createElement('button');
             bal.className = 'btn hw-dock-btn';
             bal.textContent = 'Balance';
@@ -2350,11 +2359,134 @@ class _HardwareDock {
         // SECTION of its distro - the data side's box grammar - holding its
         // six tails as individually draggable circuit chips.
         const inUse = this._distroMultiNumbers(d.id);
+        // A distro with a FACE (1.5) shows its face: every output its rows
+        // put on it, used or not - a multi row as one section per
+        // connector, a direct row as ONE section holding a chip per output.
+        // A number in use past the face follows, flagged by the strip.
+        const face = this.distroFace(d);
+        if (face) {
+            for (const r of face.rows) {
+                const info = face.rowInfo.get(r.id);
+                if (info.conn.kind === 'direct') {
+                    body.appendChild(this._dockBuildDirectRow(d, info, inUse));
+                } else {
+                    info.boxes.forEach(b => body.appendChild(
+                        this._dockBuildMulti(d, b.number, inUse.get(b.number) || [])));
+                }
+            }
+            [...inUse.keys()].filter(n => n > face.boxes.length).sort((a, b) => a - b)
+                .forEach(n => body.appendChild(this._dockBuildMulti(d, n, inUse.get(n))));
+            return unit;
+        }
         const maxN = Math.max(0, ...inUse.keys()) + 1;
         for (let n = 1; n <= maxN; n++) {
             body.appendChild(this._dockBuildMulti(d, n, inUse.get(n) || []));
         }
         return unit;
+    }
+
+    // One DIRECT row of a face (1.5): one section, the row's plug as its
+    // handle ("True1 208V × 6"), a chip per output - each one circuit with
+    // its own cable from the distro to the screen. A chip drags as that
+    // output (the tail drop: the circuit it lands on goes on it, pinned);
+    // clicked, it edits the circuit's label and the cable's length.
+    _dockBuildDirectRow(d, info, inUse) {
+        const sec = document.createElement('div');
+        sec.className = 'hw-dock-box hw-dock-multi hw-dock-direct';
+        const type = this.faceBoxType(d, info.boxes[0]);
+        const name = d.name || d.id;
+        let used = 0;
+        let amps = 0;
+        const perBox = info.boxes.map(box => {
+            const holders = [];
+            for (const m of (inUse.get(box.number) || [])) {
+                const l = (this.project.layers || []).find(x => x.id === m.layerId);
+                const s = l ? this.getSocaPlan(l).find(x => x.soca === m.soca) : null;
+                if (!s) continue;
+                const capA = parseFloat(l.powerAmperage) || 0;
+                s.legs.forEach(leg => holders.push({
+                    who: l.name, layerId: l.id, circuit: leg.circuit, label: leg.label,
+                    amps: leg.amps, capA, soca: m.soca, length: s.length || null,
+                }));
+            }
+            if (holders.length) used += 1;
+            amps += holders.reduce((t, h) => t + (h.amps || 0), 0);
+            return { box, holders };
+        });
+        const paired = info.row.pairedWith
+            ? ` · paired with ${this._faceRowSummary(d, info.row.pairedWith)} - the same circuits` : '';
+        const tip = `${info.row.count} × ${type.name} on ${name}, one circuit each with its own `
+            + `cable to the screen${paired}. Drag the row onto a screen: its first free output `
+            + 'takes the screen\'s next unassigned circuit. Drag one chip onto a circuit to '
+            + 'land that circuit on that output.';
+        const head = this._dockBuildHandle(
+            { type: 'plug', distroId: d.id, output: type.id, title: `${name} · ${type.name}` },
+            `drow-${d.id}-${info.row.id}`,
+            `${type.name} × ${info.row.count}`,
+            `${used}/${info.row.count} used · ${amps.toFixed(1)} A`,
+            tip,
+            { frac: info.row.count ? used / info.row.count : 0, over: false,
+              text: `${used}/${info.row.count}` });
+        sec.appendChild(head);
+        const body = this._dockSectionBody(sec, head, `hwdock-drow-${d.id}-${info.row.id}`);
+        const grid = document.createElement('div');
+        grid.className = 'lrd-tile-grid hw-dock-grid';
+        perBox.forEach(({ box, holders }) => {
+            grid.appendChild(this._dockBuildDirectChip(d, box, type, holders));
+        });
+        body.appendChild(grid);
+        return sec;
+    }
+
+    // "4 × Socapex" - a row as the popover and the paperwork name it.
+    _faceRowSummary(d, rowId) {
+        const face = this.distroFace(d);
+        const info = face && face.rowInfo.get(rowId);
+        if (!info) return 'another row';
+        return `${info.row.count} × ${this.faceBoxType(d, info.boxes[0]).name}`;
+    }
+
+    // One direct output as a chip: the circuit chip's grammar with the
+    // OUTPUT's number on its face (the number its circuit is named by) and
+    // the cable's length in its corner; its editor carries the circuit's
+    // label and the cable length (the output's home run, in the show's
+    // unit).
+    _dockBuildDirectChip(d, box, type, holders) {
+        const tile = this._dockBuildCircuitChip(d, box.number, 1, holders);
+        const num = tile.querySelector('.lrd-tile-line span');
+        if (num) num.textContent = String(box.number);
+        const face = tile.querySelector('.lrd-tile-face');
+        const top = tile.querySelector('.lrd-tile-line');
+        const lengths = holders.map(h => h.length).filter(Boolean);
+        if (lengths.length && top && !top.querySelector('.hw-dock-chip-cable')) {
+            top.classList.add('lrd-tile-line-cable');
+            const corner = document.createElement('span');
+            corner.className = 'hw-dock-chip-cable';
+            corner.textContent = lengths.map(v => this.cableText(parseFloat(v), type.cable)).join(' / ');
+            top.appendChild(corner);
+        }
+        if (face) {
+            face.title = `${d.name || d.id} ${box.number} - ${type.name}, one circuit. `
+                + face.title;
+        }
+        const editor = tile.querySelector('.lrd-tile-body');
+        if (editor) {
+            holders.forEach(h => {
+                const l = (this.project.layers || []).find(x => x.id === h.layerId);
+                if (!l) return;
+                const tip = `The cable from ${d.name || d.id} ${box.number} to ${l.name}, in `
+                    + `${this.cableUnitWord()} - it goes on the pull sheet as a ${type.name} run.`;
+                const cell = this._buildPortNameField(
+                    `Cable (${this.cableUnitAbbr()})`, `direct-length-${l.id}-${h.soca}`,
+                    (l.powerSocaLengths || {})[h.soca] || '',
+                    this.cableUnit() === 'm' ? '10' : '25', false,
+                    { named: tip, unnamed: tip },
+                    (val) => this.setSocaLength(l, h.soca, val));
+                cell.classList.add('hw-dock-direct-len');
+                editor.appendChild(cell);
+            });
+        }
+        return tile;
     }
 
     // The slim LEGS line under a 3-phase distro's header: per-leg amps with
@@ -2376,9 +2508,11 @@ class _HardwareDock {
         cap.className = 'hw-dock-legs-cap';
         cap.textContent = 'LEGS';
         row.appendChild(cap);
-        ['X', 'Y', 'Z'].forEach(k => {
+        const names = load.legs.names || ['X', 'Y', 'Z'];
+        const labels = load.legs.labels || names;
+        names.forEach((k, i) => {
             const amps = document.createElement('span');
-            amps.textContent = `${k} ${load.legs[k].amps.toFixed(0)}A`;
+            amps.textContent = `${labels[i]} ${load.legs[k].amps.toFixed(0)}A`;
             row.appendChild(amps);
             const bar = document.createElement('span');
             bar.className = 'hw-dock-legbar';
@@ -2404,6 +2538,8 @@ class _HardwareDock {
     // the per-multi / per-circuit drags below stay either way; the plug
     // chip is a third handle, not a replacement.
     _dockDistroOutputsRow(d) {
+        const face = this.distroFace(d);
+        if (face) return this._dockFaceOutputsRow(d, face);
         const types = this.distroOutputs(d);
         if (!types.length) return null;
         const row = document.createElement('div');
@@ -2427,6 +2563,38 @@ class _HardwareDock {
             }, `plug-${d.id}-${t.id}`);
             row.appendChild(chip);
         });
+        return row;
+    }
+
+    // The OUTPUTS line of a distro with a face (1.5): one plug chip per
+    // row - its connector, its name and how many - each a drag handle for
+    // "the next free one of these". A paired row's chip says so.
+    _dockFaceOutputsRow(d, face) {
+        const row = document.createElement('div');
+        row.className = 'hw-dock-outputs';
+        const cap = document.createElement('span');
+        cap.className = 'hw-dock-outputs-cap';
+        cap.textContent = 'OUTPUTS';
+        row.appendChild(cap);
+        const name = d.name || d.id;
+        for (const r of face.rows) {
+            const info = face.rowInfo.get(r.id);
+            const t = this.faceBoxType(d, info.boxes[0]);
+            const chip = this._plugChip(Object.assign({}, t, {
+                sub: `× ${r.count}${r.pairedWith ? ' · paired' : ''}`,
+            }));
+            chip.title = `${r.count} × ${t.name} on ${name}`
+                + (r.pairedWith ? `, paired with ${this._faceRowSummary(d, r.pairedWith)} `
+                    + '(the same circuits)' : '')
+                + `. Drag onto a screen: the next free ${t.name} takes the screen's next `
+                + (t.kind === 'direct' ? 'unassigned circuit.' : 'unassigned multi.')
+                + ' Refused, with the reason, when the screen cannot run on it.';
+            this._dockWireDraggable(chip, {
+                type: 'plug', distroId: d.id, output: t.id,
+                title: `${name} · ${t.name}`,
+            }, `plug-${d.id}-${t.id}`);
+            row.appendChild(chip);
+        }
         return row;
     }
 
@@ -2574,6 +2742,9 @@ class _HardwareDock {
                 ? `. L21-30 feed, ${feedLegA} A per leg` : '')
             + (overflow ? `. OVERFLOW - more circuits than the `
                 + `${boxSize === 3 ? 'three' : 'six'} a ${boxType.name} holds` : '')
+            + (typeInfo.faceBox && typeInfo.faceBox.paired
+                ? `. Paired with ${this._faceRowSummary(d, typeInfo.faceBox.primaryRowId)} - `
+                    + 'the same circuits; patch a circuit to one connector or the other' : '')
             + '. Drag onto a circuit to land that circuit\'s multi here - '
             + 'the first circuit takes the whole multi, a later circuit '
             + `splits it there and this ${boxType.name} takes the rest`
@@ -2632,7 +2803,7 @@ class _HardwareDock {
         // with nothing on it the chip is the picker; on an occupied box it
         // reads what the occupants make it.
         const typeChip = this._dockBuildTypeChip(d, n, typeInfo,
-                                                 !members.length);
+                                                 !members.length && typeInfo.source !== 'face');
         if (!memberRecs.length) {
             const label = head.querySelector('.hw-dock-unit-name');
             head.insertBefore(typeChip, label ? label.nextSibling : null);

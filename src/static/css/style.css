@@ -2217,6 +2217,31 @@ button.hw-dock-typechip:focus-visible { outline: 1px solid var(--ps-accent, #ef3
 .hw-pop-outs-hint {
     color: #969696; font-size: 10px; margin: 4px 4px 0; line-height: 1.35;
 }
+/* 1.5 distro systems: the supply rows and the OUTPUT ROWS editor. A select
+   in a row shares the line instead of taking it whole; a row's connector
+   takes its first line and the rest of its fields wrap under it. */
+#hw-gear-popover .hw-pop-supply select.info-select {
+    width: auto; flex: 1 1 0; min-width: 0;
+}
+#hw-gear-popover .hw-pop-row {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+    margin-top: 6px; min-width: 0;
+}
+#hw-gear-popover .hw-pop-row select.info-select {
+    width: auto; flex: 1 1 auto; min-width: 0;
+}
+#hw-gear-popover .hw-pop-row select.hw-pop-row-conn { flex: 1 1 100%; }
+#hw-gear-popover .hw-pop-row small { color: #969696; font-size: 10px; }
+#hw-gear-popover .hw-pop-row + .hw-pop-row:not(.hw-pop-row-actions) {
+    border-top: 1px solid #333; padding-top: 6px;
+}
+#hw-gear-popover .hw-pop-check {
+    display: flex; align-items: center; gap: 6px; cursor: pointer;
+}
+#hw-gear-popover .hw-pop-check input[type="checkbox"] {
+    accent-color: #e22330; margin: 0; flex: 0 0 auto;
+    width: 13px; height: 13px; -webkit-appearance: checkbox; appearance: auto;
+}
 /* A folded MAIN folds its nested backup with it - a redundant pair is one
    thing, and half a folded thing must not stay open beside it. The backup
    still folds alone through its own header. First-child guard: only the

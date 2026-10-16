@@ -52,6 +52,17 @@ def _scratch_layouts_file(tmp_path_factory):
     yield routes_layouts.LAYOUTS_FILE
 
 
+# Saved distro presets live in one JSON file beside the presets folder too
+# (routes_distro_presets); every session gets a scratch one.
+
+@pytest.fixture(scope="session", autouse=True)
+def _scratch_distro_presets_file(tmp_path_factory):
+    import routes_distro_presets
+    routes_distro_presets.DISTRO_PRESETS_FILE = str(
+        tmp_path_factory.mktemp('distro_presets') / 'distro_presets.json')
+    yield routes_distro_presets.DISTRO_PRESETS_FILE
+
+
 # ── Waiting for the page to settle ───────────────────────────────────────
 # A fixed sleep and then a read is a guess about how fast the machine is.
 # On a busy Windows box the dock's fold transition and the next animation

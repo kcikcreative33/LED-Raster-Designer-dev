@@ -1575,10 +1575,14 @@ class _Presets {
             bucket.circuits += circuits;
             byVoltage.set(voltage, bucket);
         });
-        // I = P / V single phase, I = P / (V x 1.73) three phase.
+        // I = P / V single phase, I = P / (V_LL x 1.73) three phase - the
+        // SERVICE's line-to-line voltage (1.5, bug fix 3: 120V screens
+        // ride a 208V service, 230V screens a 400V one).
+        const lineV = (v) => (typeof this.threePhaseLineVoltage === 'function'
+            ? this.threePhaseLineVoltage(v) : v);
         byVoltage.forEach(b => {
             b.amps1ph = b.voltage > 0 ? b.watts / b.voltage : 0;
-            b.amps3ph = b.voltage > 0 ? b.watts / (b.voltage * 1.73) : 0;
+            b.amps3ph = b.voltage > 0 ? b.watts / (lineV(b.voltage) * 1.73) : 0;
         });
         const voltageMismatch = voltages.length > 1;
         // No layers counted keeps the old 110 V stand-in so a project with
@@ -1587,7 +1591,7 @@ class _Presets {
         const singlePhaseAmps = voltageMismatch
             ? null : (voltage > 0 ? totalWattsAll / voltage : 0);
         const threePhaseAmps = voltageMismatch
-            ? null : (voltage > 0 ? totalWattsAll / (voltage * 1.73) : 0);
+            ? null : (voltage > 0 ? totalWattsAll / (lineV(voltage) * 1.73) : 0);
         return {
             circuits: totalCircuits,
             totalWatts: totalWattsAll,

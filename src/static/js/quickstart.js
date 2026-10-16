@@ -3137,14 +3137,13 @@
         },
         distroPhase: {
             target: function () { var d = distro(); return d ? '[data-hwpop="distro-' + d.id + '"]' : '#hardware-dock-body .hw-dock-gear'; },
-            place: 'top', title: 'Voltage and phase',
-            avoid: [function () { var d = distro(); return d ? '[data-lrd-field="distro-phase-' + d.id + '"]' : null; },
-                    function () { var d = distro(); return d ? '[data-lrd-field="distro-voltage-' + d.id + '"]' : null; }],
-            body: 'Voltage and phase sit beside the rating and the header wears them. Pick 1&phi; and the LEGS line and Balance leave; pick 3&phi; and they are back, with the phasing row under it.',
+            place: 'top', title: 'The distro\'s system',
+            avoid: [function () { var d = distro(); return d ? '[data-lrd-field="distro-system-' + d.id + '"]' : null; }],
+            body: 'System is the service - 120/208V, 120/240V, 120V, 230/400V or 230V - and the header wears it. Pick 120V 1&phi; and the LEGS line and Balance leave; back on 120/208V they return, with the phasing row under it.',
             before: function () { switchView('power'); closePopover(); },
             act: function (t) {
                 var d = distro();
-                var phase = '[data-lrd-field="distro-phase-' + d.id + '"]';
+                var system = '[data-lrd-field="distro-system-' + d.id + '"]';
                 t.mem.start = distroInfo(d);
                 return t.click('[data-hwpop="distro-' + d.id + '"]').then(function () {
                     return t.wait(popover);
@@ -3152,7 +3151,7 @@
                     if (!pop) throw new Error('the distro\'s gear popover did not open');
                     return t.spot(pop).then(function () { return t.pause(900); });
                 }).then(function () {
-                    return t.select(phase, '1');
+                    return t.select(system, '120');
                 }).then(function () {
                     return t.wait(function () { var q = distro(); return q && Number(q.phase) === 1 && /1φ/.test(distroInfo(q)); });
                 }).then(function () {
@@ -3165,7 +3164,7 @@
                     t.mem.midLegs = distroLegs(q);
                     // The popover was rebuilt with the change; the select is
                     // found again by its key.
-                    return t.select(phase, '3');
+                    return t.select(system, '120/208');
                 }).then(function () {
                     return t.wait(function () { var q = distro(); return q && Number(q.phase) === 3 && /3φ/.test(distroInfo(q)); });
                 }).then(function () { return t.pause(800); });
@@ -3175,7 +3174,7 @@
                 if (!d || Number(d.phase) !== 3 || !mem.mid || !/1φ/.test(mem.mid)) return null;
                 var now = distroInfo(d);
                 if (!/3φ/.test(now)) return null;
-                return 'At 1φ the header read ' + mem.mid + (mem.midLegs ? '' : ' with no LEGS line') + '; back on 3φ it reads ' + now
+                return 'At 120V 1φ the header read ' + mem.mid + (mem.midLegs ? '' : ' with no LEGS line') + '; back on 120/208V it reads ' + now
                     + (distroLegs(d) ? ' and the legs are metered again.' : '.');
             },
             after: function () { closePopover(); }

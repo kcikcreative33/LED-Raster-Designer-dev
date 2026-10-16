@@ -357,15 +357,30 @@ class _Naming {
             if (pinned) {
                 number = pin;
             } else if (distroId) {
-                // Next auto number ON THAT DISTRO, skipping every slot a
-                // pin claimed - a pin owns its number outright, wherever
-                // the pinned screen sits in layer order. With no pins this
-                // is the plain per-distro sequence it has always been.
-                const taken = (pins && pins.get(distroId)) || null;
-                let n = seq.get(distroId) || 0;
-                do { n += 1; } while (taken && taken.has(n));
-                seq.set(distroId, n);
-                number = n;
+                const d = distros.find(x => x.id === distroId);
+                const face = d && typeof this.distroFace === 'function'
+                    ? this.distroFace(d) : null;
+                if (face) {
+                    // A distro with a FACE (1.5) has real outputs: an auto
+                    // multi takes the first one nobody holds that it can
+                    // land on (_faceAutoNumber) - never a direct output,
+                    // never a 120V Socapex for a 208V screen.
+                    const key = `face:${distroId}`;
+                    const issued = seq.get(key) || new Set();
+                    seq.set(key, issued);
+                    number = this._faceAutoNumber(d, face, layer,
+                        pins && pins.get(distroId), issued);
+                } else {
+                    // Next auto number ON THAT DISTRO, skipping every slot a
+                    // pin claimed - a pin owns its number outright, wherever
+                    // the pinned screen sits in layer order. With no pins this
+                    // is the plain per-distro sequence it has always been.
+                    const taken = (pins && pins.get(distroId)) || null;
+                    let n = seq.get(distroId) || 0;
+                    do { n += 1; } while (taken && taken.has(n));
+                    seq.set(distroId, n);
+                    number = n;
+                }
             } else {
                 // No distro: the SCREEN'S OWN template numbers its multis,
                 // from the template's number, per screen - S1-# names this
@@ -470,8 +485,14 @@ class _Naming {
             // and every claim past that is overflow whichever member made
             // it. Members of one box virtually always agree; when they do
             // not, the smaller figure is the only honest capacity.
+            // A face box (1.5) is as big as its connector, whoever claims it.
+            const [boxDistro, boxNumber] = key.split(':');
+            const faceD = typeof this.faceBox === 'function'
+                ? this.getDistros().find(x => x.id === boxDistro) : null;
+            const fbox = faceD ? this.faceBox(faceD, boxNumber) : null;
             const cap = Math.min(...members
-                .map(m => this.socaBoxSize(m.layer)));
+                .map(m => this.socaBoxSize(m.layer)),
+                fbox ? fbox.size : Infinity);
             // Pass 1: every stored set takes exactly its tails. Doing this
             // before ANY dealing is what makes a stored set law: an
             // unstored member earlier in layer order can no longer sit
@@ -552,6 +573,13 @@ class _Naming {
         // S1-5, S1-6 - the occupied tails ascending in wall order, gaps where
         // a tail is skipped.
         if (slot && slot.name) {
+            // A DIRECT output (1.5) is one circuit on its own connector: its
+            // name is the circuit's name, with no tail to count - "SL5".
+            const did = (layer.powerSocaDistro || {})[slot.multi];
+            if (did && typeof this._isDirectBox === 'function'
+                    && this._isDirectBox(did, slot.number)) {
+                return `${slot.name}${tpl.suffix}`;
+            }
             return `${slot.name}${tpl.sep}${slot.tail}${tpl.suffix}`;
         }
         // A template with no multi number in it has no multi to name.
@@ -617,7 +645,24 @@ class _Naming {
         // drawn multis climb.
         const distroId = (layer.powerSocaDistro || {})[idx] || null;
         let number = nm.tpl.start + idx - 1;
-        if (distroId) {
+        const predD = distroId ? this.getDistros().find(x => x.id === distroId) : null;
+        const predFace = predD && typeof this.distroFace === 'function'
+            ? this.distroFace(predD) : null;
+        if (predFace) {
+            // A face distro deals autos by _faceAutoNumber: every pin on it
+            // and every auto it has already dealt are taken.
+            const taken = new Set();
+            for (const l of ((this.project && this.project.layers) || [])) {
+                if ((l.type || 'screen') !== 'screen') continue;
+                const entry = (this._circuitTailCache && this._circuitTailCache.get(l))
+                    || (l === layer ? nm : null);
+                if (!entry) continue;
+                for (const r of entry.socas.values()) {
+                    if (r.distroId === distroId) taken.add(r.number);
+                }
+            }
+            number = this._faceAutoNumber(predD, predFace, layer, taken, null);
+        } else if (distroId) {
             const screens = ((this.project && this.project.layers) || [])
                 .filter(l => (l.type || 'screen') === 'screen');
             const entryOf = (l) => (this._circuitTailCache && this._circuitTailCache.get(l))

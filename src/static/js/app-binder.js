@@ -1467,10 +1467,12 @@ class _Binder {
         const watts = sum('watts');
         const active = sum('active');
         const sizes = [...new Set(members.map(m => `${m.cabinet_width}×${m.cabinet_height}`))];
+        // the service's line-to-line voltage (1.5, bug fix 3)
+        const lineV = members.length ? this.threePhaseLineVoltage(members[0]) : voltage;
         return {
             active, equivalent: sum('equivalent'), watts, voltage,
             amps1: voltage > 0 ? watts / voltage : 0,
-            amps3: voltage > 0 ? watts / (voltage * 1.73) : 0,
+            amps3: lineV > 0 ? watts / (lineV * 1.73) : 0,
             pixels: sum('pixels'),
             width: Number.isFinite(x1) ? x2 - x1 : 0, height: Number.isFinite(y1) ? y2 - y1 : 0,
             screenText: `${members.map(m => `${m.columns} × ${m.rows}`).join(' + ')} · ${this._bPlural(active, 'panel')}`
@@ -3861,10 +3863,12 @@ class _Binder {
             : { width: 0, height: 0 };
         const watts = (parseFloat(layer.panelWatts) || 0) * equivalent;
         const voltage = parseFloat(layer.powerVoltage) || 0;
+        // the service's line-to-line voltage (1.5, bug fix 3)
+        const lineV = this.threePhaseLineVoltage(layer);
         return {
             active: active.length, equivalent, watts, voltage,
             amps1: voltage > 0 ? watts / voltage : 0,
-            amps3: voltage > 0 ? watts / (voltage * 1.73) : 0,
+            amps3: lineV > 0 ? watts / (lineV * 1.73) : 0,
             pixels: active.reduce((s, p) => s + this.getPanelPixelArea(p), 0),
             width: bounds.width, height: bounds.height,
             screenText: `${layer.columns} × ${layer.rows} · ${this._bPlural(active.length, 'panel')}`
@@ -3891,7 +3895,8 @@ class _Binder {
     _bSubjectLegsOn(layers, distroId, listed = null) {
         const distro = (typeof this.getDistros === 'function' ? this.getDistros() : [])
             .find(d => d && d.id === distroId);
-        if (!distro || Number(distro.phase) !== 3 || typeof this.boxFeedLegAmps !== 'function') return null;
+        if (!distro || this.distroLegNames(distro).length < 2
+                || typeof this.boxFeedLegAmps !== 'function') return null;
         const members = [];
         for (const layer of layers) {
             const assign = layer.powerSocaDistro || {};
@@ -3961,14 +3966,18 @@ class _Binder {
         const fed = distroIds.map(id => {
             const d = loads.find(x => x.id === id);
             if (!d) return null;
-            let line = `${d.name} · ${d.ratingA} A ${d.voltage} V ${d.phase === 3 ? '3φ' : '1φ'}`;
+            const rec = this.getDistros().find(x => x.id === id) || d;
+            let line = `${d.name} · ${this._bDistroRatingText(rec)}`;
             const legs = grouped ? this._bSubjectLegsOn(s.carriers, id, listed) : this._bScreenLegsOn(layer, id);
             if (legs) {
                 // a leg's letter and its figure stay on one line where
                 // the row wraps (no-break spaces; the KV rows wrap at
-                // plain spaces only)
-                line += ` · ${whose} on its legs X ${this._bNum(legs.X, 1)} Y ${this._bNum(legs.Y, 1)}`
-                    + ` Z ${this._bNum(legs.Z, 1)} A`;
+                // plain spaces only). The letters are the region's: X/Y/Z
+                // in North America, L1/L2/L3 on an EU distro (1.5).
+                line += ` · ${whose} on its legs `
+                    + this.distroLegNames(rec).map(k =>
+                        `${this.distroLegLabel(rec, k)} ${this._bNum(legs[k], 1)}`).join(' ')
+                    + ' A';
             }
             return line;
         }).filter(Boolean);
@@ -4481,7 +4490,7 @@ class _Binder {
             const bucket = byVoltage.get(f.voltage) || { voltage: f.voltage, watts: 0, amps1: 0, amps3: 0 };
             bucket.watts += w;
             bucket.amps1 += w / f.voltage;
-            bucket.amps3 += w / (f.voltage * 1.73);
+            bucket.amps3 += w / (this.threePhaseLineVoltage(l) * 1.73);
             byVoltage.set(f.voltage, bucket);
         }
         const loadText = (b) => `${this._bNum(b.amps1, 1)} A 1φ · ${this._bNum(b.amps3, 1)} A 3φ · ${this._bNum(b.watts / 1000, 1)} kW`;
@@ -4696,7 +4705,7 @@ class _Binder {
                 if (box.distroId && !seenDistro.has(box.distroId)) {
                     seenDistro.add(box.distroId);
                     const d = (this.getDistros ? this.getDistros() : []).find(x => x.id === box.distroId);
-                    if (d) hw.push({ cells: ['', d.name, `distro · ${d.ratingA} A ${d.voltage} V ${d.phase === 3 ? '3φ' : '1φ'}`] });
+                    if (d) hw.push({ cells: ['', d.name, `distro · ${this._bDistroRatingText(d)}`] });
                 }
             }
             const asg = ((this._assignment && this._assignment.screens) || [])
@@ -4895,13 +4904,21 @@ class _Binder {
             rows: boxes.length ? boxes : [{ cells: ['none', '', '', '', '', ''] }],
             shrink: true,
         }) });
-        const pairs = [['Rating', `${d.ratingA} A ${d.voltage} V ${d.phase === 3 ? '3φ' : '1φ'}`]];
+        const pairs = [['Rating', this._bDistroRatingText(d)]];
+        // The face (1.5): one line per output row, a paired row printed
+        // ONCE with both connectors named.
+        for (const line of this._bDistroFaceLines(d)) pairs.push(['Outputs', line]);
         if (load) {
-            pairs.push(['Load', `${this._bNum(load.amps, 1)} A · ${this._bNum(load.pct, 0)}% · ${this._bNum(load.watts / 1000, 1)} kW`
+            // The WORST LEG against the per-leg rating (1.5, bug fix 2) -
+            // the leg named where the distro has legs.
+            const leg = load.legs && load.worstLeg
+                ? ` on leg ${this.distroLegLabel(d, load.worstLeg)}` : '';
+            pairs.push(['Load', `${this._bNum(load.amps, 1)} A${leg} · ${this._bNum(load.pct, 0)}% · ${this._bNum(load.watts / 1000, 1)} kW`
                 + (load.over ? ' · OVER' : '')]);
             if (load.legs) {
-                pairs.push(['Legs', `X ${this._bNum(load.legs.X.amps, 1)} · Y ${this._bNum(load.legs.Y.amps, 1)}`
-                    + ` · Z ${this._bNum(load.legs.Z.amps, 1)} A`]);
+                const names = load.legs.names || ['X', 'Y', 'Z'];
+                pairs.push(['Legs', names.map(k =>
+                    `${this.distroLegLabel(d, k)} ${this._bNum(load.legs[k].amps, 1)}`).join(' · ') + ' A']);
                 pairs.push(['Imbalance', `${this._bNum(load.imbalancePct, 1)}%`]);
             }
         }
@@ -4910,6 +4927,46 @@ class _Binder {
         const hw = (book.list.hardware || []).find(h => h.kind === 'distro' && h.id === d.id);
         blocks.push({ lines: this._bPullLines(book, 'Pull list', (hw && hw.rows) || []) });
         return blocks;
+    }
+
+    // A distro's rating as the papers print it: an old-style distro (no
+    // face) exactly as it always read - "400 A 208 V 3φ"; a distro with a
+    // face (1.5) by its system, per leg, its input and its breakers -
+    // "200 A per leg · 120/208V 3φ · Cam 200 A".
+    _bDistroRatingText(d) {
+        if (!d) return '';
+        if (!this.distroFace(d)) {
+            return `${d.ratingA} A ${d.voltage} V ${Number(d.phase) === 3 ? '3φ' : '1φ'}`;
+        }
+        const input = this.distroInputs().find(i => i.id === d.input);
+        return [`${d.ratingA} A per leg`, this.distroSystemName(d),
+                input ? input.name : null,
+                d.breakers100 && this.distroRegion(d) === 'us' ? '100% rated breakers' : null]
+            .filter(Boolean).join(' · ');
+    }
+
+    // The face's rows, one line each: "4 × Socapex 208V · 24 circuits ·
+    // 20 A"; a paired row folds into its partner's line, both connectors
+    // named: "2 × Socapex 230V / 2 × Harting 16E 230V (paired) · 12
+    // circuits · 16 A".
+    _bDistroFaceLines(d) {
+        const face = this.distroFace(d);
+        if (!face) return [];
+        const out = [];
+        const name = (x) => {
+            const i = face.rowInfo.get(x.id);
+            return `${x.count} × ${this.faceBoxType(d, i.boxes[0]).name}`;
+        };
+        for (const r of face.rows) {
+            if (r.pairedWith) continue;
+            const info = face.rowInfo.get(r.id);
+            const partners = face.rows.filter(x => x.pairedWith === r.id);
+            const lead = [r, ...partners].map(name).join(' / ')
+                + (partners.length ? ' (paired)' : '');
+            const noun = info.conn.kind === 'direct' ? 'direct circuit' : 'circuit';
+            out.push(`${lead} · ${this._bPlural(info.circuits, noun)} · ${r.breakerA} A`);
+        }
+        return out;
     }
 
     _bPullLines(book, title, rows) {

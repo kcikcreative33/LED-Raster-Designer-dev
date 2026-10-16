@@ -418,7 +418,8 @@ class _ScreenInfo {
                 // Per member as well as combined, so a mixed-voltage group has
                 // something real to show instead of a blended figure.
                 amps1ph: voltage > 0 ? watts / voltage : 0,
-                amps3ph: voltage > 0 ? watts / (voltage * 1.73) : 0,
+                // the service's line-to-line voltage (1.5, bug fix 3)
+                amps3ph: voltage > 0 ? watts / (this.threePhaseLineVoltage(layer) * 1.73) : 0,
                 ports,
                 circuits,
                 powerError,
@@ -443,7 +444,10 @@ class _ScreenInfo {
             const voltage = voltages.length === 1 ? voltages[0] : 0;
             totals.voltage = voltages.length === 1 ? voltage : null;
             totals.amps1ph = voltage > 0 ? totals.watts / voltage : 0;
-            totals.amps3ph = voltage > 0 ? totals.watts / (voltage * 1.73) : 0;
+            const lineV = totals.members.length
+                ? this.threePhaseLineVoltage(this.project.layers.find(l => l.id === totals.members[0].id) || voltage)
+                : this.threePhaseLineVoltage(voltage);
+            totals.amps3ph = voltage > 0 ? totals.watts / (lineV * 1.73) : 0;
         }
         return totals;
     }

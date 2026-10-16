@@ -903,7 +903,10 @@ Object.assign(CanvasRenderer.prototype, {
                     : 0;
                 const totalWatts = panelWatts * equivalentPanels;
                 let amps1 = voltage > 0 ? (totalWatts / voltage) : 0;
-                let amps3 = voltage > 0 ? (totalWatts / (voltage * 1.73)) : 0;
+                // the service's line-to-line voltage (1.5, bug fix 3)
+                const lineV = typeof window.app.threePhaseLineVoltage === 'function'
+                    ? window.app.threePhaseLineVoltage(layer) : voltage;
+                let amps3 = voltage > 0 ? (totalWatts / (lineV * 1.73)) : 0;
                 // A group member labelling itself (the 'screens' display)
                 // reads the same circuit authority the roll-up does, and on a
                 // crossing wall that authority hands the wall's ONE combined

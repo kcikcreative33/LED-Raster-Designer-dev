@@ -92,7 +92,11 @@ window.__sh = {
             cabinet_width: 128, cabinet_height: 128,
             offset_x: 0, offset_y: 0,
             panel_weight: 20, weight_unit: 'kg',
-            panelWatts: 100, powerVoltage: 100, powerAmperage: 5,
+            // 110V, not 100V: a 120/208 distro gives 120V or 208V and a
+            // 100V screen is refused (owner, 2026-10-16: 110, 115 and 120
+            // are 120V; anything else that does not fit is refused). 110V x
+            // 5A still fits five 100W cabinets a circuit.
+            panelWatts: 100, powerVoltage: 110, powerAmperage: 5,
             processorType: 'brompton', bitDepth: 8, frameRate: 60,
             lowLatency: false,
             flowPattern: 'tl-h', portMappingMode: 'organized',
@@ -213,7 +217,9 @@ def test_rollup_counts_one_soca_with_combined_legs(page):
         return sh.withProject(project, () => {
             window.app._circuitTailCache = null;
             const d1 = window.app.getDistroLoads().find(b => b.id === 'd1');
-            return { socas: d1.socas, watts: d1.watts, amps: d1.amps };
+            return { socas: d1.socas, watts: d1.watts, amps: d1.amps,
+                     balanced: d1.balancedAmps,
+                     worst: Math.max(d1.legs.X.amps, d1.legs.Y.amps, d1.legs.Z.amps) };
         });
     }""")
     assert len(out['socas']) == 1, 'one physical box = one feeds row'
@@ -224,7 +230,10 @@ def test_rollup_counts_one_soca_with_combined_legs(page):
     # 15 panels x 100 W per screen, both screens on the box
     assert row['watts'] == 3000
     assert out['watts'] == 3000
-    assert abs(out['amps'] - 3000 / (208 * 1.73)) < 0.01
+    # 1.5, bug fix 2 (owner, 2026-10-16): the header figure is the WORST
+    # LEG, not W / (V x 1.73) - the balanced figure stays on the record.
+    assert abs(out['balanced'] - 3000 / (208 * 1.73)) < 0.01
+    assert abs(out['amps'] - out['worst']) < 1e-9
 
 
 # ── 2. numbering: auto deals around pins ──────────────────────────────────
@@ -602,7 +611,8 @@ def test_dock_multi_reads_one_box_not_two_multis(page):
         'the one field reads as the shared derived name'
     assert not out['staticLabel'], \
         'an occupied box wears its members, not a static slot label'
-    assert out['detail'] == '6 circuits · 30.0 A', out
+    # 3000 W at 110 V (the screens moved off 100 V - see sh.screen)
+    assert out['detail'] == '6 circuits · 27.3 A', out
     assert out['glance'] == '6/6', out
     assert not out['clashClass']
     assert [c['box'] for c in out['chips']] == ['multi-d1-3'] * 6, (

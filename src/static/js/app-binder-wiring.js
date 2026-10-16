@@ -346,10 +346,17 @@ class _BinderWiring {
             }
             const t = types.find(x => x.id === box.typeId) || null;
             const tails = (box.circuits || []).map(c => Number(c.tail) || 0);
-            const slots = t ? (Number(t.boxSize) || 6) : Math.max(6, ...tails);
+            // A face box (1.5) is as big as its connector - a direct output
+            // one socket, an L21-30 three.
+            const slots = box.boxSize && String(box.typeId || '').startsWith('face:')
+                ? box.boxSize : (t ? (Number(t.boxSize) || 6) : Math.max(6, ...tails));
             // "SR1 · Multi 208 breakout · 125'"; a multi on no distro has no
-            // type to name its breakout by and reads as the band does
-            const caption = [box.name, box.type ? `${box.type} breakout` : 'no distro',
+            // type to name its breakout by and reads as the band does. A
+            // DIRECT output is its own cable, no breakout: "SL5 · True1
+            // 208V · 25'".
+            const caption = [box.name,
+                             box.kind === 'direct' ? box.type
+                                 : (box.type ? `${box.type} breakout` : 'no distro'),
                              box.homeRun ? this.pullLengthText(box.homeRun) : 'no length'].join(' · ');
             const d = { key: box.key, title: caption, n: slots, sockets: new Map(), notes: new Map() };
             if (box.distroId) {

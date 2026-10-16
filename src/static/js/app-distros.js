@@ -16,6 +16,12 @@ class _Distros {
     getDistros() {
         if (!this.project) return [];
         if (!this.project.distros) this.project.distros = [];
+        // Every record read is migrated to a SYSTEM once (1.5,
+        // app-distro-systems.js): idempotent, so a paste, an undo restore
+        // or a load all meet the same record. Nothing is pushed for it -
+        // an old show opens unchanged and saves the system the next time
+        // its distros are written.
+        for (const d of this.project.distros) this._ensureDistroSystem(d);
         return this.project.distros;
     }
 
@@ -58,6 +64,17 @@ class _Distros {
             voltage: Number(opts.voltage) || dflt.voltage,
             phase: opts.phase == null ? dflt.phase : (Number(opts.phase) === 1 ? 1 : 3)
         };
+        // A new distro is a SYSTEM from the start: the one asked for, else
+        // the one its preference voltage and phase migrate to, else
+        // 120/208 (a preference pair naming no system unambiguously - a
+        // new distro needs one, and 120/208 is the app's own default).
+        const asked = opts.system && this.distroSystemById(opts.system);
+        const sysId = asked ? asked.id
+            : (this._systemForVoltagePhase(d.voltage, d.phase).id || '120/208');
+        const sys = this.distroSystemById(sysId);
+        d.system = sys.id;
+        d.voltage = sys.voltage;
+        d.phase = sys.phase;
         list.push(d);
         // Adding a distro adds a bucket the numbering runs over, and its name
         // is what the multis landing on it will be called.
@@ -76,9 +93,53 @@ class _Distros {
         if (!d) return null;
         if (patch.name !== undefined) d.name = String(patch.name).trim() || d.name;
         if (patch.ratingA !== undefined) d.ratingA = Number(patch.ratingA) || d.ratingA;
-        if (patch.voltage !== undefined) d.voltage = Number(patch.voltage) || d.voltage;
-        if (patch.phase !== undefined) d.phase = Number(patch.phase) === 1 ? 1 : 3;
+        // The SYSTEM (1.5): the service as a whole - its voltage and phase
+        // follow it. The old voltage/phase keys still patch (scripts, old
+        // callers): the pair is re-read through the migration table, and a
+        // pair naming no system unambiguously leaves the distro on the old
+        // arithmetic, as an old file would be.
+        if (patch.system !== undefined) {
+            const sys = this.distroSystemById(patch.system);
+            if (sys) {
+                d.system = sys.id;
+                d.voltage = sys.voltage;
+                d.phase = sys.phase;
+            }
+        } else if (patch.voltage !== undefined || patch.phase !== undefined) {
+            if (patch.voltage !== undefined) d.voltage = Number(patch.voltage) || d.voltage;
+            if (patch.phase !== undefined) d.phase = Number(patch.phase) === 1 ? 1 : 3;
+            delete d.system;
+            this._ensureDistroSystem(d);
+        }
         if (patch.phasing !== undefined) d.phasing = patch.phasing || null;
+        // "Whole multi on one leg" is offered on EU distros only (ruling 4):
+        // a distro that leaves the EU systems drops it back to deriving.
+        if (d.phasing === 'whole-ln' && this.distroRegion(d) !== 'eu') d.phasing = null;
+        if (patch.input !== undefined) {
+            const inp = this.distroInputs().find(i => i.id === patch.input);
+            if (inp) d.input = inp.id; else delete d.input;
+        }
+        if (patch.breakers100 !== undefined) {
+            if (patch.breakers100) d.breakers100 = true; else delete d.breakers100;
+        }
+        if (patch.directPhasing !== undefined) {
+            if (patch.directPhasing === 'paired') d.directPhasing = 'paired';
+            else delete d.directPhasing;
+        }
+        // The OUTPUT ROWS (1.5): stored cleaned for the system; an empty
+        // list forgets the key, so the distro is the old demand-driven
+        // kind again.
+        if (patch.outputRows !== undefined) {
+            const sys = this.distroSystem(d);
+            const rows = sys ? this._normalizeOutputRows(patch.outputRows, sys) : [];
+            if (rows.length) d.outputRows = rows; else delete d.outputRows;
+        } else if (patch.system !== undefined && Array.isArray(d.outputRows)) {
+            // A new system re-cleans the rows it has: a connector the
+            // region does not offer goes, a coupling it cannot run is
+            // corrected.
+            const rows = this._normalizeOutputRows(d.outputRows, this.distroSystem(d));
+            if (rows.length) d.outputRows = rows; else delete d.outputRows;
+        }
         // Where the box physically sits - the dimmer beach, stage left
         // world. Prints on every power label that names this distro.
         if (patch.location !== undefined) d.location = String(patch.location).trim() || null;

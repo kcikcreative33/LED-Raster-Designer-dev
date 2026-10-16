@@ -438,6 +438,12 @@ Object.assign(CanvasRenderer.prototype, {
                     && typeof window.app.powerCircuitCable === 'function') {
                 const cable = window.app.powerCircuitCable(layer, circuitNum);
                 if (cable) cableText = cable.text;
+                // A DIRECT output's own cable, distro to screen (1.5), when
+                // the circuit carries no cable of its own.
+                if (!cableText && typeof window.app.directOutputCable === 'function') {
+                    const direct = window.app.directOutputCable(layer, circuitNum);
+                    if (direct) cableText = direct.text;
+                }
             }
             const gang = circuitNum != null ? gangByRun.get(circuitNum) || null : null;
             if (cableText || gang) pendingTags.push({ text: cableText, disc, gang, step });
@@ -814,7 +820,19 @@ Object.assign(CanvasRenderer.prototype, {
         this.ctx.strokeStyle = orange;
         this.ctx.fillStyle = orange;
         this.ctx.font = `bold ${labelSize}px ${projectFontFamily()}`;
+        // A box on a distro's FACE (1.5) wears its own connector's badge
+        // ("SOCAPEX 208V", "TRUE1 208V") - the face says what it is, not
+        // the screen's breakout.
+        const app = window.app;
+        const faceBadge = (s) => {
+            if (!s.distroId || typeof app.faceBox !== 'function') return null;
+            const d = app.getDistros().find(x => x.id === s.distroId);
+            const box = d ? app.faceBox(d, s.number) : null;
+            return box ? app.faceBoxType(d, box).badge : null;
+        };
+        const sharedBadge = badgeText;
         for (const { s, r } of placed) {
+            const badgeText = faceBadge(s) || sharedBadge;
             const dashed = !!(pend && pend.socaIndex === s.soca);
             const y = top - baseGap - r * rowH;
             const tick = labelSize * 0.45;
