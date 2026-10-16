@@ -169,8 +169,12 @@ class _CableUnits {
         return this.normalizeJumperStock(parts.map(Number));
     }
 
+    // A ladder as its field shows it: every number exactly as stored, in
+    // the ladder's own unit. Never cableFigure - that rounds to the open
+    // show's unit, so a feet show would turn a 0.25 m rung into 0.3 and a
+    // Preferences save would write the rounded ladder back.
     jumperStockText(list) {
-        return (list || []).map(n => this.cableFigure(n)).join(', ');
+        return (list || []).map(n => String(Number(n))).join(', ');
     }
 
     // The ladder a long jumper rounds up to in a unit (the show's by
@@ -253,20 +257,44 @@ class _CableUnits {
         return true;
     }
 
-    // A length printed in one unit ("2'" / "2 m") as the same number in
-    // the other; anything else (EA, a free row's own words) as it was.
-    _relabelLengthText(text, from, to) {
+    // The NUMBER behind a length printed in one unit ("2'" / "2 m"), or
+    // null for anything else (EA, a free row's own words). The print can
+    // be short of the number - feet print one decimal, so 7.62 reads
+    // "7.6'" - and the first of these that prints back as `text` wins:
+    // `stored` (the number an edit carries from an earlier relabel), then
+    // the show's own numbers that print as `text` (`candidates`, read off
+    // the pull sheet's engine), then the printed figure itself.
+    _lengthNumberOf(text, from, stored, candidates) {
         const t = String(text == null ? '' : text);
         const m = from === 'm' ? /^(\d+(?:\.\d+)?) m$/.exec(t) : /^(\d+(?:\.\d+)?)'$/.exec(t);
-        return m ? this.cableLengthText(Number(m[1]), to) : t;
+        if (!m) return null;
+        const printed = Number(m[1]);
+        const s = Number(stored);
+        if (stored != null && Number.isFinite(s) && this.cableLengthText(s, from) === t) return s;
+        const hits = [...new Set((candidates || []).filter(n => this.cableLengthText(n, from) === t))];
+        if (hits.length && !hits.includes(printed)) return hits[0];
+        return printed;
     }
 
     // Every pull-sheet edit's row key (`type|length[|split]`) and every
-    // added row's length, relabelled from one unit to the other. Returns
-    // true when something changed.
+    // added row's length, relabelled from one unit to the other BY NUMBER:
+    // each carries its number (`lengthNum`) so a round trip (m -> ft -> m)
+    // lands on the key it started from, and an engine row's key follows
+    // the number the engine prints. Returns true when something changed.
     _relabelPullSheetEdits(from, to) {
         const store = this.project && this.project.pullSheetEdits;
         if (!store || !store.positions || from === to) return false;
+        // The numbers the engine prints, in the new unit (the show's now).
+        let candidates = [];
+        if (typeof this.pullSheetLengthNumbers === 'function') {
+            try { candidates = this.pullSheetLengthNumbers(); } catch (_) { candidates = []; }
+        }
+        const relabel = (holder, text, useEngine) => {
+            const n = this._lengthNumberOf(text, from, holder.lengthNum, useEngine ? candidates : null);
+            if (n === null) return text;
+            holder.lengthNum = n;
+            return this.cableLengthText(n, to);
+        };
         let changed = false;
         for (const pos of Object.values(store.positions)) {
             if (!pos || typeof pos !== 'object') continue;
@@ -274,28 +302,23 @@ class _CableUnits {
                 if (!r || typeof r.key !== 'string') continue;
                 const parts = r.key.split('|');
                 if (parts.length < 2) continue;
-                const next = this._relabelLengthText(parts[1], from, to);
+                const next = relabel(r, parts[1], true);
                 if (next !== parts[1]) { parts[1] = next; r.key = parts.join('|'); changed = true; }
             }
             for (const a of Array.isArray(pos.added) ? pos.added : []) {
                 if (!a || a.length == null) continue;
-                const next = this._relabelLengthText(a.length, from, to);
+                const next = relabel(a, a.length, false);
                 if (next !== a.length) { a.length = next; changed = true; }
             }
         }
         return changed;
     }
 
+    // On the pull sheet's one POST queue (app-pull-list.js
+    // _postPullSheetState): the relabelled edits and an edit made a
+    // moment later must land in the order they were made.
     _persistCableUnit(withEdits = false) {
-        const body = { cableUnit: this.cableUnit() };
-        if (withEdits) body.pullSheetEdits = (this.project && this.project.pullSheetEdits) || null;
-        const send = () => fetch('/api/project', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        }).catch(() => {});
-        this._cableUnitPushQueue = (this._cableUnitPushQueue || Promise.resolve()).then(send);
-        return this._cableUnitPushQueue;
+        return this._postPullSheetState(withEdits ? ['cableUnit', 'pullSheetEdits'] : ['cableUnit']);
     }
 
     // Everything that prints a length, redrawn after the unit changed:
@@ -358,6 +381,10 @@ class _CableUnits {
             sel.addEventListener('change', () => {
                 this.setCableUnit(sel.value);
                 this.syncCableUnitControls();
+                // The sync skips a focused select, and this one has focus:
+                // a change the user cancelled must not leave it showing the
+                // unit they backed out of.
+                sel.value = this.cableUnit();
             });
         });
         this.syncCableUnitControls();

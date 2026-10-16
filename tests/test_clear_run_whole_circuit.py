@@ -9,9 +9,10 @@ cable turned into a stub nobody drew.
 
 The rule now: the clicked screen's run `num` goes, and every peer's run `num`
 with a step on the clicked screen goes whole (its override for `num` let go
-with it). The 2026-09-22 lock rule is unchanged: a locked peer is skipped
-whole and named in one toast; nothing else happens when nothing else may
-happen (no history entry, no PUT).
+with it). A locked screen stays unchanged (the owner's ruling, 2026-10-16):
+a run it owns is skipped whole and the screen is named in one error;
+nothing else happens when nothing else may happen (no history entry, no
+PUT).
 
 This module builds exactly the Quantico shape - two 7x8 members, the SECOND
 owning runs 1 and 2 that each run 7 cabinets across the FIRST then 7 of its
@@ -241,4 +242,4 @@ def test_clear_run_with_the_owner_locked_removes_nothing_and_says_so(page, kind)
     layer_puts = [u for u in puts if '/api/layer/' in u or u.endswith('/api/project')]
     assert layer_puts == [], puts
     owner = page.evaluate("(id) => window.__q.layer(id).name", ids[1])
-    assert toasts == ['%s is locked — its %s were left alone.' % (owner, k['runs'])], toasts
+    assert toasts == ['%s is locked - unlock it to change it.' % owner], toasts

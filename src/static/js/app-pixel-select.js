@@ -40,24 +40,69 @@ class _PixelSelect {
             .filter(l => l && (l.type || 'screen') === 'screen');
     }
 
+    // The screens one custom toggle changes: the selected screens and their
+    // groups (a group is one screen), cut to the ones whose mode actually
+    // differs from `enabled` - a screen already in the asked-for state is
+    // never rewritten (2026-10-16: turning custom off used to reset the
+    // pattern of every selected screen, including ones that were never
+    // custom). Locked screens are split out: they stay exactly as they are
+    // and the caller names them (_showLockedError).
+    _customToggleScope(kind, enabled) {
+        const isOn = kind === 'power'
+            ? (l => this.isCustomPower(l)) : (l => this.isCustomFlow(l));
+        const scope = [];
+        const seen = new Set();
+        const add = (l) => {
+            if (!l || (l.type || 'screen') !== 'screen' || seen.has(l.id)) return;
+            seen.add(l.id);
+            scope.push(l);
+        };
+        this._customModeTargets().forEach(l => {
+            add(l);
+            if (typeof this.groupMembersOf === 'function') this.groupMembersOf(l).forEach(add);
+        });
+        const differ = scope.filter(l => isOn(l) !== !!enabled);
+        return {
+            change: differ.filter(l => !l.locked),
+            locked: differ.filter(l => l.locked),
+        };
+    }
+
+    // The pattern a screen goes back to when custom mode is turned off: its
+    // own remembered one. A grouped screen takes ONE answer for its whole
+    // group - the shown screen's when it is in that group, else the first
+    // member that remembers one - because the pattern is a group-wide field
+    // and the members must not come out of custom mode disagreeing.
+    _customRestorePattern(layer, kind, changing) {
+        const lastKey = kind === 'power' ? 'lastPowerFlowPattern' : 'lastFlowPattern';
+        const usable = (l) => !!l && !!l[lastKey] && l[lastKey] !== 'custom';
+        const group = (typeof this.getGroupOfLayer === 'function') ? this.getGroupOfLayer(layer) : null;
+        if (group) {
+            const members = (changing || []).filter(l => l && l.group_id === layer.group_id);
+            const current = members.find(l => this.currentLayer && l.id === this.currentLayer.id);
+            const pick = (current && usable(current)) ? current : members.find(usable);
+            if (pick) return pick[lastKey];
+        }
+        return usable(layer) ? layer[lastKey] : 'tl-h';
+    }
+
     // IDEMPOTENT, not time-guarded (2026-10-16). The model follows the
     // state the caller asks for - the checkbox's own `checked` - and a call
     // that would change nothing is a no-op that only re-syncs the controls.
-    // That covers both ways the old 600 ms drop went wrong: a platform that
-    // fires `change` twice for one click hands the same state twice, so the
-    // second is a no-op; and a real second click hands the opposite state,
-    // which is applied instead of dropped (dropping it left the box showing
-    // the opposite of the model).
+    // A platform that fires `change` twice for one click hands the same
+    // state twice, so the second is a no-op; a reversed echo is caught at
+    // the box (app-wiring.js _customToggleEcho). Only the screens whose mode
+    // differs are written, and a locked one stays as it is and is named.
     toggleCustomFlowMode(enabled) {
         if (!this.currentLayer) return;
         enabled = !!enabled;
-        const targets = this._customModeTargets();
-        if (targets.length === 0
-                || targets.every(l => this.isCustomFlow(l) === enabled)) {
+        const { change, locked } = this._customToggleScope('data', enabled);
+        this._showLockedError(locked);
+        if (change.length === 0) {
             this.syncCustomModeControls();
             return;
         }
-        this.applyToSelectedLayers(layer => {
+        change.forEach(layer => {
             if (enabled) {
                 if (layer.flowPattern && layer.flowPattern !== 'custom') {
                     layer.lastFlowPattern = layer.flowPattern;
@@ -65,7 +110,7 @@ class _PixelSelect {
                 layer.flowPattern = 'custom';
                 this.ensureCustomFlowState(layer);
             } else {
-                layer.flowPattern = layer.lastFlowPattern || 'tl-h';
+                layer.flowPattern = this._customRestorePattern(layer, 'data', change);
             }
         });
         if (!enabled) {
@@ -77,7 +122,8 @@ class _PixelSelect {
         // Recompute port count BEFORE the server roundtrip so the layer's
         // _portsRequired is fresh when preservedProps captures it.
         this.updatePortCapacityDisplay();
-        this.updateLayers(this.getSelectedLayers());
+        // The group's members ride the same PUT as the selection.
+        this.updateLayers(this._persistWith(change));
         this.syncCustomModeControls();
         window.canvasRenderer.render();
     }
@@ -160,18 +206,19 @@ class _PixelSelect {
     // with custom mode, where they are allowed. Only a share the auto
     // screen actually reads can be past the amps here.
     // Idempotent like its data twin above: a call that changes nothing only
-    // re-syncs the controls.
+    // re-syncs the controls; only screens whose mode differs are written,
+    // and a locked one stays as it is and is named.
     toggleCustomPowerMode(enabled) {
         if (!this.currentLayer) return;
         enabled = !!enabled;
-        const targets = this._customModeTargets();
-        if (targets.length === 0
-                || targets.every(l => this.isCustomPower(l) === enabled)) {
+        const { change, locked } = this._customToggleScope('power', enabled);
+        this._showLockedError(locked);
+        if (change.length === 0) {
             this.syncCustomModeControls();
             return;
         }
         const undone = [];
-        this.applyToSelectedLayers(layer => {
+        change.forEach(layer => {
             if (enabled) {
                 if (layer.powerFlowPattern && layer.powerFlowPattern !== 'custom') {
                     layer.lastPowerFlowPattern = layer.powerFlowPattern;
@@ -180,7 +227,7 @@ class _PixelSelect {
                 layer.powerCustomPath = true;
                 this.ensureCustomPowerState(layer);
             } else {
-                layer.powerFlowPattern = layer.lastPowerFlowPattern || 'tl-h';
+                layer.powerFlowPattern = this._customRestorePattern(layer, 'power', change);
                 layer.powerCustomPath = false;
                 const over = this.overSharedCircuits(layer);
                 if (over.length) {
@@ -195,7 +242,7 @@ class _PixelSelect {
         }
         this.saveState('Power Custom Mode Toggle');
         this.saveClientSideProperties();
-        this.updateLayers(this.getSelectedLayers());
+        this.updateLayers(this._persistWith(change));
         this.updatePowerCapacityDisplay();
         this.syncCustomModeControls();
         if (undone.length) {

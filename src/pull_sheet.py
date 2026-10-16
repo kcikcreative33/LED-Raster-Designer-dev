@@ -32,11 +32,15 @@ Three entry points:
                              and date cleared; positions renamed)
   build_workbook(pull_list, meta) -> (bytes, warnings)
                              fill a copy of the template with the client's
-                             pull list (app-pull-list.js buildPullList)
+                             pull list (app-pull-list.js buildPullList);
+                             meta['cable_unit'] 'm' writes a meters show
+                             (GEAR LIST lengths, READ ME, sort key)
 """
 import copy
 import datetime
+import decimal
 import io
+import math
 import os
 import sys
 
@@ -66,6 +70,23 @@ HEADERS = ['Cable Type', 'Length', 'Qty', 'Label', 'Notes']
 
 GEAR_TYPE_COL, GEAR_LENGTH_COL, GEAR_FIRST_ROW = 1, 2, 4
 GEAR_TYPE_LAST_ROW, GEAR_LENGTH_LAST_ROW = 200, 60   # the validations' ranges
+
+# A meters show (app-cable-units.js). The template is a feet sheet: its
+# GEAR LIST lengths are a feet ladder (3' ... 1000'), its READ ME gives
+# feet examples and its calc sort key strips only the foot mark, so "2 m"
+# would sort with EA. A meters export rewrites those three in the copy;
+# a feet export never touches them.
+#
+# The meters ladder is the long jumper's (app-cable-units.js
+# JUMPER_STOCK_SHIPPED.m, the Preferences' jumperStockM when set) - the
+# same lengths the in-app editor's picker offers in a meters show
+# (app-pull-sheet-editor.js pullSheetVocabulary).
+METER_STOCK_SHIPPED = [1, 2, 3, 5, 10]
+CALC = 'calc'
+CALC_FIRST_ROW, CALC_LAST_ROW, CALC_SORTKEY_COL = 5, 364, 4
+README = 'READ ME'
+README_FEET_EXAMPLE = "(3', 10', 100')"
+README_METER_EXAMPLE = '(1 m, 3 m, 10 m)'
 
 
 def _openpyxl():
@@ -190,6 +211,85 @@ def _add_gear(ws, col, last_row, wanted, warnings, what):
         _copy_style(ws.cell(free - 1, col), cell)
         have_set.add(v)
         free += 1
+
+
+def meter_stock(prefs=None):
+    """The meters ladder as stored in the Preferences (jumperStockM) -
+    positive numbers, ascending, once each, as app-cable-units.js
+    normalizeJumperStock keeps it - else the shipped one."""
+    raw = (prefs or {}).get('jumperStockM') if isinstance(prefs, dict) else None
+    out = set()
+    for v in raw if isinstance(raw, list) else []:
+        if isinstance(v, bool):
+            continue
+        try:
+            n = float(v)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(n) and n > 0:
+            n = round(n * 1e6) / 1e6
+            out.add(int(n) if n.is_integer() else n)
+    return sorted(out) or list(METER_STOCK_SHIPPED)
+
+
+def meter_text(n):
+    """A meters length as every paper prints it (app-cable-units.js
+    cableLengthText): whole numbers bare, else to the centimeter - "2 m",
+    "7.62 m" - rounded half up as toFixed rounds."""
+    v = float(n)
+    if v.is_integer():
+        return f'{int(v)} m'
+    cm = decimal.Decimal(v).quantize(decimal.Decimal('0.01'), rounding=decimal.ROUND_HALF_UP)
+    return f"{str(cm).rstrip('0').rstrip('.')} m"
+
+
+def _metric_gear_lengths(ws, ladder):
+    """The GEAR LIST lengths of a meters show: the meters ladder, then
+    whatever the template lists that is not feet (EA). The template's feet
+    are dropped; the cells keep their styling."""
+    have, _ = _gear_column(ws, GEAR_LENGTH_COL, GEAR_LENGTH_LAST_ROW)
+    wanted = list(dict.fromkeys([meter_text(n) for n in ladder]
+                                + [v for v in have if not v.endswith("'")]))
+    for i, r in enumerate(range(GEAR_FIRST_ROW, GEAR_LENGTH_LAST_ROW + 1)):
+        cell = ws.cell(r, GEAR_LENGTH_COL)
+        if i < len(wanted):
+            if cell.value is None and r > GEAR_FIRST_ROW:
+                _copy_style(ws.cell(r - 1, GEAR_LENGTH_COL), cell)
+            cell.value = wanted[i]
+        elif cell.value is not None:
+            cell.value = None
+
+
+def _sort_keys(row):
+    """(feet, meters) length sort key of one calc row. The feet one is the
+    template's own: the length with its foot mark stripped, as six digits
+    (blank 0, anything else - EA - 999999). The meters one strips " m" too
+    (case and spaces aside) and counts centimeters, so 1.5 m sorts before
+    2 m (six digits rounded it to a whole number)."""
+    length = f'MID($A{row},FIND("|",$A{row})+1,50)'
+    feet = (f'TEXT(IF(SUBSTITUTE({length},"\'","")="",0,'
+            f'IFERROR(VALUE(SUBSTITUTE({length},"\'","")),999999)),"000000")')
+    key = f'TRIM(SUBSTITUTE(SUBSTITUTE(LOWER({length}),"\'",""),"m",""))'
+    meters = f'TEXT(IF({key}="",0,IFERROR(VALUE({key})*100,99999999)),"00000000")'
+    return feet, meters
+
+
+def _metric_workbook(wb, ladder):
+    """A meters show's copy: GEAR LIST lengths, the READ ME's examples and
+    the calc tab's sort key in meters."""
+    _metric_gear_lengths(wb[GEAR], ladder)
+    if README in wb.sheetnames:
+        for row in wb[README].iter_rows():
+            for cell in row:
+                if isinstance(cell.value, str) and README_FEET_EXAMPLE in cell.value:
+                    cell.value = cell.value.replace(README_FEET_EXAMPLE, README_METER_EXAMPLE)
+    if CALC in wb.sheetnames:
+        calc = wb[CALC]
+        for r in range(CALC_FIRST_ROW, CALC_LAST_ROW + 1):
+            cell = calc.cell(r, CALC_SORTKEY_COL)
+            feet, meters = _sort_keys(r)
+            if isinstance(cell.value, str) and feet in cell.value:
+                cell.value = cell.value.replace(feet, meters, 1)
 
 
 def _extend_validations(ws, last_row, used_blocks):
@@ -364,7 +464,10 @@ def build_workbook(pull_list, meta=None, template_path=TEMPLATE_PATH):
         for r in pos['rows']:
             overflow_rows.append((pos['name'], r))
 
-    # Anything the GEAR LIST lacks, so the dropdowns accept what was written.
+    # A meters show's GEAR LIST, READ ME and sort key; then anything the
+    # GEAR LIST lacks, so the dropdowns accept what was written.
+    if meta.get('cable_unit') == 'm':
+        _metric_workbook(wb, meter_stock({'jumperStockM': meta.get('meter_stock')}))
     _add_gear(gear, GEAR_TYPE_COL, GEAR_TYPE_LAST_ROW, list(dict.fromkeys(types)), warnings, 'Cable Type')
     _add_gear(gear, GEAR_LENGTH_COL, GEAR_LENGTH_LAST_ROW, list(dict.fromkeys(lengths)), warnings, 'Length')
 

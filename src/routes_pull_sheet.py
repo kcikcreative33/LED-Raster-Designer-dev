@@ -16,6 +16,7 @@ import json
 
 from flask import Blueprint, request, jsonify, send_file
 
+import app
 import pull_sheet
 from app import log_event
 
@@ -55,6 +56,10 @@ def export_pull_sheet():
         'rev': data.get('rev'),
         'date': data.get('date') or '',
         'date_iso': data.get('date_iso') or '',
+        # the show's unit as the server holds it (app-cable-units.js posts
+        # every change), and the meters ladder from the Preferences
+        'cable_unit': app.cable_unit(),
+        'meter_stock': pull_sheet.meter_stock(app.server_preferences),
     }
     try:
         xlsx, warnings = pull_sheet.build_workbook(pull_list, meta)

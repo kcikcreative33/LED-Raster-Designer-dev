@@ -9,6 +9,11 @@
 import { LEDRasterApp } from './app-core.js';
 import { evaluateMathExpression, sendClientLog, setupColorPickerWithHex } from './helpers.js';
 
+// How long after one custom-mode box change a REVERSED change with no
+// pointer or key press in between is read as the same click firing twice
+// (_customToggleEcho). v0.8.2 measured the WKWebView echo at about 370 ms.
+const CUSTOM_TOGGLE_ECHO_MS = 600;
+
 class _Wiring {
     // Project name field (and its illegal-character warning), the Project
     // Notes textarea and the Notes / Help panel collapse toggles.
@@ -119,6 +124,53 @@ class _Wiring {
     _dropPatternTileFocus(btn, e) {
         if (!btn || !e || !e.detail) return;
         if (document.activeElement === btn && typeof btn.blur === 'function') btn.blur();
+    }
+
+    // Counts every pointer and key press, in the capture phase so nothing
+    // can stop it first - the "input in between" _customToggleEcho asks
+    // about. Armed once, when the custom boxes are wired.
+    _armCustomToggleInput() {
+        if (this._customToggleInputWired || typeof document === 'undefined') return;
+        this._customToggleInputWired = true;
+        const bump = () => { this._customToggleInputSeq = (this._customToggleInputSeq || 0) + 1; };
+        ['pointerdown', 'mousedown', 'touchstart', 'keydown']
+            .forEach(type => document.addEventListener(type, bump, true));
+    }
+
+    // THE MAC DOUBLE-FIRE (v0.8.2, commit 4d8b156b): on macOS WKWebView one
+    // click on a custom-mode box could fire `change` twice, about 370 ms
+    // apart, and the second event carried the REVERSED state - so the click
+    // turned custom mode on and straight back off. v0.8.2 dropped every
+    // change for 600 ms after the first, which also dropped a genuine second
+    // click and left the box showing the opposite of the model; 1.5 removed
+    // that guard (2026-10-16) and with it the protection.
+    //
+    // Told apart now by what came BETWEEN the two: a real click or key press
+    // brings its own pointer or keyboard event, an echo brings none. So a
+    // change is ignored only when it reverses the last applied change of the
+    // same box, arrives inside the window, and no pointerdown, mousedown,
+    // touchstart or keydown has happened since. An ignored change re-syncs
+    // the box to the model (the caller does), so the box never shows a mode
+    // the screen is not in. Returns true when the change must be ignored.
+    //
+    // The decision rests on the input events, not on how fast a machine
+    // is: two real clicks are applied however close together they land,
+    // and an echo is ignored however slowly it arrives inside the window.
+    // `_customToggleClock` (a function returning ms) stands in for Date.now
+    // so a test can hold the clock still or step it past the window.
+    _customToggleEcho(kind, state) {
+        this._armCustomToggleInput();
+        const now = (typeof this._customToggleClock === 'function')
+            ? this._customToggleClock() : Date.now();
+        const seq = this._customToggleInputSeq || 0;
+        if (!this._customToggleLast) this._customToggleLast = {};
+        const last = this._customToggleLast[kind];
+        if (last && (now - last.at) < CUSTOM_TOGGLE_ECHO_MS
+                && !!state !== last.state && seq === last.seq) {
+            return true;
+        }
+        this._customToggleLast[kind] = { at: now, state: !!state, seq };
+        return false;
     }
 
     // The five view tabs: switch the renderer, swap the sidebar panels,
@@ -993,25 +1045,30 @@ class _Wiring {
                     return;
                 }
                 
-                // Remove active class from all buttons. v0.11.0: scope this to the
-                // Data grid - the Power tiles carry BOTH classes, so an unscoped
-                // selector cleared their highlight too (matching the listener
-                // registration above and the Power grid's own handler).
-                document.querySelectorAll('.flow-pattern-btn:not(.power-flow-pattern-btn)').forEach(b => b.classList.remove('active'));
-                // Add active to clicked button
-                btn.classList.add('active');
-                
-                if (this.currentLayer) {
-                    this.applyToSelectedLayers(layer => {
-                        layer.flowPattern = pattern;
-                    });
-                    this.saveClientSideProperties();
-                    this.updatePortCapacityDisplay();  // Update port calculation with new pattern
-                    this.updatePortLabelEditor();
-                    this.updateLayers(this.getSelectedLayers(), true, 'Change Data Flow Pattern');
-                    this.syncCustomModeControls();
-                    window.canvasRenderer.render();
+                // The automatic pattern write, on the selected screens and
+                // their groups less two kinds (_patternTileTargets): a screen
+                // in custom data mode, which a tile never takes out of custom
+                // mode (the owner's ruling, 2026-10-16), and a locked screen,
+                // which stays as it is and is named. With nothing to write -
+                // no layer selected at all, or every target skipped - nothing
+                // happens, and the highlight stays on the shown screen's own
+                // pattern.
+                const { change, locked } = this._patternTileTargets('data', pattern);
+                this._showLockedError(locked);
+                if (change.length === 0) return;
+                if (change.includes(this.currentLayer)) {
+                    // Scoped to the Data grid - the Power tiles carry BOTH
+                    // classes (v0.11.0).
+                    document.querySelectorAll('.flow-pattern-btn:not(.power-flow-pattern-btn)').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
                 }
+                change.forEach(layer => { layer.flowPattern = pattern; });
+                this.saveClientSideProperties();
+                this.updatePortCapacityDisplay();  // Update port calculation with new pattern
+                this.updatePortLabelEditor();
+                this.updateLayers(this._persistWith(change), true, 'Change Data Flow Pattern');
+                this.syncCustomModeControls();
+                window.canvasRenderer.render();
             });
         });
 
@@ -1024,18 +1081,20 @@ class _Wiring {
                     this._dropPatternTileFocus(btn, e);
                     return;
                 }
-                document.querySelectorAll('.power-flow-pattern-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                if (this.currentLayer) {
-                    this.applyToSelectedLayers(layer => {
-                        layer.powerFlowPattern = pattern;
-                    });
-                    this.saveClientSideProperties();
-                    this.updatePowerCapacityDisplay();
-                    this.syncCustomModeControls();
-                    this.updateLayers(this.getSelectedLayers(), true, 'Change Power Flow Pattern');
-                    window.canvasRenderer.render();
+                // Same targets and the same skips as the data tiles above.
+                const { change, locked } = this._patternTileTargets('power', pattern);
+                this._showLockedError(locked);
+                if (change.length === 0) return;
+                if (change.includes(this.currentLayer)) {
+                    document.querySelectorAll('.power-flow-pattern-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
                 }
+                change.forEach(layer => { layer.powerFlowPattern = pattern; });
+                this.saveClientSideProperties();
+                this.updatePowerCapacityDisplay();
+                this.syncCustomModeControls();
+                this.updateLayers(this._persistWith(change), true, 'Change Power Flow Pattern');
+                window.canvasRenderer.render();
             });
         });
         
@@ -1158,18 +1217,22 @@ class _Wiring {
         }
 
         if (customModeToggle) {
+            this._armCustomToggleInput();
             customModeToggle.addEventListener('change', () => {
                 if (!this.currentLayer) {
                     this.syncCustomModeControls();
                     return;
                 }
                 // The model follows the box's ACTUAL state, and
-                // toggleCustomFlowMode is idempotent. A platform that fires
-                // two change events for one click (seen on mac WKWebView,
-                // v0.8.2) hands the same state twice, so the second is a
-                // no-op. The 600 ms drop that used to cover it also dropped
-                // a real second click, leaving the box showing the opposite
-                // of the model (2026-10-16).
+                // toggleCustomFlowMode is idempotent, so a repeated event
+                // with the same state is a no-op. A reversed echo of one
+                // click (mac WKWebView, v0.8.2) is ignored and the box put
+                // back to the model; a real second click is applied
+                // (_customToggleEcho).
+                if (this._customToggleEcho('data', customModeToggle.checked)) {
+                    this.syncCustomModeControls();
+                    return;
+                }
                 this.toggleCustomFlowMode(customModeToggle.checked);
             });
         }
@@ -1215,7 +1278,7 @@ class _Wiring {
                     this.saveClientSideProperties();
                     this.updateLayers(this._persistWith(touched));
                 }
-                this._toastLockedSkipped(skipped, 'data');
+                this._showLockedError(skipped);
                 this.updateCustomFlowUI();
                 this.updatePortLabelEditor();
                 window.canvasRenderer.render();
@@ -1237,7 +1300,7 @@ class _Wiring {
                     this.saveClientSideProperties();
                     this.updateLayers(this._persistWith(touched));
                 }
-                this._toastLockedSkipped(skipped, 'data');
+                this._showLockedError(skipped);
                 this.updateCustomFlowUI();
                 this.updatePortLabelEditor();
                 window.canvasRenderer.render();
@@ -1773,12 +1836,18 @@ class _Wiring {
         }
 
         if (powerCustomToggle) {
+            this._armCustomToggleInput();
             powerCustomToggle.addEventListener('change', () => {
                 if (!this.currentLayer) {
                     this.syncCustomModeControls();
                     return;
                 }
-                // Idempotent, no time guard - see the data toggle above.
+                // Idempotent, and a reversed echo is ignored - see the data
+                // toggle above.
+                if (this._customToggleEcho('power', powerCustomToggle.checked)) {
+                    this.syncCustomModeControls();
+                    return;
+                }
                 this.toggleCustomPowerMode(powerCustomToggle.checked);
             });
         }
@@ -1817,7 +1886,7 @@ class _Wiring {
                     this.saveClientSideProperties();
                     this.updateLayers(this._persistWith(touched));
                 }
-                this._toastLockedSkipped(skipped, 'power');
+                this._showLockedError(skipped);
                 this.updateCustomPowerUI();
                 window.canvasRenderer.render();
             });
@@ -1835,7 +1904,7 @@ class _Wiring {
                     this.saveClientSideProperties();
                     this.updateLayers(this._persistWith(touched));
                 }
-                this._toastLockedSkipped(skipped, 'power');
+                this._showLockedError(skipped);
                 this.updateCustomPowerUI();
                 window.canvasRenderer.render();
             });

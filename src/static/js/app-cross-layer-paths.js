@@ -110,13 +110,15 @@ class _CrossLayerPaths {
     // still took an undo step and a PUT. With nothing touched the handlers
     // (app-wiring.js) skip the snapshot and the PUT altogether.
     //
-    // A locked member is protected (Matt's ruling, 2026-09-22): a peer's Clear
-    // never removes its cabinets, never wipes its runs, overrides or index.
-    // The CLICKED screen is cleared even when it is itself locked: everywhere
-    // else in the app a lock guards position only (drag, offset fields,
-    // Center, Move to Canvas), and every other property edit - including
-    // drawing a run onto a locked screen - goes through, so refusing Clear
-    // alone would be the one edit a lock stops.
+    // A LOCKED SCREEN STAYS UNCHANGED until it is unlocked (the owner's
+    // ruling, 2026-10-16: "If it's locked it stays locked and unchanged until
+    // unlocked. If you try to change it shows an error dialog and tells why
+    // it can't change."). This replaces the 2026-09-22 rule, under which the
+    // CLICKED screen was cleared even when locked. Now no Clear removes a run
+    // that a locked screen owns or that crosses a locked screen's cabinets
+    // (_runLockedLayers) - the clicked screen included - because either way a
+    // locked screen would change on the canvas. Such a run is kept whole and
+    // the locked screens are named in one error (_showLockedError).
     _customRunKeys(kind) {
         return kind === 'power'
             ? { paths: 'powerCustomPaths', index: 'powerCustomIndex',
@@ -141,17 +143,22 @@ class _CrossLayerPaths {
 
     // This layer's run `num`, and - whole - every peer's run `num` with a
     // step on this layer (2026-09-23, "a circuit is one circuit"; see the
-    // section comment above). A locked peer is skipped whole and reported;
-    // the clicked layer is cleared even when itself locked.
+    // section comment above). A run that touches a locked screen is kept
+    // whole and its locked screens are reported in `skipped`.
     clearCustomRun(layer, kind, num) {
         if (!layer) return { touched: [], skipped: [] };
         const k = this._customRunKeys(kind);
         const touched = [];
-        const skipped = [];
+        const skipped = new Map();
         const own = layer[k.paths];
         if (own && Object.prototype.hasOwnProperty.call(own, num)) {
-            delete own[num];
-            touched.push(layer);
+            const locked = this._runLockedLayers(layer, kind, num);
+            if (locked.length) {
+                locked.forEach(l => skipped.set(l.id, l));
+            } else {
+                delete own[num];
+                touched.push(layer);
+            }
         }
         this.getPathScopeLayers(layer).forEach(peer => {
             if (!peer || peer.id === layer.id) return;
@@ -159,28 +166,56 @@ class _CrossLayerPaths {
             if (!paths || !Array.isArray(paths[num]) || paths[num].length === 0) return;
             const lands = paths[num].some(e => this.getPathEntryLayerId(peer, e) === layer.id);
             if (!lands) return;
-            if (peer.locked) { skipped.push(peer); return; }
+            const locked = this._runLockedLayers(peer, kind, num);
+            if (locked.length) { locked.forEach(l => skipped.set(l.id, l)); return; }
             delete paths[num];
             this._dropRunOverride(peer, kind, num);
             touched.push(peer);
         });
-        return { touched, skipped };
+        return { touched, skipped: [...skipped.values()] };
     }
 
+    // Every member's runs go, and the wall is back to automatic - except a
+    // run that touches a locked screen (a locked member's own runs, or an
+    // unlocked member's run across a locked member's cabinets), which is kept
+    // whole with its override, and its locked screens are reported.
     clearAllCustomRuns(layer, kind) {
         if (!layer) return { touched: [], skipped: [] };
         const k = this._customRunKeys(kind);
         const touched = [];
-        const skipped = [];
+        const skipped = new Map();
         this.getPathScopeLayers(layer).forEach(member => {
             if (!member) return;
             const paths = member[k.paths] || {};
-            const drawn = Object.keys(paths).some(n => (paths[n] || []).length > 0)
-                || (typeof this.getOverrideNums === 'function'
-                    && this.getOverrideNums(member, kind).length > 0);
-            if (member.locked && member.id !== layer.id) {
+            const drawnNums = Object.keys(paths).filter(n => (paths[n] || []).length > 0);
+            const overrides = (typeof this.getOverrideNums === 'function')
+                ? this.getOverrideNums(member, kind) : [];
+            const drawn = drawnNums.length > 0 || overrides.length > 0;
+            if (member.locked) {
                 // Reported only when there was something to leave alone.
-                if (drawn) skipped.push(member);
+                if (drawn) skipped.set(member.id, member);
+                return;
+            }
+            // Runs kept because they cross a locked member's cabinets.
+            const kept = {};
+            drawnNums.forEach(n => {
+                const num = Number.isFinite(Number(n)) ? Number(n) : n;
+                const locked = this._runLockedLayers(member, kind, num);
+                if (!locked.length) return;
+                locked.forEach(l => skipped.set(l.id, l));
+                kept[n] = paths[n];
+            });
+            const keptNums = Object.keys(kept);
+            if (keptNums.length > 0) {
+                if (keptNums.length === Object.keys(paths).length) return;
+                member[k.paths] = kept;
+                member[k.overrides] = overrides.filter(n => keptNums.includes(`${n}`));
+                const s = this._overrideEditing;
+                if (s && s.kind === kind && s.layerId === member.id
+                        && !keptNums.includes(`${s.num}`)) {
+                    this._overrideEditing = null;
+                }
+                touched.push(member);
                 return;
             }
             // Anything Clear All would change: a run key (an emptied `[]`
@@ -200,19 +235,46 @@ class _CrossLayerPaths {
             }
             touched.push(member);
         });
-        return { touched, skipped };
+        return { touched, skipped: [...skipped.values()] };
     }
 
-    // One toast for the members a Clear left alone, e.g.
-    // "Left is locked — its circuits were left alone."
-    _toastLockedSkipped(skipped, kind) {
-        if (!skipped || skipped.length === 0 || typeof this._toast !== 'function') return;
-        const names = skipped.map(l => l.name || `Screen ${l.id}`);
-        const list = names.length === 1 ? names[0]
-            : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+    // The locked screens one run touches: its owner when the owner is
+    // locked, and every locked screen one of its cabinets sits on. A run
+    // with any is frozen - clearing, refilling or overwriting it would
+    // change a locked screen on the canvas.
+    _runLockedLayers(owner, kind, num) {
+        if (!owner) return [];
+        const k = this._customRunKeys(kind);
+        const out = new Map();
+        if (owner.locked) out.set(owner.id, owner);
+        const path = (owner[k.paths] && owner[k.paths][num]) || [];
+        path.forEach(e => {
+            const target = this.resolvePathEntryLayer(owner, e);
+            if (target && target.locked) out.set(target.id, target);
+        });
+        return [...out.values()];
+    }
+
+    // The one error every custom-mode change gives when it meets a locked
+    // screen, naming each one: "Upper is locked - unlock it to change it."
+    // An error toast (the app's error style), up a little longer than the
+    // default so a list of names can be read.
+    _showLockedError(layers) {
+        if (!layers || layers.length === 0 || typeof this._toast !== 'function') return;
+        const seen = new Set();
+        const names = [];
+        layers.forEach(l => {
+            if (!l || seen.has(l.id)) return;
+            seen.add(l.id);
+            names.push(l.name || `Screen ${l.id}`);
+        });
+        if (names.length === 0) return;
         const one = names.length === 1;
-        const runs = kind === 'power' ? 'circuits' : 'ports';
-        this._toast(`${list} ${one ? 'is' : 'are'} locked — ${one ? 'its' : 'their'} ${runs} were left alone.`, false, 4000);
+        const list = one ? names[0]
+            : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+        this._toast(one
+            ? `${list} is locked - unlock it to change it.`
+            : `${list} are locked - unlock them to change them.`, true, 5000);
     }
 
     _persistWith(touched) {

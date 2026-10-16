@@ -195,13 +195,50 @@ class _PullList {
     }
 
     _persistPullSheetSettings() {
-        const send = () => fetch('/api/project', {
+        return this._postPullSheetState(['pullSheet']);
+    }
+
+    // THE one queue for the pull sheet's project POSTs - its settings, its
+    // edits and the show's cable unit (app-cable-units.js), which relabels
+    // the edits. One POST in flight, at most one waiting; a call while one
+    // is in flight adds its keys to the waiting one, and every body is read
+    // off the project when it is SENT, so the latest state always lands
+    // last (two queues let a slow stale POST land after a newer one).
+    // Resolves once a POST carrying `keys` has landed.
+    _postPullSheetState(keys) {
+        const q = this._pullSheetPost || (this._pullSheetPost = { busy: false, keys: new Set(), waiters: [] });
+        keys.forEach(k => q.keys.add(k));
+        const landed = new Promise(resolve => q.waiters.push(resolve));
+        if (!q.busy) this._sendPullSheetState();
+        return landed;
+    }
+
+    _sendPullSheetState() {
+        const q = this._pullSheetPost;
+        if (!q.keys.size) { q.busy = false; return; }
+        const p = this.project || {};
+        const value = {
+            cableUnit: () => this.cableUnit(),
+            // A deleted store must reach the server as an empty object:
+            // POST merges top-level keys and would otherwise keep the old
+            // edits.
+            pullSheetEdits: () => p.pullSheetEdits || { positions: {} },
+            pullSheet: () => p.pullSheet || {},
+        };
+        const body = {};
+        q.keys.forEach(k => { if (value[k]) body[k] = value[k](); });
+        const waiters = q.waiters;
+        q.keys = new Set();
+        q.waiters = [];
+        q.busy = true;
+        fetch('/api/project', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pullSheet: this.project.pullSheet || {} }),
-        }).catch(() => {});
-        this._pullSheetPushQueue = (this._pullSheetPushQueue || Promise.resolve()).then(send);
-        return this._pullSheetPushQueue;
+            body: JSON.stringify(body),
+        }).catch(() => {}).then(() => {
+            waiters.forEach(w => w());
+            this._sendPullSheetState();
+        });
     }
 
     // ---- vocabulary --------------------------------------------------------
@@ -211,7 +248,22 @@ class _PullList {
     // each-items, "" for a length nobody typed.
     pullLengthText(ft) {
         if (ft === 'EA') return 'EA';
+        if (this._pullLengthProbe) {
+            const n = Number(ft);
+            if (Number.isFinite(n) && n > 0) this._pullLengthProbe.push(n);
+        }
         return this.cableLengthText(ft);
+    }
+
+    // Every number the engine prints as a length, as the number itself
+    // (7.62, never "7.6'"): what a unit change relabels the edits' keys by
+    // (app-cable-units.js), so an edit stays on its row whatever the print
+    // rounds to.
+    pullSheetLengthNumbers() {
+        const seen = [];
+        this._pullLengthProbe = seen;
+        try { this.buildPullList(); } finally { this._pullLengthProbe = null; }
+        return seen;
     }
 
     // What paper calls a breakout box (a CVT, a Tessera XD): its model and
@@ -1406,17 +1458,9 @@ class _PullList {
         if (typeof this.renderPullSheetEditorTotals === 'function') this.renderPullSheetEditorTotals();
     }
 
+    // On the pull sheet's one queue (_postPullSheetState).
     _persistPullSheetEdits() {
-        // A deleted store must reach the server as an empty object: POST
-        // merges top-level keys and would otherwise keep the old edits.
-        const body = { pullSheetEdits: (this.project && this.project.pullSheetEdits) || { positions: {} } };
-        const send = () => fetch('/api/project', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        }).catch(() => {});
-        this._pullSheetPushQueue = (this._pullSheetPushQueue || Promise.resolve()).then(send);
-        return this._pullSheetPushQueue;
+        return this._postPullSheetState(['pullSheetEdits']);
     }
 
     // Override one field of an engine row. A value equal to the engine's

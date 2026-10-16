@@ -46,6 +46,13 @@ circuit". A run of one cabinet size counts its own cabinets.
   and Power.
 - FIX: Two quick clicks on the Custom box no longer leave it showing the
   opposite of the screen's real state. Data and Power.
+- FIX: A custom data run is held to the same port capacity as an
+  automatic one: the NovaStar Low Latency reduction and the 5G narrow
+  port penalty now apply to custom runs too.
+- FIX: A locked screen stays exactly as it is until it is unlocked.
+  Custom fills, pattern buttons, Clear and the Custom box leave it alone
+  and say so: "Upper is locked - unlock it to change it." The other
+  screens in a group still change.
 
 v1.4.1 - October 9, 2026
 ----------------------------

@@ -350,8 +350,16 @@ class _ContextMenu {
         const kind = view === 'power' ? 'power' : 'data';
         const on = kind === 'power' ? this.isCustomPower(layer) : this.isCustomFlow(layer);
         const noun = kind === 'power' ? 'circuits' : 'runs';
+        // The title names exactly what the item changes: the screen, or the
+        // group and every screen in it - the right-clicked screen and its
+        // group are all it acts on (runCustomModeMenu).
         const group = typeof this.getGroupOfLayer === 'function' ? this.getGroupOfLayer(layer) : null;
-        const who = group ? group.name : layer.name;
+        const members = group && typeof this.groupMembersOf === 'function'
+            ? this.groupMembersOf(layer) : [];
+        const names = members.map(m => m.name || `Screen ${m.id}`);
+        const list = names.length <= 1 ? (names[0] || '')
+            : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+        const who = group ? (list ? `${group.name} (${list})` : group.name) : layer.name;
         return {
             kind, layer, on,
             label: `Custom ${noun}: ${on ? 'On' : 'Off'}`,
@@ -362,9 +370,14 @@ class _ContextMenu {
     // The item's click goes through the SAME path as the Enable Custom Mode
     // box: the box is set to the new state and its own change handler runs
     // the idempotent toggle, so the box, the custom panels and the model
-    // cannot disagree, and it is one undo step. The right-clicked screen is
-    // selected first (widened to its group, as a canvas click does) when it
-    // is not already in the selection, so the toggle acts on it.
+    // cannot disagree, and it is one undo step.
+    //
+    // It acts on the right-clicked screen and its group ONLY - what the
+    // item's title names. The box acts on the whole selection, so when the
+    // selection is anything wider (or does not hold the screen at all) it is
+    // first narrowed to that screen and its group, the way a canvas click
+    // selects (1.5 audit: with a wider selection the item turned custom mode
+    // on or off for screens its title never named).
     runCustomModeMenu() {
         const armed = this._customModeMenuAction;
         this._customModeMenuAction = null;
@@ -374,7 +387,10 @@ class _ContextMenu {
             .find(l => l.id === armed.layer.id) || null;
         if (!layer) return;
         const ids = this.selectedLayerIds;
-        if (!ids || !ids.has(layer.id)) {
+        const wanted = new Set([layer.id].concat(typeof this.groupMembersOf === 'function'
+            ? this.groupMembersOf(layer).map(m => m.id) : []));
+        const narrow = !!ids && ids.has(layer.id) && [...ids].every(id => wanted.has(id));
+        if (!narrow) {
             const r = window.canvasRenderer;
             if (r && typeof r._selectLayerFromCanvas === 'function') r._selectLayerFromCanvas(layer);
             else this.selectLayer(layer);

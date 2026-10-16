@@ -671,22 +671,33 @@ class _ScreenGroups {
     // resolution, different canvases, a hand-wired member) instead of
     // pretending there is a choice to make.
     _groupCanRouteDataAsOne(group) {
-        const g = this.resolveGroup(group);
-        if (!g || typeof this._autoCrossMembers !== 'function') return false;
-        const member = this.getGroupMembers(g).find(l => l
-            && (l.type || 'screen') === 'screen' && l.visible !== false);
+        const member = this._groupRouteGateMember(group);
         return !!(member && this._autoCrossMembers(member, 'data', true));
     }
 
-    // Do the group's members differ in cabinet size (pixel resolution)? The
-    // same visible screen members, and the same comparison, as the walk's
-    // own gate in _autoCrossMembers - read here so the greyed switch can say
-    // WHY in plain words. Only mixed sizes stay apart (the owner's ruling,
-    // 2026-10-16); same-size groups keep the switch.
-    _groupCabinetSizesDiffer(group) {
+    // The member the routing gate is asked about: the first visible screen
+    // member, as _autoCrossMembers is asked from it. One helper so the
+    // switch and the note under it read the same member.
+    _groupRouteGateMember(group) {
         const g = this.resolveGroup(group);
-        if (!g) return false;
-        const sizes = new Set(this.getGroupMembers(g)
+        if (!g || typeof this._autoCrossMembers !== 'function') return null;
+        return this.getGroupMembers(g).find(l => l
+            && (l.type || 'screen') === 'screen' && l.visible !== false) || null;
+    }
+
+    // Do the group's members differ in cabinet size (pixel resolution)? Read
+    // over the members the routing gate itself compares - the gate member's
+    // path scope (one show canvas, getPathScopeLayers), visible screens with
+    // cabinets, as _autoCrossMembers filters it - so the note says "sizes
+    // differ" only when that is the reason the gate refuses. The audit found
+    // this reading EVERY member, so a group split across two show canvases,
+    // where the gate never compares the far member, was told its sizes
+    // differ. Only mixed sizes stay apart (the owner's ruling, 2026-10-16);
+    // same-size groups keep the switch.
+    _groupCabinetSizesDiffer(group) {
+        const member = this._groupRouteGateMember(group);
+        if (!member || typeof this.getPathScopeLayers !== 'function') return false;
+        const sizes = new Set(this.getPathScopeLayers(member)
             .filter(l => l && (l.type || 'screen') === 'screen'
                 && l.visible !== false
                 && Array.isArray(l.panels) && l.panels.length > 0)

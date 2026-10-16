@@ -14,7 +14,8 @@ vertical, Organized. The owner's rulings, 2026-10-16:
    Data and power.
 3. THE TOGGLE is idempotent: the model follows the box, a repeated event
    that changes nothing is a no-op, and a real second click is applied
-   rather than dropped. Data and power.
+   rather than dropped. Data and power. (The reversed-echo guard has its
+   own module, tests/test_custom_audit_1_5.py.)
 4. THE READOUT reads pixels for a run over two cabinet sizes,
    "589,824 / 659,722 px", watts for a circuit over two wattages,
    "1,660 / 4,160 W", and a cabinet count for one kind of cabinet.
@@ -110,6 +111,10 @@ window.__gc = {
         app.selectedLayerIds = new Set(ids);
         app.lastSelectedLayerId = U.id;
         app._overrideEditing = null;
+        // A box change left from an earlier test must not read as the
+        // first half of a double-fire here (app-wiring _customToggleEcho).
+        app._customToggleLast = {};
+        app._customToggleClock = undefined;
         if (app.customSelection) app.customSelection.clear();
         if (app.powerCustomSelection) app.powerCustomSelection.clear();
         r.viewMode = o.view;
@@ -331,29 +336,36 @@ def test_tile_with_one_screen_selected_fills_that_screen(page, kind, view):
 @pytest.mark.parametrize('kind,view', [('data', 'data-flow'), ('power', 'power')])
 def test_toggle_double_click_stays_in_sync(page, kind, view):
     _tab(page, view)
+    box_id = 'power-custom-toggle' if kind == 'power' else 'custom-flow-toggle'
+    _run(page, "window.__gcIds = await gc.fresh({ custom: false, view: arg.view });",
+         {'view': view})
+    # Two real clicks, back to back, each with its own pointer events: on,
+    # then off. The old 600 ms guard dropped the second and left the box
+    # unticked over a custom wall; the echo guard must let both through.
+    page.click('#' + box_id)
+    page.click('#' + box_id)
     out = _run(page, r"""
-        const ids = await gc.fresh({ custom: false, view: arg.view });
-        const box = document.getElementById(
-            arg.kind === 'power' ? 'power-custom-toggle' : 'custom-flow-toggle');
+        const ids = window.__gcIds;
+        // Every save of the two clicks lands before the next phase, so a
+        // late answer from the server cannot be read as this phase's state
+        // on a slow runner.
+        await window.app._layerSavesSettled();
+        const box = document.getElementById(arg.box);
         const key = arg.kind === 'power' ? 'power' : 'flow';
-        // Two real clicks, back to back: on, then off. The old 600 ms guard
-        // dropped the second and left the box unticked over a custom wall.
-        box.click();
-        box.click();
-        await gc.settle(100);
         const twice = gc.state(ids);
-        // One click that fires change twice (the WKWebView quirk): the
-        // second event carries the same state and is a no-op.
+        // One click that fires change twice with the SAME state: the
+        // second is a no-op.
         const start = window.app.historyIndex;
+        box.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
         box.checked = true;
         box.dispatchEvent(new Event('change'));
         box.dispatchEvent(new Event('change'));
-        await gc.settle(100);
+        await window.app._layerSavesSettled();
         const doubled = gc.state(ids);
         return { twice, doubled, start, key,
                  boxTwice: twice[arg.kind === 'power' ? 'powerBox' : 'dataBox'],
                  boxDoubled: doubled[arg.kind === 'power' ? 'powerBox' : 'dataBox'] };
-    """, {'kind': kind, 'view': view})
+    """, {'kind': kind, 'view': view, 'box': box_id})
     key = out['key']
     assert out['twice'][key] == ['tl-v', 'tl-v'], out
     assert out['boxTwice'] is False, out

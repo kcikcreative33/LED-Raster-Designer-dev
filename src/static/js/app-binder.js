@@ -1693,7 +1693,7 @@ class _Binder {
         book.series[series] = (book.series[series] || 0) + 1;
         // the sheet title in caps, as the block and the contents print it
         const page = { index, number: `${series}.${book.series[series]}`, painting: false, ...spec,
-                       sheetTitle: String(spec.sheetTitle || spec.title || '').toUpperCase() };
+                       sheetTitle: this._bCaps(spec.sheetTitle || spec.title || '') };
         book.pages.push(page);
         book.page = page;
         const painting = !book.dry && book.realCtx && (book.only == null || book.only === index);
@@ -2097,11 +2097,29 @@ class _Binder {
         return `${weight || 400} ${size}px ${FONT}`;
     }
 
+    // Text in caps, as a heading prints it - every word but a cable
+    // length's unit in a meters show: "STRAND MAP · TAC A · 100 m", never
+    // "100 M" (a length reads the same on every paper, app-cable-units.js
+    // cableLengthText: the figure, a space, m). A feet show is plain
+    // caps - "100'" has nothing to lower.
+    _bCaps(text) {
+        const t = String(text == null ? '' : text);
+        if (typeof this.cableUnit !== 'function' || this.cableUnit() !== 'm') return t.toUpperCase();
+        const re = /(^|[^\w.])(\d+(?:\.\d+)? m)(?!\w)/g;
+        let out = '', last = 0, m;
+        while ((m = re.exec(t))) {
+            const at = m.index + m[1].length;
+            out += t.slice(last, at).toUpperCase() + m[2];
+            last = at + m[2].length;
+        }
+        return out + t.slice(last).toUpperCase();
+    }
+
     _bText(book, text, x, y, o) {
         const ctx = book.ctx;
         const opts = o || {};
         let t = String(text == null ? '' : text);
-        if (opts.upper) t = t.toUpperCase();
+        if (opts.upper) t = this._bCaps(t);
         let size = opts.size || SZ.cell;
         ctx.font = this._bFont(size, opts.weight);
         // A heading shrinks a little before it is cut: "PANELS" in a narrow
@@ -2318,7 +2336,7 @@ class _Binder {
             // a `headShrink` heading asks only for its room at the smallest
             // size a heading shrinks to before it is cut (_bText's 14)
             ctxM.font = this._bFont(c.headShrink ? 14 : SZ.th, 700);
-            let n = c.title ? ctxM.measureText(String(c.title).toUpperCase()).width + padX * 2 : 0;
+            let n = c.title ? ctxM.measureText(this._bCaps(c.title)).width + padX * 2 : 0;
             ctxM.font = this._bFont(SZ.cell, 400);
             for (const r of rows) {
                 if (r.band !== undefined) continue;
