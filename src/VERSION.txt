@@ -129,6 +129,23 @@ because of it.
   its canvas, clears the data cable lengths on the ports it used and the
   pull sheet edits on its rows; a port or row another screen still uses
   keeps its own. Undo brings them back.
+- FIX: The binder names fiber strands by their color wherever it lists
+  them: each screen's breakout box header and the processor page's
+  Breakout boxes table now read "X1 TAC A (TAC 8) / 1 Blue / 2 Orange",
+  one strand per line, where they read "1-2". The strand map's colors are
+  bigger, with each strand's row tinted and its name in bold, and Fiber
+  connections puts one strand per line on every row. A fiber cable
+  labelled by number shows no colors at all, as it has none, and strands
+  past 12 print their tracer stripe.
+- FIX: The binder's title block shows the Engineer under the Drafter,
+  and a blank Project Manager phone or email no longer leaves a gap.
+- FIX: Changing the Rev in the Export dialog adds its row to REVISIONS
+  right away, with the date, your initials and the revision note; one
+  undo takes both back, and a Rev that already has a row adds nothing.
+- FIX: Brompton gear goes by its model name alone - SX40, XD, S8 and the
+  rest - with "Tessera" dropped from the tray, pickers, binder, pull
+  sheet and labels. Pull sheet edits made under the old names still
+  apply.
 - FIX: Multi numbers on the Power tab no longer shift when a screen is
   added to a shared distro, removed or reordered. A removed screen leaves
   its gap for the next one, and only Reset offsets in the Balance dialog
