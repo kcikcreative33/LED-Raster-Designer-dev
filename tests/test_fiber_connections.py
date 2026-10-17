@@ -404,11 +404,16 @@ def test_the_painted_table_is_titled_headed_and_never_cut(page):
     for head in heads:
         assert 14 <= size.get(head, 0) <= 21, (head, size.get(head))
     assert size.get('OUTPUT') == 21, size.get('OUTPUT')
+    # a strand cell is logged as the strands it drew, a line each with no
+    # " ·" between them (2026-10-17) - "1 Blue · 2 Orange" paints
+    # "1 Blue" over "2 Orange", logged "1 Blue 2 Orange"
     cells = set()
     for pid in (ids['sx'], ids['nova'], ids['sq']):
         for row in _rows(pg, pid):
-            cells.update(c for c in row['cells'] if c)
-    assert "Cat6 150' (Cat6 runs 100 ft max at 10G)" in cells and '1 Blue · Rack A · crosses inside' in cells
+            parts = row['parts'] or {}
+            cells.update(' '.join(p['text'] for p in parts[str(i)]) if str(i) in parts else c
+                         for i, c in enumerate(row['cells']) if c)
+    assert "Cat6 150' (Cat6 runs 100 ft max at 10G)" in cells and '1 Blue Rack A crosses inside' in cells
     for cell in sorted(cells):
         assert size.get(cell) == 24, (cell, size.get(cell))
     # nothing of the table is cut anywhere it is painted

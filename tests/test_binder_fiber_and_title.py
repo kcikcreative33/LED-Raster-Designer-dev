@@ -205,7 +205,8 @@ def test_the_data_sheets_band_names_each_strand_by_its_colour_a_line_each(page):
 def test_the_processor_sheet_stacks_and_swatches_every_strand(page):
     """B: Breakout boxes' FIBER - "X1 TAC A (TAC 24)", then 1 Blue and 2
     Orange each on its own line, swatched. FIBER CONNECTIONS: one strand to
-    a line in AT THE PROCESSOR and AT THE BREAKOUT, every row alike. C:
+    a line in AT THE PROCESSOR and AT THE BREAKOUT, every row alike, no
+    " ·" after a strand. C:
     the swatches 24 px; STRAND MAP's strand cell tinted its own colour, its
     name bold; White keeps its ink ring."""
     pg, ids = page
@@ -219,12 +220,16 @@ def test_the_processor_sheet_stacks_and_swatches_every_strand(page):
     assert abs(blue['x'] - head['x'] - 32 * s) < 0.6, (head, blue)      # the swatch's room in front
     assert _fill(_swatch_before(sheet, blue) or {}) == BLUE
     # FIBER CONNECTIONS: at the processor 1 Blue over 2 Orange; at the
-    # breakout the TAC pair flipped, 2 Orange over 1 Blue - never side by side
+    # breakout the TAC pair flipped, 2 Orange over 1 Blue - never side by
+    # side, and no " ·" trailing a strand that has a line of its own
     pairs = [(a, b) for a, b in zip(sheet['texts'], sheet['texts'][1:])
-             if a['text'] in ('1 Blue ·', '2 Orange ·', '13 Blue/Black ·', '14 Orange/Black ·')]
-    assert len(pairs) >= 4, words
+             if (a['text'], b['text']) in (('1 Blue', '2 Orange'), ('2 Orange', '1 Blue'),
+                                           ('13 Blue/Black', '14 Orange/Black'),
+                                           ('14 Orange/Black', '13 Blue/Black'))]
+    assert len(pairs) >= 5, words                      # B's pair and Fiber connections' four
     for a, b in pairs:
         assert abs(a['x'] - b['x']) < 0.5 and abs((b['y'] - a['y']) - 30 * s) < 0.6, (a, b)
+    assert not [w for w in words if w.endswith(' ·') and w.split(' ')[0].isdigit()], words
     # STRAND MAP: the names bold, the cell tinted, the swatch 24 px
     bold = {t['text']: t for t in sheet['texts'] if t['weight'] == 700}
     for name, colour in (('1 Blue', BLUE), ('2 Orange', ORANGE), ('6 White', WHITE), ('13 Blue/Black', BLUE)):
@@ -244,10 +249,12 @@ def test_the_processor_sheet_stacks_and_swatches_every_strand(page):
 # ── numbers and sub-units ────────────────────────────────────────────────
 
 def test_a_cable_read_in_numbers_prints_numbers_and_no_swatch_in_the_band_and_the_table(page):
-    """Labels 'numbers': the band reads "X1 TAC A (TAC 24)  1" over "2",
-    the Breakout boxes table "1" and "2" a line each - no colour beside
-    any of them, the data sheet carries no strand swatch at all. Sub-units
-    read as the strand map reads them, "Blue unit · 1 Blue", swatched."""
+    """Labels 'numbers' ("If it is numbers only then don't use colors as
+    they won't have colors in real life"): the band reads "X1 TAC A (TAC
+    24)  1" over "2", the Breakout boxes table "1" and "2" a line each, and
+    neither sheet carries a strand swatch anywhere - not in STRAND MAP, not
+    in FIBER CONNECTIONS, no strand map tint. Sub-units read as the strand
+    map reads them, "Blue unit · 1 Blue", swatched."""
     pg, ids = page
     try:
         pg.evaluate(PUT_CABLE_JS, [ids['cable'], {'labels': 'numbers'}])
@@ -269,6 +276,19 @@ def test_a_cable_read_in_numbers_prints_numbers_and_no_swatch_in_the_band_and_th
         proc = _sheet(pg, 'processor')
         pw = _words(proc)
         assert _run(pw, ['X1 TAC A (TAC 24)', '1', '2', 'X2 TAC A', '3', '4']) >= 0, pw[:120]
+        side = 24 * proc['scale']
+        squares = [r for r in proc['rects'] if _fill(r) in FIBER_HEXES
+                   and abs(r['w'] - side) < 0.6 and abs(r['h'] - side) < 0.6]
+        assert squares == [], squares
+        tints = {_tint(h) for h in FIBER_HEXES}
+        assert not [r for r in proc['rects'] if _fill(r) in tints], 'a strand map tint in numbers mode'
+        # FIBER CONNECTIONS: 1 over 2 at the processor, 2 over 1 at the box
+        assert _run(pw, ['1', '2']) >= 0 and _run(pw, ['2', '1']) >= 0, pw
+        # STRAND MAP: the numbers, plain
+        maps = pg.evaluate("(sx) => window.app._bStrandMaps(window.app._processorsResolved"
+                           ".find(p => p.id === sx))[0].rows.slice(0, 3)"
+                           ".map(r => [r.cells[0], r.swatch])", ids['sx'])
+        assert maps == [['1', None], ['2', None], ['3', None]], maps
         # sub-units, coloured again
         pg.evaluate(PUT_CABLE_JS, [ids['cable'], {'labels': 'colors', 'subunits': True}])
         sheet = _sheet(pg, 'data')

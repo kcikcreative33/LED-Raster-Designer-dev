@@ -2785,12 +2785,14 @@ class _Binder {
     }
 
     // A `parts` cell's pieces as drawn: each strand's text with the " ·"
-    // that says another follows (kept at the end of a line that wraps, the
-    // way a list cell keeps its separator) unless the part says `nosep`,
-    // its swatch, and `brk` where the part starts a line of its own.
+    // that says another follows on the same line (kept at the end of a line
+    // that wraps, the way a list cell keeps its separator) - none before a
+    // `brk` part, which starts a line of its own, so a strand-to-a-line
+    // list reads "1 Blue" over "2 Orange" (2026-10-17) - and its swatch.
     _bPartPieces(parts) {
-        return parts.map((p, j) => ({ text: String(p.text) + (j < parts.length - 1 && !p.nosep ? ' ·' : ''),
-                                      swatch: p.swatch || null, brk: !!p.brk }));
+        return parts.map((p, j) => ({
+            text: String(p.text) + (j < parts.length - 1 && !(parts[j + 1] || {}).brk ? ' ·' : ''),
+            swatch: p.swatch || null, brk: !!p.brk }));
     }
 
     // A `parts` cell onto lines no wider than maxWidth: as many strands per
@@ -4265,10 +4267,12 @@ class _Binder {
         return String(box.fiberType || '').trim() ? 'no fiber length' : 'no fiber';
     }
 
-    // One strand as a band or a table cell prints it: its name as the
-    // strand map says it (fiberStrandName - a colour, a number, a
-    // sub-unit, a typed name), and its swatch unless the cable reads in
-    // numbers - a cable labelled by number prints no colours beside it.
+    // One strand as the binder prints it - STRAND MAP, FIBER CONNECTIONS,
+    // a data sheet's band, the Breakout boxes table: its name
+    // (fiberStrandName - a colour, a number, a sub-unit, a typed name) and
+    // its swatch, unless the cable reads in numbers: "If it is numbers only
+    // then don't use colors as they won't have colors in real life" (owner,
+    // 2026-10-17) - no swatch, and no tint in the strand map, anywhere.
     _bStrandPiece(n, cable) {
         return { text: this.fiberStrandName(n, cable),
                  swatch: cable && cable.labels === 'numbers' ? null : this.fiberStrandSwatch(n, cable) };
@@ -4303,17 +4307,17 @@ class _Binder {
     }
 
     // The same for the Breakout boxes table's FIBER cell, as `parts`: each
-    // input's words on a line, then its strands a line each, no " ·"
-    // between them - the strands stacked the way Fiber connections stacks
-    // them. Null where the box has no fiber (the cell reads its words).
+    // input's words on a line, then its strands a line each - stacked the
+    // way Fiber connections stacks them. Null where the box has no fiber
+    // (the cell reads its words).
     _bBoxFiberParts(box) {
         const inputs = this._bBoxFiberInputs(box);
         if (!inputs) return null;
         const out = [];
         inputs.forEach((inp, i) => {
             if (!inp.cable || !inp.strands.length) { out.push({ text: inp.text, brk: i > 0 }); return; }
-            out.push({ text: inp.head, nosep: true, brk: i > 0 });
-            inp.strands.forEach(n => out.push({ ...this._bStrandPiece(n, inp.cable), nosep: true, brk: true }));
+            out.push({ text: inp.head, brk: i > 0 });
+            inp.strands.forEach(n => out.push({ ...this._bStrandPiece(n, inp.cable), brk: true }));
         });
         return out;
     }
@@ -5465,8 +5469,9 @@ class _Binder {
             const rows = [];
             for (let n = 1; n <= (cable.strands || 0); n++) {
                 const who = m.get(n);
-                rows.push({ swatch: this.fiberStrandSwatch(n, cable),
-                            cells: [this.fiberStrandName(n, cable),
+                const piece = this._bStrandPiece(n, cable);
+                rows.push({ swatch: piece.swatch,
+                            cells: [piece.text,
                                     who ? `${this._bBoxTitle(who.box)} · ${this.fiberLinkTitle(who.key, who.box)}`
                                         : 'spare'] });
             }
@@ -5526,10 +5531,9 @@ class _Binder {
         const strands = (link) => [...new Set(((link && link.strands) || []).map(Number))]
             .filter(Number.isFinite);
         // a strand to a line, whatever fits (2026-10-17: every row reads
-        // the same, never two strands side by side)
-        const swatched = (list, cable) => list.map((n, j) => ({ text: this.fiberStrandName(n, cable),
-                                                                swatch: this.fiberStrandSwatch(n, cable),
-                                                                brk: j > 0 }));
+        // the same, never two strands side by side), swatched as
+        // _bStrandPiece has it
+        const swatched = (list, cable) => list.map((n, j) => ({ ...this._bStrandPiece(n, cable), brk: j > 0 }));
         const joined = (parts) => parts.map(p => p.text).join(' · ');
         const linkRow = (output, l) => {
             linked++;
