@@ -288,7 +288,7 @@ def test_fiber_link_keys_follow_the_inputs(client):
     st = _ok(_set_inputs(client, pid, box_id, 1))
     box = _res_card(client, cid)['cvts'][0]
     assert box['fiberLinkKeys'] == ['p1', 'b1']
-    assert [box['linkTitles'][k] for k in box['fiberLinkKeys']] == ['OPT 1', 'OPT 3']
+    assert [box['linkTitles'][k] for k in box['fiberLinkKeys']] == ['OPT1', 'OPT3']
     assert set(_raw_box(client, box_id)['fiberLinks']) == {'p1', 'b1'}
     cables = [c['id'] for c in st['fiberCables']]
     assert tac['id'] in cables and lone['id'] not in cables, cables

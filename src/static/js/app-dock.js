@@ -1131,7 +1131,7 @@ class _HardwareDock {
                 title: oneBox
                     ? 'Name this processor. Its ports read the name - name '
                         + 'it SR and they read SR-1, SR-2.'
-                    : 'Name this processor. A card\'s ports take the '
+                    : `Name this processor. A ${this.unitWordFor(proc)}'s ports take the `
                         + 'nearest name above them.',
                 onCommit: (val) => this._processorRequest(
                     `/api/processors/${proc.id}`, 'PUT', { name: val },
@@ -1250,6 +1250,10 @@ class _HardwareDock {
         // (the processor strip holds the unit's one name slot), so its
         // header carries no name field and its drag wears the unit's name.
         const unitFace = this.cardIsUnitFace(proc, card);
+        // What this unit is called - "card" only on a card-based processor
+        // (unitWordFor): an SX40's or an S8's is the processor itself.
+        const word = this.unitWordFor(proc, card);
+        const Word = this.unitWordTitle(word);
         // A card that is a unit of its own leads with its title - "QD 1"
         // for the QD-S on OUT 1 (owner, 2026-09-28) - the name its boxes
         // wear ("QD 1 A").
@@ -1265,9 +1269,12 @@ class _HardwareDock {
             `card-${card.id}`,
             model + cardTag,
             '',
-            'Drag the whole card onto a screen: its unplaced ports fill in '
-            + 'order up to the port under your cursor. Cards keep their slot '
-            + 'order - drag the processor’s line to reorder.',
+            this.procIsCardBased(proc)
+                ? 'Drag the whole card onto a screen: its unplaced ports fill in '
+                    + 'order up to the port under your cursor. Cards keep their slot '
+                    + 'order - drag the processor’s line to reorder.'
+                : `Drag the whole ${word} onto a screen: its unplaced ports fill in `
+                    + 'order up to the port under your cursor.',
             // The header's glance: how full the card is, the retired
             // panel's per-card usage foot worn as n/N and a fill line - so
             // a card folded away because it is done reads as done (a
@@ -1343,15 +1350,15 @@ class _HardwareDock {
                 value: card.name,
                 placeholder: proc.name || 'unnamed',
                 key: `processor-card-name-${card.id}`,
-                title: 'Name this card. Its ports read the name - name it '
+                title: `Name this ${word}. Its ports read the name - name it `
                     + 'SR and they read SR-1, SR-2.',
                 onCommit: (val) => this._processorRequest(
                     `/api/processors/${proc.id}/cards/${card.id}`, 'PUT',
-                    { name: val }, 'Rename Card'),
+                    { name: val }, `Rename ${Word}`),
             },
             gear: {
                 id: `card-${card.id}`,
-                title: 'Configure this card - templates, mode, breakout '
+                title: `Configure this ${word} - templates, mode, breakout `
                     + 'boxes, remove. Redundancy is set behind the '
                     + 'processor\'s \u2699.',
                 build: () => {
@@ -1431,7 +1438,7 @@ class _HardwareDock {
         btn.type = 'button';
         btn.className = 'hw-dock-addbox';
         btn.textContent = '+ Box';
-        btn.title = 'Add a breakout box to this card.';
+        btn.title = `Add a breakout box to this ${this.unitWordFor(proc, card)}.`;
         btn.dataset.lrdField = `dock-addbox-${card.id}`;
         btn.dataset.hwpop = `addbox-${card.id}`;
         btn.addEventListener('click', (e) => {
@@ -1495,9 +1502,10 @@ class _HardwareDock {
         free.className = 'hw-dock-addslot-free';
         free.textContent = this._dockTrunksFreeText(card);
         slot.appendChild(free);
+        const word = this.unitWordFor(proc, card);
         slot.title = fits.length === 1
-            ? `Add a ${fits[0].name} to this card.`
-            : 'Add a breakout box to this card.';
+            ? `Add a ${fits[0].name} to this ${word}.`
+            : `Add a breakout box to this ${word}.`;
         slot.addEventListener('click', (e) => {
             e.stopPropagation();
             if (fits.length === 1) {
@@ -1698,7 +1706,7 @@ class _HardwareDock {
                 placeholder: cvt.displayTitle || 'unnamed',
                 key: `processor-cvt-name-${cvt.id}`,
                 title: 'Name this box. Its sockets read the name the '
-                    + 'way a card\'s ports read the card\'s.',
+                    + `way a ${this.unitWordFor(proc, card)}'s ports read the ${this.unitWordFor(proc, card)}'s.`,
                 onCommit: (val) => this._processorRequest(
                     `/api/processors/${proc.id}/cvts/${cvt.id}`, 'PUT',
                     { name: val }, 'Rename Breakout Box'),
@@ -2003,7 +2011,7 @@ class _HardwareDock {
                             || port.backsUp.port} on ${port.backsUp.boxTitle
                             || port.backsUp.cardTitle}`}`
                     : ' - free'))
-            + (port.beyondCeiling ? ' - beyond this card’s ceiling' : '')
+            + (port.beyondCeiling ? ` - beyond this ${this.unitWordFor(proc, card)}’s ceiling` : '')
             + '. Click to edit'
             + (port.backsUp
                 ? '. A backup port is that port\'s return end - nothing '
@@ -2130,8 +2138,8 @@ class _HardwareDock {
             port.labelSource === 'manual',
             {
                 named: 'Named by hand. Clear the box to go back to the '
-                    + 'card’s template.',
-                unnamed: 'Name this port. It beats the card’s template for '
+                    + `${this.unitWordFor(proc, card)}’s template.`,
+                unnamed: `Name this port. It beats the ${this.unitWordFor(proc, card)}’s template for `
                     + 'this port only.',
             },
             (val) => rename({ name: val }, 'Rename Processor Port')));

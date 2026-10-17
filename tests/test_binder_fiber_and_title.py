@@ -165,28 +165,53 @@ def _tint(hex_colour, k=0.24):
     return '#' + ch((n >> 16) & 255) + ch((n >> 8) & 255) + ch(n & 255)
 
 
+def _outline_round(sheet, texts):
+    """The thin stroked rect drawn round these texts - the group outline -
+    or None: one rect holding every text's line, swatches included."""
+    s = sheet['scale']
+    xs = [t['x'] for t in texts]
+    ys = [t['y'] for t in texts]
+    for r in sheet['rects']:
+        # the group outline's own ink (the binder's MUTED), not a border
+        if str(r.get('stroke') or '').lower() != '#666666' or r.get('fill'):
+            continue
+        if r['w'] < 60 * s or r['h'] < 20 * s:
+            continue
+        if r['x'] < min(xs) and r['x'] + r['w'] > max(xs) \
+                and r['y'] < min(ys) - 18 * s and r['y'] + r['h'] > max(ys):
+            return r
+    return None
+
+
 # ── A: the data sheet's band ─────────────────────────────────────────────
 
 def test_the_data_sheets_band_names_each_strand_by_its_colour_a_line_each(page):
-    """Over XD A's ports: the box on its line, then "X1 TAC A (TAC 24)" on
-    the line of its first strand "1 Blue", "2 Orange" under it, then X2's
-    3 Green and 4 Brown - the strands in one column, each with its 24 px
-    swatch; the backup half's XD B reads 13 Blue/Black and 14
-    Orange/Black, each swatch carrying its black tracer stripe. The
-    one-line summary "1-2 · X2 TAC A 3-4" is gone from the band."""
+    """Over XD A's ports: the box on its line, then each input as a group
+    (2026-10-17: "group each strand pair with its input") - "X1" over
+    "TAC A (TAC 24)" centred beside "1 Blue" over "2 Orange", then X2's 3
+    Green and 4 Brown - the strands in one column, each with its 24 px
+    swatch, each input in its own thin outline; the backup half's XD B
+    reads 13 Blue/Black and 14 Orange/Black, each swatch carrying its black
+    tracer stripe. The one-line summary "1-2 · X2 TAC A 3-4" is gone."""
     pg, ids = page
     sheet = _sheet(pg, 'data')
     words = _words(sheet)
-    at = _run(words, ['X1 TAC A (TAC 24)', '1 Blue', '2 Orange', 'X2 TAC A', '3 Green', '4 Brown'])
+    at = _run(words, ['X1', 'TAC A (TAC 24)', '1 Blue', '2 Orange', 'X2', 'TAC A', '3 Green', '4 Brown'])
     assert at >= 0, words[:80]
-    ops = sheet['texts'][at:at + 6]
+    ops = sheet['texts'][at:at + 8]
     s = sheet['scale']
-    head, blue, orange = ops[0], ops[1], ops[2]
-    assert abs(blue['y'] - head['y']) < 0.5, (head, blue)           # the cable on its first strand's line
+    head, sub, blue, orange = ops[0], ops[1], ops[2], ops[3]
+    # the label centred on its strands: its two lines on the strands' two
+    assert abs((head['y'] + sub['y']) / 2 - (blue['y'] + orange['y']) / 2) < 0.6, (head, sub, blue, orange)
     assert abs((orange['y'] - blue['y']) - 30 * s) < 0.6, (blue, orange)  # a strand to a line
-    assert abs(orange['x'] - blue['x']) < 0.5 and abs(ops[4]['x'] - blue['x']) < 0.5, ops
+    assert abs(orange['x'] - blue['x']) < 0.5 and abs(ops[6]['x'] - blue['x']) < 0.5, ops
+    assert head['x'] < blue['x'], (head, blue)                           # the label to their left
     assert _fill(_swatch_before(sheet, blue) or {}) == BLUE, blue
     assert _fill(_swatch_before(sheet, orange) or {}) == ORANGE, orange
+    # each input its own outline, round its label and its strands
+    assert _outline_round(sheet, [head, sub, blue, orange]), 'X1 is not outlined'
+    assert _outline_round(sheet, ops[4:8]), 'X2 is not outlined'
+    assert not _outline_round(sheet, [blue, ops[6]]), 'X1 and X2 share an outline'
     assert not [w for w in words if '1-2 · X2 TAC A 3-4' in w], words
     # the backup half: past 12, each swatch with its tracer stripe
     i13 = words.index('13 Blue/Black')
@@ -213,12 +238,17 @@ def test_the_processor_sheet_stacks_and_swatches_every_strand(page):
     sheet = _sheet(pg, 'processor')
     words = _words(sheet)
     s = sheet['scale']
-    at = _run(words, ['X1 TAC A (TAC 24)', '1 Blue', '2 Orange', 'X2 TAC A', '3 Green', '4 Brown'])
+    # B, grouped (2026-10-17): "X1" over "TAC A (TAC 24)" centred beside 1
+    # Blue over 2 Orange, outlined; X2 its own group
+    at = _run(words, ['X1', 'TAC A (TAC 24)', '1 Blue', '2 Orange', 'X2', 'TAC A', '3 Green', '4 Brown'])
     assert at >= 0, words[:120]
-    head, blue, orange = sheet['texts'][at:at + 3]
-    assert blue['y'] - head['y'] > 20 * s and abs((orange['y'] - blue['y']) - 30 * s) < 0.6, (head, blue, orange)
-    assert abs(blue['x'] - head['x'] - 32 * s) < 0.6, (head, blue)      # the swatch's room in front
+    head, sub, blue, orange = sheet['texts'][at:at + 4]
+    assert abs((head['y'] + sub['y']) / 2 - (blue['y'] + orange['y']) / 2) < 0.6, (head, sub, blue, orange)
+    assert abs((orange['y'] - blue['y']) - 30 * s) < 0.6, (blue, orange)
+    assert head['x'] < blue['x'] and abs(blue['x'] - orange['x']) < 0.5, (head, blue, orange)
     assert _fill(_swatch_before(sheet, blue) or {}) == BLUE
+    assert _outline_round(sheet, [head, sub, blue, orange]), 'X1 is not outlined'
+    assert _outline_round(sheet, sheet['texts'][at + 4:at + 8]), 'X2 is not outlined'
     # FIBER CONNECTIONS: at the processor 1 Blue over 2 Orange; at the
     # breakout the TAC pair flipped, 2 Orange over 1 Blue - never side by
     # side, and no " ·" trailing a strand that has a line of its own
@@ -250,8 +280,8 @@ def test_the_processor_sheet_stacks_and_swatches_every_strand(page):
 
 def test_a_cable_read_in_numbers_prints_numbers_and_no_swatch_in_the_band_and_the_table(page):
     """Labels 'numbers' ("If it is numbers only then don't use colors as
-    they won't have colors in real life"): the band reads "X1 TAC A (TAC
-    24)  1" over "2", the Breakout boxes table "1" and "2" a line each, and
+    they won't have colors in real life"): the band's X1 group reads "1"
+    over "2", the Breakout boxes table "1" and "2" a line each, and
     neither sheet carries a strand swatch anywhere - not in STRAND MAP, not
     in FIBER CONNECTIONS, no strand map tint. Sub-units read as the strand
     map reads them, "Blue unit · 1 Blue", swatched."""
@@ -260,7 +290,7 @@ def test_a_cable_read_in_numbers_prints_numbers_and_no_swatch_in_the_band_and_th
         pg.evaluate(PUT_CABLE_JS, [ids['cable'], {'labels': 'numbers'}])
         sheet = _sheet(pg, 'data')
         words = _words(sheet)
-        assert _run(words, ['X1 TAC A (TAC 24)', '1', '2', 'X2 TAC A', '3', '4']) >= 0, words[:80]
+        assert _run(words, ['X1', 'TAC A (TAC 24)', '1', '2', 'X2', 'TAC A', '3', '4']) >= 0, words[:80]
         side = 24 * sheet['scale']
         squares = [r for r in sheet['rects'] if _fill(r) in FIBER_HEXES
                    and abs(r['w'] - side) < 0.6 and abs(r['h'] - side) < 0.6]
@@ -272,10 +302,11 @@ def test_a_cable_read_in_numbers_prints_numbers_and_no_swatch_in_the_band_and_th
         }""", ids)
         assert [p['text'] for p in parts['parts']] == ['X1 TAC A (TAC 24)', '1', '2', 'X2 TAC A', '3', '4']
         assert all(not p.get('swatch') for p in parts['parts']), parts
-        assert all(not (isinstance(t, dict) and t['strand']['swatch']) for t in parts['lines']), parts
+        assert all(not (isinstance(t, dict) and any(st['swatch'] for st in t['group']['strands']))
+                   for t in parts['lines']), parts
         proc = _sheet(pg, 'processor')
         pw = _words(proc)
-        assert _run(pw, ['X1 TAC A (TAC 24)', '1', '2', 'X2 TAC A', '3', '4']) >= 0, pw[:120]
+        assert _run(pw, ['X1', 'TAC A (TAC 24)', '1', '2', 'X2', 'TAC A', '3', '4']) >= 0, pw[:120]
         side = 24 * proc['scale']
         squares = [r for r in proc['rects'] if _fill(r) in FIBER_HEXES
                    and abs(r['w'] - side) < 0.6 and abs(r['h'] - side) < 0.6]
@@ -293,9 +324,9 @@ def test_a_cable_read_in_numbers_prints_numbers_and_no_swatch_in_the_band_and_th
         pg.evaluate(PUT_CABLE_JS, [ids['cable'], {'labels': 'colors', 'subunits': True}])
         sheet = _sheet(pg, 'data')
         words = _words(sheet)
-        at = _run(words, ['X1 TAC A (TAC 24)', 'Blue unit · 1 Blue', 'Blue unit · 2 Orange'])
+        at = _run(words, ['X1', 'TAC A (TAC 24)', 'Blue unit · 1 Blue', 'Blue unit · 2 Orange'])
         assert at >= 0, words[:80]
-        assert _fill(_swatch_before(sheet, sheet['texts'][at + 1]) or {}) == BLUE
+        assert _fill(_swatch_before(sheet, sheet['texts'][at + 2]) or {}) == BLUE
         assert 'Orange unit · 1 Blue' in words, words      # strand 13 in the second unit
     finally:
         pg.evaluate(PUT_CABLE_JS, [ids['cable'], {'labels': 'colors', 'subunits': False}])

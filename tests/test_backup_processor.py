@@ -394,7 +394,7 @@ def test_a_novastar_backup_lands_on_opt_2_and_a_cvt4k_on_opt_3_and_4(client):
     res = _res_box(client, big)
     assert res['fiberLinkKeys'] == ['p1', 'p2', 'b1', 'b2']
     assert [res['linkTitles'][k] for k in res['fiberLinkKeys']] == \
-        ['OPT 1', 'OPT 2', 'OPT 3', 'OPT 4']
+        ['OPT1', 'OPT2', 'OPT3', 'OPT4']
     tac = _new_tac(client, 12, link={'boxId': big, 'key': 'p1'})
     _ok(_link(client, main2, big, 'b2', {'cable': tac['id']}))
     assert _raw_box(client, big)['fiberLinks']['b2'] == {'cable': tac['id'], 'strands': [3, 4]}
@@ -838,9 +838,10 @@ def test_the_binder_and_the_pull_sheet_name_the_ports_and_count_the_backup(page)
                             'XD C', 'XD D · loop of XD C'], out
     assert out['red'] == 'On · backed up by WALL SR BU', out
     assert out['bu'] == 'WALL SR BU · backup of WALL SR Main', out
-    assert out['cols'] == ['strand', 'link'], out
-    assert out['map'] == [['1 Blue', 'XD A · X1'], ['2 Orange', 'XD A · X1'],
-                          ['3 Green', 'spare']], out
+    # the box ports each link carries (2026-10-17): an XD's ten
+    assert out['cols'] == ['strand', 'link', 'box ports'], out
+    assert out['map'] == [['1 Blue', 'XD A · X1', '1-10'], ['2 Orange', 'XD A · X1', '1-10'],
+                          ['3 Green', 'spare', '']], out
     rows = pg.evaluate("""() => {
         const app = window.app;
         app._circuitTailCache = null;

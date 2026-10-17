@@ -1698,8 +1698,10 @@ def test_processor_edits_take_post_mutation_history_snapshots():
     assert "'Remove Processor'" in source, (
         "'Remove Processor' takes no history snapshot")
     dock = js_source('app-dock.js')
+    # a slot card's rename is named for what it is: "Rename Card" on a
+    # card-based processor, "Rename QD" on an SQ200's QD-S (unitWordTitle)
     for action in ("'Add Processor'", "'Rename Processor'",
-                   "'Rename Card'", "'Rename Processor Port'",
+                   "`Rename ${Word}`", "'Rename Processor Port'",
                    "'Rename Processor Port Return'"):
         assert action in dock, f'{action} takes no history snapshot'
 
@@ -2908,7 +2910,9 @@ def test_the_return_template_round_trips_through_undo(panel_page):
     assert stored() == ('BU-#', 'BU-1')
     action = panel_page.evaluate(
         "() => window.app.history[window.app.history.length - 1].action")
-    assert action == 'Edit Card Return Label Template'
+    # the panel's unit is one box, not a card-based processor: its
+    # history entry says processor (2026-10-17, CARD -> PROCESSOR)
+    assert action == 'Edit Processor Return Label Template'
 
     panel_page.evaluate("() => window.app.undo()")
     panel_page.wait_for_timeout(1000)
@@ -3985,7 +3989,8 @@ def test_the_gear_wires_the_modes_the_house_way():
         assert 'if (!shape || shape.forced) return null;' in body, (
             f'a fixed pairing grew a control in {builder}')
     for action in ("'Change Redundancy Mode'", "'Change Backup Unit'",
-                   "'Set Redundancy Per Port'", "'Set Redundancy Per Card'",
+                   "'Set Redundancy Per Port'",
+                   "`Set Redundancy Per ${this.unitWordTitle(this.unitWordFor(proc))}`",
                    "'Set Redundancy Backed Up'", "'Toggle Redundancy'",
                    "'Set Redundancy Loops'", "'Add Backup Processor'",
                    "'Remove Backup Processor'", "'Rename Backup Processor'"):

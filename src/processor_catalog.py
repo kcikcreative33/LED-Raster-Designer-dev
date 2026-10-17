@@ -81,6 +81,31 @@ def unit_is_chassis(proc):
     return is_chassis(get_device((proc or {}).get('deviceId')))
 
 
+def is_card_based(device):
+    """Whether what a device holds is CALLED a card on every sheet, label
+    and message - the H series, the MX2000 and the MX6000 (ruling,
+    2026-09-24: "the H series and MX6000 and 2000 are the only card based
+    processors"). Every other processor is one unit with its own ports
+    and is called a processor (2026-10-17). A chassis is card based unless
+    every card it takes is a unit of its own (catalog `separateUnit`): the
+    SQ200's OUT slots each hold a QD-S, its own 1U unit, never a card."""
+    if not is_chassis(device):
+        return False
+    accepts = (device or {}).get('accepts') or []
+    held = [d for d in devices('card') if d.get('family') in accepts]
+    return not held or not all(d.get('separateUnit') for d in held)
+
+
+def unit_word(proc_device, card_device=None):
+    """What a message calls the unit a port sits on: 'card' on a card-based
+    processor, the catalog's word for a card that is a unit of its own
+    ('QD'), else 'processor'. The dock's unitWordFor, mirrored."""
+    if is_card_based(proc_device):
+        return 'card'
+    word = ((card_device or {}).get('unitWord') or '').strip()
+    return word or 'processor'
+
+
 def is_box_fed(device):
     """Whether a catalog device has NO fixture ports of its own - every port
     it will ever drive comes out of a breakout box on one of its trunks.
@@ -609,10 +634,13 @@ def box_inputs_allowed(cvt_device):
 
 def box_input_word(cvt_device):
     """What a box's own face calls one input - 'OPT' off a CVT4K-S's
-    'OPT 1' (its linkPorts) - else plain 'input' (an XD's 'X1' names a
-    port, not a word to count by)."""
+    'OPT1' or a CVT10's 'OPT 1' (its linkPorts, spaced as each maker's
+    sheet spaces them) - else plain 'input' (an XD's 'X1' names a port,
+    not a word to count by)."""
     names = ((cvt_device or {}).get('linkPorts') or {}).get('primary') or []
     hit = re.match(r'^(.*\S)\s+\d+$', str(names[0])) if names else None
+    if not hit and names:
+        hit = re.match(r'^([A-Za-z]{2,})\d+$', str(names[0]))
     return hit.group(1) if hit else 'input'
 
 
@@ -1796,8 +1824,8 @@ def fiber_link_keys(trunks, bound):
 def fiber_link_title(key, cvt_device=None):
     """A link by the box's own port name (2026-09-25: "call novastar Opt
     1,2,3,4"): 'p1' -> 'X1' and 'b1' -> 'X2' on an XD, 'OPT 1' /
-    'OPT 2' on a CVT10, 'OPT 1'-'OPT 4' on a CVT4K-S - the catalog's
-    linkPorts. A box that documents none keeps a neutral 'Link 1', 'Link
+    'OPT 2' on a CVT10, 'OPT1'-'OPT4' on a CVT4K-S - the catalog's
+    linkPorts, spelled as each maker's documents spell them. A box that documents none keeps a neutral 'Link 1', 'Link
     2' for its primaries (and 'Backup 1' for a backup link it could only
     carry on a stale file)."""
     key = str(key or '')
@@ -1811,6 +1839,13 @@ def fiber_link_title(key, cvt_device=None):
     if 1 <= n <= len(names):
         return names[n - 1]
     return f'{"Backup" if backup else "Link"} {n}'
+
+
+def link_ports_documented(cvt_device):
+    """Whether a box's inputs carry the maker's own names - the catalog's
+    linkPorts, each model's checked against its maker's documents - so
+    fiber_link_title reads them rather than a neutral 'Link 1'."""
+    return bool(((cvt_device or {}).get('linkPorts') or {}).get('primary'))
 
 
 # Copper on a box link (2026-09-25, owner: "anything that does 10Gbps max
@@ -2004,7 +2039,7 @@ def fiber_box_title(entry):
 
 def box_backup_ports(cvt_device):
     """The backup inputs a box's catalog entry documents - ['X2'] on a
-    XD, ['OPT 2'] on a CVT10, ['OPT 3', 'OPT 4'] on a CVT4K-S - or
+    XD, ['OPT 2'] on a CVT10, ['OPT3', 'OPT4'] on a CVT4K-S - or
     [] where none is documented (the CVT8-5G, every Megapixel box): the
     backup processor feeds such a box's own twin instead. A link-host card
     reads the same field - ['IN 2'] on a QD-S."""
@@ -3268,6 +3303,10 @@ def resolve_card(card, proc):
             # Link 1..) - every key the box could carry, backups included.
             'linkTitles': {k: fiber_link_title(k, cvt_device)
                            for k in fiber_link_keys(takes, True)},
+            # Whether those names are the maker's own (the catalog's
+            # linkPorts) rather than the neutral 'Link 1' - the binder's
+            # Breakout boxes table lists a box's inputs only where they are.
+            'linkPortsDocumented': link_ports_documented(cvt_device),
             # Whether a link may be copper instead of fiber (the XD).
             'copperLinks': bool(cvt_device.get('copperLinks')),
             'bidi': bool(cvt.get('bidi')),
@@ -3721,6 +3760,9 @@ def resolve_card(card, proc):
     # (fiber_box_index).
     out['unitTitle'] = unit
     out['separateUnit'] = bool(device.get('separateUnit'))
+    # What such a unit is called where a card would be ("QD"), '' on a
+    # card (unit_word).
+    out['unitWord'] = (device.get('unitWord') or '').strip()
     out['defaultCvt'] = device.get('defaultCvt') or None
     if is_link_host(device):
         out.update({
@@ -3732,6 +3774,7 @@ def resolve_card(card, proc):
             'fiberLinkKeys': fiber_link_keys(1, False),
             'linkTitles': {k: fiber_link_title(k, device)
                            for k in fiber_link_keys(1, True)},
+            'linkPortsDocumented': link_ports_documented(device),
             'copperLinks': False,
             'bidi': bool(card.get('bidi')),
             'bidiAllowed': fiber_bidi_allowed(device),
@@ -3789,6 +3832,9 @@ def resolve_processor(proc):
         'deviceName': device.get('name', proc.get('deviceId')),
         'vendor': device.get('vendor', ''),
         'form': device.get('form', ''),
+        # Whether its units are called cards (is_card_based): the H series,
+        # the MX2000 and the MX6000 only.
+        'cardBased': is_card_based(device),
         'name': proc.get('name', ''),
         'mode': proc.get('mode'),
         'redundancy': bool(proc.get('redundancy')),

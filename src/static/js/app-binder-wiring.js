@@ -158,6 +158,15 @@ const BOX_H = 60, MIN_BOX_GAP = 16, ROW_GAP = 38, BOX_R = 7;
 // sockets nothing crosses it.
 const TITLE_DY = 50, NOTE_DY = 13, SOCKET_DY = 26;
 const CAPTION_SZ = 10, NUMBER_SZ = 8, NOTE_SZ = 7.5, NOTE_PAD = 8;
+// A breakout box's INPUTS on the data side (owner, 2026-10-17: "X1 and X2
+// can go under the numbers in wiring diagram"): under the row of sockets,
+// inside the box, each input a line - "X1" then its strands, each strand's
+// swatch where the cable reads in colours - in the thin outline the
+// Breakout boxes table groups an input in, set at the caption's size. The
+// box grows by the lines it holds (every box on the sheet alike, so a row
+// stays one height). Its type, line pitch, swatch, the air under the
+// sockets, and the outline's pad.
+const IN_SZ = CAPTION_SZ, IN_LINE = 16, IN_SW = 9, IN_TOP = 42, IN_PAD = 3;
 // The runs: their pen, the white casing under them, the rims.
 const RUN_W = 1.4, CASE_EXTRA = 3.2;
 const BOX_RIM = 1.8, SOCKET_RIM = 1.3, DISC_RIM = 1.6;
@@ -255,7 +264,8 @@ class _BinderWiring {
                 const n = home.box
                     ? (home.box.portCount || (home.box.ports || []).length)
                     : (home.card.ceiling || (home.card.ports || []).length);
-                d = { key, title, n: Number(n) || 0, sockets: new Map(), notes: new Map() };
+                d = { key, title, n: Number(n) || 0, sockets: new Map(), notes: new Map(),
+                      box: home.box || null };
                 byKey.set(key, d);
                 devices.push(d);
             }
@@ -590,14 +600,27 @@ class _BinderWiring {
         const noteFloor = (d) => Math.ceil(Math.max(0,
             ...wiresOf(d.key).map(w => measure(noteOf(w.stub.text, w.socket), NOTE_SZ, 400))) + NOTE_PAD);
         const capW = (d) => measure(d.title, CAPTION_SZ, 700);
+        // a box's inputs on the data side (_bwBoxInputs), and the room
+        // their block takes at the box's right end - none where no input
+        // is on a cable, so such a sheet draws as it always did
+        for (const d of devices) d.inputs = isData && d.box ? this._bwBoxInputs(d.box) : null;
+        const inHead = (d) => Math.max(0, ...(d.inputs || []).map(g => measure(g.head, IN_SZ, 700))) + 5;
+        const inLineW = (d, g) => inHead(d) + g.strands.reduce((s, st) =>
+            s + (st.swatch ? IN_SW + 3 : 0) + measure(st.text, IN_SZ, 400) + 6, 0);
+        const inContent = (d) => (d.inputs ? Math.max(...d.inputs.map(g => inLineW(d, g))) + IN_PAD * 2 : 0);
+        // the lines under the sockets: the most any box holds sets every
+        // box's height on the sheet, and the caption moves down by them
+        const inLines = Math.max(0, ...devices.map(d => (d.inputs || []).length));
+        const inH = inLines ? inLines * IN_LINE + 6 : 0;
+        const BOXH = BOX_H + inH;
         const rowWidthAt = (pitch) => devices.reduce((s, d) =>
-            s + Math.max(d.n * Math.max(pitch, noteFloor(d)) + PAD * 2, capW(d) + PAD * 2), 0)
+            s + Math.max(d.n * Math.max(pitch, noteFloor(d)) + PAD * 2, capW(d) + PAD * 2, inContent(d) + PAD * 2), 0)
             + MIN_BOX_GAP * Math.max(0, devices.length - 1);
         // The pitch gives way before the layout does.
         let fit = PITCH;
         while (fit > MIN_PITCH && rowWidthAt(fit) > availW) fit -= 1;
         const pitchOf = (d) => Math.max(fit, noteFloor(d));
-        const boxW = (d) => Math.max(d.n * pitchOf(d) + PAD * 2, capW(d) + PAD * 2);
+        const boxW = (d) => Math.max(d.n * pitchOf(d) + PAD * 2, capW(d) + PAD * 2, inContent(d) + PAD * 2);
 
         // the block rows, greedily; the row count is what the wall's room
         // is measured against
@@ -626,7 +649,7 @@ class _BinderWiring {
         // along one. The wall takes what is left of the side's own area -
         // its height is read from that area and bounded by nothing else.
         const wallAt = (nRows, head, band) => {
-            const boxesH = nRows ? nRows * BOX_H + (nRows - 1) * ROW_GAP : 0;
+            const boxesH = nRows ? nRows * BOXH + (nRows - 1) * ROW_GAP : 0;
             const roomH = Math.max(40, A.h / K - head - band - boxesH - foot);
             const room = { x: A.x + (MARGIN + railRoom) * K, y: A.y + head * K,
                            w: wallRoomW * K, h: Math.min(MAX_WALL_H, roomH) * K };
@@ -691,9 +714,9 @@ class _BinderWiring {
         // shoulder to shoulder: a run reads better when its block is under
         // the part of the wall it serves
         const nRows = rows.length;
-        const boxesH = nRows ? nRows * BOX_H + (nRows - 1) * ROW_GAP : 0;
+        const boxesH = nRows ? nRows * BOXH + (nRows - 1) * ROW_GAP : 0;
         const bottom = A.y + A.h - foot * K;
-        const rowY = (ri) => bottom - (boxesH - ri * (BOX_H + ROW_GAP)) * K;
+        const rowY = (ri) => bottom - (boxesH - ri * (BOXH + ROW_GAP)) * K;
         const hue = new Map(), dash = new Map();
         devices.forEach((d, i) => {
             hue.set(d.key, printer ? INK : HUES[i % HUES.length]);
@@ -731,7 +754,14 @@ class _BinderWiring {
                                    kind: on ? on.kind : null });
                 }
                 socketX.set(d.key, xs);
-                blocks.push({ key: d.key, title: d.title, x: bx, y, w: w * K, h: BOX_H * K,
+                const inputs = d.inputs ? {
+                    groups: d.inputs, head: inHead(d) * K, size: IN_SZ * K, line: IN_LINE * K,
+                    sw: IN_SW * K, pad: IN_PAD * K,
+                    x: bx + (PAD + IN_PAD) * K, top: y + IN_TOP * K,
+                    lineW: d.inputs.map(g => inLineW(d, g) * K),
+                } : null;
+                blocks.push({ key: d.key, title: d.title, x: bx, y, w: w * K, h: BOXH * K,
+                              titleY: y + (TITLE_DY + inH) * K, inputs,
                               row: ri, pitch: p * K, sockets,
                               rim: isData ? INK : hue.get(d.key),
                               hue: hue.get(d.key), dash: dash.get(d.key) });
@@ -1210,9 +1240,10 @@ class _BinderWiring {
         // the blocks: the name INSIDE, on its own line under the sockets
         for (const b of P.blocks) {
             this._bwRound(ctx, b.x, b.y, b.w, b.h, BOX_R * K, WHITE, b.rim, BOX_RIM * K);
-            const title = this._bText(book, b.title, b.x + PAD * K, b.y + TITLE_DY * K,
+            const title = this._bText(book, b.title, b.x + PAD * K, b.titleY || (b.y + TITLE_DY * K),
                                       { size: CAPTION_SZ * K, weight: 700, color: b.rim,
                                         maxWidth: b.w - 2 * PAD * K, shrink: true });
+            if (b.inputs) this._bwDrawInputs(book, ctx, b);
             const entry = log ? { title, key: b.key, x: b.x, y: b.y, w: b.w, h: b.h,
                                   rim: b.rim, hue: b.hue, dash: b.dash, sockets: [] } : null;
             for (const sk of b.sockets) {
@@ -1261,7 +1292,7 @@ class _BinderWiring {
         }
 
         if (P.unplaced) {
-            this._bText(book, `${P.unplaced} of ${P.total} not placed on any card — no run to draw`,
+            this._bText(book, `${P.unplaced} of ${P.total} not placed on any ${this.showUnitWord()} — no run to draw`,
                         A.x, A.y + A.h - 4 * K, { size: NOTE_SZ * K * 1.15, weight: 400, color: MUTED });
         }
         if (log) book.log.wiring.halves.push(log);
@@ -1281,6 +1312,64 @@ class _BinderWiring {
     // A rounded rectangle through the recorder's vocabulary: the fill as
     // three rects and four quarter discs (arcs stroked as wide as the
     // corner radius), the outline as one polyline.
+    // A box's inputs as the wiring sheet draws them - [{ head: 'X1',
+    // strands: [{ text, swatch }] }] in the order its links run (primaries,
+    // then the backup inputs), each input's strands in the order they plug
+    // in AT THE BOX (_bStrandsAtBox: a TAC's pair flipped, as FIBER
+    // CONNECTIONS' AT THE BREAKOUT reads), named and swatched as the strand
+    // map has them (_bStrandPiece - numbers with no swatch on a cable
+    // labelled by number, sub-unit names as it prints them); a copper link
+    // its run's kind. Inputs with no cable and no copper are left out, and
+    // a box with none on either is null.
+    _bwBoxInputs(box) {
+        const links = typeof this.fiberBoxLinks === 'function' ? this.fiberBoxLinks(box) : [];
+        const on = links.filter(l => l.cable || l.copper);
+        if (!on.length) return null;
+        return on.map(l => {
+            if (l.copper) return { head: l.title, strands: [{ text: String(l.copper.copper || 'copper'), swatch: null }] };
+            const set = this._bStrandsAtBox(l.link, l.cable);
+            return { head: l.title,
+                     strands: set.length ? set.map(n => this._bStrandPiece(n, l.cable))
+                         : [{ text: l.cable.name || this.fiberCableTypeText(l.cable), swatch: null }] };
+        });
+    }
+
+    // A box's inputs under its sockets, a line each - X1 over X2 - each
+    // line outlined: the input bold, then its strands. Swatched as the
+    // binder's strand map swatches, on either palette.
+    _bwDrawInputs(book, ctx, b) {
+        const I = b.inputs;
+        I.groups.forEach((g, gi) => {
+            const y0 = I.top + gi * I.line;
+            const base = y0 + I.line * 0.5 + I.size * 0.36;
+            const x0 = I.x;
+            ctx.strokeStyle = MUTED;
+            ctx.lineWidth = Math.max(0.5, I.size * 0.08);
+            ctx.setLineDash([]);
+            ctx.strokeRect(x0 - I.pad, y0 + I.line * 0.06, I.lineW[gi] + 2 * I.pad, I.line * 0.88);
+            this._bText(book, g.head, x0, base, { size: I.size, weight: 700, color: INK });
+            let x = x0 + I.head;
+            for (const st of g.strands) {
+                if (st.swatch) {
+                    const sy = base - I.size * 0.36 - I.sw / 2;
+                    ctx.fillStyle = st.swatch.base || '#777777';
+                    ctx.fillRect(x, sy, I.sw, I.sw);
+                    if (st.swatch.tracer) {
+                        ctx.fillStyle = st.swatch.tracer;
+                        ctx.fillRect(x, sy + I.sw * 0.36, I.sw, I.sw * 0.28);
+                    }
+                    ctx.strokeStyle = INK;
+                    ctx.lineWidth = Math.max(0.5, I.size * 0.08);
+                    ctx.strokeRect(x, sy, I.sw, I.sw);
+                    x += I.sw + 3 * (I.size / IN_SZ);
+                }
+                const t = this._bText(book, st.text, x, base, { size: I.size, weight: 400, color: INK });
+                ctx.font = this._bFont(I.size, 400);
+                x += ctx.measureText(String(t || st.text)).width + 6 * (I.size / IN_SZ);
+            }
+        });
+    }
+
     _bwRound(ctx, x, y, w, h, r, fill, stroke, width) {
         const rr = Math.max(0, Math.min(r, w / 2, h / 2));
         if (fill) {

@@ -1315,9 +1315,13 @@ def test_a_row_of_circuits_leaves_by_the_top_and_an_unplaced_port_draws_no_run(p
     assert len(sig['discs']) == 6 and not any(d['placed'] for d in sig['discs'])
     assert sig['runs'] == [] and sig['blocks'] == []
     assert sig['unplaced'] == 6 and sig['total'] == 6
-    line = [t for t in dout['texts'] if 'not placed on any card' in t]
-    assert len(line) == 1 and line[0].startswith('6 of 6 not placed on any card'), dout['texts']
-    assert not [t for t in out['texts'] if 'not placed on any card' in t], 'the line is the data sheet own'
+    # "card" only where every processor of the show holds cards; this
+    # show's are one-box units, so the line says processor (2026-10-17)
+    word = pg.evaluate("() => window.app.showUnitWord()")
+    assert word == 'processor', word
+    line = [t for t in dout['texts'] if f'not placed on any {word}' in t]
+    assert len(line) == 1 and line[0].startswith(f'6 of 6 not placed on any {word}'), dout['texts']
+    assert not [t for t in out['texts'] if 'not placed on any' in t], 'the line is the data sheet own'
     _drop_pdf(pg, opts, 'SR - Power Wiring', 'live-show-a-sr-power-wiring.pdf')
     _drop_pdf(pg, opts, 'SR - Data Wiring', 'live-show-a-sr-data-wiring.pdf')
     assert ids['errors'] == []

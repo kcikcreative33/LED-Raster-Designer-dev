@@ -2417,8 +2417,12 @@ def test_a_box_delivering_the_port_is_listed_instead_of_the_card(page):
         # the processor sheet: the box under its card, with its fiber
         proc = _render(pg, SHOW, PROC)['texts']
         b = proc.index('BREAKOUT BOXES')
-        assert proc[b + 1:b + 6] == ['BREAKOUT BOX', 'CARD', 'TRUNK', 'PORTS', 'FIBER']
-        assert proc[b + 6:b + 11] == ['CVT4K-S SR', 'SR', 'OPT 1-2', '16', "12 Tac Fiber 250'"], proc[b:b + 12]
+        # no PORTS column (2026-10-17): FIBER names every input the box
+        # takes, as NovaStar spells them on the CVT4K-S - each with nothing
+        # on it, then the box's 1.3 typed note
+        assert proc[b + 1:b + 5] == ['BREAKOUT BOX', 'CARD', 'TRUNK', 'FIBER']
+        assert proc[b + 5:b + 9] == ['CVT4K-S SR', 'SR', 'OPT 1-2',
+                                     "OPT1 no fiber OPT2 no fiber 12 Tac Fiber 250'"], proc[b:b + 12]
         assert ['12 Tac Fiber', "250'", '1', 'CVT4K-S SR'] == proc[proc.index('PULL LIST') + 5:proc.index('PULL LIST') + 9]
         # no sheet says box, save the breakout box's own table
         for t in texts + proc:
@@ -2434,7 +2438,7 @@ def test_a_box_delivering_the_port_is_listed_instead_of_the_card(page):
         assert 'CVT4K-S SR · OPT 1-2 · 16 ports · no fiber length' in texts, texts
         assert '12 Tac Fiber' not in texts
         proc = _render(pg, SHOW, PROC)['texts']
-        assert proc[proc.index('BREAKOUT BOXES') + 10] == 'no fiber length'
+        assert proc[proc.index('BREAKOUT BOXES') + 8] == 'OPT1 no fiber OPT2 no fiber no fiber length'
         # the backup end lands on a box the same way: the second card's own
         # CVT4K-S (named BK) carries WALL-A's return, so the return label is
         # that box's own ("BK-1" - the mapped port's label, the tray's rule)

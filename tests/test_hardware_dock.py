@@ -4445,7 +4445,9 @@ def test_clear_card_forgets_backup_picks_and_keeps_port_names(dock_page):
         f'the backup pick survived the card clear: {card}')
     assert card['names'].get('4') == 'HOUSE L', (
         f'typed port names must stay through the clear: {card}')
-    assert page.evaluate(HIST_JS, 1) == ['Clear Card']
+    # the seed's unit is one box, not a card-based processor: the entry
+    # says processor (2026-10-17, CARD -> PROCESSOR)
+    assert page.evaluate(HIST_JS, 1) == ['Clear Processor']
     assert page.evaluate(HIST_LEN_JS) == before + 1, (
         'the card clear is not ONE history entry')
 

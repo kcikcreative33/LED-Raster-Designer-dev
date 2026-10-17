@@ -287,8 +287,8 @@ def test_a_bidi_box_keeps_its_one_strand_and_an_mtp_is_not_flipped(page):
     box = pg.evaluate("(id) => window.app._bBoxTitle(window.app._dockFindCvt(id).cvt)", ids['cvt4k'])
     assert cells == [
         ['OPT 1', 'TAC C (TAC 12)', '1', 'OPT 1 on CVT10 A', '1'],
-        ['OPT 2', 'MTP A (MTP 12)', '1 Blue · Rack A', f'OPT 1 on {box}', '1 Blue · Rack A · crosses inside'],
-        ['OPT 3', 'MTP A', '3 Green · 4 Brown', f'OPT 2 on {box}', '3 Green · 4 Brown · crosses inside'],
+        ['OPT 2', 'MTP A (MTP 12)', '1 Blue · Rack A', f'OPT1 on {box}', '1 Blue · Rack A · crosses inside'],
+        ['OPT 3', 'MTP A', '3 Green · 4 Brown', f'OPT2 on {box}', '3 Green · 4 Brown · crosses inside'],
         ['OPT 4', 'not used', '', '', ''],
     ], cells
     # the words "crosses inside" carry no swatch; every strand does

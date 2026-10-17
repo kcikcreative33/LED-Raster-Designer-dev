@@ -539,7 +539,7 @@ class _DockDrag {
         }
         if (unit.type === 'box' && unit.beyondTrunks) {
             return { ok: false, nums: [],
-                     message: `${unit.title} has no trunk on its card - its `
+                     message: `${unit.title} has no trunk on its ${this.unitWordForCard(unit.cardId)} - its `
                         + 'ports are not delivered, so nothing can land on '
                         + 'them.' };
         }

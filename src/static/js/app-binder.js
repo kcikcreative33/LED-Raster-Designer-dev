@@ -153,6 +153,11 @@ const COL_W = 700;
 // takes in front of the strand's name, the gap after it included - sized
 // to read across a room (2026-10-17: "bigger, bolder color").
 const SWATCH = 24;
+// AN INPUT AND ITS STRANDS AS ONE GROUP (owner, 2026-10-17): the input's
+// label centred beside its strands, a thin outline round the lot, GROUP_GAP
+// between one input's outline and the next.
+const GROUP_GAP = 10;
+const GROUP_PAD = 6;
 const SWATCH_W = 32;
 const DATA_COL_W = 1020;              // the Ports table's five columns of whole names
 const COL_GAP = 30;
@@ -2356,6 +2361,12 @@ class _Binder {
     // warning) wraps between any two words instead.
     _bCellPieces(text, words) {
         const s = String(text == null ? '' : text);
+        // 'on': "X1 on XD S1 A" breaks only after its " on " - a box's
+        // name is never split, and the column asks for the name whole
+        if (words === 'on') {
+            const m = /^(.*? on )(.+)$/.exec(s);
+            return m ? [m[1], m[2]] : [s];
+        }
         // never break before a " · " - its dot stays with the word it follows
         if (words) return s.split(/(?<= )(?!· )/).filter(Boolean);
         const out = [];
@@ -2450,6 +2461,13 @@ class _Binder {
                 // list: the list wraps, but a member that will not fit a line
                 // has nowhere to go and would be cut ("28× 2fer" in the
                 // Screens table's SHARED column).
+                const groups = c.inputs && r.inputs && r.inputs[i];
+                if (groups && groups.length) {
+                    // an input column asks for its widest group whole:
+                    // the column's label width, then the widest strand
+                    n = Math.max(n, this._bInputsNeed(book, rows, i) + padX * 2);
+                    continue;
+                }
                 const parts = c.parts && r.parts && r.parts[i];
                 if (parts && parts.length) {
                     // a strand list asks for its widest strand, swatch and all
@@ -2583,9 +2601,9 @@ class _Binder {
                 // its fiber strand by strand, on a sheet with no halves).
                 const sub = !!r.sub;
                 const ind = sub ? 22 : 0;
-                const n = r.lines ? Math.max(1, r.lines.length)
-                    : r.halves.reduce((m, h) => Math.max(m, h.length), 1);
-                const h = BAND_H + (n - 1) * LIST_H;
+                // a group stands on its lines and its gap (_bStackLayout)
+                const tall = (list) => { const L = this._bStackLayout(list); return (L.lines - 1) * LIST_H + L.extra; };
+                const h = BAND_H + (r.lines ? tall(r.lines) : r.halves.reduce((m, half) => Math.max(m, tall(half)), 0));
                 lines.push({ h, band: true, draw: (ctx, x, y, w) => {
                     const L = layout(w);
                     if (book.meta.palette === 'printer') {
@@ -2647,14 +2665,29 @@ class _Binder {
                     ? this._bCellLines(book, r.cells[i], SZ.cell, weight,
                                        W[i] - padX * 2, c.list === true ? LIST_LINES : c.list, c.words)
                     : null));
-            const rowLines = wrapped.reduce((m, ls) => Math.max(m, ls ? ls.length : 1), 1);
-            const h = ROW_H + (rowLines - 1) * LIST_H;
-            lines.push({ h, draw: (ctx, x, y, w) => {
+            // AN INPUT COLUMN (the Breakout boxes table's FIBER): each input
+            // a group - its label centred beside its strands, outlined -
+            // and the row as tall as its groups; every other cell of that
+            // row sits centred on them rather than hanging at the top.
+            const inputsAt = cols.findIndex((c, i) => c.inputs && r.inputs && r.inputs[i] && r.inputs[i].length);
+            const rowLines = wrapped.reduce((m, ls, i) => (i === inputsAt ? m : Math.max(m, ls ? ls.length : 1)), 1);
+            const inLay = inputsAt >= 0 ? this._bInputsLayout(r.inputs[inputsAt]) : null;
+            const h = inLay ? Math.max(ROW_H + (rowLines - 1) * LIST_H, inLay.height)
+                : ROW_H + (rowLines - 1) * LIST_H;
+            const cellLines = (i) => (partsOf(i) ? this._bPartLines(book, partsOf(i), weight, W[i] - padX * 2).length
+                : wrapped[i] ? wrapped[i].length : 1);
+            lines.push({ h, draw: (ctx, x, y0, w) => {
                 const L = layout(w);
-                rules(ctx, L, x, y, h);
-                if (r.bold) { ctx.fillStyle = RULE; ctx.fillRect(x, y, w, 3); }
+                rules(ctx, L, x, y0, h);
+                if (r.bold) { ctx.fillStyle = RULE; ctx.fillRect(x, y0, w, 3); }
                 (r.cells || []).forEach((cell, i) => {
                     if (!L[i]) return;
+                    if (i === inputsAt) {
+                        this._bInputsCell(book, ctx, r.inputs[inputsAt], inLay, x + L[i].x + padX, y0,
+                                          L[i].w - padX * 2, this._bInputsHead(book, spec.rows, i), weight);
+                        return;
+                    }
+                    const y = inLay ? y0 + Math.max(0, (h - ROW_H - (cellLines(i) - 1) * LIST_H) / 2) : y0;
                     if (L[i].tick) {
                         ctx.strokeStyle = INK;
                         ctx.lineWidth = 2;
@@ -2708,7 +2741,7 @@ class _Binder {
                     if (spec.shrink) this._bTextTwoLines(book, cell, ax, y + 27, o);
                     else this._bText(book, cell, ax, y + 27, o);
                 });
-                if (!r.bold) { ctx.fillStyle = FAINT; ctx.fillRect(x, y + h - 2, w, 2); }
+                if (!r.bold) { ctx.fillStyle = FAINT; ctx.fillRect(x, y0 + h - 2, w, 2); }
             } });
         }
         // where the table runs on into another column, its heads again -
@@ -2749,39 +2782,167 @@ class _Binder {
 
     // A band's lines stacked from `baseline`, LIST_H apart: a text line as
     // it always read (the first bold, each shrinking alone before it is
-    // cut), and a strand line (_bBoxBandLines) as two columns - the cable
-    // on its first strand's line, then each strand under the last, its
-    // swatch and its name - the strands lined up in one column and the
-    // lot shrunk together where the widest will not fit.
+    // cut), and an input group ({ group } - _bBoxBandLines) on as many lines
+    // as it needs, a GROUP_GAP ahead of it: its strands a line each, its
+    // label - the input over its cable - centred beside them, the lot in a
+    // thin outline (_bDrawGroup). Every group's strands stand in one column
+    // and the groups shrink together where the widest will not fit.
     _bBandStack(book, lines, x, baseline, maxWidth) {
         const ctx = book.ctx;
-        const strandLines = lines.filter(t => t && typeof t === 'object');
-        let size = SZ.cell, col = 0;
-        if (strandLines.length) {
+        const groups = lines.filter(t => t && typeof t === 'object' && t.group).map(t => t.group);
+        let size = SZ.cell, head = 0;
+        if (groups.length) {
             const measure = (sz) => {
-                ctx.font = this._bFont(sz, 400);
-                const gap = ctx.measureText('  ').width;
-                col = strandLines.reduce((m, t) => Math.max(m, t.head ? ctx.measureText(t.head).width + gap : 0), 0);
-                return strandLines.reduce((m, t) => Math.max(m, col + (t.strand.swatch ? SWATCH_W * sz / SZ.cell : 0)
-                    + ctx.measureText(t.strand.text).width), 0);
+                head = this._bGroupsHead(ctx, groups, sz);
+                return this._bGroupsWide(ctx, groups, sz, head) + GROUP_PAD * 2;
             };
             while (size > 14 && measure(size) > maxWidth) size -= 1;
             measure(size);
         }
+        const lay = this._bStackLayout(lines);
         lines.forEach((t, k) => {
-            const y = baseline + k * LIST_H;
+            const y = baseline + lay.y[k];
             if (!t || typeof t !== 'object') {
                 this._bText(book, t, x, y, { size: SZ.cell, weight: k ? 400 : 700, shrink: true, maxWidth });
                 return;
             }
-            if (t.head) this._bText(book, t.head, x, y, { size, maxWidth: col });
-            let sx = x + col;
-            if (t.strand.swatch) {
-                this._bSwatch(ctx, t.strand.swatch, sx, y);
-                sx += SWATCH_W * size / SZ.cell;
-            }
-            this._bText(book, t.strand.text, sx, y, { size, maxWidth: Math.max(1, x + maxWidth - sx) });
+            this._bDrawGroup(book, ctx, t.group, x + GROUP_PAD, y, head, maxWidth - GROUP_PAD * 2, size, 400);
         });
+    }
+
+    // Where each entry of a band's stack stands from its first baseline: a
+    // text line one LIST_H, a group its lines (_bGroupLines) and a
+    // GROUP_GAP ahead of it, so one input's outline never touches the next
+    // (nor the box's line above it). `lines` is the stack's height in
+    // lines and `extra` what the gaps add to it.
+    _bStackLayout(entries) {
+        const y = [];
+        let at = 0, n = 0;
+        (entries || []).forEach((t) => {
+            const g = t && typeof t === 'object' && t.group;
+            if (g) at += GROUP_GAP;
+            y.push(at + n * LIST_H);
+            n += g ? this._bGroupLines(g) : 1;
+        });
+        return { y, lines: Math.max(1, n), extra: at };
+    }
+
+    // The label column a set of groups needs: its widest input or cable
+    // word, and the gap before the strands.
+    _bGroupsHead(ctx, groups, size) {
+        ctx.font = this._bFont(size, 400);
+        const gap = ctx.measureText('  ').width;
+        let w = 0;
+        for (const g of groups) {
+            if (!(g.strands && g.strands.length)) continue;
+            for (const t of [g.head, g.sub]) if (t) w = Math.max(w, ctx.measureText(t).width + gap);
+        }
+        return w;
+    }
+
+    // The widest group: the label column, then its widest strand - a group
+    // of words its words.
+    _bGroupsWide(ctx, groups, size, head) {
+        ctx.font = this._bFont(size, 400);
+        const sw = SWATCH_W * size / SZ.cell;
+        let w = 0;
+        for (const g of groups) {
+            if (!(g.strands && g.strands.length)) { w = Math.max(w, ctx.measureText(String(g.text || '')).width); continue; }
+            for (const st of g.strands) w = Math.max(w, head + (st.swatch ? sw : 0) + ctx.measureText(st.text).width);
+        }
+        return w;
+    }
+
+    // ONE INPUT GROUP drawn, its first line's baseline at `top`: the
+    // strands a line each in the column `head` leaves, each its swatch and
+    // its name; the input over its cable centred down those lines; the
+    // thin outline round the lot. A group of words alone ({ text }) is its
+    // words on one line, outlined the same. Returns the texts it drew.
+    // `log` false where the caller logs the cell as one text (a table's).
+    _bDrawGroup(book, ctx, g, x, top, head, maxWidth, size, weight, log = true) {
+        const drawn = [];
+        const lines = this._bGroupLines(g);
+        const bottom = top + (lines - 1) * LIST_H;
+        if (!(g.strands && g.strands.length)) {
+            drawn.push(this._bText(book, g.text || '', x, top, { size, weight, maxWidth, shrink: true, log }));
+            ctx.font = this._bFont(size, weight);
+            this._bGroupOutline(ctx, x, top, bottom, Math.min(maxWidth, ctx.measureText(String(g.text || '')).width), size);
+            return drawn;
+        }
+        const label = [g.head, g.sub].filter(Boolean);
+        const mid = (top + bottom) / 2;
+        label.forEach((t, k) => {
+            const y = mid + (k - (label.length - 1) / 2) * LIST_H;
+            drawn.push(this._bText(book, t, x, y, { size, weight, maxWidth: Math.max(1, head), shrink: true, log }));
+        });
+        const sw = SWATCH_W * size / SZ.cell;
+        let wide = 0;
+        g.strands.forEach((st, k) => {
+            const y = top + k * LIST_H;
+            let sx = x + head;
+            if (st.swatch) { this._bSwatch(ctx, st.swatch, sx, y); sx += sw; }
+            drawn.push(this._bText(book, st.text, sx, y,
+                { size, weight, maxWidth: Math.max(1, x + maxWidth - sx), shrink: true, log }));
+            ctx.font = this._bFont(size, weight);
+            wide = Math.max(wide, (st.swatch ? sw : 0) + ctx.measureText(st.text).width);
+        });
+        this._bGroupOutline(ctx, x, top, bottom, Math.min(maxWidth, head + wide), size);
+        return drawn;
+    }
+
+    // AN INPUT COLUMN'S CELL (the Breakout boxes table's FIBER): its groups
+    // (_bBoxInputGroups) from the row's top, each on its lines, a
+    // GROUP_GAP between groups; the row's height to hold them.
+    _bInputsLayout(groups) {
+        const first = 31;
+        let k = 0;
+        const at = groups.map((g, gi) => {
+            const n = this._bGroupLines(g);
+            const from = first + k * LIST_H + gi * GROUP_GAP;
+            k += n;
+            return { from, to: from + (n - 1) * LIST_H };
+        });
+        const last = at.length ? at[at.length - 1].to : first;
+        return { at, height: last + 8 + 6 };
+    }
+
+    // The widest label in an input column, so every row's strands stand
+    // in one column under one another.
+    _bInputsHead(book, rows, i) {
+        return this._bGroupsHead(book.measureCtx, (rows || []).flatMap(r => (r.inputs || {})[i] || []), SZ.cell);
+    }
+
+    // What an input column needs: the label column, its widest strand, and
+    // the outline's pad either side.
+    _bInputsNeed(book, rows, i) {
+        const groups = (rows || []).flatMap(r => (r.inputs || {})[i] || []);
+        const head = this._bGroupsHead(book.measureCtx, groups, SZ.cell);
+        return this._bGroupsWide(book.measureCtx, groups, SZ.cell, head) + GROUP_PAD * 2;
+    }
+
+    // An input column's cell drawn at (ax, y), logged as ONE text, the
+    // whole cell, the way a list cell is.
+    _bInputsCell(book, ctx, groups, lay, ax, y, maxWidth, head, weight) {
+        const drawn = [];
+        groups.forEach((g, gi) => {
+            drawn.push(...this._bDrawGroup(book, ctx, g, ax + GROUP_PAD, y + lay.at[gi].from, head,
+                                           maxWidth - GROUP_PAD * 2, SZ.cell, weight, false));
+        });
+        if (book.log && book.page && book.page.painting) {
+            const t = drawn.join(' ');
+            book.log.texts.push(t);
+            if (book.log.textInfo) book.log.textInfo.push({ text: t, size: SZ.cell, weight });
+        }
+    }
+
+    // The thin outline round one input and its strands: from above the
+    // first line's swatch to below the last line's text, `w` wide from x.
+    _bGroupOutline(ctx, x, firstBaseline, lastBaseline, w, size = SZ.cell) {
+        const S = SWATCH * size / SZ.cell;
+        ctx.strokeStyle = MUTED;
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(x - GROUP_PAD, firstBaseline - S + 1 - GROUP_PAD / 2,
+                       w + GROUP_PAD * 2, lastBaseline - firstBaseline + S + GROUP_PAD + 4);
     }
 
     // A `parts` cell's pieces as drawn: each strand's text with the " ·"
@@ -4286,24 +4447,78 @@ class _Binder {
         return inputs.some(i => i.cable) ? inputs : null;
     }
 
-    // THE BAND OVER A BOX'S PORTS, STRAND BY STRAND (2026-10-17: "why don't
-    // the colors come through on the binder for fiber?"): the box on the
-    // first line, then each input's strands a line each - "X1 TAC A (TAC
-    // 8)  [] 1 Blue" over "[] 2 Orange" - the strand named and swatched as
-    // the strand map has it. A strand line is { head, strand: { text,
-    // swatch } } (_bBandStack draws it); a copper input, or a cable with
-    // no strands picked, keeps its one line of words. Null where the box
-    // has no fiber: its band is _bBoxBandParts, word for word.
-    _bBoxBandLines(box) {
-        const inputs = this._bBoxFiberInputs(box);
-        if (!inputs) return null;
-        const lines = [this._bBoxBandParts(box)[0]];
-        for (const inp of inputs) {
-            if (!inp.cable || !inp.strands.length) { lines.push(inp.text); continue; }
-            inp.strands.forEach((n, k) => lines.push({ head: k ? '' : inp.head,
-                                                      strand: this._bStrandPiece(n, inp.cable) }));
+    // A BOX'S INPUTS AS GROUPS (owner, 2026-10-17: "group each strand pair
+    // with its input" - the input's label centred beside its strands, a thin
+    // outline round them, each input its own): one per link in the box's
+    // order (primaries, then the backup inputs), { head: 'X1', sub: 'TAC A
+    // (TAC 8)', strands: [{ text, swatch }] } - the cable's kind in brackets
+    // the first time this box names it, the strands in strand order (as
+    // the box's one-line summary has them), named and swatched as the strand map has them
+    // (_bStrandPiece). A copper link, or a cable with no strands picked, is
+    // a group of its words alone, { text }; a link with neither is left
+    // out. Null where no input is on a fiber cable - a box with no fiber,
+    // or copper only, reads as it always did.
+    _bBoxInputGroups(box, all = false) {
+        const links = box && typeof this.fiberBoxLinks === 'function' ? this.fiberBoxLinks(box) : [];
+        const named = !!(box && box.linkPortsDocumented);
+        const linked = links.some(l => l.cable || l.copper);
+        if (!links.some(l => l.cable) && !(all && named)) return null;
+        // an input's name only where its maker prints one - never a
+        // made-up "Link 1"
+        const title = (l) => (named ? l.title : '');
+        const typed = new Set();
+        const out = [];
+        for (const l of links) {
+            if (l.copper) {
+                const ft = this.parseCableLength(l.copper.ft);
+                const over = this.copperOverText(l.copper);
+                out.push({ text: [title(l), l.copper.copper, Number.isFinite(ft) && ft > 0 ? this.pullLengthText(ft) : '']
+                    .filter(Boolean).join(' ') + (over ? ` (${over})` : '') });
+                continue;
+            }
+            if (!l.cable) {
+                if (all && named) out.push({ text: `${l.title} no fiber` });
+                continue;
+            }
+            const cable = l.cable;
+            let what = cable.name || this.fiberCableTypeText(cable);
+            if (cable.name && !typed.has(cable.id)) {
+                what += ` (${this.fiberCableIsStranded(cable)
+                    ? `${this.fiberKindWord(cable.kind)} ${cable.strands}` : this.fiberKindWord(cable.kind)})`;
+            }
+            typed.add(cable.id);
+            // in strand order, as the box's one-line summary lists them
+            const set = [...new Set(((l.link && l.link.strands) || []).map(Number))]
+                .filter(Number.isFinite).sort((x, y) => x - y);
+            if (!set.length) { out.push({ text: [title(l), what].filter(Boolean).join(' ') }); continue; }
+            out.push({ head: title(l), sub: what, strands: set.map(n => this._bStrandPiece(n, cable)) });
         }
-        return lines;
+        // a box with no link at all keeps its 1.3 typed note, after its inputs
+        // ("no fiber length" where only a type was typed, as it always read)
+        if (all && !linked) {
+            const note = (typeof this.pullBoxFiberText === 'function' ? this.pullBoxFiberText(box) : '')
+                || (String((box && box.fiberType) || '').trim() ? 'no fiber length' : '');
+            if (note) out.push({ text: note });
+        }
+        return out.length ? out : null;
+    }
+
+    // How many lines a group stands on: its strands, and never fewer than
+    // its label's (the input over its cable).
+    _bGroupLines(g) {
+        if (!(g.strands && g.strands.length)) return 1;
+        return Math.max(g.strands.length, g.sub ? 2 : 1);
+    }
+
+    // THE BAND OVER A BOX'S PORTS (the data sheet): the box on the first
+    // line, then each input as a group (_bBoxInputGroups) - { group } -
+    // the input and its cable centred beside its strands, outlined, the way
+    // the Breakout boxes table's FIBER reads (_bBandStack draws it). Null
+    // where the box has no fiber: its band is _bBoxBandParts, word for word.
+    _bBoxBandLines(box) {
+        const groups = this._bBoxInputGroups(box);
+        if (!groups) return null;
+        return [this._bBoxBandParts(box)[0], ...groups.map(g => (g.strands ? { group: g } : g.text))];
     }
 
     // The same for the Breakout boxes table's FIBER cell, as `parts`: each
@@ -4322,13 +4537,24 @@ class _Binder {
         return out;
     }
 
+    // The Breakout boxes table's FIBER as input groups: one for EVERY
+    // input the box takes (owner, 2026-10-17: the inputs never disappear),
+    // so an input with nothing on it is a group of its name and "no fiber"
+    // - and a box with no link anywhere keeps its 1.3 typed note, if any,
+    // as one more group after them. Null where the box's maker names no
+    // input and nothing is on a cable: the cell reads its words, as before.
+    _bBoxFiberGroups(box) {
+        return this._bBoxInputGroups(box, true);
+    }
+
     // The redundancy bar's reading for a processor: "Per card", "Per port",
     // "Backed up → MX20 B" (the unit its one card mirrors onto), "A to B"
     // (an SX40 running one loop), "Off" - then its backup processor, "·
     // backed up by WALL SR BU".
     _bRedundancyText(proc) {
         const level = (typeof this._procRedundancyLevel === 'function') ? this._procRedundancyLevel(proc) : 'off';
-        let text = REDUNDANCY_WORDS[level] || level;
+        // "Per card" only where the units are cards (unitWordFor)
+        let text = level === 'card' ? `Per ${this.unitWordFor(proc)}` : (REDUNDANCY_WORDS[level] || level);
         const procs = this._processorsResolved || [];
         if (level === 'fixed') {
             const marks = proc.redundancyPairMarks || [];
@@ -4426,6 +4652,8 @@ class _Binder {
         const typed = (typeof this.cardTypedName === 'function')
             ? this.cardTypedName(found.proc, found.card) : found.card.name;
         if (typed) return typed;
+        // a one-box unit has no slot to name: its model ("SX40")
+        if (this.cardIsUnitFace(found.proc, found.card)) return this.dataUnitTitle(found.proc, found.card).title;
         const slot = (found.proc.slots || []).find(s => s.card && s.card.id === found.card.id);
         return slot ? `slot ${(slot.index || 0) + 1}` : found.card.deviceName;
     }
@@ -5238,14 +5466,22 @@ class _Binder {
         if (!unit) return null;
         const cards = (proc.slots || []).filter(s => s && s.card);
         const blocks = [];
+        // a box-fed card counts its boxes' sockets (_bCardPortCount)
+        const count = (card) => (card.ceilingKnown || card.boxFed ? String(this._bCardPortCount(card)) : '?');
+        // CARDS on a card-based processor, as it always read; a one-box
+        // unit's is PROCESSOR - no slot - and an SQ200's OUTPUTS, each
+        // by the name its face prints (_bUnitsTable's reading)
+        const carded = this.procIsCardBased(proc);
+        const oneBox = !carded && cards.every(s => this.cardIsUnitFace(proc, s.card));
+        const lead = carded ? [{ title: 'slot', w: 0.5, align: 'right' }]
+            : oneBox ? [] : [{ title: 'output', w: 0.6 }];
+        const leadCell = (s) => (carded ? [String((s.index || 0) + 1)]
+            : oneBox ? [] : [s.name || String((s.index || 0) + 1)]);
         blocks.push({ lines: this._bTableLines(book, {
-            title: 'Cards',
-            cols: [{ title: 'slot', w: 0.5, align: 'right' }, { title: 'device', w: 1.6 },
+            title: carded ? 'Cards' : oneBox ? 'Processor' : 'Outputs',
+            cols: [...lead, { title: 'device', w: 1.6 },
                    { title: 'ports', w: 0.6, align: 'right' }, { title: 'backs up', w: 1.3 }],
-            // a box-fed card counts its boxes' sockets (_bCardPortCount)
-            rows: cards.map(s => ({ cells: [String((s.index || 0) + 1), s.card.deviceName,
-                                            s.card.ceilingKnown || s.card.boxFed
-                                                ? String(this._bCardPortCount(s.card)) : '?',
+            rows: cards.map(s => ({ cells: [...leadCell(s), s.card.deviceName, count(s.card),
                                             this.cardTypedName(proc, s.card) || mainTitle] })),
         }) });
         if ((unit.boxes || []).length) {
@@ -5269,6 +5505,57 @@ class _Binder {
         return { kind: 'processor', name: `${unit.name} · backup of ${mainTitle}`, blocks };
     }
 
+    // THE PROCESSOR PAGE'S FIRST TABLE (owner, 2026-10-17: "CARD" becomes
+    // "PROCESSOR" for every processor that is not card based). A card-based
+    // processor (the H series, the MX2000, the MX6000 - procIsCardBased)
+    // keeps CARDS exactly as it was: SLOT, CARD, DEVICE, PORTS, BACKUP. A
+    // one-box unit (an SX40, an S8, a HELIOS, an MX40 Pro) has no slot and
+    // no card: PROCESSOR, its DEVICE, PORTS and BACKUP on one row. A unit
+    // whose named outputs each hold a unit of its own (an SQ200: OUT 1 and
+    // OUT 2, a QD-S on each) reads OUTPUTS - OUTPUT as its face prints it,
+    // the unit by the catalog's word ("QD 1"), DEVICE, PORTS, BACKUP.
+    _bUnitsTable(proc, cards, backupOf, taken) {
+        if (this.procIsCardBased(proc)) {
+            return {
+                title: 'Cards',
+                cols: [{ title: 'slot', w: 0.5, align: 'right' }, { title: 'card', w: 1 }, { title: 'device', w: 1.6 },
+                       { title: 'ports', w: 0.8, align: 'right' }, { title: 'backup', w: 1 }],
+                rows: cards.map(({ slot, card }) => ({ cells: [String((slot || 0) + 1), this.cardTypedName(proc, card) || '—',
+                                                              card.deviceName, taken(card), backupOf(card)] })),
+            };
+        }
+        if (cards.every(({ card }) => this.cardIsUnitFace(proc, card))) {
+            return {
+                title: 'Processor',
+                cols: [{ title: 'device', w: 1.6 }, { title: 'ports', w: 0.8, align: 'right' },
+                       { title: 'backup', w: 1 }],
+                rows: cards.map(({ card }) => ({ cells: [card.deviceName || proc.deviceName, taken(card), backupOf(card)] })),
+            };
+        }
+        const slotName = (i) => {
+            const s = (proc.slots || []).find(x => x && x.index === i);
+            return (s && s.name) || String((i || 0) + 1);
+        };
+        return {
+            title: 'Outputs',
+            cols: [{ title: 'output', w: 0.6 }, { title: this.unitWordFor(proc, cards[0].card), w: 0.9 },
+                   { title: 'device', w: 1.1 }, { title: 'ports', w: 0.8, align: 'right' }, { title: 'backup', w: 1 }],
+            rows: cards.map(({ slot, card }) => ({ cells: [slotName(slot),
+                                                          this.cardTypedName(proc, card) || card.unitTitle || '—',
+                                                          card.deviceName, taken(card), backupOf(card)] })),
+        };
+    }
+
+    // The Breakout boxes table's CARD / PROCESSOR cell: on a card-based
+    // processor the card by name, as it always read; on a one-box unit the
+    // processor's name - its model where nobody named it - never "slot 1";
+    // on an SQ200 the QD-S it hangs on, "QD 1".
+    _bBoxUnitCell(proc, card, nameOf) {
+        if (this.procIsCardBased(proc)) return this.cardTypedName(proc, card) || nameOf(card.id);
+        if (this.cardIsUnitFace(proc, card)) return this.dataUnitTitle(proc, card).title;
+        return this.cardTypedName(proc, card) || card.unitTitle || nameOf(card.id);
+    }
+
     _bProcessorBlocks(book, proc, cards, procTitle) {
         // Sockets taken on the card - primaries AND the returns landing on
         // it - the same count the tray's card header reads (socketsTaken,
@@ -5286,20 +5573,14 @@ class _Binder {
             if (!cardId) return '—';
             return this.dataUnitTitleForCard(cardId).title || cardId;
         };
-        const rows = cards.map(({ slot, card }) => {
+        const backupOf = (card) => {
             const shape = card.redundancyShape && card.redundancyShape.mode;
-            const backup = card.backupCardId ? nameOf(card.backupCardId)
+            return card.backupCardId ? nameOf(card.backupCardId)
                 : (shape && shape !== 'off' ? shape : '—');
-            return { cells: [String((slot || 0) + 1), this.cardTypedName(proc, card) || '—', card.deviceName,
-                             `${used(card.id)} / ${this._bCardPortCount(card) != null ? this._bCardPortCount(card) : '?'}`, backup] };
-        });
+        };
+        const taken = (card) => `${used(card.id)} / ${this._bCardPortCount(card) != null ? this._bCardPortCount(card) : '?'}`;
         const blocks = [];
-        blocks.push({ lines: this._bTableLines(book, {
-            title: 'Cards',
-            cols: [{ title: 'slot', w: 0.5, align: 'right' }, { title: 'card', w: 1 }, { title: 'device', w: 1.6 },
-                   { title: 'ports', w: 0.8, align: 'right' }, { title: 'backup', w: 1 }],
-            rows,
-        }) });
+        blocks.push({ lines: this._bTableLines(book, this._bUnitsTable(proc, cards, backupOf, taken)) });
         // The breakout boxes hanging off the cards, each with the trunk it
         // takes, the sockets it delivers and its fiber trunk (2026-09-07).
         // A LOOP's two boxes (an SX40's XD A and B) sit together, the far
@@ -5321,13 +5602,20 @@ class _Binder {
                 const near = fars.has(box.id) ? list.find(n => n.id === box.backupOf) : null;
                 const title = this._bBoxTitle(box) + (near ? ` · loop of ${this._bBoxTitle(near)}` : '');
                 const fiber = this._bBoxFiberParts(box);
-                boxRows.push({ cells: [title, this.cardTypedName(proc, card) || nameOf(card.id), box.trunkTitle || '—',
-                                       String(box.portCount || (box.ports || []).length),
+                const groups = this._bBoxFiberGroups(box);
+                boxRows.push({ cells: [title, this._bBoxUnitCell(proc, card, nameOf), box.trunkTitle || '—',
                                        this._bBoxFiberText(box)],
-                               ...(fiber ? { parts: { 4: fiber } } : {}) });
+                               ...(fiber ? { parts: { 3: fiber } } : {}),
+                               ...(groups ? { inputs: { 3: groups } } : {}) });
             }
         }
         if (boxRows.length) {
+            // NO PORTS COLUMN (owner, 2026-10-17: "in this example we've
+            // put X1 twice and I don't know that's needed"): the FIBER
+            // groups name every input the box takes, and the box's count
+            // is on its data sheet's band. The CARD / PROCESSOR column is
+            // wide enough that its heading prints at the others' size.
+            const unitWord = this.unitWordFor(proc, cards[0].card);
             blocks.push({ lines: this._bTableLines(book, {
                 title: 'Breakout boxes',
                 // FIBER wraps at its " · " - a box with a backup link reads
@@ -5336,9 +5624,11 @@ class _Binder {
                 // A box on fiber cables lists each input and its strands a
                 // line each, swatched (_bBoxFiberParts), and FIBER takes the
                 // larger share a strand's swatch and name need.
-                cols: [{ title: 'breakout box', w: 1.3, list: 2 }, { title: 'card', w: 0.7 }, { title: 'trunk', w: 0.7 },
-                       { title: 'ports', w: 0.65, align: 'right' },
-                       { title: 'fiber', w: boxRows.some(r => r.parts) ? 2.1 : 1.4, list: 2, parts: true }],
+                cols: [{ title: 'breakout box', w: 1.3, list: 2 },
+                       { title: unitWord, w: unitWord === 'processor' ? 0.95 : 0.7 },
+                       { title: 'trunk', w: 0.7 },
+                       { title: 'fiber', w: boxRows.some(r => r.inputs || (r.parts && r.parts[3])) ? 2.4 : 1.7,
+                         list: 2, parts: true, inputs: true }],
                 rows: boxRows,
                 shrink: true,
             }) });
@@ -5441,7 +5731,7 @@ class _Binder {
         const firsts = new Map();      // cableId -> processor id of its first link
         const procsOf = new Map();     // cableId -> [processor titles]
         const uses = new Map();        // cableId -> Map(strand -> { box, key })
-        for (const { box, proc: p } of this._fiberAllBoxes()) {
+        for (const { box, proc: p, card } of this._fiberAllBoxes()) {
             for (const key of box.fiberLinkKeys || []) {
                 const link = (box.fiberLinks || {})[key];
                 if (!link || !link.cable || !this.getFiberCable(link.cable)) continue;
@@ -5451,7 +5741,7 @@ class _Binder {
                 if (!names.includes(title)) names.push(title);
                 procsOf.set(link.cable, names);
                 const m = uses.get(link.cable) || new Map();
-                (link.strands || []).forEach(s => { if (!m.has(s)) m.set(s, { box, key }); });
+                (link.strands || []).forEach(s => { if (!m.has(s)) m.set(s, { box, key, card }); });
                 uses.set(link.cable, m);
             }
         }
@@ -5473,13 +5763,52 @@ class _Binder {
                 rows.push({ swatch: piece.swatch,
                             cells: [piece.text,
                                     who ? `${this._bBoxTitle(who.box)} · ${this.fiberLinkTitle(who.key, who.box)}`
-                                        : 'spare'] });
+                                        : 'spare',
+                                    who ? this._bLinkPortsText(who.box, who.card, who.key) : ''] });
             }
             out.push({ title, note: also.length ? `Also on ${also.join(', ')}` : '',
-                       cols: [{ title: 'strand', w: 1.1, swatch: true }, { title: 'link', w: 2 }],
+                       cols: [{ title: 'strand', w: 1.1, swatch: true }, { title: 'link', w: 2 },
+                              { title: 'box ports', w: 0.8 }],
                        rows, shrink: true });
         }
         return out;
+    }
+
+    // A link's strands in the order they plug in AT THE BOX: a TAC's duplex
+    // pair flips between its ends (the box's own Fiber section reads Orange
+    // · Blue); an MTP or an opticalCON crosses inside the cable, so its box
+    // end reads the stored order; anything else as stored. The numbers,
+    // deduplicated; FIBER CONNECTIONS' AT THE BREAKOUT and the wiring
+    // sheet's box both read it.
+    _bStrandsAtBox(link, cable) {
+        const set = [...new Set(((link && link.strands) || []).map(Number))].filter(Number.isFinite);
+        return cable && cable.kind === 'tac' ? set.reverse() : set;
+    }
+
+    // THE BOX'S OWN OUTPUT PORTS A LINK CARRIES (owner, 2026-10-17: the
+    // strand map says which data ports each strand feeds), as the box's
+    // face numbers them: every one of them on a box taking one trunk (an
+    // XD on its X1 - and on its X2, the backup of the same trunk - the
+    // loop's far box on trunk B the same, a CVT4K-S switched to one OPT);
+    // on a box taking two, each input its own trunk's share at the card's
+    // ports per trunk, as the resolver lays them (a CVT4K-S on an
+    // H_16xRJ45+2xfiber: OPT1 1-8, OPT2 9-16). '' for a card's own link (a
+    // QD-S's IN 1 carries its outputs, not data ports) or where the card
+    // states no ports per trunk to split by.
+    _bLinkPortsText(box, card, key) {
+        if (!box || box.linkHost || !box.portCount) return '';
+        const n = box.portCount;
+        const k = Number(String(key || '').slice(1)) || 1;
+        const takes = box.trunksIn || 1;
+        let lo = 1, hi = n;
+        if (takes > 1) {
+            const per = card && card.portsPerTrunk;
+            if (!per) return '';
+            lo = (k - 1) * per + 1;
+            hi = Math.min(n, k * per);
+            if (lo > hi) return '';
+        }
+        return lo === hi ? String(lo) : `${lo}-${hi}`;
     }
 
     // FIBER CONNECTIONS (2026-10-06): the rack built from the binder, one row
@@ -5556,8 +5885,7 @@ class _Binder {
                 || cable.kind === 'opticalcon-quad';
             const atInput = crosses
                 ? swatched(set, cable).concat([{ text: 'crosses inside', brk: true }])
-                : cable.kind === 'tac' ? swatched(set.slice().reverse(), cable)
-                    : swatched(set, cable);
+                : swatched(this._bStrandsAtBox(l.link, cable), cable);
             return { cells: [output, name, joined(atProcessor), input, joined(atInput)],
                      parts: { 2: atProcessor, 4: atInput } };
         };
@@ -5638,7 +5966,7 @@ class _Binder {
             cols: [{ title: 'output', w: 0.55, list: 2, headShrink: true },
                    { title: 'cable', w: 1.1, list: 4, words: true, headShrink: true },
                    { title: 'at the processor', w: 1.45, list: 3, parts: true, headShrink: true },
-                   { title: 'breakout', w: 1.15, list: 3, words: true, headShrink: true },
+                   { title: 'breakout', w: 1.15, list: 3, words: 'on', headShrink: true },
                    { title: 'at the breakout', w: 1.2, list: 3, parts: true, headShrink: true }],
             rows,
         };

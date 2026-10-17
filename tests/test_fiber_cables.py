@@ -150,7 +150,7 @@ def test_a_cvt4k_takes_two_primary_links(client):
     assert _links(client, box) == {'p1': {'cable': tac['id'], 'strands': [1, 2]},
                                    'p2': {'cable': tac['id'], 'strands': [3, 4]}}
     why = _refused(_link(client, pid, box, 'p3', {'cable': tac['id']}))
-    assert 'has no link Link 3 - its links are OPT 1, OPT 2.' in why, why
+    assert 'has no link Link 3 - its links are OPT1, OPT2.' in why, why
 
 
 def test_the_refusals_say_why_and_store_nothing(client):
@@ -720,20 +720,22 @@ def test_the_binder_maps_every_strand_and_summarises_each_box(page):
     assert m['note'] == 'Also on BK RACK', m
     rows = m['rows']
     assert len(rows) == 24
-    assert rows[0] == ['1 Blue', 'CVT10 A · OPT 1']
-    assert rows[2] == ['3 Green', 'spare']
-    assert rows[3] == ['4 Brown', 'CVT10 B · OPT 1']
-    assert rows[8] == ['9 Yellow', 'CVT10 BK1 · OPT 1']
-    assert rows[10] == ['11 Rose', 'spare']
-    assert rows[12] == ['13 Blue/Black', 'CVT10 B · OPT 1']
-    assert rows[23] == ['24 Aqua/Black', 'spare']
+    # each link's box ports beside it (2026-10-17): a CVT10 behind an
+    # 8-a-fiber card delivers its 1-8
+    assert rows[0] == ['1 Blue', 'CVT10 A · OPT 1', '1-8']
+    assert rows[2] == ['3 Green', 'spare', '']
+    assert rows[3] == ['4 Brown', 'CVT10 B · OPT 1', '1-8']
+    assert rows[8] == ['9 Yellow', 'CVT10 BK1 · OPT 1', '1-8']
+    assert rows[10] == ['11 Rose', 'spare', '']
+    assert rows[12] == ['13 Blue/Black', 'CVT10 B · OPT 1', '1-8']
+    assert rows[23] == ['24 Aqua/Black', 'spare', '']
     assert m['swatch'] == {'base': '#1F5FA8', 'tracer': None}
     assert m['sw13'] == {'base': '#1F5FA8', 'tracer': '#1A1A1A'}
     assert [(x['title'], x['note']) for x in out['bk']] == \
         [("Strand map · TAC B · TAC 6 · LC duplex · 1000'", '')], out['bk']
-    assert out['bk'][0]['rows'][:3] == [['1 Blue', 'CVT10 C · OPT 1'],
-                                        ['2 Orange', 'CVT10 C · OPT 1'],
-                                        ['3 Green', 'spare']]
+    assert out['bk'][0]['rows'][:3] == [['1 Blue', 'CVT10 C · OPT 1', '1-8'],
+                                        ['2 Orange', 'CVT10 C · OPT 1', '1-8'],
+                                        ['3 Green', 'spare', '']]
     # the fit, on the painted sheets: every fiber text whole, at the cell's
     # own size (never shrunk), nothing on the sheets cut to an ellipsis
     fit = pg.evaluate(FIT_JS, ['Processors -', 'W1 - Data - Front View'])
@@ -758,13 +760,14 @@ def test_the_binder_maps_every_strand_and_summarises_each_box(page):
     assert all(not t.endswith('…') and 'more' not in t for t in lines), lines
     assert size.get("STRAND MAP · TAC A · TAC 24 · ST · 1000'") == 25, sorted(k for k in size if 'STRAND' in k)
     assert size.get("STRAND MAP · TAC B · TAC 6 · LC DUPLEX · 1000'") == 25
-    # the data sheet's band: the box on its line, then the input and each
-    # strand a line - every piece whole at the cell's size
+    # the data sheet's band: the box on its line, then the input as a
+    # group - the input over its cable, centred beside its strands, a
+    # strand a line (2026-10-17) - every piece whole at the cell's size
     texts = [t['text'] for t in data]
     at = texts.index('CVT10 A · OPT 1 · 8 ports')
-    assert texts[at:at + 4] == ['CVT10 A · OPT 1 · 8 ports', 'OPT 1 TAC A (TAC 24)', '1 Blue', '2 Orange'], \
+    assert texts[at:at + 5] == ['CVT10 A · OPT 1 · 8 ports', 'OPT 1', 'TAC A (TAC 24)', '1 Blue', '2 Orange'], \
         texts[at:at + 6]
-    assert {t['size'] for t in data[at:at + 4]} == {24}, data[at:at + 4]
+    assert {t['size'] for t in data[at:at + 5]} == {24}, data[at:at + 5]
     assert ids['errors'] == []
 
 
