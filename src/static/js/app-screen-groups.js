@@ -505,7 +505,10 @@ class _ScreenGroups {
     // does (owner, 2026-10-17). A request marker the server pops - the
     // restore funnel prunes the gone screens' pins and forgets on it alone,
     // so undo and a file load, which never send it, change nothing.
-    _commitGroupChange(actionLabel, { releaseScreensPorts = false } = {}) {
+    // `pullBefore` (Delete Group): the pull sheet's rows as they printed
+    // before the change (_pullLiveRowKeys); an edit on a row that went is
+    // dropped once the repaired project is in, before the snapshot.
+    _commitGroupChange(actionLabel, { releaseScreensPorts = false, pullBefore = null } = {}) {
         const run = async () => {
             const token = (this._groupCommitSeq = (this._groupCommitSeq || 0) + 1);
             this._groupCommitDepth = (this._groupCommitDepth || 0) + 1;
@@ -531,6 +534,7 @@ class _ScreenGroups {
                 });
             } else {
                 this._adoptRepairedProject(repaired);
+                if (pullBefore) this._dropPullEditsGoneWith(pullBefore);
             }
             // Every group verb rewrites the screen selection (hide, delete,
             // duplicate, the cross-canvas regroup, the adopt above): the
@@ -846,6 +850,11 @@ class _ScreenGroups {
             alert('Cannot delete the last layer');
             return false;
         }
+        // A pull-sheet edit on a row that goes with the wall goes too
+        // (owner, 2026-10-17) - the rows as they print before the members
+        // leave the project.
+        const pullBefore = typeof this._pullLiveRowKeys === 'function'
+            ? this._pullLiveRowKeys() : null;
         this.project.layers = remaining;
         this.project.groups = ((this.project.groups) || [])
             .filter(g => !(g && g.id === groupId));
@@ -854,7 +863,7 @@ class _ScreenGroups {
         this.selectedLayerIds = new Set(promoted ? [promoted.id] : []);
         this.lastSelectedLayerId = promoted ? promoted.id : null;
         this.selectionAnchorLayerId = this.lastSelectedLayerId;
-        await this._commitGroupChange('Delete Group', { releaseScreensPorts: true });
+        await this._commitGroupChange('Delete Group', { releaseScreensPorts: true, pullBefore });
         // The adopted tree may have lost the members' port cables: the pull
         // sheet and the binder read the resolved copy, so re-resolve when it
         // changed - the compare updateUI makes.

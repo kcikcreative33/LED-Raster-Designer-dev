@@ -125,6 +125,10 @@ because of it.
   off its distro, releasing a data port, or removing a card, processor or
   breakout box clears the cable lengths that went with it, so they no
   longer come back on the next feed. Jumper lengths stay with the screen.
+- FIX: Deleting a screen, alone, in a selection, with its group or with
+  its canvas, clears the data cable lengths on the ports it used and the
+  pull sheet edits on its rows; a port or row another screen still uses
+  keeps its own. Undo brings them back.
 - FIX: Multi numbers on the Power tab no longer shift when a screen is
   added to a shared distro, removed or reordered. A removed screen leaves
   its gap for the next one, and only Reset offsets in the Balance dialog

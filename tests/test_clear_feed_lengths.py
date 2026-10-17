@@ -21,7 +21,9 @@ Data
 - Delete a screen (alone, with a selection, with its group or with its
   canvas): the port cables on the sockets it held, as a release does - a
   socket another screen still claims keeps its cable, the snakes stay
-  (owner, 2026-10-17).
+  (owner, 2026-10-17). A pull-sheet edit on a row that went with the
+  screen goes too; one on a row another screen still prints stays, and
+  free rows are untouched.
 
 Kept: the screen's own V/H jumper lengths (dataJumpV/H, powerJumpV/H).
 
@@ -798,6 +800,10 @@ SHARED_JS = r"""async (opts) => {
     const W = scr(1, 'W', 0, 8, 4), V = scr(2, 'V', 3000, 2, 2), X = scr(3, 'X', 4000, 2, 2);
     W.locked = !!opts.locked;
     const project = { name: 'Delete screen', cableUnit: 'ft', distros: [], layers: [W, V, X] };
+    if (opts.beach) {
+        project.beaches = [{ id: 'b1', name: 'SL' }];
+        W.beachId = X.beachId = 'b1';
+    }
     if (opts.group) {
         W.group_id = X.group_id = 'g1';
         project.groups = [{ id: 'g1', name: 'G1', layer_ids: [1, 3], routeDataAsOne: false }];
@@ -1024,3 +1030,144 @@ def test_opening_a_file_whose_pins_name_a_gone_screen_keeps_every_cable(page):
     assert _srv_layer('W', srv) is None
     assert (card, 1) not in _pins(srv), 'the dead pins go on load, as before'
     assert _cables(card, srv) == SHARED_ALL
+
+
+
+# ── Deleting a screen: its pull-sheet edits ──────────────────────────────
+
+def _edit_rows(pg, edits):
+    """A note on each (position key, row key), the sheet's own setter, and
+    a free row on beach:b1; waits until the server holds them all."""
+    pg.evaluate("""(edits) => {
+        const app = window.app;
+        app._circuitTailCache = null;
+        const list = app.buildPullList();
+        for (const [pk, key, notes] of edits) {
+            const pos = list.positions.find(p => app.pullPositionKey(p) === pk);
+            const row = pos && pos.rows.find(r => app.pullRowKey(r) === key);
+            if (!row) throw new Error('no row ' + pk + ' ' + key);
+            app.setPullSheetRowEdit(pk, key, { notes }, row);
+        }
+    }""", edits)
+    want = sorted((pk, key) for pk, key, _ in edits)
+    srv = _wait_server(pg, lambda p: _srv_edits(p) == want)
+    assert _srv_edits(srv) == want, _srv_edits(srv)
+
+
+def _srv_edits(project=None):
+    p = project if project is not None else _server()
+    out = []
+    for pk, pos in ((p.get('pullSheetEdits') or {}).get('positions') or {}).items():
+        out.extend((pk, r['key']) for r in (pos or {}).get('rows') or [])
+    return sorted(out)
+
+
+def _srv_added(project=None):
+    p = project if project is not None else _server()
+    return {pk: [a.get('type') for a in (pos or {}).get('added') or []]
+            for pk, pos in ((p.get('pullSheetEdits') or {}).get('positions') or {}).items()
+            if (pos or {}).get('added')}
+
+
+def _client_edits(pg):
+    return sorted(tuple(x) for x in pg.evaluate("""() => {
+        const out = [];
+        const st = (window.app.project.pullSheetEdits || {}).positions || {};
+        for (const [pk, pos] of Object.entries(st))
+            for (const r of (pos && pos.rows) || []) out.push([pk, r.key]);
+        return out; }"""))
+
+
+# W and X on beach SL, V loose: W's own runs print as SL's 25' and 75'
+# Ether-con, and SL's 6' Data Jump is W's AND X's.
+W_ROW = ('beach:b1', "Ether-con|25'", 'W run')
+SHARED_ROW = ('beach:b1', "Data Jump|6'", 'both walls')
+V_ROW = ('layer:2', "Ether-con|50'", 'spare')
+
+
+def _beach_with_edits(pg):
+    ids = _shared(pg, beach=True)
+    _edit_rows(pg, [W_ROW, SHARED_ROW, V_ROW])
+    pg.evaluate("() => window.app.addPullSheetRow('beach:b1', { type: 'Gaff', length: 'EA', qty: 2 })")
+    _wait_server(pg, lambda p: _srv_added(p) == {'beach:b1': ['Gaff']})
+    assert _srv_added() == {'beach:b1': ['Gaff']}
+    return ids
+
+
+def test_deleting_a_screen_drops_the_pull_sheet_edits_on_its_rows(page):
+    """A note on W's 25' run. Delete W: the row is off the sheet, and the
+    note goes with it - in the browser and on the server."""
+    pg = page
+    ids = _beach_with_edits(pg)
+    steps = pg.evaluate("() => window.app.historyIndex")
+    pg.evaluate("(id) => window.app.deleteLayer(id)", ids['W'])
+    pg.wait_for_function("(n) => window.app.historyIndex > n", arg=steps)
+    srv = _wait_server(pg, lambda p: (W_ROW[0], W_ROW[1]) not in _srv_edits(p))
+    assert (W_ROW[0], W_ROW[1]) not in _srv_edits(srv), _srv_edits(srv)
+    assert (W_ROW[0], W_ROW[1]) not in _client_edits(pg)
+    assert pg.evaluate("() => window.app.pullSheetStaleEdits()") == []
+
+
+def test_an_edit_on_a_row_a_surviving_screen_still_prints_stays(page):
+    """SL's 6' Data Jump is W's and X's: deleting W leaves X printing it,
+    so its note stays. V's own note and SL's free row are untouched."""
+    pg = page
+    ids = _beach_with_edits(pg)
+    steps = pg.evaluate("() => window.app.historyIndex")
+    pg.evaluate("(id) => window.app.deleteLayer(id)", ids['W'])
+    pg.wait_for_function("(n) => window.app.historyIndex > n", arg=steps)
+    srv = _wait_server(pg, lambda p: (W_ROW[0], W_ROW[1]) not in _srv_edits(p))
+    assert _srv_edits(srv) == sorted([(SHARED_ROW[0], SHARED_ROW[1]), (V_ROW[0], V_ROW[1])])
+    assert _srv_added(srv) == {'beach:b1': ['Gaff']}
+    assert _client_edits(pg) == _srv_edits(srv)
+
+
+def test_undoing_a_screen_delete_brings_back_its_pull_sheet_edits(page):
+    """Delete W, then Ctrl+Z: W's note is back with W, on the server too."""
+    pg = page
+    ids = _beach_with_edits(pg)
+    full = _srv_edits()
+    steps = pg.evaluate("() => window.app.historyIndex")
+    pg.evaluate("(id) => window.app.deleteLayer(id)", ids['W'])
+    pg.wait_for_function("(n) => window.app.historyIndex > n", arg=steps)
+    srv = _wait_server(pg, lambda p: (W_ROW[0], W_ROW[1]) not in _srv_edits(p))
+    assert (W_ROW[0], W_ROW[1]) not in _srv_edits(srv), 'the delete should have dropped it first'
+    pg.evaluate("() => window.app.undo()")
+    srv = _wait_server(pg, lambda p: _srv_edits(p) == full and _srv_layer('W', p) is not None)
+    assert _srv_edits(srv) == full
+    assert _srv_layer('W', srv) is not None
+    rows = srv['pullSheetEdits']['positions']['beach:b1']['rows']
+    assert {'key': W_ROW[1], 'notes': W_ROW[2]} in rows, rows
+    assert _client_edits(pg) == full
+
+
+@pytest.mark.parametrize('how', ['multi', 'group', 'canvas'])
+def test_every_delete_path_drops_the_gone_rows_edits_and_undo_restores_them(page, how):
+    """W and X deleted together - selected, as their group, or with their
+    canvas: a note on a row only they printed goes, on the server too; V's
+    note stays; undo brings the note back."""
+    pg = page
+    ids = _shared(pg, **({'multi': {}, 'group': {'group': True},
+                          'canvas': {'canvas': True}}[how]))
+    pk = {'multi': 'layer:1', 'group': 'g1', 'canvas': 'layer:1'}[how]
+    _edit_rows(pg, [(pk, "Ether-con|25'", 'W run'), V_ROW])
+    full = _srv_edits()
+    steps = pg.evaluate("() => window.app.historyIndex")
+    if how == 'multi':
+        pg.evaluate("""([w, x]) => { const app = window.app;
+            app.selectLayer(window.__fl.layer('W'));
+            app.selectedLayerIds = new Set([w, x]); app.deleteCurrentLayer(); }""",
+                    [ids['W'], ids['X']])
+    elif how == 'group':
+        assert pg.evaluate("() => window.app.deleteGroup('g1')") is True
+    else:
+        pg.evaluate("() => window.app.deleteCanvas('canvas_del')")
+    pg.wait_for_function("(n) => window.app.historyIndex > n", arg=steps)
+    srv = _wait_server(pg, lambda p: _srv_edits(p) == [(V_ROW[0], V_ROW[1])])
+    assert _srv_layer('W', srv) is None and _srv_layer('X', srv) is None
+    assert _srv_edits(srv) == [(V_ROW[0], V_ROW[1])], _srv_edits(srv)
+    assert _client_edits(pg) == [(V_ROW[0], V_ROW[1])]
+    pg.evaluate("() => window.app.undo()")
+    srv = _wait_server(pg, lambda p: _srv_edits(p) == full and _srv_layer('W', p) is not None)
+    assert _srv_edits(srv) == full
+    assert _client_edits(pg) == full
