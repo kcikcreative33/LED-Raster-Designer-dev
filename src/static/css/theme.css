@@ -302,10 +302,14 @@ input[type="radio"] { accent-color:var(--ps-accent) !important; }
 /* text fields / selects in modals get the recessed inset look, but NOT
    checkboxes/radios, which carry their own checked fill (see checkbox rules) */
 #preferences-modal input:not([type="checkbox"]):not([type="radio"]),
-#preferences-modal select,
 #export-modal input:not([type="checkbox"]):not([type="radio"]),
-#export-modal select, #export-modal textarea {
+#export-modal textarea {
   background:var(--ps-inset) !important; color:var(--ps-text) !important; }
+/* the selects take the color alone: the `background` shorthand above, with
+   its id selector, also reset the chevron's background-image (drawn below)
+   and every select in both dialogs read as a plain text box (2026-10-17) */
+#preferences-modal select, #export-modal select {
+  background-color:var(--ps-inset) !important; color:var(--ps-text) !important; }
 
 /* a derived value shown as a placeholder (a multi name that follows its
    distro, a dock chip's resolved label) is a hint, one step below typed
