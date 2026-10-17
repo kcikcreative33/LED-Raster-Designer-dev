@@ -686,10 +686,10 @@ def test_the_binder_maps_every_strand_and_summarises_each_box(page):
     its own line under the header; TAC B (the loop's far box only) on BK
     RACK's. Every strand is listed, its link as the box and its port -
     "CVT10 A · OPT 1" - and "spare" where no link holds it. The box's fiber
-    reads by its port with the cable's kind once - "OPT 1 TAC A (TAC 24) 9-10" - in its band and in the Breakout boxes
-    table, the loop's far box marked "loop of" BK1, and on a tabloid sheet
-    nothing of it is shrunk or cut: those cells wrap at their " · "
-    instead."""
+    reads by its port with the cable's kind once - "OPT 1 TAC A (TAC 24) 9-10";
+    in its band and in the Breakout boxes table the strands are a line each,
+    named and swatched as the strand map has them, the loop's far box marked
+    "loop of" BK1, and on a tabloid sheet nothing of it is shrunk or cut."""
     pg, ids = page
     made = pg.evaluate(PUT_JS, ['/api/fiber-cables', {
         'kind': 'tac', 'strands': 6, 'ft': 1000, 'connector': 'LC duplex',
@@ -742,7 +742,10 @@ def test_the_binder_maps_every_strand_and_summarises_each_box(page):
     for info in (procs, data):
         assert not [t for t in info if t['text'].endswith('…')], [t['text'] for t in info if t['text'].endswith('…')]
     size = {t['text']: t['size'] for t in procs}
-    for text in ('OPT 1 TAC A (TAC 24) 1-2', 'OPT 1 TAC A (TAC 24) 4, 13', 'OPT 1 TAC B (TAC 6) 1-2', 'Also on BK RACK'):
+    # the Breakout boxes table's FIBER: the input, then each strand a line,
+    # swatched (2026-10-17) - logged as the one cell it drew
+    for text in ('OPT 1 TAC A (TAC 24) 1 Blue 2 Orange', 'OPT 1 TAC A (TAC 24) 4 Brown 13 Blue/Black',
+                 'OPT 1 TAC B (TAC 6) 1 Blue 2 Orange', 'Also on BK RACK'):
         assert size.get(text) == 24, (text, sorted(k for k in size if 'TAC' in k or 'BK' in k))
     # the loop's far box wraps at its " · ", each line whole at the cell's
     # size (a list cell is logged as the one text it drew)
@@ -755,8 +758,13 @@ def test_the_binder_maps_every_strand_and_summarises_each_box(page):
     assert all(not t.endswith('…') and 'more' not in t for t in lines), lines
     assert size.get("STRAND MAP · TAC A · TAC 24 · ST · 1000'") == 25, sorted(k for k in size if 'STRAND' in k)
     assert size.get("STRAND MAP · TAC B · TAC 6 · LC DUPLEX · 1000'") == 25
-    band = [t for t in data if t['text'] == 'CVT10 A · OPT 1 · 8 ports · OPT 1 TAC A (TAC 24) 1-2']
-    assert band and band[0]['size'] == 24, [t for t in data if 'CVT10' in t['text']]
+    # the data sheet's band: the box on its line, then the input and each
+    # strand a line - every piece whole at the cell's size
+    texts = [t['text'] for t in data]
+    at = texts.index('CVT10 A · OPT 1 · 8 ports')
+    assert texts[at:at + 4] == ['CVT10 A · OPT 1 · 8 ports', 'OPT 1 TAC A (TAC 24)', '1 Blue', '2 Orange'], \
+        texts[at:at + 6]
+    assert {t['size'] for t in data[at:at + 4]} == {24}, data[at:at + 4]
     assert ids['errors'] == []
 
 

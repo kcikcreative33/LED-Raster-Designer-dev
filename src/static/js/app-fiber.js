@@ -279,6 +279,16 @@ class _Fiber {
     // port too, "X1 Cat6A 150'", with the plain warning where it runs past
     // its 10G length. '' where nothing is set.
     fiberLinkSummary(box) {
+        return this.fiberLinkInputs(box).map(i => i.text).join(' · ');
+    }
+
+    // The same links one input at a time, in the order the summary says
+    // them, for a sheet that lays each strand out on its own (the binder's
+    // data-sheet band and Breakout boxes table): a fiber input is
+    //   { text: 'X1 TAC A (TAC 8) 1-2', head: 'X1 TAC A (TAC 8)', cable, strands: [1, 2] }
+    // - `head` the summary's words before the strands, `strands` in
+    // order - and a copper one { text: "X1 Cat6A 150'" } alone.
+    fiberLinkInputs(box) {
         const sides = { p: new Map(), b: new Map() };
         for (const l of this.fiberBoxLinks(box)) {
             const side = l.backup ? sides.b : sides.p;
@@ -297,9 +307,9 @@ class _Fiber {
             if (copper) {
                 const ft = this.parseCableLength(copper.ft);
                 const over = this.copperOverText(copper);
-                return [titles[0], copper.copper,
-                        Number.isFinite(ft) && ft > 0 ? this.pullLengthText(ft) : '']
-                    .filter(Boolean).join(' ') + (over ? ` (${over})` : '');
+                return { text: [titles[0], copper.copper,
+                                Number.isFinite(ft) && ft > 0 ? this.pullLengthText(ft) : '']
+                    .filter(Boolean).join(' ') + (over ? ` (${over})` : '') };
             }
             let what = cable.name || this.fiberCableTypeText(cable);
             if (cable.name && !typed.has(cable.id)) {
@@ -309,9 +319,11 @@ class _Fiber {
                 what += ` (${kind})`;
             }
             typed.add(cable.id);
-            return `${this.fiberPortRunText(titles)} ${what} ${this.fiberStrandRangeText(strands)}`;
+            const head = `${this.fiberPortRunText(titles)} ${what}`;
+            const list = [...new Set(strands.map(Number))].filter(Number.isFinite).sort((a, b) => a - b);
+            return { text: `${head} ${this.fiberStrandRangeText(strands)}`, head, cable, strands: list };
         });
-        return [...say(sides.p), ...say(sides.b)].join(' · ');
+        return [...say(sides.p), ...say(sides.b)];
     }
 
     // A 1.3 box's typed fiber, kept as a NOTE: "12 Tac Fiber 250'", the type

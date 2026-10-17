@@ -1837,7 +1837,8 @@ def test_the_title_block_prints_the_projects_fields_and_they_ride_the_project(pa
     one undo entry per field - and every sheet's title block prints them:
     the VENUE in caps under the show, the dates, the designer, the
     project manager's name / phone / email, the drafter (blank, the
-    engineer). Blank fields print their labels and nothing else. There is
+    engineer) and the engineer. Blank fields print their labels and
+    nothing else. There is
     no NOTES box and no notes field ("remove the notes section"). The
     block rides the project through the routes and undo."""
     pg, ids = page
@@ -1896,7 +1897,11 @@ def test_the_title_block_prints_the_projects_fields_and_they_ride_the_project(pa
         assert list(tb['sections']) == ['revisions', 'show', 'people', 'title', 'number'], list(tb['sections'])
         assert tb['sections']['revisions']['y'] == PAD and tb['sections']['revisions']['rows'] == 0
         secs = tb['sections']
-        assert secs['revisions']['h'] == H - PAD * 2 - (170 + 330 + 90 + 150), secs['revisions']
+        # the engineer set, an Engineer line under Drafter: the people's
+        # section 78 taller than the 330 it was (2026-10-17)
+        assert texts[texts.index('Engineer:') + 1] == 'Morgan Keller'
+        assert secs['people']['h'] == 330 + 78, secs['people']
+        assert secs['revisions']['h'] == H - PAD * 2 - (170 + 408 + 90 + 150), secs['revisions']
         assert secs['show']['y'] == PAD + secs['revisions']['h'] and secs['number']['y'] + 150 == H - PAD, secs
         # a typed drafter takes over
         pg.evaluate("() => window.app.setBinderField('drafter', 'Sam Okafor', 'Set Binder Drafter')")
@@ -1937,8 +1942,10 @@ def test_a_revision_is_logged_on_export_and_the_log_edits_in_the_dialog(page):
     """"Logged on export": exporting at a Rev no row carries yet adds a
     row - today's date as M/D/YY, the engineer's initials, the Revision
     note - with one undo entry ('Log Revision'), persisted with the
-    project, the note cleared; the same rev exported again logs nothing;
-    a new rev logs a second row. The rows print in the REVISIONS table in
+    project, the note cleared; the same rev exported again logs nothing.
+    A new rev committed in the dialog logs its row there and then, the
+    note committed after it landing in that row, and its export logs
+    nothing more (tests/test_binder_fiber_and_title.py has the rest). The rows print in the REVISIONS table in
     order, No. their position; the dialog's list edits a row in place and
     × removes one, the rows after it renumbering."""
     pg, ids = page
@@ -1983,11 +1990,16 @@ def test_a_revision_is_logged_on_export_and_the_log_edits_in_the_dialog(page):
             await app.exportBinder('Two Positions');
             const same = { revs: revs(), note: note.value, actions: app.history.slice(h1 + 1).map(h => h.action) };
             note.value = '';
-            // rev 1.1: a second row
+            // rev 1.1: committing it logs its row at once (2026-10-17), the
+            // note committed after it lands in that row, and the export
+            // logs nothing more
             set('export-binder-rev', '1.1');
-            note.value = 'Patch & circuit';
+            const logged = revs();
+            set('export-binder-revision-note', 'Patch & circuit');
+            const h2 = app.historyIndex;
             await app.exportBinder('Two Positions');
-            const second = { revs: revs(), rows: rows(), note: note.value };
+            const second = { revs: revs(), rows: rows(), note: note.value, logged,
+                             actions: app.history.slice(h2 + 1).map(h => h.action) };
             return { empty, first, same, second };
         } finally {
             window.fetch = realFetch;
@@ -2004,9 +2016,10 @@ def test_a_revision_is_logged_on_export_and_the_log_edits_in_the_dialog(page):
         assert out['first']['note'] == ''
         assert out['first']['actions'] == ['Log Revision'], out['first']['actions']
         assert out['same']['revs'] == [row1] and out['same']['note'] == 'should not log' and out['same']['actions'] == []
+        assert out['second']['logged'] == [row1, {**row2, 'description': ''}], out['second']
         assert out['second']['revs'] == [row1, row2], out['second']
         assert out['second']['rows'] == [['1', today, 'MK', 'Overview issued'], ['2', today, 'MK', 'Patch & circuit']]
-        assert out['second']['note'] == ''
+        assert out['second']['note'] == 'Patch & circuit' and out['second']['actions'] == [], out['second']
         # the sheets print the log: No. · Date · By · Description, in order
         r = _render(pg, SHOW, 'WALL-B - Data - Front View')
         texts = r['texts']

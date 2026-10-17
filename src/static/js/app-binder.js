@@ -7,7 +7,8 @@
 // sizes") - with a thin border, a TITLE BLOCK column down its right edge
 // ("mimic whats in their drawing": the logo when one is set, REVISIONS -
 // the log the exports write - the show / venue / dates, Designer, Project
-// Manager, Drafter, the SHEET TITLE, the Sheet Number, the drawing date)
+// Manager, Drafter, Engineer, the SHEET TITLE, the Sheet Number, the
+// drawing date)
 // and the drawing area to its left holding a numbered VIEW - the map with
 // its bubble ("1  OVERVIEW") - and the sheet's tables.
 //
@@ -80,8 +81,10 @@
 // block's fields live in project.binder (venue, dates, designer, project
 // manager, drafter, revisions - the export dialog edits them, one undo
 // entry per field; a revision is LOGGED ON EXPORT, 2026-09-08: an export
-// at a rev no row carries yet adds a row) and in two preferences (the
-// sheet size, the logo).
+// at a rev no row carries yet adds a row - and, 2026-10-17, as soon as a
+// new Rev is committed in the dialog) and in preferences (the sheet
+// size, the logo, and the engineer's name, which prints as Engineer and
+// stands in for a blank Drafter).
 import { LEDRasterApp } from './app-core.js';
 import { sendClientLog } from './helpers.js';
 
@@ -146,8 +149,11 @@ const BLOCK_GAP = 22;
 // The tables' column: 3.5 in wide, a gap between columns; a view's bubble
 // takes this much under its map.
 const COL_W = 700;
-// A table cell's swatch (a fiber strand's color) and the gap after it.
-const SWATCH_W = 26;
+// A fiber strand's swatch (its color, a square this big) and the room it
+// takes in front of the strand's name, the gap after it included - sized
+// to read across a room (2026-10-17: "bigger, bolder color").
+const SWATCH = 24;
+const SWATCH_W = 32;
 const DATA_COL_W = 1020;              // the Ports table's five columns of whole names
 const COL_GAP = 30;
 const BUBBLE_H = 96;
@@ -291,14 +297,18 @@ class _Binder {
         }
         const eng = document.getElementById('export-binder-engineer');
         if (eng) eng.addEventListener('change', () => { this.setEngineerName(eng.value); this.syncBinderControls(); });
+        // The Rev commits on change (blur or Enter), never per keystroke:
+        // typing "1.1" logs 1.1, not "1." on the way (commitBinderRev).
         const rev = document.getElementById('export-binder-rev');
         if (rev) {
             rev.addEventListener('change', () => {
-                this.setPullSheetSetting('rev', rev.value, 'Set Pull Sheet Revision');
+                this.commitBinderRev(rev.value);
                 this.syncBinderControls();
                 if (typeof this.updateExportPreview === 'function') this.updateExportPreview();
             });
         }
+        const revNote = document.getElementById('export-binder-revision-note');
+        if (revNote) revNote.addEventListener('change', () => { this.noteBinderRevision(revNote.value); });
         // The logo: a preference read from a PNG / JPEG file.
         const logo = document.getElementById('export-binder-logo');
         if (logo) {
@@ -466,7 +476,7 @@ class _Binder {
         if (!rows.length) {
             const empty = document.createElement('div');
             empty.className = 'binder-rev-empty';
-            empty.textContent = 'Nothing logged yet. An export at a new Rev adds a row.';
+            empty.textContent = 'Nothing logged yet. A new Rev adds a row.';
             box.appendChild(empty);
             return;
         }
@@ -739,19 +749,92 @@ class _Binder {
 
     // ---- the revision log ---------------------------------------------------
 
+    // A row of the log: No., the rev it is for, today's date as M/D/YY,
+    // the engineer's initials, the note.
+    _binderRevisionRow(rev, note, no) {
+        return { no, rev, date: this._binderToday(), by: this.binderInitials(this.getEngineerName()),
+                 description: String(note == null ? '' : note).trim() };
+    }
+
+    // A NEW REV LOGS ITS ROW AS IT IS COMMITTED (2026-10-17: "when i
+    // change the revision then in the revisions section a new part needs
+    // to show in revisions"): the Rev field's change - blur or Enter, never
+    // a keystroke - sets the rev and, where no row carries it yet, adds its
+    // row (_binderRevisionRow, the Revision note as its description) in the
+    // SAME undo entry, so one undo takes back the rev and its row together.
+    // A rev that already has a row adds nothing; each rev is logged once.
+    //
+    // The note box then belongs to that row: committing the note writes it
+    // into the row's description while the row is the newest and its rev
+    // is still the Rev (noteBinderRevision). A note typed BEFORE the Rev is
+    // committed is the new row's description; a note still mirroring the
+    // previous rev's row is not carried onto the next one - the box clears
+    // and the new row starts blank. Returns true when the rev changed.
+    commitBinderRev(value) {
+        if (!this.project) return false;
+        const v = String(value == null ? '' : value).trim() || this.getPullSheetDefaults().rev;
+        if (this.getPullSheetSettings().rev === v) return false;
+        const list = this.getBinderInfo().revisions;
+        const noteEl = document.getElementById('export-binder-revision-note');
+        let note = noteEl ? String(noteEl.value || '').trim() : '';
+        const open = this._binderOpenRevision();
+        if (open && note && note === open.row.description) {
+            note = '';
+            if (noteEl) noteEl.value = '';
+        }
+        if (!this.project.pullSheet) this.project.pullSheet = {};
+        this.project.pullSheet.rev = v;
+        let row = null;
+        if (!list.some(x => x.rev === v)) {
+            row = this._binderRevisionRow(v, note, list.length + 1);
+            if (!this.project.binder || typeof this.project.binder !== 'object') this.project.binder = {};
+            this.project.binder.revisions = [...list, row];
+        }
+        this.saveState(row ? 'Log Revision' : 'Set Pull Sheet Revision');
+        this._persistPullSheetSettings();
+        if (row) {
+            this._persistBinderInfo();
+            this._binderRevOpen = { rev: v, project: this.project };
+            this._renderBinderRevisionRows();
+            sendClientLog('binder_revision_logged', { rev: v, no: row.no, by: row.by, on: 'rev' });
+        }
+        return true;
+    }
+
+    // The row the note box writes into: the one a Rev commit logged, while
+    // it is the log's newest row, its rev is still the Rev, and the project
+    // is the one it was logged in. Null otherwise.
+    _binderOpenRevision() {
+        const open = this._binderRevOpen;
+        if (!open || open.project !== this.project) return null;
+        const list = this.getBinderInfo().revisions;
+        const index = list.length - 1;
+        const row = list[index];
+        if (!row || row.rev !== open.rev || this.getPullSheetSettings().rev !== open.rev) return null;
+        return { row, index };
+    }
+
+    // The Revision note committed: into the open row's description (one
+    // undo entry, as an edit in the list is). Otherwise it waits in the
+    // box for the next new rev, or the export. Returns true when a row
+    // changed.
+    noteBinderRevision(note) {
+        const open = this._binderOpenRevision();
+        return open ? this.editBinderRevision(open.index, 'description', note) : false;
+    }
+
     // Logged on export ("Logged on export", 2026-09-08): the rev the
     // dialog names, when no row carries it yet, becomes a row - today's
     // date as M/D/YY, the engineer's initials, the Revision note - with
     // one undo entry, persisted like every other field. The same rev
-    // exported again logs nothing. Returns the row it added, or null.
+    // exported again logs nothing (a rev committed in the dialog already
+    // has its row, commitBinderRev). Returns the row it added, or null.
     logBinderRevision(rev, note) {
         if (!this.project) return null;
         const r = String(rev == null ? '' : rev).trim();
         const list = this.getBinderInfo().revisions;
         if (list.some(x => x.rev === r)) return null;
-        const row = { no: list.length + 1, rev: r, date: this._binderToday(),
-                      by: this.binderInitials(this.getEngineerName()),
-                      description: String(note == null ? '' : note).trim() };
+        const row = this._binderRevisionRow(r, note, list.length + 1);
         this.setBinderField('revisions', [...list, row], 'Log Revision');
         this._renderBinderRevisionRows();
         sendClientLog('binder_revision_logged', { rev: r, no: row.no, by: row.by });
@@ -1790,7 +1873,28 @@ class _Binder {
         const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
         const logo = m.logo && m.logo.width > 0 && m.logo.height > 0 ? m.logo : null;
         const hLogo = logo ? clamp(Math.round(tb.h * 0.16), 220, 360) : 0;
-        const hShow = 170, hPeople = 330, hTitle = 90, hNumber = 150;
+        // The people, top to bottom: each a label with its lines under it -
+        // a name's one line always (blank prints the label alone), the
+        // project manager's phone and email only where typed (a blank one
+        // left a gap above Drafter, 2026-10-17), the Engineer only where
+        // one is set (getEngineerName). Label to first line 30, line to
+        // line 28, last line to the next label 48; the section ends 54
+        // under its last line - Designer, a manager with phone and email,
+        // and Drafter come to the 330 the section always was.
+        const people = [
+            ['Designer:', [b.designer]],
+            ['Project Manager:', [b.projectManager.name,
+                                  ...[b.projectManager.phone, b.projectManager.email].filter(Boolean)]],
+            ['Drafter:', [b.drafter]],
+            ...(m.engineer ? [['Engineer:', [m.engineer]]] : []),
+        ];
+        const peopleAt = [];
+        let py = 34;
+        for (const [label, values] of people) {
+            peopleAt.push({ label, y: py, values: values.map((v, k) => ({ text: v, y: py + 30 + k * 28 })) });
+            py += 30 + (values.length - 1) * 28 + 48;
+        }
+        const hShow = 170, hPeople = py - 48 + 54, hTitle = 90, hNumber = 150;
         const hRev = Math.max(120, tb.h - (hLogo + hShow + hPeople + hTitle + hNumber));
         const rule = (y) => { ctx.fillStyle = INK; ctx.fillRect(tb.x, y - 1, tb.w, 3); };
         // the column's own left edge
@@ -1857,14 +1961,12 @@ class _Binder {
         y += hShow; rule(y);
 
         // 4. the people
-        this._bText(book, 'Designer:', x + pad, y + 34, { size: SZ.tbLabel, weight: 700 });
-        this._bText(book, b.designer, x + pad + 40, y + 64, { size: SZ.tbCell, maxWidth: inner - 40 });
-        this._bText(book, 'Project Manager:', x + pad, y + 112, { size: SZ.tbLabel, weight: 700 });
-        this._bText(book, b.projectManager.name, x + pad + 40, y + 142, { size: SZ.tbCell, maxWidth: inner - 40 });
-        this._bText(book, b.projectManager.phone, x + pad + 40, y + 170, { size: SZ.tbCell, maxWidth: inner - 40 });
-        this._bText(book, b.projectManager.email, x + pad + 40, y + 198, { size: SZ.tbCell, maxWidth: inner - 40 });
-        this._bText(book, 'Drafter:', x + pad, y + 246, { size: SZ.tbLabel, weight: 700 });
-        this._bText(book, b.drafter, x + pad + 40, y + 276, { size: SZ.tbCell, maxWidth: inner - 40 });
+        for (const who of peopleAt) {
+            this._bText(book, who.label, x + pad, y + who.y, { size: SZ.tbLabel, weight: 700 });
+            for (const v of who.values) {
+                this._bText(book, v.text, x + pad + 40, y + v.y, { size: SZ.tbCell, maxWidth: inner - 40 });
+            }
+        }
         sections.people = { y, h: hPeople };
         y += hPeople; rule(y);
 
@@ -2474,12 +2576,15 @@ class _Binder {
         const underBand = { ...th, head: false, band: true };
         if (!lead || !(spec.rows || []).length || !topBand(spec.rows[0])) lines.push(th);
         for (const r of spec.rows || []) {
-            if (r.halves) {
+            if (r.halves || r.lines) {
                 // A sub-band in halves (each half's snake) keeps the
-                // sub-band's look: set in, no fill, a thin rule.
+                // sub-band's look: set in, no fill, a thin rule. A band of
+                // `lines` is one stack across the whole width (a unit and
+                // its fiber strand by strand, on a sheet with no halves).
                 const sub = !!r.sub;
                 const ind = sub ? 22 : 0;
-                const n = r.halves.reduce((m, h) => Math.max(m, h.length), 1);
+                const n = r.lines ? Math.max(1, r.lines.length)
+                    : r.halves.reduce((m, h) => Math.max(m, h.length), 1);
                 const h = BAND_H + (n - 1) * LIST_H;
                 lines.push({ h, band: true, draw: (ctx, x, y, w) => {
                     const L = layout(w);
@@ -2491,13 +2596,12 @@ class _Binder {
                         ctx.fillRect(x, y, w, h - 4);
                     }
                     rules(ctx, L, x, y, h);
-                    r.halves.forEach((half, j) => {
+                    if (r.lines) this._bBandStack(book, r.lines, x + ind + padX, y + 31, w - ind - padX * 2);
+                    (r.halves || []).forEach((half, j) => {
                         const g = groups[j];
                         if (!g) return;
                         const sp = spanOf(L, g);
-                        half.forEach((t, k) => this._bText(book, t, x + sp.x + ind + padX, y + 31 + k * LIST_H,
-                            { size: SZ.cell, weight: k ? 400 : 700, shrink: true,
-                              maxWidth: sp.w - ind - padX * 2 }));
+                        this._bBandStack(book, half, x + sp.x + ind + padX, y + 31, sp.w - ind - padX * 2);
                     });
                     ctx.fillStyle = RULE;
                     ctx.fillRect(x + ind, y + h - 4, w - ind, sub ? 2 : 4);
@@ -2588,8 +2692,13 @@ class _Binder {
                     // cell saying two things ("A / B" - HOME RUN with a
                     // backup end) goes to two lines rather than being cut.
                     if (cols[i].swatch && r.swatch) {
-                        this._bSwatch(ctx, r.swatch, ax, y + 10);
-                        const o = { size: SZ.cell, weight, align: L[i].align,
+                        // the strand's cell tinted its own colour and its
+                        // name bold; the name stays, so a black-and-white
+                        // print still says which strand it is
+                        ctx.fillStyle = this._bTint(r.swatch.base, 0.24);
+                        ctx.fillRect(x + L[i].x + 3, y + 3, L[i].w - 6, h - 7);
+                        this._bSwatch(ctx, r.swatch, ax, y + 27);
+                        const o = { size: SZ.cell, weight: 700, align: L[i].align,
                                     maxWidth: maxWidth - SWATCH_W, shrink: !!spec.shrink };
                         this._bText(book, cell, ax + SWATCH_W, y + 27, o);
                         return;
@@ -2609,37 +2718,85 @@ class _Binder {
         return lines;
     }
 
-    // A fiber strand's swatch, 18 px square at (x, y): its color, the
-    // tracer as a corner, ringed in ink so White reads on white paper.
-    _bSwatch(ctx, sw, x, y) {
-        const S = 18;
+    // A fiber strand's swatch, SWATCH square, at x and centred on the text
+    // standing on `baseline`: its color, the tracer past 12 as a stripe
+    // across its middle, ringed in ink so White reads on white paper. The
+    // tracer is a rect, not a filled path - the recorder writes rects and
+    // lines only, and the corner triangle it used to be never reached the
+    // PDF.
+    _bSwatch(ctx, sw, x, baseline) {
+        const S = SWATCH;
+        const y = baseline - 8 - S / 2;
         ctx.fillStyle = sw.base || '#777777';
         ctx.fillRect(x, y, S, S);
         if (sw.tracer) {
             ctx.fillStyle = sw.tracer;
-            ctx.beginPath();
-            ctx.moveTo(x + S, y + S * 0.35);
-            ctx.lineTo(x + S, y + S);
-            ctx.lineTo(x + S * 0.35, y + S);
-            ctx.closePath();
-            ctx.fill();
+            ctx.fillRect(x, y + S * 0.36, S, S * 0.28);
         }
         ctx.strokeStyle = INK;
         ctx.lineWidth = 1.5;
         ctx.strokeRect(x, y, S, S);
     }
 
+    // A colour mixed toward the paper: `k` of the colour, the rest white.
+    _bTint(hex, k) {
+        const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
+        if (!m) return '#eeeeee';
+        const n = parseInt(m[1], 16);
+        const ch = (v) => Math.round(255 - (255 - v) * k).toString(16).padStart(2, '0');
+        return `#${ch((n >> 16) & 255)}${ch((n >> 8) & 255)}${ch(n & 255)}`;
+    }
+
+    // A band's lines stacked from `baseline`, LIST_H apart: a text line as
+    // it always read (the first bold, each shrinking alone before it is
+    // cut), and a strand line (_bBoxBandLines) as two columns - the cable
+    // on its first strand's line, then each strand under the last, its
+    // swatch and its name - the strands lined up in one column and the
+    // lot shrunk together where the widest will not fit.
+    _bBandStack(book, lines, x, baseline, maxWidth) {
+        const ctx = book.ctx;
+        const strandLines = lines.filter(t => t && typeof t === 'object');
+        let size = SZ.cell, col = 0;
+        if (strandLines.length) {
+            const measure = (sz) => {
+                ctx.font = this._bFont(sz, 400);
+                const gap = ctx.measureText('  ').width;
+                col = strandLines.reduce((m, t) => Math.max(m, t.head ? ctx.measureText(t.head).width + gap : 0), 0);
+                return strandLines.reduce((m, t) => Math.max(m, col + (t.strand.swatch ? SWATCH_W * sz / SZ.cell : 0)
+                    + ctx.measureText(t.strand.text).width), 0);
+            };
+            while (size > 14 && measure(size) > maxWidth) size -= 1;
+            measure(size);
+        }
+        lines.forEach((t, k) => {
+            const y = baseline + k * LIST_H;
+            if (!t || typeof t !== 'object') {
+                this._bText(book, t, x, y, { size: SZ.cell, weight: k ? 400 : 700, shrink: true, maxWidth });
+                return;
+            }
+            if (t.head) this._bText(book, t.head, x, y, { size, maxWidth: col });
+            let sx = x + col;
+            if (t.strand.swatch) {
+                this._bSwatch(ctx, t.strand.swatch, sx, y);
+                sx += SWATCH_W * size / SZ.cell;
+            }
+            this._bText(book, t.strand.text, sx, y, { size, maxWidth: Math.max(1, x + maxWidth - sx) });
+        });
+    }
+
     // A `parts` cell's pieces as drawn: each strand's text with the " ·"
     // that says another follows (kept at the end of a line that wraps, the
-    // way a list cell keeps its separator), and its swatch.
+    // way a list cell keeps its separator) unless the part says `nosep`,
+    // its swatch, and `brk` where the part starts a line of its own.
     _bPartPieces(parts) {
-        return parts.map((p, j) => ({ text: String(p.text) + (j < parts.length - 1 ? ' ·' : ''),
-                                      swatch: p.swatch || null }));
+        return parts.map((p, j) => ({ text: String(p.text) + (j < parts.length - 1 && !p.nosep ? ' ·' : ''),
+                                      swatch: p.swatch || null, brk: !!p.brk }));
     }
 
     // A `parts` cell onto lines no wider than maxWidth: as many strands per
-    // line as fit, a strand never split. Every strand is kept - a strand
-    // list is a link's two (an MTP's two and "crosses inside").
+    // line as fit, a strand never split, a `brk` part on a new line. Every
+    // strand is kept - a strand list is a link's two (an MTP's two and
+    // "crosses inside").
     _bPartLines(book, parts, weight, maxWidth) {
         const ctxM = book.measureCtx;
         ctxM.font = this._bFont(SZ.cell, weight);
@@ -2649,7 +2806,7 @@ class _Binder {
         let curW = 0;
         for (const p of this._bPartPieces(parts)) {
             const w = (p.swatch ? SWATCH_W : 0) + ctxM.measureText(p.text).width;
-            if (cur.length && curW + gap + w > maxWidth) {
+            if (cur.length && (p.brk || curW + gap + w > maxWidth)) {
                 lines.push(cur);
                 cur = [p];
                 curW = w;
@@ -2674,7 +2831,7 @@ class _Binder {
                     cx += ctx.measureText(' ').width;
                 }
                 if (p.swatch) {
-                    this._bSwatch(ctx, p.swatch, cx, y + 10 + k * LIST_H);
+                    this._bSwatch(ctx, p.swatch, cx, y + 27 + k * LIST_H);
                     cx += SWATCH_W;
                 }
                 const t = this._bText(book, p.text, cx, y + 27 + k * LIST_H,
@@ -4049,16 +4206,17 @@ class _Binder {
         const socket = bb.localPort != null ? bb.localPort : bb.port;
         const socketText = `${where} · ${socket}`;
         const shortSocket = home && home.box ? `${this._bBoxShort(home.box)} · ${socket}` : socketText;
-        let key, bandParts;
+        let key, bandParts, bandLines = null;
         if (home && home.box) {
             key = `box:${home.box.id}`; bandParts = this._bBoxBandParts(home.box);
+            bandLines = this._bBoxBandLines(home.box);
         } else if (home) {
             key = `card:${home.card.id}`; bandParts = [this._bCardBandText(home)];
         } else {
             key = `card:${bb.cardId}`; bandParts = [bb.cardTitle || this._bCardShort(bb.cardId)];
         }
         return { label, socketText, shortSocket, name: label || socketText, key,
-                 bandText: bandParts.join(' · '), bandParts };
+                 bandText: bandParts.join(' · '), bandParts, bandLines: bandLines || bandParts };
     }
 
     // What a sheet calls a breakout box: "CVT4K-S SR" - the model and the
@@ -4105,6 +4263,59 @@ class _Binder {
         const fiber = (typeof this.pullBoxFiberText === 'function') ? this.pullBoxFiberText(box) : '';
         if (fiber) return fiber;
         return String(box.fiberType || '').trim() ? 'no fiber length' : 'no fiber';
+    }
+
+    // One strand as a band or a table cell prints it: its name as the
+    // strand map says it (fiberStrandName - a colour, a number, a
+    // sub-unit, a typed name), and its swatch unless the cable reads in
+    // numbers - a cable labelled by number prints no colours beside it.
+    _bStrandPiece(n, cable) {
+        return { text: this.fiberStrandName(n, cable),
+                 swatch: cable && cable.labels === 'numbers' ? null : this.fiberStrandSwatch(n, cable) };
+    }
+
+    // A box's fiber, one input at a time (fiberLinkInputs), or null where
+    // no input is on a fiber cable - a box with no fiber, or copper only,
+    // reads as it always did.
+    _bBoxFiberInputs(box) {
+        const inputs = box && typeof this.fiberLinkInputs === 'function' ? this.fiberLinkInputs(box) : [];
+        return inputs.some(i => i.cable) ? inputs : null;
+    }
+
+    // THE BAND OVER A BOX'S PORTS, STRAND BY STRAND (2026-10-17: "why don't
+    // the colors come through on the binder for fiber?"): the box on the
+    // first line, then each input's strands a line each - "X1 TAC A (TAC
+    // 8)  [] 1 Blue" over "[] 2 Orange" - the strand named and swatched as
+    // the strand map has it. A strand line is { head, strand: { text,
+    // swatch } } (_bBandStack draws it); a copper input, or a cable with
+    // no strands picked, keeps its one line of words. Null where the box
+    // has no fiber: its band is _bBoxBandParts, word for word.
+    _bBoxBandLines(box) {
+        const inputs = this._bBoxFiberInputs(box);
+        if (!inputs) return null;
+        const lines = [this._bBoxBandParts(box)[0]];
+        for (const inp of inputs) {
+            if (!inp.cable || !inp.strands.length) { lines.push(inp.text); continue; }
+            inp.strands.forEach((n, k) => lines.push({ head: k ? '' : inp.head,
+                                                      strand: this._bStrandPiece(n, inp.cable) }));
+        }
+        return lines;
+    }
+
+    // The same for the Breakout boxes table's FIBER cell, as `parts`: each
+    // input's words on a line, then its strands a line each, no " ·"
+    // between them - the strands stacked the way Fiber connections stacks
+    // them. Null where the box has no fiber (the cell reads its words).
+    _bBoxFiberParts(box) {
+        const inputs = this._bBoxFiberInputs(box);
+        if (!inputs) return null;
+        const out = [];
+        inputs.forEach((inp, i) => {
+            if (!inp.cable || !inp.strands.length) { out.push({ text: inp.text, brk: i > 0 }); return; }
+            out.push({ text: inp.head, nosep: true, brk: i > 0 });
+            inp.strands.forEach(n => out.push({ ...this._bStrandPiece(n, inp.cable), nosep: true, brk: true }));
+        });
+        return out;
     }
 
     // The redundancy bar's reading for a processor: "Per card", "Per port",
@@ -4243,10 +4454,12 @@ class _Binder {
         // - and each unit's band stands over its own half, the unit on one
         // line and its fiber on the next. PANELS is said once, at the end.
         // A sheet with no backup end prints the one half.
-        const bands = new Map();      // key -> { parts, groups: Map, partners: Map }
-        const band = (key, parts) => {
+        // A box with fiber also carries its band strand by strand (`lines`,
+        // _bBoxBandLines), drawn in place of its words.
+        const bands = new Map();      // key -> { parts, lines, groups: Map, partners: Map }
+        const band = (key, parts, lines = null) => {
             let b = bands.get(key);
-            if (!b) { b = { parts, groups: new Map(), partners: new Map() }; bands.set(key, b); }
+            if (!b) { b = { parts, lines, groups: new Map(), partners: new Map() }; bands.set(key, b); }
             return b;
         };
         // A group keeps the cables its heading is read from, and the
@@ -4296,7 +4509,7 @@ class _Binder {
             let key, out, b;
             if (home.box) {
                 key = `box:${home.box.id}`;
-                b = band(key, this._bBoxBandParts(home.box));
+                b = band(key, this._bBoxBandParts(home.box), this._bBoxBandLines(home.box));
                 out = `${this._bBoxShort(home.box)} · ${socket}`;
             } else {
                 key = `card:${home.card.id}`;
@@ -4316,7 +4529,7 @@ class _Binder {
                 // to it.
                 if (end.key !== key && !partnered.has(end.key)) {
                     partnered.add(end.key);
-                    b.partners.set(end.key, end.bandParts);
+                    b.partners.set(end.key, end.bandLines);
                 }
             }
             group(b, `${snakeId(cable)}|${snakeId(backupCable)}`, cable, backupCable).ports.push({
@@ -4329,7 +4542,9 @@ class _Binder {
         for (const b of bands.values()) {
             if (split) {
                 const back = [...b.partners.values()];
-                rows.push({ band: '', halves: [b.parts, back.length ? back.flat() : []] });
+                rows.push({ band: '', halves: [b.lines || b.parts, back.length ? back.flat() : []] });
+            } else if (b.lines) {
+                rows.push({ band: '', lines: b.lines });
             } else {
                 rows.push({ band: b.parts.join(' · ') });
             }
@@ -5101,9 +5316,11 @@ class _Binder {
             for (const box of ordered) {
                 const near = fars.has(box.id) ? list.find(n => n.id === box.backupOf) : null;
                 const title = this._bBoxTitle(box) + (near ? ` · loop of ${this._bBoxTitle(near)}` : '');
+                const fiber = this._bBoxFiberParts(box);
                 boxRows.push({ cells: [title, this.cardTypedName(proc, card) || nameOf(card.id), box.trunkTitle || '—',
                                        String(box.portCount || (box.ports || []).length),
-                                       this._bBoxFiberText(box)] });
+                                       this._bBoxFiberText(box)],
+                               ...(fiber ? { parts: { 4: fiber } } : {}) });
             }
         }
         if (boxRows.length) {
@@ -5112,8 +5329,12 @@ class _Binder {
                 // FIBER wraps at its " · " - a box with a backup link reads
                 // "TAC A 9-10" over "X2 TAC B 1-2" - rather than being
                 // shrunk or cut; a loop's far box wraps "loop of" the same way.
+                // A box on fiber cables lists each input and its strands a
+                // line each, swatched (_bBoxFiberParts), and FIBER takes the
+                // larger share a strand's swatch and name need.
                 cols: [{ title: 'breakout box', w: 1.3, list: 2 }, { title: 'card', w: 0.7 }, { title: 'trunk', w: 0.7 },
-                       { title: 'ports', w: 0.65, align: 'right' }, { title: 'fiber', w: 1.4, list: 2 }],
+                       { title: 'ports', w: 0.65, align: 'right' },
+                       { title: 'fiber', w: boxRows.some(r => r.parts) ? 2.1 : 1.4, list: 2, parts: true }],
                 rows: boxRows,
                 shrink: true,
             }) });
@@ -5304,8 +5525,11 @@ class _Binder {
         // the stored order: the order at the processor
         const strands = (link) => [...new Set(((link && link.strands) || []).map(Number))]
             .filter(Number.isFinite);
-        const swatched = (list, cable) => list.map(n => ({ text: this.fiberStrandName(n, cable),
-                                                           swatch: this.fiberStrandSwatch(n, cable) }));
+        // a strand to a line, whatever fits (2026-10-17: every row reads
+        // the same, never two strands side by side)
+        const swatched = (list, cable) => list.map((n, j) => ({ text: this.fiberStrandName(n, cable),
+                                                                swatch: this.fiberStrandSwatch(n, cable),
+                                                                brk: j > 0 }));
         const joined = (parts) => parts.map(p => p.text).join(' · ');
         const linkRow = (output, l) => {
             linked++;
@@ -5327,7 +5551,7 @@ class _Binder {
             const crosses = cable.kind === 'mtp' || cable.kind === 'opticalcon-duo'
                 || cable.kind === 'opticalcon-quad';
             const atInput = crosses
-                ? swatched(set, cable).concat([{ text: 'crosses inside' }])
+                ? swatched(set, cable).concat([{ text: 'crosses inside', brk: true }])
                 : cable.kind === 'tac' ? swatched(set.slice().reverse(), cable)
                     : swatched(set, cable);
             return { cells: [output, name, joined(atProcessor), input, joined(atInput)],
