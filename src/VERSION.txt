@@ -121,6 +121,10 @@ because of it.
   headers wrap, so Balance and the gear stay in reach.
 - FIX: Dropdowns in Preferences, the Export dialog and the hardware
   settings panels show their arrow again; they read as text boxes.
+- FIX: Deleting a distro, clearing a multi or a circuit, moving a screen
+  off its distro, releasing a data port, or removing a card, processor or
+  breakout box clears the cable lengths that went with it, so they no
+  longer come back on the next feed. Jumper lengths stay with the screen.
 - FIX: Multi numbers on the Power tab no longer shift when a screen is
   added to a shared distro, removed or reordered. A removed screen leaves
   its gap for the next one, and only Reset offsets in the Balance dialog
