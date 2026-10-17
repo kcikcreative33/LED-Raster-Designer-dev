@@ -112,6 +112,13 @@ because of it.
   "Upper is locked - unlock it to change it." The other selected screens
   still change, and selecting a locked screen or its cabinets never shows
   the error.
+- FIX: Multi numbers on the Power tab no longer shift when a screen is
+  added to a shared distro, removed or reordered. A removed screen leaves
+  its gap for the next one, and only Reset offsets in the Balance dialog
+  numbers them again.
+- FIX: Cabinet IDs stay on screen further into a zoom-out: they drop out
+  only below 3 pixels, where it was 5, and the log notes when a screen's
+  IDs are hidden or shown again.
 - FIX: A custom data run on a NovaStar Armor port is held to Armor's
   rectangle rule, as the port badge already was, so a run can no longer
   be filled past what the badge calls full.

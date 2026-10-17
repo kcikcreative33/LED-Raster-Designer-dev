@@ -11,13 +11,16 @@
 // top-left position the corner keeps its old 5 px stand-off where that is
 // smaller than the pad, so a big cabinet's corner id sits where it always
 // did. An id that would paint smaller than CABINET_ID_FLOOR_PX on the
-// bitmap it lands on is not drawn: a 3 px smear reads as nothing, and hides
-// the cabinet's colour under it. The floor is judged at the DRAW scale
-// (read off the ctx), not the working view's zoom, so an export at scale 1
-// still prints the ids a zoomed-out workspace does not show.
+// bitmap it lands on is not drawn: a 2 px smear reads as nothing, and hides
+// the cabinet's colour under it (5 px until 2026-10-17, when the owner
+// asked for the ids to stay longer on a zoom-out). The floor is judged at
+// the DRAW scale (read off the ctx), not the working view's zoom, so an
+// export at scale 1 still prints the ids a zoomed-out workspace does not
+// show. The workspace logs each screen's switch between shown and hidden
+// (cabinet_ids_hidden / cabinet_ids_shown), once per switch, not per frame.
 const CABINET_ID_PAD = 0.12;
 const CABINET_ID_CORNER = 5;
-const CABINET_ID_FLOOR_PX = 5;
+const CABINET_ID_FLOOR_PX = 3;
 
 Object.assign(CanvasRenderer.prototype, {
     // ── Screen groups (v0.11.0): cabinet IDs that run across the group ────
@@ -300,6 +303,27 @@ Object.assign(CanvasRenderer.prototype, {
         };
     },
 
+    // One log line when a screen's cabinet ids switch between shown and
+    // hidden in the workspace (owner, 2026-10-17: "i would have thought
+    // things being rendered would show in logs") - never per frame, never
+    // from an export.
+    _noteCabinetIdsShown(layer, shown, screenPx) {
+        if (this.exportMode || !layer) return;
+        const seen = this._cabinetIdsShown || (this._cabinetIdsShown = new Map());
+        if (seen.get(layer.id) === shown) return;
+        const first = !seen.has(layer.id);
+        seen.set(layer.id, shown);
+        if (first && shown) return;
+        if (typeof sendClientLog === 'function') {
+            sendClientLog(shown ? 'cabinet_ids_shown' : 'cabinet_ids_hidden', {
+                layer: { id: layer.id, name: layer.name },
+                screenPx: Math.round(screenPx * 10) / 10,
+                floorPx: CABINET_ID_FLOOR_PX,
+                zoom: Math.round((this.zoom || 0) * 1000) / 1000,
+            });
+        }
+    },
+
     renderCabinetIDNumbers(layer) {
         if (!layer.show_numbers) return;
         
@@ -466,7 +490,9 @@ Object.assign(CanvasRenderer.prototype, {
             setFont(px);
         }
         // 2. below the legibility floor ON THE BITMAP, draw nothing.
-        if (px * drawScale < CABINET_ID_FLOOR_PX) {
+        const hidden = px * drawScale < CABINET_ID_FLOOR_PX;
+        this._noteCabinetIdsShown(layer, !hidden, px * drawScale);
+        if (hidden) {
             this.ctx.restore();
             return;
         }
