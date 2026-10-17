@@ -9,7 +9,7 @@
 // breakout box, which is the thing a tech is standing in front of when they
 // read a port label off it. ("cvt" in ids and endpoints is the stored key,
 // kept stable; the generic DEVICE is a breakout box - CVT is one vendor's
-// name for theirs, the way Tessera XD is another's, so only actual model
+// name for theirs, the way XD is another's, so only actual model
 // names say it.)
 //
 // What this module owns is the STATE side - the catalog, the resolve
@@ -159,7 +159,7 @@ class _Processors {
                 this._applyProcessorState(data);
                 if (applied && pullBefore) this._dropPullEditsGoneWith(pullBefore);
                 if (applied && action) this.saveState(action);
-                // What the edit had to say - "Removed box Tessera XD B - 3
+                // What the edit had to say - "Removed box XD B - 3
                 // ports of LEFT are unplaced again" - read where a refusal
                 // would read, but not in a refusal's color: the edit did
                 // exactly what it was told.
@@ -1648,7 +1648,7 @@ class _Processors {
     }
 
     // WHETHER A CARD IS ITS PROCESSOR'S FACE. A one-box unit - a NovaPro
-    // UHD Jr, a Tessera S8, an MX40 Pro - carries ONE fixed card that IS
+    // UHD Jr, an S8, an MX40 Pro - carries ONE fixed card that IS
     // the unit; a chassis (the H series, the MX2000 / MX6000 - the catalog
     // says which, by `form`) holds slot cards that are parts inside it.
     // The server's card_is_unit_face, mirrored: the resolved processor's
@@ -1675,7 +1675,7 @@ class _Processors {
 
     // THE UNIT A SOCKET SITS ON, NAMED ONCE (2026-09-09, off the live
     // show A binder: "IMAG SR IMAG SR · NovaPro UHD Jr · 16 ports").
-    // A processor with no slots - a NovaPro UHD Jr, a Tessera S8 - carries
+    // A processor with no slots - a NovaPro UHD Jr, an S8 - carries
     // ONE fixed card that IS its face, so the unit has one name, the
     // processor's, and the paperwork says it once. A real slot card is a
     // part inside a processor and reads as both, "H9 SR" - but never twice

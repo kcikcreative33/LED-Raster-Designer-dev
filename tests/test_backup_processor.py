@@ -652,7 +652,7 @@ def _shot(pg, locator, name):
 
 def test_a_folded_sx40_card_counts_its_boxes(page):
     """Folded, the card row names the boxes hanging off it by model - "4 ×
-    Tessera XD" - since the strips that show them are folded away; open,
+    XD" - since the strips that show them are folded away; open,
     the tally draws nothing (owner, 2026-09-26)."""
     pg, ids = page
     sx = ids['sx']
@@ -672,7 +672,7 @@ def test_a_folded_sx40_card_counts_its_boxes(page):
     try:
         out = pg.evaluate(read, [sx, True])
         assert out['boxes'] and out == {
-            'boxes': out['boxes'], 'text': f"{out['boxes']} × Tessera XD",
+            'boxes': out['boxes'], 'text': f"{out['boxes']} × XD",
             'shown': True}, out
         _shot(pg, pg.locator(f'[data-lrd-field="processor-name-{sx}"]')
               .locator('xpath=ancestor::*[contains(@class,"hw-dock-proc-name")][1]/..'),
@@ -756,16 +756,16 @@ def test_the_sx40_gear_has_the_two_loops_and_the_backup_processor_switch(page):
 
 def test_a_loops_sheet_shows_the_pair_near_box_first_with_x1_and_x2(page):
     """XD B's ≡ sheet, opened alone, shows the loop as ONE section - "Fiber
-    · Tessera XD A ↔ Tessera XD B (loop)" - XD A's rows first, each named by
+    · XD A ↔ XD B (loop)" - XD A's rows first, each named by
     its box and port, the backup unit's X2 rows tinted; XD C's X1 runs on
     Cat6 at 150 ft with the plain warning."""
     pg, ids = page
     a, b, c, d = ids['xds']
     sec = pg.evaluate(SHEET_JS, [b, ids['xds']])
-    assert sec['caption'] == 'Fiber · Tessera XD A ↔ Tessera XD B (loop)', sec
+    assert sec['caption'] == 'Fiber · XD A ↔ XD B (loop)', sec
     assert [(r['role'], r['backup']) for r in sec['rows']] == [
-        ('Tessera XD A · X1', False), ('Tessera XD A · X2', True),
-        ('Tessera XD B · X1', False), ('Tessera XD B · X2', True)], sec
+        ('XD A · X1', False), ('XD A · X2', True),
+        ('XD B · X1', False), ('XD B · X2', True)], sec
     assert [r['link'] for r in sec['rows']] == [f'{a}:p1', f'{a}:b1', f'{b}:p1', f'{b}:b1']
     assert 'Cat6A copper' in sec['rows'][2]['options'], sec['rows'][2]['options']
     # an empty X2 offers its X1's cable on top, named, with a gap under it,
@@ -782,10 +782,10 @@ def test_a_loops_sheet_shows_the_pair_near_box_first_with_x1_and_x2(page):
     pg.wait_for_timeout(300)
     _shot(pg, pg.locator(f'[data-lrd-fiber-row="{b}"]'), 'xd-loop-fiber-section.png')
     sec = pg.evaluate(SHEET_JS, [c, ids['xds']])
-    assert sec['caption'] == 'Fiber · Tessera XD C ↔ Tessera XD D (loop)', sec
+    assert sec['caption'] == 'Fiber · XD C ↔ XD D (loop)', sec
     row = sec['rows'][0]
     assert (row['role'], row['value'], row['ft'], row['warn']) == \
-        ('Tessera XD C · X1', 'cu:Cat6', '150', 'Cat6 runs 100 ft max at 10G'), row
+        ('XD C · X1', 'cu:Cat6', '150', 'Cat6 runs 100 ft max at 10G'), row
     # the copper length commits as one entry
     pg.locator(f'[data-lrd-field="fiber-copper-ft-{c}-p1"]').fill('90')
     pg.locator(f'[data-lrd-field="fiber-copper-ft-{c}-p1"]').press('Enter')
@@ -834,12 +834,12 @@ def test_the_binder_and_the_pull_sheet_name_the_ports_and_count_the_backup(page)
     }""", ids)
     assert out['a'] == 'X1 TAC A (TAC 12) 1-2 · X2 TAC B (TAC 12) 1-2', out
     assert out['c'] == "X1 Cat6 150' (Cat6 runs 100 ft max at 10G)", out
-    assert out['boxes'] == ['Tessera XD A', 'Tessera XD B · loop of Tessera XD A',
-                            'Tessera XD C', 'Tessera XD D · loop of Tessera XD C'], out
+    assert out['boxes'] == ['XD A', 'XD B · loop of XD A',
+                            'XD C', 'XD D · loop of XD C'], out
     assert out['red'] == 'On · backed up by WALL SR BU', out
     assert out['bu'] == 'WALL SR BU · backup of WALL SR Main', out
     assert out['cols'] == ['strand', 'link'], out
-    assert out['map'] == [['1 Blue', 'Tessera XD A · X1'], ['2 Orange', 'Tessera XD A · X1'],
+    assert out['map'] == [['1 Blue', 'XD A · X1'], ['2 Orange', 'XD A · X1'],
                           ['3 Green', 'spare']], out
     rows = pg.evaluate("""() => {
         const app = window.app;
@@ -848,20 +848,20 @@ def test_the_binder_and_the_pull_sheet_name_the_ports_and_count_the_backup(page)
             .map(r => [r.type, r.length, r.qty, r.label, r.notes]);
     }""")
     # every processor, mains and backups, counted by model with its names
-    assert ['Tessera SX40', 'EA', 2, 'WALL SR Main, WALL SR BU (backup)', ''] in rows, rows
+    assert ['SX40', 'EA', 2, 'WALL SR Main, WALL SR BU (backup)', ''] in rows, rows
     assert ['HELIOS Standard 8K / 8K Extreme', 'EA', 2, 'HX, HX BU (backup)', ''] in rows, rows
     assert ['RS12 / MSM4214X', 'EA', 2, 'RS12 / MSM4214X, HX BU', ''] in rows, rows
-    xd_on = sum(r[2] for r in rows if r[0] == 'Tessera XD')
+    xd_on = sum(r[2] for r in rows if r[0] == 'XD')
     cat6 = [r for r in rows if r[0] == 'Cat6']
-    assert cat6 == [['Cat6', "150'", 1, 'Tessera XD C (X1)', 'Cat6 runs 100 ft max at 10G']], rows
+    assert cat6 == [['Cat6', "150'", 1, 'XD C (X1)', 'Cat6 runs 100 ft max at 10G']], rows
     # the backup unit off: the same XDs, and no SX40 row
     pg.evaluate("""async (sx) => { await window.app._processorRequest(
         `/api/processors/${sx}`, 'PUT', {backupUnit: null}, 'Remove Backup Processor'); }""", ids['sx'])
     pg.wait_for_timeout(600)
     rows = pg.evaluate("""() => { window.app._circuitTailCache = null;
         return window.app.buildPullList().totals.map(r => [r.type, r.qty, r.label]); }""")
-    assert sum(r[1] for r in rows if r[0] == 'Tessera XD') == xd_on, rows
-    assert [r for r in rows if r[0] == 'Tessera SX40'] == [['Tessera SX40', 1, 'WALL SR Main']], rows
+    assert sum(r[1] for r in rows if r[0] == 'XD') == xd_on, rows
+    assert [r for r in rows if r[0] == 'SX40'] == [['SX40', 1, 'WALL SR Main']], rows
     pg.evaluate('() => window.app.undo()')
     pg.wait_for_timeout(900)
     assert pg.evaluate("(sx) => window.app.project.processors.find(p => p.id === sx).backupUnit",

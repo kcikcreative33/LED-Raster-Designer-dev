@@ -12,7 +12,7 @@
 //     (owner, 2026-10-08): a QUAD feeds two XD inputs or four BiDi links,
 //     a DUO one XD input or two BiDi links;
 //   * a link takes 2 strands, 1 on a box switched to BiDi;
-//   * a link on a Tessera XD may be COPPER instead - { copper: 'Cat6A',
+//   * a link on an XD may be COPPER instead - { copper: 'Cat6A',
 //     ft } - with no cable and no strands (owner: "anything that does
 //     10Gbps max length is allowed. Cat 6A and under");
 //   * a link is named by the box's own port (X1 / X2, OPT 1-4, else Link

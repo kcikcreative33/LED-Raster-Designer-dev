@@ -1540,8 +1540,8 @@ body { font-family: Arial, sans-serif; background: #1a1a1a; color: #e0e0e0; over
 }
 /* The processor's strip leads with its NAME (2026-09-25, option 2 "Framed
    unit"): the name field at heading size, the model after it in the
-   secondary colour - "WALL SR Main  Tessera SX40", where it used to read a
-   small grey "TESSERA SX40" and then the name. One line at the 440px
+   secondary colour - "WALL SR Main  SX40", where it used to read a
+   small grey "SX40" and then the name. One line at the 440px
    track: the model and the pills give way (ellipsis) before the name
    does, and the name itself shrinks to a floor rather than push the gear
    out of the cell. */
@@ -1570,7 +1570,7 @@ body { font-family: Arial, sans-serif; background: #1a1a1a; color: #e0e0e0; over
 }
 .hw-dock-unit-info { font-size: 10px; color: #666; font-family: monospace; margin-left: auto; }
 /* One breakout box = one bounded section of its card: its own ground and
-   frame around the header ("Tessera XD A · ports 1-10") and its span of
+   frame around the header ("XD A · ports 1-10") and its span of
    chips, so where one box ends and the next begins is read at a glance -
    a lone left border was invisible between two ten-chip grids. The backup
    half of a pair keeps this frame and adds the pair rule's gold edge and
