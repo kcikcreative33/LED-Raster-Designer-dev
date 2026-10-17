@@ -18,6 +18,10 @@ Data
 - Remove a card or processor: every port cable on it, and the snakes that
   lived only on it.
 - Remove a breakout box: its port cables and its fiber / copper runs.
+- Delete a screen (alone, with a selection, with its group or with its
+  canvas): the port cables on the sockets it held, as a release does - a
+  socket another screen still claims keeps its cable, the snakes stay
+  (owner, 2026-10-17).
 
 Kept: the screen's own V/H jumper lengths (dataJumpV/H, powerJumpV/H).
 
@@ -775,3 +779,248 @@ def test_removing_a_box_takes_its_port_cables_and_fiber_runs(page):
     assert not srv.get('fiberCables'), srv.get('fiberCables')
     assert '15' not in json.dumps(_raw_card(ids['cardId'], srv).get('cvts') or [])
     assert pg.evaluate("() => (window.app.project.fiberCables || []).length") == 0
+
+
+
+# ── Deleting a screen ─────────────────────────────────────────────────────
+
+# W (four ports) on sockets 1-4 of the H9's card, as in DATA_JS. V (one
+# port) placed on socket 2 on top of W - a shared socket, a hot spare - and
+# X (one port) on socket 5. Port cables on 1, 2, 3, 5 and on 9 (nothing
+# there); a snake on 1-2. opts.group: W and X are one group (routing off,
+# so each cables on its own). opts.canvas: W and X live on a second
+# canvas, V on the first.
+SHARED_JS = r"""async (opts) => {
+    opts = opts || {};
+    const app = window.app, fl = window.__fl, j = fl.j.bind(fl);
+    const scr = (id, name, x, cols, rows) => fl.screen({ id, name, offset_x: x,
+        columns: cols, rows, cabinet_width: 256, cabinet_height: 256 });
+    const W = scr(1, 'W', 0, 8, 4), V = scr(2, 'V', 3000, 2, 2), X = scr(3, 'X', 4000, 2, 2);
+    W.locked = !!opts.locked;
+    const project = { name: 'Delete screen', cableUnit: 'ft', distros: [], layers: [W, V, X] };
+    if (opts.group) {
+        W.group_id = X.group_id = 'g1';
+        project.groups = [{ id: 'g1', name: 'G1', layer_ids: [1, 3], routeDataAsOne: false }];
+    }
+    await fl.open(project);
+    if (opts.canvas) {
+        const p = await j('GET', '/api/project');
+        const second = Object.assign(JSON.parse(JSON.stringify(p.canvases[0])),
+            { id: 'canvas_del', name: 'Second', workspace_x: 6000 });
+        p.canvases.push(second);
+        p.layers.forEach(l => { if (l.name !== 'V') l.canvas_id = 'canvas_del'; });
+        await fl.open(p);
+    }
+    const procs = await j('POST', '/api/processors', { deviceId: 'novastar-h9' });
+    const pid = procs.resolved[procs.resolved.length - 1].id;
+    let st = await j('PUT', `/api/processors/${pid}/slots/0`, { deviceId: opts.card });
+    const cardId = st.resolved.find(p => p.id === pid).slots[0].card.id;
+    await j('PUT', `/api/processors/${pid}/cards/${cardId}`, { portCables:
+        { 1: { ft: 25 }, 2: { ft: 50 }, 3: { ft: 75 }, 5: { ft: 40 }, 9: { ft: 99 } } });
+    st = await j('POST', '/api/snakes', { ft: 150, members: [
+        { kind: 'card', id: cardId, socket: 1 }, { kind: 'card', id: cardId, socket: 2 }] });
+    app._applyProcessorState(st);
+    const id = (n) => String(fl.layer(n).id);
+    const ask = async (url, body) => {
+        let refused = null;
+        await app._assignmentRequest(url, 'POST', body, (d) => { refused = d; return true; }, 'Place');
+        if (refused) throw new Error(url + ' refused: ' + JSON.stringify(refused));
+    };
+    const w = fl.layer('W');
+    w.locked = false;
+    await ask('/api/port-assignments/place-overflow', { layerId: id('W'), cardId });
+    await ask('/api/port-assignments/place',
+              { layerId: id('V'), index: 0, cardId, port: 2, confirm: true });
+    await ask('/api/port-assignments/place', { layerId: id('X'), index: 0, cardId, port: 5 });
+    if (opts.locked) { w.locked = true; await app.updateLayers([w]); }
+    await app.refreshProcessors();
+    app.resetHistory('Initial State');
+    return { pid, cardId, W: fl.layer('W').id, V: fl.layer('V').id, X: fl.layer('X').id };
+}"""
+
+SHARED_ALL = [1, 2, 3, 5, 9]
+
+
+def _shared(pg, **opts):
+    ids = pg.evaluate(SHARED_JS, dict({'card': CARD}, **opts))
+    card = ids['cardId']
+    assert _pins() == sorted([(card, 1), (card, 2), (card, 2), (card, 3), (card, 4),
+                              (card, 5)]), _pins()
+    assert _cables(card) == SHARED_ALL
+    return ids
+
+
+def _client_cables(pg, card_id):
+    return pg.evaluate("""(cid) => {
+        for (const p of window.app.project.processors || []) for (const s of p.slots || [])
+            if (s.card && s.card.id === cid) return Object.keys(s.card.portCables || {}).map(Number)
+                .sort((a, b) => a - b);
+        return null; }""", card_id)
+
+
+def _top_action(pg, action):
+    pg.wait_for_function(
+        "(a) => { const h = window.app.history[window.app.historyIndex]; return !!h && h.action === a; }",
+        arg=action)
+
+
+def _assert_kept_after_delete(card, srv, expect):
+    assert _cables(card, srv) == expect, _cables(card, srv)
+    assert [s['ft'] for s in srv.get('snakes') or []] == [150], 'the snake is the socket\'s loom'
+    assert sorted(m['socket'] for m in srv['snakes'][0]['members']) == [1, 2]
+
+
+def _undo_restores(pg, ids, layer_names):
+    card = ids['cardId']
+    pg.evaluate("() => window.app.undo()")
+    srv = _wait_server(pg, lambda p: _cables(card, p) == SHARED_ALL
+                       and all(_srv_layer(n, p) for n in layer_names))
+    assert _cables(card, srv) == SHARED_ALL
+    assert all(_srv_layer(n, srv) for n in layer_names)
+    assert _pins(srv) == sorted([(card, 1), (card, 2), (card, 2), (card, 3), (card, 4),
+                                 (card, 5)]), _pins(srv)
+    pg.wait_for_function("(cid) => { for (const p of window.app.project.processors || [])"
+                         " for (const s of p.slots || []) if (s.card && s.card.id === cid)"
+                         " return Object.keys(s.card.portCables || {}).length === 5;"
+                         " return false; }", arg=card)
+    assert _client_cables(pg, card) == SHARED_ALL
+
+
+def test_deleting_a_screen_forgets_the_port_cables_on_its_sockets(page):
+    """Delete W (the Delete key's path): the cables on sockets only W held
+    (1, 3) go - on the server and in the browser's tree. X's socket 5 and
+    the empty socket 9 keep theirs, and the snake on 1-2 keeps its 150'."""
+    pg = page
+    ids = _shared(pg)
+    card = ids['cardId']
+    pg.evaluate("""(id) => { const app = window.app, W = window.__fl.layer('W');
+        app.selectLayer(W); app.selectedLayerIds = new Set([id]); app.deleteCurrentLayer(); }""",
+                ids['W'])
+    _top_action(pg, 'Delete Layer')
+    srv = _wait_server(pg, lambda p: _srv_layer('W', p) is None and 1 not in _cables(card, p))
+    assert _srv_layer('W', srv) is None
+    _assert_kept_after_delete(card, srv, [2, 5, 9])
+    assert _client_cables(pg, card) == [2, 5, 9]
+    assert _pins(srv) == [(card, 2), (card, 5)]
+
+
+def test_a_socket_another_screen_still_claims_keeps_its_cable(page):
+    """Socket 2 is W's and V's (V placed on top of W). Deleting W (the
+    menu's Delete) leaves V on it, so its 50' stays; deleting V after it
+    lets socket 2 go, and the 50' goes then."""
+    pg = page
+    ids = _shared(pg)
+    card = ids['cardId']
+    pg.evaluate("(id) => window.app.deleteLayer(id)", ids['W'])
+    _top_action(pg, 'Delete Layer')
+    srv = _wait_server(pg, lambda p: _srv_layer('W', p) is None and 1 not in _cables(card, p))
+    _assert_kept_after_delete(card, srv, [2, 5, 9])
+    assert (card, 2) in _pins(srv)
+    steps = pg.evaluate("() => window.app.historyIndex")
+    pg.evaluate("(id) => window.app.deleteLayer(id)", ids['V'])
+    pg.wait_for_function("(n) => window.app.historyIndex > n", arg=steps)
+    srv = _wait_server(pg, lambda p: _srv_layer('V', p) is None and 2 not in _cables(card, p))
+    _assert_kept_after_delete(card, srv, [5, 9])
+    assert _client_cables(pg, card) == [5, 9]
+
+
+def test_undoing_a_screen_delete_brings_back_the_screen_and_its_cables(page):
+    """Delete W, then Ctrl+Z: W, its pins and the cables on 1 and 3 all
+    come back - the server's copy and the browser's."""
+    pg = page
+    ids = _shared(pg)
+    card = ids['cardId']
+    pg.evaluate("(id) => window.app.deleteLayer(id)", ids['W'])
+    _top_action(pg, 'Delete Layer')
+    srv = _wait_server(pg, lambda p: _srv_layer('W', p) is None and 1 not in _cables(card, p))
+    assert _cables(card, srv) == [2, 5, 9], 'the delete should have taken 1 and 3 first'
+    _undo_restores(pg, ids, ['W', 'V', 'X'])
+
+
+def test_a_multi_select_delete_forgets_every_deleted_screens_cables(page):
+    """W and X selected and deleted together: 1, 3 and 5 go; V's shared
+    socket 2 and the empty 9 stay. Undo brings both screens and the cables
+    back."""
+    pg = page
+    ids = _shared(pg)
+    card = ids['cardId']
+    pg.evaluate("""([w, x]) => { const app = window.app;
+        app.selectLayer(window.__fl.layer('W'));
+        app.selectedLayerIds = new Set([w, x]); app.deleteCurrentLayer(); }""",
+                [ids['W'], ids['X']])
+    _top_action(pg, 'Delete Layer')
+    srv = _wait_server(pg, lambda p: _srv_layer('X', p) is None and 5 not in _cables(card, p))
+    assert _srv_layer('W', srv) is None and _srv_layer('X', srv) is None
+    _assert_kept_after_delete(card, srv, [2, 9])
+    assert _client_cables(pg, card) == [2, 9]
+    _undo_restores(pg, ids, ['W', 'V', 'X'])
+
+
+def test_deleting_a_group_forgets_its_members_cables(page):
+    """W and X are one group; Delete Group takes both, and 1, 3 and 5 go
+    with them; socket 2 (V still on it) and 9 stay. Undo brings the group
+    and the cables back."""
+    pg = page
+    ids = _shared(pg, group=True)
+    card = ids['cardId']
+    assert pg.evaluate("() => window.app.deleteGroup('g1')") is True
+    _top_action(pg, 'Delete Group')
+    srv = _wait_server(pg, lambda p: _srv_layer('W', p) is None and 5 not in _cables(card, p))
+    assert not srv.get('groups'), srv.get('groups')
+    _assert_kept_after_delete(card, srv, [2, 9])
+    assert _client_cables(pg, card) == [2, 9]
+    assert 'release_screens_ports' not in srv, 'the marker is never stored'
+    # the resolved tree the pull sheet and the binder read catches up
+    pg.wait_for_function("() => window.app._processorsRaw"
+                         " === JSON.stringify(window.app.project.processors || [])")
+    _undo_restores(pg, ids, ['W', 'V', 'X'])
+    assert [g['id'] for g in _server().get('groups') or []] == ['g1']
+
+
+def test_deleting_a_canvas_forgets_its_screens_cables(page):
+    """W and X live on a second canvas; deleting it takes them, and 1, 3
+    and 5 go; V (on the first canvas) keeps socket 2's cable. Undo brings
+    the canvas, the screens and the cables back."""
+    pg = page
+    ids = _shared(pg, canvas=True)
+    card = ids['cardId']
+    pg.evaluate("() => window.app.deleteCanvas('canvas_del')")
+    _top_action(pg, 'Delete Canvas')
+    srv = _wait_server(pg, lambda p: _srv_layer('W', p) is None and 5 not in _cables(card, p))
+    assert [c['id'] for c in srv['canvases']] != [] and 'canvas_del' not in [c['id'] for c in srv['canvases']]
+    _assert_kept_after_delete(card, srv, [2, 9])
+    assert _client_cables(pg, card) == [2, 9]
+    _undo_restores(pg, ids, ['W', 'V', 'X'])
+
+
+def test_a_locked_screen_is_not_deleted_and_keeps_its_cables(page):
+    """W locked: Delete is refused (and named), so every cable stays."""
+    pg = page
+    ids = _shared(pg, locked=True)
+    card = ids['cardId']
+    pg.evaluate("(id) => window.app.deleteLayer(id)", ids['W'])
+    pg.evaluate("""(id) => { const app = window.app; app.selectLayer(window.__fl.layer('W'));
+        app.selectedLayerIds = new Set([id]); app.deleteCurrentLayer(); }""", ids['W'])
+    _settle(pg)
+    assert _srv_layer('W') is not None
+    assert _cables(card) == SHARED_ALL
+    assert pg.evaluate("() => window.app.history[window.app.historyIndex].action") == 'Initial State'
+
+
+def test_opening_a_file_whose_pins_name_a_gone_screen_keeps_every_cable(page):
+    """A hand-edited file still holds W's pins but not W. Opening it drops
+    the dead pins (as it always has) and forgets no cable: the load funnel
+    changes nothing it carries."""
+    pg = page
+    ids = _shared(pg)
+    card = ids['cardId']
+    pg.evaluate("""async () => {
+        const p = await window.__fl.j('GET', '/api/project');
+        p.layers = p.layers.filter(l => l.name !== 'W');
+        await window.__fl.open(p);
+    }""")
+    _settle(pg)
+    srv = _server()
+    assert _srv_layer('W', srv) is None
+    assert (card, 1) not in _pins(srv), 'the dead pins go on load, as before'
+    assert _cables(card, srv) == SHARED_ALL

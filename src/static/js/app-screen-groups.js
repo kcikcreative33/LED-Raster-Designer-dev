@@ -500,7 +500,12 @@ class _ScreenGroups {
     //      project a newer commit already adopted.
     // `_groupCommitDepth` is the flag the path sanitiser reads so it cannot
     // prune wiring out of a project that is mid-commit.
-    _commitGroupChange(actionLabel) {
+    // `releaseScreensPorts` (Delete Group): the screens this commit takes out
+    // forget the port cables on the sockets they held, as a released port
+    // does (owner, 2026-10-17). A request marker the server pops - the
+    // restore funnel prunes the gone screens' pins and forgets on it alone,
+    // so undo and a file load, which never send it, change nothing.
+    _commitGroupChange(actionLabel, { releaseScreensPorts = false } = {}) {
         const run = async () => {
             const token = (this._groupCommitSeq = (this._groupCommitSeq || 0) + 1);
             this._groupCommitDepth = (this._groupCommitDepth || 0) + 1;
@@ -509,7 +514,8 @@ class _ScreenGroups {
                 const res = await fetch('/api/project', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(this.project),
+                    body: JSON.stringify(releaseScreensPorts
+                        ? { ...this.project, release_screens_ports: true } : this.project),
                 });
                 repaired = await res.json();
             } catch (err) {
@@ -848,7 +854,14 @@ class _ScreenGroups {
         this.selectedLayerIds = new Set(promoted ? [promoted.id] : []);
         this.lastSelectedLayerId = promoted ? promoted.id : null;
         this.selectionAnchorLayerId = this.lastSelectedLayerId;
-        await this._commitGroupChange('Delete Group');
+        await this._commitGroupChange('Delete Group', { releaseScreensPorts: true });
+        // The adopted tree may have lost the members' port cables: the pull
+        // sheet and the binder read the resolved copy, so re-resolve when it
+        // changed - the compare updateUI makes.
+        if (typeof this.refreshProcessors === 'function' && this.project
+                && JSON.stringify(this.project.processors || []) !== this._processorsRaw) {
+            this.refreshProcessors();
+        }
         return true;
     }
 
