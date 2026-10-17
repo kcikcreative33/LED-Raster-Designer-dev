@@ -146,6 +146,14 @@ because of it.
   rest - with "Tessera" dropped from the tray, pickers, binder, pull
   sheet and labels. Pull sheet edits made under the old names still
   apply.
+- FIX: The binder's Breakout boxes table groups each box input (X1 and
+  X2 on an XD, OPT1 on a CVT4K-S, OPT 1 on a CVT10, as each maker prints
+  them) in an outline with its strands, in place of a port count. The
+  strand map names the box ports each strand feeds, and the data wiring
+  sheets show each box's input strands under its sockets.
+- FIX: Processors that hold no cards - Brompton, HELIOS, MX40 Pro and
+  the rest - are called processors throughout, where the binder and the
+  tray called them cards. H series, MX2000 and MX6000 keep their cards.
 - FIX: Multi numbers on the Power tab no longer shift when a screen is
   added to a shared distro, removed or reordered. A removed screen leaves
   its gap for the next one, and only Reset offsets in the Balance dialog
