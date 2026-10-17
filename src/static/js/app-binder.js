@@ -5487,7 +5487,7 @@ class _Binder {
     // prints, card.trunkTitles; an SQ200's slot, "OUT 1", for the QD-S IN
     // link it feeds), CABLE (its kind in brackets the first time this table
     // names it), the strands AT THE PROCESSOR, then the BREAKOUT it plugs
-    // into - its input on its box, "X1 on Tessera XD A" (Matt, 2026-10-06:
+    // into - its input on its box, "X1 on XD A" (Matt, 2026-10-06:
     // "that needs to read X1 on whatever XD"; "call it breakout") - and the
     // strands AT THE BREAKOUT, each end's strands beside the thing they plug
     // into. A link's strands are stored in the order they plug in at the

@@ -1315,7 +1315,7 @@ class _HardwareDock {
         const cardOwner = { kind: 'card', id: card.id, procId: proc.id,
                             cardId: card.id, rec: card };
         // The folded card's second glance: the boxes hanging off it, by
-        // model - "4 × Tessera XD" (owner, 2026-09-26: "the tray when
+        // model - "4 × XD" (owner, 2026-09-26: "the tray when
         // minimized it shows how many boxes are connected too"). Open, the
         // strips below already show them, so the CSS draws it folded only.
         const boxCount = this._dockBoxCountText(cvts);
@@ -1596,7 +1596,7 @@ class _HardwareDock {
         }
     }
 
-    // "4 × Tessera XD", or "2 × CVT10 · 1 × CVT4K-S" on a mixed card, in
+    // "4 × XD", or "2 × CVT10 · 1 × CVT4K-S" on a mixed card, in
     // the order the card lists them; '' with no boxes.
     _dockBoxCountText(cvts) {
         const byModel = new Map();
@@ -1611,8 +1611,7 @@ class _HardwareDock {
     // What a box is called where it is named in running text - its hand
     // name, else its resolved title (trunk letter included) - and the
     // same with the model taken off the front, for a header that already
-    // prints the model: "Tessera XD  A ↔ B", never "Tessera XD  Tessera
-    // XD A ↔ Tessera XD B".
+    // prints the model: "XD  A ↔ B", never "XD  XD A ↔ XD B".
     _dockBoxLabel(cvt, bare) {
         if (cvt.name) return cvt.name;
         const title = cvt.displayTitle || cvt.deviceName || 'box';
@@ -1651,9 +1650,9 @@ class _HardwareDock {
         // loop's far box says what it is on its row ("· loop end"), and
         // only a copy box still wears a tag.
         const tag = cvt.duplicateOf ? ' (copy)' : '';
-        // Four boxes all reading "Tessera XD" are four sections nobody
+        // Four boxes all reading "XD" are four sections nobody
         // can tell apart, so an unnamed box on a trunked card wears its
-        // trunk letter - "Tessera XD A" - the letters the pairing rule
+        // trunk letter - "XD A" - the letters the pairing rule
         // itself is written in ("A backs up to B"). A hand-named box is
         // already told apart by its name. The name comes RESOLVED
         // (displayTitle) since every box numbers its own sockets from 1
@@ -1686,7 +1685,7 @@ class _HardwareDock {
                     text: `${boxCount.taken}/${boxCount.of}` }
                 : null);
         // The box's name edits inline; unnamed, the placeholder speaks
-        // the RESOLVED title (trunk letter included), so "Tessera XD A"
+        // the RESOLVED title (trunk letter included), so "XD A"
         // still reads on the header the server's refusals name.
         const boxOwner = { kind: 'cvt', id: cvt.id, procId: proc.id,
                            cardId: card.id, rec: cvt };
@@ -1741,7 +1740,7 @@ class _HardwareDock {
     }
 
     // A loop pair as ONE strip (owner, 2026-09-25, "option 2"). The header
-    // names both boxes - "Tessera XD  ISR A ↔ ISR B" - with a small gold
+    // names both boxes - "XD  ISR A ↔ ISR B" - with a small gold
     // "loop" tag in the redundancy pill's family and the pair's count, so
     // folded it still says both are there (the far box used to vanish
     // under the near one's fold). Open, two labelled rows of chips: the
@@ -1840,7 +1839,7 @@ class _HardwareDock {
 
     // The trunk letter lives on the resolved box now (displayTitle, from
     // resolve_card): the server's refusals name boxes too, and two spellings
-    // of "Tessera XD A" would drift. Nothing here letters anything.
+    // of "XD A" would drift. Nothing here letters anything.
 
     // `boxTitle` names the breakout box a grid belongs to, where it belongs
     // to one - the disambiguator now that every box numbers its own sockets

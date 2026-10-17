@@ -100,7 +100,7 @@ PLATFORM_LABELS = {
     'novastar-armor': 'NovaStar (Legacy)',
     'novastar-coex-1g': 'NovaStar COEX A10s/A8s (1G)',
     'novastar-5g': 'NovaStar COEX CX40 (5G)',
-    'brompton': 'Brompton Tessera',
+    'brompton': 'Brompton',
     'megapixel-1g': 'Megapixel HELIOS (1G)',
     'megapixel-2.5g': 'Megapixel HELIOS (2.5G)',
 }
@@ -115,7 +115,7 @@ PLATFORM_FAMILIES = {
                        'novastar-h'},
     'novastar-coex-1g': {'novastar-mx'},
     'novastar-5g': {'novastar-cx'},
-    # ASSUMPTION (pending user confirmation): every Tessera is one family,
+    # ASSUMPTION (pending user confirmation): every Brompton unit is one family,
     # so any Brompton device drives a screen set to Brompton.
     'brompton': {'brompton'},
     # ASSUMPTION (pending user confirmation): both Megapixel settings accept
@@ -1287,7 +1287,7 @@ def link_cap_refusal(processors, screens_before, state_before,
 # already over is left alone and flagged (resolve's `canvas`).
 
 def _proc_title(proc, device):
-    """"Tessera SX40 S1": the model, then the name typed on the unit."""
+    """"SX40 S1": the model, then the name typed on the unit."""
     model = (device or {}).get('name') or proc.get('deviceId') or 'Processor'
     name = (proc.get('name') or '').strip()
     return f'{model} {name}' if name and name != model else model

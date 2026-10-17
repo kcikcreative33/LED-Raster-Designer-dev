@@ -1948,7 +1948,7 @@ def test_renaming_either_end_round_trips_through_undo(panel_page):
 
 # ── 9. The generic device is a breakout box ───────────────────────────────
 #
-# CVT is NovaStar's name for THEIR breakout box, the way Tessera XD is
+# CVT is NovaStar's name for THEIR breakout box, the way XD is
 # Brompton's. Actual devices keep their model names; every generic surface -
 # the add control, helper text, error messages - says breakout box, and the
 # shared trunk messages name no vendor's silkscreen ("OPT" is NovaStar's).
@@ -2221,7 +2221,7 @@ def test_brompton_boxes_pair_adjacent_and_the_pairing_is_enforced(client):
         assert ports[main + 10]['backsUp']['localPort'] == local, \
             ports[main + 10]
     assert [ports[n]['backedBy']['boxTitle'] for n in (1, 21)] == \
-        ['Tessera XD B', 'Tessera XD D']
+        ['XD B', 'XD D']
     assert not any(ports[n].get('backedBy') for n in range(11, 21)), (
         'a backing socket was given a backup of its own')
     # The four faces as drawn: every box is 1-10 on its own silkscreen.
@@ -4972,7 +4972,7 @@ def test_a_box_only_hangs_off_its_own_vendors_trunks():
     assert not ok, 'a Brompton box went onto a NovaStar card'
     assert 'NovaStar' in why and 'Brompton' in why, why
     # And the rule the server already advised by stays advising by it.
-    assert 'Tessera XD' not in str(
+    assert 'XD' not in str(
         catalog._fills_the_card(catalog.get_device(
             'novastar-card-h-4xfiber'), 32))
 

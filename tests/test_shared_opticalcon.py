@@ -709,10 +709,10 @@ def test_the_binder_prints_each_links_strands_on_a_shared_quad(page):
         ['SC2 · OPT 4', 'no fiber picked', '', f"OPT 2 on {t['rb']}", ''],
     ], out['h5']
     assert out['sx'][:3] == [
-        ['trunk A', 'QUAD 3 (opticalCON QUAD)', '1 Blue · 2 Orange', 'X1 on Tessera XD A',
+        ['trunk A', 'QUAD 3 (opticalCON QUAD)', '1 Blue · 2 Orange', 'X1 on XD A',
          '1 Blue · 2 Orange · crosses inside'],
-        ['trunk B', 'QUAD 3', '3 Green · 4 Brown', 'X1 on Tessera XD B', '3 Green · 4 Brown · crosses inside'],
-        ['trunk C', 'no fiber picked', '', 'X1 on Tessera XD C', ''],
+        ['trunk B', 'QUAD 3', '3 Green · 4 Brown', 'X1 on XD B', '3 Green · 4 Brown · crosses inside'],
+        ['trunk C', 'no fiber picked', '', 'X1 on XD C', ''],
     ], out['sx']
     maps = {m['title']: m['rows'] for m in out['maps']}
     assert maps["Strand map · QUAD 1 · opticalCON QUAD · 500'"] == [
@@ -722,8 +722,8 @@ def test_the_binder_prints_each_links_strands_on_a_shared_quad(page):
         ['1 Blue', f"{t['ra']} · OPT 1"], ['2 Orange', f"{t['ra']} · OPT 2"],
         ['3 Green', f"{t['rb']} · OPT 1"], ['4 Brown', 'spare']], maps
     assert [m['rows'] for m in out['sxMaps']] == [[
-        ['1 Blue', 'Tessera XD A · X1'], ['2 Orange', 'Tessera XD A · X1'],
-        ['3 Green', 'Tessera XD B · X1'], ['4 Brown', 'Tessera XD B · X1']]], out['sxMaps']
+        ['1 Blue', 'XD A · X1'], ['2 Orange', 'XD A · X1'],
+        ['3 Green', 'XD B · X1'], ['4 Brown', 'XD B · X1']]], out['sxMaps']
     assert ids['errors'] == []
 
 

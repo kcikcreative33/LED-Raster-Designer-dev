@@ -119,7 +119,8 @@ def test_only_the_cvt4k_s_documents_one_input():
     assert catalog.box_trunks_in({}, box) == 2
     assert catalog.box_trunks_in({'inputs': True}, box) == 2
     # a stored 1 on a box without the option changes nothing
-    xd = catalog.get_device('brompton-tessera-xd')
+    xd = catalog.get_device('brompton-xd')
+    assert xd, 'the XD is in the catalog'
     assert catalog.box_trunks_in({'inputs': 1}, xd) == catalog.trunks_in(xd)
 
 

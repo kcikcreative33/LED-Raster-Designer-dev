@@ -611,7 +611,7 @@
     {
       "id": "brompton-sx40",
       "vendor": "Brompton",
-      "name": "Tessera SX40",
+      "name": "SX40",
       "kind": "processor",
       "form": "all-in-one",
       "family": "brompton",
@@ -629,7 +629,7 @@
     {
       "id": "brompton-s8",
       "vendor": "Brompton",
-      "name": "Tessera S8",
+      "name": "S8",
       "kind": "processor",
       "form": "all-in-one",
       "family": "brompton",
@@ -641,7 +641,7 @@
     {
       "id": "brompton-s4",
       "vendor": "Brompton",
-      "name": "Tessera S4",
+      "name": "S4",
       "kind": "processor",
       "form": "all-in-one",
       "family": "brompton",
@@ -652,7 +652,7 @@
     {
       "id": "brompton-m2",
       "vendor": "Brompton",
-      "name": "Tessera M2",
+      "name": "M2",
       "kind": "processor",
       "form": "all-in-one",
       "family": "brompton",
@@ -663,7 +663,7 @@
     {
       "id": "brompton-t1",
       "vendor": "Brompton",
-      "name": "Tessera T1",
+      "name": "T1",
       "kind": "processor",
       "form": "all-in-one",
       "family": "brompton",
@@ -675,7 +675,7 @@
     {
       "id": "brompton-sq200",
       "vendor": "Brompton",
-      "name": "Tessera SQ200",
+      "name": "SQ200",
       "kind": "processor",
       "form": "chassis",
       "family": "brompton",
@@ -690,7 +690,7 @@
     {
       "id": "brompton-card-qd-s",
       "vendor": "Brompton",
-      "name": "Tessera QD-S",
+      "name": "QD-S",
       "kind": "card",
       "family": "brompton",
       "unitWord": "QD",
@@ -712,7 +712,7 @@
     {
       "id": "brompton-xd",
       "vendor": "Brompton",
-      "name": "Tessera XD",
+      "name": "XD",
       "kind": "cvt",
       "family": "brompton",
       "capAtTrunk": true,
@@ -726,7 +726,7 @@
     {
       "id": "brompton-xd-s",
       "vendor": "Brompton",
-      "name": "Tessera XD-S",
+      "name": "XD-S",
       "kind": "cvt",
       "family": "brompton",
       "capAtTrunk": true,
@@ -738,7 +738,7 @@
     {
       "id": "brompton-xd-t",
       "vendor": "Brompton",
-      "name": "Tessera XD-T",
+      "name": "XD-T",
       "kind": "cvt",
       "family": "brompton",
       "capAtTrunk": true,
@@ -750,7 +750,7 @@
     {
       "id": "brompton-qd-s",
       "vendor": "Brompton",
-      "name": "Tessera QD-S",
+      "name": "QD-S",
       "kind": "cvt",
       "family": "brompton",
       "legacy": true,

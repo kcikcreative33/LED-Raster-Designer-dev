@@ -4,7 +4,7 @@ Signal panel. Thin controllers over processor_catalog, which owns every rule
 about port counts and labels. ("CVT" in identifiers and routes is the stored
 key and the API surface, kept stable so saved projects keep opening; the
 GENERIC device is a breakout box - CVT is one vendor's name for theirs, the
-same way Tessera XD is another's.)
+same way XD is another's.)
 
 The tree is project state, so it lives on current_project['processors'] and
 rides the existing whole-project POST / PUT with no allow-list to fall through.
@@ -1036,7 +1036,7 @@ def delete_cvt(processor_id, cvt_id):
 
 
 def _box_removed_note(box_title, dropped):
-    """'Removed box Tessera XD B - 3 ports of LEFT are unplaced again':
+    """'Removed box XD B - 3 ports of LEFT are unplaced again':
     one clause per screen, in the order their pins came off, each screen
     called by the name on its layer."""
     names = {str(l.get('id')): (l.get('name') or f'Screen {l.get("id")}')
@@ -1385,7 +1385,7 @@ def set_fiber_link(processor_id, cvt_id, key):
 
 def _set_copper_link(entry, key, data):
     """A link on copper instead of fiber: {copper: 'Cat6A', ft?}. Only on a
-    box whose catalog entry takes copper on its links (the Tessera XD's
+    box whose catalog entry takes copper on its links (the XD's
     etherCON beside each opticalCON DUO); the kind is one of the 10G
     kinds (COPPER_LINK_KINDS). A length past the kind's maximum is NOT
     refused - the row and the binder say so - because the run is the
@@ -1400,7 +1400,7 @@ def _set_copper_link(entry, key, data):
     if not res.get('copperLinks'):
         return jsonify({'error': (
             f'{res.get("deviceName") or title} takes fiber only on its links '
-            f'- copper is offered on a Tessera XD.')}), 400
+            f'- copper is offered on an XD.')}), 400
     kind = data.get('copper')
     if catalog.copper_link_max_ft(kind) is None:
         kinds = ', '.join(k for k, _ft in catalog.COPPER_LINK_KINDS)

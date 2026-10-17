@@ -321,7 +321,7 @@ def canvas_limit_text(spec, ull=False):
 
 def canvas_fit(device, width, height, ull=False, title=None, present=False):
     """None where a span of width x height px fits the device's canvas, else
-    the sentence that refuses it: "Tessera SX40 S1 can't take this: its
+    the sentence that refuses it: "SX40 S1 can't take this: its
     screens would span 4352 × 2160 px. An SX40's canvas is ...". `present`
     words it for a show already past the canvas ("its screens span").
     `ull` is the processor's Ultra Low Latency (any screen it drives)."""
@@ -1795,7 +1795,7 @@ def fiber_link_keys(trunks, bound):
 
 def fiber_link_title(key, cvt_device=None):
     """A link by the box's own port name (2026-09-25: "call novastar Opt
-    1,2,3,4"): 'p1' -> 'X1' and 'b1' -> 'X2' on a Tessera XD, 'OPT 1' /
+    1,2,3,4"): 'p1' -> 'X1' and 'b1' -> 'X2' on an XD, 'OPT 1' /
     'OPT 2' on a CVT10, 'OPT 1'-'OPT 4' on a CVT4K-S - the catalog's
     linkPorts. A box that documents none keeps a neutral 'Link 1', 'Link
     2' for its primaries (and 'Backup 1' for a backup link it could only
@@ -1815,7 +1815,7 @@ def fiber_link_title(key, cvt_device=None):
 
 # Copper on a box link (2026-09-25, owner: "anything that does 10Gbps max
 # length is allowed. Cat 6A and under"): offered only on a box whose
-# catalog entry says copperLinks - the Tessera XD, whose X1 and X2 each
+# catalog entry says copperLinks - the XD, whose X1 and X2 each
 # carry an etherCON beside the opticalCON DUO (the XD-S and XD-T are fiber
 # only by their datasheets). Each kind with its 10G maximum in feet:
 # Cat6A 60 m and Cat5e 30 m are Brompton's, Cat6 100 ft is the owner's.
@@ -2004,7 +2004,7 @@ def fiber_box_title(entry):
 
 def box_backup_ports(cvt_device):
     """The backup inputs a box's catalog entry documents - ['X2'] on a
-    Tessera XD, ['OPT 2'] on a CVT10, ['OPT 3', 'OPT 4'] on a CVT4K-S - or
+    XD, ['OPT 2'] on a CVT10, ['OPT 3', 'OPT 4'] on a CVT4K-S - or
     [] where none is documented (the CVT8-5G, every Megapixel box): the
     backup processor feeds such a box's own twin instead. A link-host card
     reads the same field - ['IN 2'] on a QD-S."""
@@ -3320,7 +3320,7 @@ def resolve_card(card, proc):
     # WHAT A MESSAGE CALLS EACH BOX, stated once for every reader. Since the
     # 2026-08-27 ruling every box numbers its own sockets from 1, so a bare
     # number only means something beside its box's name - and four boxes all
-    # reading "Tessera XD" are four sections nobody can tell apart. An
+    # reading "XD" are four sections nobody can tell apart. An
     # unnamed box on a trunked card therefore wears its trunk letter ("A",
     # or "A-B" for one eating two trunks) - the letters the pairing rule
     # itself is written in ("A backs up to B") - while a hand-named box is
@@ -3330,7 +3330,7 @@ def resolve_card(card, proc):
     # A card that is a unit of its own names its boxes by ITS title and the
     # output letter instead of the box's model: the XD-S on output A of the
     # QD-S on OUT 1 is "QD 1 A" (owner, 2026-09-28) - the way an SX40's XD
-    # is "Tessera XD A". A name typed on the box still wins.
+    # is "XD A". A name typed on the box still wins.
     unit = card_unit_title(card, proc)
     for box in cvts:
         letter = ''

@@ -5,7 +5,7 @@ processor - the output by the name the card's face prints ("trunk A" on an
 SX40, "OPT 1" on a NovaStar H card, "QD 1 A" on a QD-S, the SQ200's own
 "OUT 1"), the cable on it (its kind in brackets the first time the table
 names it), the strands in the order they plug in AT THE PROCESSOR, the same
-BREAKOUT it plugs into ("X1 on Tessera XD A") and the strands AT THE
+BREAKOUT it plugs into ("X1 on XD A") and the strands AT THE
 BREAKOUT. A link's strands are stored in the order they plug in at the
 processor:
 
@@ -219,13 +219,13 @@ def test_an_sx40_lists_its_backup_output_by_output(page):
     duo = ids['cables']['duo']['name']
     rows = _rows(pg, ids['sx'])
     assert [r['cells'] for r in rows] == [
-        ['WALL SR · trunk A', 'TAC A (TAC 12 · ST)', '1 Blue · 2 Orange', 'X1 on Tessera XD A', '2 Orange · 1 Blue'],
-        ['WALL SR BU · trunk A', 'TAC B (TAC 12 · ST)', '1 Blue · 2 Orange', 'X2 on Tessera XD A', '2 Orange · 1 Blue'],
-        ['WALL SR · trunk B', 'TAC A', '3 Green · 4 Brown', 'X1 on Tessera XD B', '4 Brown · 3 Green'],
-        ['WALL SR BU · trunk B', "Cat6 150' (Cat6 runs 100 ft max at 10G)", 'copper', 'X2 on Tessera XD B', 'copper'],
-        ['WALL SR · trunk C', f'{duo} (opticalCON DUO)', '1 Blue · 2 Orange', 'X1 on Tessera XD C',
+        ['WALL SR · trunk A', 'TAC A (TAC 12 · ST)', '1 Blue · 2 Orange', 'X1 on XD A', '2 Orange · 1 Blue'],
+        ['WALL SR BU · trunk A', 'TAC B (TAC 12 · ST)', '1 Blue · 2 Orange', 'X2 on XD A', '2 Orange · 1 Blue'],
+        ['WALL SR · trunk B', 'TAC A', '3 Green · 4 Brown', 'X1 on XD B', '4 Brown · 3 Green'],
+        ['WALL SR BU · trunk B', "Cat6 150' (Cat6 runs 100 ft max at 10G)", 'copper', 'X2 on XD B', 'copper'],
+        ['WALL SR · trunk C', f'{duo} (opticalCON DUO)', '1 Blue · 2 Orange', 'X1 on XD C',
          '1 Blue · 2 Orange · crosses inside'],
-        ['WALL SR BU · trunk C', 'no fiber picked', '', 'X2 on Tessera XD C', ''],
+        ['WALL SR BU · trunk C', 'no fiber picked', '', 'X2 on XD C', ''],
         ['trunk D', 'not used', '', '', ''],
     ], rows
     first = rows[0]['parts']
@@ -263,7 +263,7 @@ def test_the_table_is_on_the_mains_page_and_names_both(page):
         }
     }""", ids['sx'])
     main, bu = out['main'], out['bu']
-    conn = 'Fiber connections · WALL SR and WALL SR BU · Tessera SX40'
+    conn = 'Fiber connections · WALL SR and WALL SR BU · SX40'
     assert main.index(conn) == main.index('Breakout boxes') + 1, main
     assert main[main.index(conn) + 1].startswith('Strand map · '), main
     assert not [t for t in bu if t.startswith('Fiber connections')], bu
@@ -392,8 +392,8 @@ def test_the_painted_table_is_titled_headed_and_never_cut(page):
     size = {}
     for t in texts:
         size.setdefault(t['text'], t['size'])
-    titles = ('FIBER CONNECTIONS · WALL SR AND WALL SR BU · TESSERA SX40',
-              'FIBER CONNECTIONS · NOVA · H9', 'FIBER CONNECTIONS · SQ A AND SQ B · TESSERA SQ200')
+    titles = ('FIBER CONNECTIONS · WALL SR AND WALL SR BU · SX40',
+              'FIBER CONNECTIONS · NOVA · H9', 'FIBER CONNECTIONS · SQ A AND SQ B · SQ200')
     for title in titles:
         assert size.get(title) == 25, (title, sorted(t for t in size if 'FIBER' in t))
     heads = ('OUTPUT', 'CABLE', 'AT THE PROCESSOR', 'BREAKOUT', 'AT THE BREAKOUT')
