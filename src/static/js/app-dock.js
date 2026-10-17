@@ -3670,6 +3670,9 @@ class _HardwareDock {
         });
         this._showLockedError(lockedMet);
         if (!jobs.length) return;
+        // The pull-sheet rows as they print now, so an edit on a row this
+        // clear takes away goes with it (_dropPullEditsGoneWith).
+        const pullBefore = this._pullLiveRowKeys();
         jobs.forEach(j =>
             this._wipeSocaProgramming(j.layer, j.soca, j.targets));
         // The wipe deleted the cleared multis' entries under their OLD
@@ -3688,6 +3691,7 @@ class _HardwareDock {
         // The clear renumbers both buckets it touches, so every label
         // on the show can move - same cache drop the setters make.
         this._circuitTailCache = null;
+        this._dropPullEditsGoneWith(pullBefore);
         this.updateLayers([...new Set(jobs.map(j => j.layer))], true,
                           action);
         this._restateNaming();
@@ -3728,6 +3732,7 @@ class _HardwareDock {
             (c.runIds || [c.num]).forEach(id => runIds.push(id));
         });
         const rec = this._powerNaming(layer).socas.get(idx);
+        const pullBefore = this._pullLiveRowKeys();
         if (rec && rec.circuits.length > 1) {
             const r = this._socaReleaseCircuit(layer, idx, circuitNum);
             if (!r) return;
@@ -3739,6 +3744,7 @@ class _HardwareDock {
             }
             this._wipeSplitterManualFor(layer, runIds);
             this._circuitTailCache = null;
+            this._dropPullEditsGoneWith(pullBefore);
             this.updateLayers(r.touched, true, 'Clear Circuit');
             this._restateNaming();
             return;
@@ -3750,14 +3756,17 @@ class _HardwareDock {
         if (layer.powerLabelOverrides) {
             delete layer.powerLabelOverrides[circuitNum];
         }
-        // The cable is programming like the label (2026-09-06).
-        if (layer.powerCircuitCables) {
-            delete layer.powerCircuitCables[circuitNum];
-        }
+        // The cable is programming like the label (2026-09-06). Here the
+        // circuit IS the multi - a one-circuit holder, a direct output's
+        // included - so its home run goes with the feed too (owner,
+        // 2026-10-17): nothing is left on the box to own it, and a later
+        // feed on this index must start blank.
+        this._forgetFeedLengths(layer, idx, [circuitNum]);
         this._wipeSplitterManualFor(layer, runIds);
         this._resegmentSocaStores(
             layer, this._socaClearSplitPoints(layer, [idx]));
         this._circuitTailCache = null;
+        this._dropPullEditsGoneWith(pullBefore);
         this.updateLayers([layer], true, 'Clear Circuit');
         this._restateNaming();
     }

@@ -1394,6 +1394,30 @@ def clear_pin(state, layer_id, index=None):
     return state
 
 
+def taken_by_pins(processors, pins):
+    """{(cardId, socket)} every pin holds, plus each backup socket that
+    carries the return of a pinned main (the backupRoles link
+    _mirror_returns draws) - the sockets with a cable to a screen on them."""
+    primary = {(p['cardId'], p['port']) for p in _clean_pins(pins)}
+    taken = set(primary)
+    for card in cards_in(processors or []):
+        for number, role in (card.get('backupRoles') or {}).items():
+            try:
+                main = (str(role.get('cardId')), int(role.get('port')))
+            except (TypeError, ValueError, AttributeError):
+                continue
+            if main in primary:
+                taken.add((card['cardId'], int(number)))
+    return taken
+
+
+def released_sockets(processors, pins_before, pins_after):
+    """The sockets an edit let go of: taken before it, free after it. A
+    socket another claimant still holds is not released."""
+    return taken_by_pins(processors, pins_before) \
+        - taken_by_pins(processors, pins_after)
+
+
 def prune_orphan_pins(project):
     """Drop every pin whose layer is no longer in the project. In place.
 
