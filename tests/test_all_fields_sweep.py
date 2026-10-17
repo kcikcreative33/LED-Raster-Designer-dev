@@ -199,6 +199,15 @@ SKIP = {
     'route-group-as-one':
         'writes group.routeDataAsOne on the project, not the layer; driven '
         'end-to-end by tests/test_audit_cross_member.py',
+    # The show's cable unit beside the jumper fields (2026-10-17): a
+    # project setting (project.cableUnit through setCableUnit), the same
+    # one the export dialog's Cable lengths selects write.
+    'data-jump-unit':
+        'writes project.cableUnit, not the layer; driven end-to-end by '
+        'tests/test_show_unit_switch.py',
+    'power-jump-unit':
+        'writes project.cableUnit, not the layer; driven end-to-end by '
+        'tests/test_show_unit_switch.py',
 }
 
 ALL_FIELDS = _discover_fields()
