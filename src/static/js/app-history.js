@@ -8,6 +8,11 @@ class _History {
     resetHistory(initialAction = 'Initial State') {
         this.history = [];
         this.historyIndex = -1;
+        // A new project's numbers are what it prints as opened: the commit
+        // in saveState below takes them as the baseline and writes nothing
+        // (app-naming _commitMultiNumbers).
+        this._multiBaseline = null;
+        this._multiHoldsDirty = false;
         this.saveState(initialAction);
         sendClientLog('history_reset', { action: initialAction });
     }
@@ -42,6 +47,17 @@ class _History {
         // this one, or history ends up out of order (and the pending timer
         // would later snapshot a state that already includes this action).
         this._flushPendingSaveState();
+
+        // Multi numbers do not shift (ruling 2026-10-16): whatever this
+        // action would have renumbered is held in the distros' stores
+        // before the entry is taken, so undo, redo and save carry it.
+        if (typeof this._commitMultiNumbers === 'function') {
+            try {
+                this._commitMultiNumbers();
+            } catch (e) {
+                sendClientLog('multi_numbers_commit_failed', { action, error: String(e && e.message || e) });
+            }
+        }
 
         const json = JSON.stringify(this.project, this._snapshotReplacer);
 
@@ -147,6 +163,8 @@ class _History {
             
             this.project = JSON.parse(JSON.stringify(state.project));
             this.dedupeProjectLayers('undo_restore');
+            // The restored entry's numbers are the ones in force now.
+            if (typeof this._resetMultiBaseline === 'function') this._resetMultiBaseline();
             sendClientLog('undo', {
                 action: state.action,
                 historyIndex: this.historyIndex,
@@ -362,6 +380,7 @@ class _History {
             
             this.project = JSON.parse(JSON.stringify(state.project));
             this.dedupeProjectLayers('redo_restore');
+            if (typeof this._resetMultiBaseline === 'function') this._resetMultiBaseline();
             sendClientLog('redo', {
                 action: state.action,
                 historyIndex: this.historyIndex,

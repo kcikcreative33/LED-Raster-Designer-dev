@@ -563,6 +563,13 @@ class _Power {
     // name, distro, number, length and tails under its stepped index.
     // Removal drops slot `at`'s own entries with it.
     _spliceSocaStores(layer, at, delta) {
+        // The held multi numbers follow their multis the same way
+        // (app-naming _rekeyMultiHolds) - they live on the distros.
+        if (typeof this._rekeyMultiHolds === 'function') {
+            this._rekeyMultiHolds(layer, n => (delta > 0
+                ? (n >= at ? n + 1 : n)
+                : (n === at ? null : (n > at ? n - 1 : n))));
+        }
         for (const field of ['powerSocaDistro', 'powerSocaLengths',
                              'powerSocaPhasePos', 'powerSocaPhaseOffset',
                              'powerSocaNames', 'powerSocaNumber']) {
@@ -616,6 +623,9 @@ class _Power {
             const t = newSegs[ni - 1];
             map.set(s.index, { index: ni,
                                same: t.start === s.start && t.end === s.end });
+        }
+        if (typeof this._rekeyMultiHolds === 'function') {
+            this._rekeyMultiHolds(layer, n => (map.has(n) ? map.get(n).index : null));
         }
         for (const field of ['powerSocaDistro', 'powerSocaLengths',
                              'powerSocaPhasePos', 'powerSocaPhaseOffset',
@@ -888,7 +898,11 @@ class _Power {
                 ? shown.slice(end + 1 - cut.start) : null;
             carry = { distro: assign[cut.index],
                       number: Number.isFinite(pinNum) ? pinNum : null,
-                      name: (layer.powerSocaNames || {})[cut.index], pos };
+                      name: (layer.powerSocaNames || {})[cut.index], pos,
+                      // an auto multi's number stays with the remainder,
+                      // which stays on the box (multi numbers do not shift)
+                      shown: (rec && !rec.pinned && rec.distroId === assign[cut.index])
+                          ? rec.number : null };
             if (carry.number != null) {
                 this._materializeSocaBox(carry.distro, carry.number, layer,
                                          cut.index)
@@ -912,6 +926,10 @@ class _Power {
             if (carry.number != null) put('powerSocaNumber', carry.number);
             if (carry.name !== undefined) put('powerSocaNames', carry.name);
             if (carry.pos) put('powerSocaPhasePos', carry.pos);
+            if (carry.number == null && carry.shown != null
+                    && typeof this._holdMultiNumber === 'function') {
+                this._holdMultiNumber(layer, remIdx, carry.distro, carry.shown);
+            }
             this._circuitTailCache = null;
         }
         // Landing on an occupied box is the JOIN: the incumbents' rendered

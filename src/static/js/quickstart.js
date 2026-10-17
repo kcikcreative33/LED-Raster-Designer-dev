@@ -2063,6 +2063,8 @@
         if (a._flushPendingSaveState) a._flushPendingSaveState();
         a.project = JSON.parse(JSON.stringify(saved));
         a.dedupeProjectLayers('tutorial_restore');
+        // The restored world's multi numbers are the ones in force again.
+        try { if (a._resetMultiBaseline) a._resetMultiBaseline(); } catch (e) {}
         var cur = a.currentLayer ? a.project.layers.find(function (l) { return l.id === a.currentLayer.id; }) : null;
         a.currentLayer = cur || a.project.layers[0] || null;
         a.selectedLayerIds = new Set(a.currentLayer ? [a.currentLayer.id] : []);

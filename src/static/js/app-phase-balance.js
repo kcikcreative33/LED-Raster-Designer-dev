@@ -415,7 +415,7 @@ class _PhaseBalance {
   </div>
   <div style="padding:16px 20px; font-size:12px; line-height:1.55;">${body}</div>
   <div style="display:flex; gap:8px; justify-content:flex-end; padding:0 20px 16px;">
-    <button class="btn btn-secondary balance-reset" title="Put every multi back on its natural breaker position">Reset offsets</button>
+    <button class="btn btn-secondary balance-reset" title="Put every multi back on its natural breaker position and number the multis again in screen order">Reset offsets</button>
     <button class="btn btn-secondary balance-close">${r.moves.length ? 'Leave it' : 'Close'}</button>
     ${r.moves.length ? '<button class="btn balance-apply">Apply</button>' : ''}
   </div>
@@ -893,7 +893,8 @@ class _PhaseBalance {
 
     // Drop every multi back to its natural breaker position - show-wide, or
     // only the multis assigned to one distro when `distroId` is given (the
-    // scoped balance dialog's reset).
+    // scoped balance dialog's reset) - and renumber those multis in screen
+    // order, the only thing that moves a multi number once it has one.
     clearPhaseBalance(distroId) {
         const screens = (this.project.layers || []).filter(l => (l.type || 'screen') === 'screen');
         // A locked screen keeps its breaker positions, named when the reset
@@ -913,6 +914,13 @@ class _PhaseBalance {
             });
         }
         this._showLockedError(hold.release());
+        // The reset is also the one gesture that lets the multi numbers move
+        // (ruling 2026-10-16): the held numbers on this distro are cleared
+        // and its multis deal again in screen order, gaps closed. A locked
+        // screen keeps the numbers it prints (_releaseMultiNumbers).
+        if (typeof this._releaseMultiNumbers === 'function') {
+            this._releaseMultiNumbers(distroId || null);
+        }
         this._circuitTailCache = null;
         if (screens.length) this.updateLayers(screens, true, 'Reset Phase Offsets');
         return screens.length;
