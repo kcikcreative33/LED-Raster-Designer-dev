@@ -54,11 +54,25 @@ class _Processors {
         // than the server held: two quick redos left a box's length blank on
         // the page and 250 on the server (2026-09-24). Such a reply is
         // dropped and the tree is read again for the project now showing.
+        // The same goes for a read answered while an undo or redo's restore
+        // PUT is still on its way: the undo swaps the project and asks for
+        // the tree before the PUT is sent, so the server can answer with
+        // the tree being undone, and the restore's reply, matching its
+        // snapshot, adopted nothing over it (CI, 2026-10-18: five cables on
+        // the server, three on the page). Such a read waits for the restore
+        // to land and reads again.
+        const restoring = this._restorePutsInFlight;
+        if (restoring && restoring.size) {
+            return Promise.all([...restoring]).then(() => this.refreshProcessors());
+        }
         const asked = this.project;
+        const restoreSeq = this._restoreSeq || 0;
         return fetch('/api/processors')
             .then(r => r.json())
             .then(data => {
-                if (this.project !== asked) return this.refreshProcessors();
+                if (this.project !== asked || (this._restoreSeq || 0) !== restoreSeq) {
+                    return this.refreshProcessors();
+                }
                 return this._applyProcessorState(data);
             })
             .catch(err => sendClientLog('processor_refresh_failed',

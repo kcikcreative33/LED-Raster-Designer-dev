@@ -662,6 +662,7 @@ export class LEDRasterApp {
     connectWebSocket() {
         this.socket = io();
         this.socket.on('connect', () => {
+            this._socketConnects = (this._socketConnects || 0) + 1;
             document.getElementById('status-message').textContent = 'Connected';
             sendClientLog('socket_connect');
         });
@@ -671,6 +672,20 @@ export class LEDRasterApp {
         });
         this.socket.on('project_data', (data) => {
             console.log('WEBSOCKET project_data received');
+            // The server sends this on every connect. The FIRST connect's copy
+            // usually lands a few ms after loadProject's own read has finished
+            // (measured: every time), so it is the project as it was before
+            // anything the page did since; adopting it threw those edits off
+            // the page (CI, 2026-10-18: a wall seeded right after load read
+            // 0 kg). loadProject already holds that state, so the first copy
+            // is dropped once the load is done. A reconnect's copy still
+            // applies: the server is the truth after a disconnect.
+            const firstConnect = (this._socketConnects || 0) <= 1 && !this._firstProjectDataSeen;
+            this._firstProjectDataSeen = true;
+            if (firstConnect && this._initialLoadComplete) {
+                sendClientLog('socket_project_data_skipped', { reason: 'first_connect_after_load' });
+                return;
+            }
             sendClientLog('socket_project_data', { layers: data.layers ? data.layers.length : 0 });
             
             // Preserve client-side properties when server sends project data
@@ -1002,9 +1017,16 @@ export class LEDRasterApp {
                 // Save initial state for undo/redo
                 this.resetHistory('Initial State');
 
-                // Mark initial load complete, subsequent socket project_data
-                // events are reconnects and should not re-apply preferences.
+                // Mark initial load complete. The first connect's project_data
+                // is dropped after this (see the socket handler); a later one
+                // is a reconnect and does not re-apply preferences.
                 this._initialLoadComplete = true;
+                // The page paints from the loaded project itself. This used
+                // to ride on the first connect's project_data, which landed a
+                // moment later and ran updateUI; that copy is now dropped, and
+                // without this the show's unit words, the project name and
+                // the rest of updateUI stayed as the page shipped.
+                this.updateUI();
 
                 // Default to Fit view on load. Retry while layout settles: on
                 // a slow first paint the canvas wrapper can still be 0-height
