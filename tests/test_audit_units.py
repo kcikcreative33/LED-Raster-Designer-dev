@@ -213,8 +213,29 @@ PICK_UNIT_JS = """async (unit) => {
 }"""
 
 
+# A save the page had queued from before the seed can land after it and put
+# the old project back (seen once in CI: the first test read a 0 kg wall).
+# Seed, let the saves settle, and seed again until the server and the page
+# both hold the screens asked for.
+HELD_JS = """async (specs) => {
+    const app = window.app;
+    await app._layerSavesSettled();
+    await new Promise(r => setTimeout(r, 50));
+    const p = await (await fetch('/api/project')).json();
+    const same = (layers) => layers.length === specs.length && specs.every(s => {
+        const l = layers.find(q => q.name === s.name);
+        return l && l.panel_weight === s.weight && l.weight_unit === s.unit;
+    });
+    return same(p.layers) && same(app.project.layers);
+}"""
+
+
 def _seed(pg, specs, select):
-    return pg.evaluate(SEED_JS, {'specs': specs, 'select': select})
+    for _ in range(4):
+        ids = pg.evaluate(SEED_JS, {'specs': specs, 'select': select})
+        if pg.evaluate(HELD_JS, specs):
+            return ids
+    raise AssertionError('the seeded project did not hold')
 
 
 def _group_total_kg(pg):
