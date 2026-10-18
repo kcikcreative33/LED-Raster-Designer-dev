@@ -1,6 +1,20 @@
 LED RASTER DESIGNER - VERSION HISTORY
 =====================================
 
+v1.5.1 - October 18, 2026
+----------------------------
+
+A small update with two fixes, both about the app keeping what you just
+did. If you're on 1.5.0, this one is worth grabbing.
+
+FIXES
+
+- FIX: Undoing a screen delete, or another change that removed cables,
+  could leave those cable lengths missing in the app even though they
+  were back. Saving right then wrote the show without them.
+- FIX: A change made in the first moment after the app opened could be
+  thrown away when the app finished connecting.
+
 v1.5.0 - October 18, 2026
 ----------------------------
 
