@@ -5827,28 +5827,8 @@ class _Binder {
         // ONCE with both connectors named.
         for (const line of this._bDistroFaceLines(d)) pairs.push(['Outputs', line]);
         if (load) {
-            // The WORST LEG against the per-leg rating (1.5, bug fix 2) -
-            // the leg named where the distro has legs.
-            const leg = load.legs && load.worstLeg
-                ? ` on leg ${this.distroLegLabel(d, load.worstLeg)}` : '';
-            // The limit it is read against (2026-10-18): 80% of the rating
-            // on a US system unless its main is 100% rated - said where it
-            // is not simply the rating - and an accepted overload noted
-            // beside the OVER it does not hide.
-            const rule = this.distroMainLimit(d);
-            const limit = rule.pct < 1
-                ? ` · limit ${+load.limitA.toFixed(1)} A (${this.distroMainLimitNote(rule)})`
-                : (rule.main100 ? ' · 100% rated main' : '');
-            pairs.push(['Load', `${this._bNum(load.amps, 1)} A${leg} · ${this._bNum(load.pct, 0)}% · ${this._bNum(load.watts / 1000, 1)} kW`
-                + limit
-                + (load.over ? ' · OVER' : '')
-                + (load.over && load.overloadAccepted ? ' · overload accepted' : '')]);
-            if (load.legs) {
-                const names = load.legs.names || ['X', 'Y', 'Z'];
-                pairs.push(['Legs', names.map(k =>
-                    `${this.distroLegLabel(d, k)} ${this._bNum(load.legs[k].amps, 1)}`).join(' · ') + ' A']);
-                pairs.push(['Imbalance', `${this._bNum(load.imbalancePct, 1)}%`]);
-            }
+            pairs.push(['Load', this._bDistroLoadText(d, load)]);
+            if (load.legs) pairs.push(['Imbalance', `${this._bNum(load.imbalancePct, 1)}%`]);
         }
         // A multi left on a one-circuit output (a show already in that
         // state, 2026-10-18): the output's load against what it carries.
@@ -5865,6 +5845,47 @@ class _Binder {
         const hw = (book.list.hardware || []).find(h => h.kind === 'distro' && h.id === d.id);
         blocks.push({ lines: this._bPullLines(book, 'Pull list', (hw && hw.rows) || []) });
         return blocks;
+    }
+
+    // THE SERVICE'S LOAD ON ONE LINE (owner, 2026-10-18): every leg's amps,
+    // then on a three-phase service the total three-phase amps, the power,
+    // the limit it is read against and whether it is past it -
+    //   "X 87.1 · Y 81.4 · Z 81.4 A · 3φ 83.4 A · 30.0 kW · limit 80 A
+    //    (80% of 100 A) · OVER on X"
+    // The legs are the roll-up's own phasor figures (getDistroLoads), named
+    // as the distro names them (L1/L2/L3 on an EU system); 120/240 split
+    // phase prints its two legs and no three-phase figure, a single hot its
+    // one figure. The three-phase total is P / (V x 1.73) at the system's
+    // line-to-line voltage - 208 on 120/208, 400 on 230/400 - the formula
+    // rule. The limit is 80% of the rating on a US system unless its main
+    // is 100% rated, said where it is not simply the rating; OVER names
+    // the leg (or legs) past it, and an accepted overload is noted beside
+    // the OVER it does not hide. No percentage: the limit already says how
+    // the busiest leg stands, and the rating has its own line.
+    _bDistroLoadText(d, load) {
+        const parts = [];
+        const names = load.legs ? (load.legs.names || ['X', 'Y', 'Z']) : [];
+        if (names.length) {
+            parts.push(names.map(k => `${this.distroLegLabel(d, k)} ${this._bNum(load.legs[k].amps, 1)}`)
+                .join(' · ') + ' A');
+        } else {
+            parts.push(`${this._bNum(load.amps, 1)} A`);
+        }
+        if (names.length === 3) {
+            const sys = typeof this.distroSystem === 'function' ? this.distroSystem(d) : null;
+            const vll = (sys && sys.vll) || Number(d.voltage) || 0;
+            if (vll > 0) parts.push(`3φ ${this._bNum(load.watts / (vll * 1.73), 1)} A`);
+        }
+        parts.push(`${this._bNum(load.watts / 1000, 1)} kW`);
+        const rule = this.distroMainLimit(d);
+        if (rule.pct < 1) parts.push(`limit ${+load.limitA.toFixed(1)} A (${this.distroMainLimitNote(rule)})`);
+        else if (rule.main100) parts.push('100% rated main');
+        if (load.over) {
+            const past = names.filter(k => load.legs[k].over).map(k => this.distroLegLabel(d, k));
+            parts.push(past.length ? `OVER on ${past.join(', ')}` : 'OVER');
+            if (load.overloadAccepted) parts.push('overload accepted');
+        }
+        return parts.join(' · ');
     }
 
     // A distro's rating as the papers print it: an old-style distro (no

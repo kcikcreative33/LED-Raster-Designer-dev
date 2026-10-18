@@ -541,6 +541,9 @@ def test_the_data_wiring_inputs_sit_beside_the_caption_on_its_row(fiber):
     assert sheet and sheet['wiring'], 'no WALL data wiring sheet'
     half, block, inside = _wiring_block(sheet, 'XD A')
     s = half['scale']
+    # WALL's ports start one to a row, all four rows: on the whole no nearer
+    # the wall's top than its foot, so the boxes stand under it as they did
+    assert [b['side'] for b in half['blocks']] == ['bottom', 'bottom'], half['blocks']
     words = [t['text'] for t in inside]
     cap = next(t for t in inside if t['text'] == block['title'])
     i = words.index('X1')
@@ -648,4 +651,66 @@ def test_the_data_wiring_inputs_print_numbers_where_the_cable_reads_in_numbers(f
                 headers: {'Content-Type': 'application/json'}, body: JSON.stringify({labels: 'colors'})});
             await window.app.refreshProcessors();
         }""", ids['tacA'])
+    assert errors == []
+
+
+def test_a_box_over_the_wall_keeps_its_inputs_on_the_caption_row(fiber):
+    """WALL with only its first two ports placed: both start on the wall's
+    upper rows, so XD A and XD B stand OVER the wall (2026-10-18, "put the
+    breakouts up top"). A box there is the same box turned over - its runs
+    come up into its sockets, so the sockets are at its foot and the caption
+    at its head - and the inputs stay where they were asked for: side by
+    side on the caption's own row, after the caption, outlined and
+    swatched, clear of every socket and every run."""
+    pg, ids, errors = fiber
+    layer = pg.evaluate("() => String(window.app.project.layers[0].id)")
+    move = """async ([layer, index, card]) => {
+        const app = window.app;
+        if (card) await app._assignmentRequest('/api/port-assignments/place-overflow', 'POST',
+                                               {layerId: layer, cardId: card, lastIndex: 9});
+        else await app._assignmentRequest('/api/port-assignments/unpin', 'POST', {layerId: layer, index});
+        await app.refreshProcessors();
+        await app.refreshPortAssignment();
+        app.renderLayers();
+    }"""
+    card = pg.evaluate("(sx) => window.app.project.processors.find(p => p.id === sx).slots[0].card.id", ids['sx'])
+    for index in (3, 2):
+        pg.evaluate(move, [layer, index, None])
+    try:
+        sheet = pg.evaluate(PAGE_JS, ['wiring', 'WALL', True])
+        half, block, inside = _wiring_block(sheet, 'XD A')
+        s = half['scale']
+        m = half['map']
+        assert [b['side'] for b in half['blocks']] == ['top', 'top'], half['blocks']
+        assert block['y'] + block['h'] < m['y'], (block, m)
+        cap = next(t for t in inside if t['text'] == block['title'])
+        top_of_sockets = min(sk['y'] - sk['r'] for sk in block['sockets'])
+        assert cap['y'] < top_of_sockets, ('the caption over the numbers', cap, top_of_sockets)
+        words = [t['text'] for t in inside]
+        i = words.index('X1')
+        assert words[i:i + 6] == ['X1', '2 Orange', '1 Blue', 'X2', '4 Brown', '3 Green'], words
+        for t in inside[i:i + 6]:
+            assert abs(t['y'] - cap['y']) < 0.6, ('an input off the caption row', t, cap)
+            assert t['x'] > cap['x'], (t, cap)
+        groups = block['inputs']
+        assert [g['head'] for g in groups] == ['X1', 'X2'] and all(g['line'] == 0 for g in groups), groups
+        for g in groups:
+            assert g['y'] + g['h'] < top_of_sockets, ('an input outline down among the sockets', g)
+        _clear_of_sockets_and_runs(half, block)
+        assert {round(b['h'], 2) for b in half['blocks']} == {round(BOX_H * s, 2)}, half['blocks']
+        fills = {str(r.get('fill') or '').lower() for r in sheet['rects']
+                 if block['x'] <= r['x'] <= block['x'] + block['w'] and block['y'] < r['y'] < top_of_sockets}
+        assert {'#f28020', '#1f5fa8'} <= fills, fills
+        # every run comes UP into its socket, onto the socket's foot
+        for r in half['runs']:
+            if r['device'] != block['title']:
+                continue
+            sk = next(x for x in block['sockets'] if x['n'] == r['socket'])
+            tail, before = r['points'][-1], r['points'][-2]
+            assert abs(tail[0] - sk['x']) < 0.01 and abs(tail[1] - (sk['y'] + sk['r'])) < 0.01, (r, sk)
+            assert before[1] > tail[1], ('the run comes up into the socket', r)
+    finally:
+        pg.evaluate(move, [layer, None, card])
+    after = pg.evaluate(PAGE_JS, ['wiring', 'WALL', True])
+    assert [b['side'] for b in after['wiring']['halves'][0]['blocks']] == ['bottom', 'bottom']
     assert errors == []

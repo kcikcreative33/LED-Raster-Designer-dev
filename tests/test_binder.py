@@ -2866,7 +2866,8 @@ def test_a_screens_fed_by_legs_are_its_own(page):
     over its own multis, to the tenth - and the two differ (250 W panels
     against 200 W); neither is the service's whole legs. The hardware
     sheet's LEGS row is still the whole service: the engine's walk over
-    both screens, which is what getDistroLoads reports. CENTER, on no
+    both screens, which is what getDistroLoads reports - at the head of
+    its one Load line. CENTER, on no
     distro, still says so."""
     pg, ids = page
     legs = pg.evaluate(LEGS_JS, [ids['distroId'], [ids['a'], ids['b']]])
@@ -2882,7 +2883,8 @@ def test_a_screens_fed_by_legs_are_its_own(page):
     whole = _rounded(legs['whole'])
     assert whole not in (a_want, b_want), (whole, a_want, b_want)
     assert whole == _rounded(legs['all']), legs
-    hw = _kv_values(_render(pg, SHOW, DISTRO), 'Legs')
+    # the service's legs lead its one Load line (2026-10-18)
+    hw = _kv_values(_render(pg, SHOW, DISTRO), 'Load')
     assert len(hw) == 1 and _legs_of(hw[0], SERVICE_LEGS) == whole, (hw, whole)
     assert _kv_values(_render(pg, SHOW, 'CENTER - Power - Front View'), 'Fed by') == ['no distro']
     assert ids['errors'] == []
@@ -3229,7 +3231,7 @@ def test_live_show_b_screens_carry_their_own_legs(page):
         fed = _kv_values(_render(pg, SHOW, title), 'Fed by')
         assert len(fed) == 1 and fed[0].startswith('SR · 400 A 208 V 3φ · this screen on its legs X'), (title, fed)
         assert _legs_of(fed[0], FED_BY_LEGS) == want, (title, fed, want)
-    hw = _kv_values(_render(pg, SHOW, 'Distros - SR, SL'), 'Legs')      # SR's block first (names: SR, SL)
+    hw = _kv_values(_render(pg, SHOW, 'Distros - SR, SL'), 'Load')      # SR's block first (names: SR, SL)
     assert len(hw) == 2 and _legs_of(hw[0], SERVICE_LEGS) == whole == _rounded(legs['all']), (hw, whole)
     assert ids['errors'] == []
 

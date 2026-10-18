@@ -32,18 +32,20 @@ side, top to bottom:
   the WALL    - the same _bMap render, rulers and brackets off. THE WALL'S
                 OWN LABEL DISCS ARE THE ORIGIN - no second tag is drawn on
                 it; the runs leave the very discs the renderer laid down.
-  the BLOCKS  - flat units at the BOTTOM, spread across the width, their
-                sockets in a row and their name inside them, ordered by
-                the mean position of their own runs. A device the ports
+  the BLOCKS  - flat units spread across the width, each OVER or UNDER the
+                wall - on the side its own points stand nearer - as close
+                to it as the lanes allow, their sockets in a row on the
+                wall's side and their name inside them on the far side,
+                ordered by the mean position of their own runs. A device the ports
                 land on ("CVT4K-S SR A · Card 1 · OPT 1-2", or the card
                 itself), a backup its own block; a multi's BREAKOUT, the
                 fan out ("there are no boxes... it is a breakout also
                 known as a fan out"): "SR1 · Multi 208 breakout · 125'".
   the RUNS    - OUT OF THE WALL AND ROUND IT. A run leaves its disc at
                 its own row, crosses to the WALL'S NEAREST EDGE and no
-                further, and travels in the clear space beside and under
-                the wall: down a rail past the wall's edge, along a lane
-                under its foot, and into its socket from there. Where the
+                further, and travels in the clear space round the wall:
+                along a rail past the wall's edge, along a lane by the edge
+                its box stands on, and into its socket from there. Where the
                 socket already stands outside the wall on the side the run
                 leaves by, the rail IS the drop and two segments suffice -
                 the drawing that was approved. Nothing but that one stub
@@ -234,8 +236,15 @@ def _casing_of(out, run):
     return None
 
 
+def _socket_edge(b, sk, s):
+    """Where a run lands on its socket: the socket's top under the wall (the
+    run comes down into it), its foot over the wall (the run comes up)."""
+    return sk['y'] + SOCK * s if b.get('side') == 'top' else sk['y'] - SOCK * s
+
+
 def _check_runs(half, out=None):
-    """Every run leaves its own disc's edge, lands on its socket's top, is
+    """Every run leaves its own disc's edge, lands on its socket's edge on
+    the wall's side (its top under the wall, its foot over it), is
     two segments where two suffice and four where it must go round the
     wall (one where it is already outside and above its socket), and
     prints over no other run: no two horizontals overlap, no two verticals
@@ -252,7 +261,7 @@ def _check_runs(half, out=None):
         assert abs(math.hypot(head[0] - d['x'], head[1] - d['y']) - d['r']) < 0.6, (
             'a run leaves its own disc, at its edge', r, d)
         tail = r['points'][-1]
-        assert abs(tail[0] - sk['x']) < 0.01 and abs(tail[1] - (sk['y'] - SOCK * s)) < 0.01, (
+        assert abs(tail[0] - sk['x']) < 0.01 and abs(tail[1] - _socket_edge(b, sk, s)) < 0.01, (
             'a run lands on its socket', r, sk)
         shape = _segs(r)
         assert 'x' not in shape, ('the drawing has no diagonals', r)
@@ -444,6 +453,28 @@ def _dearer_way_out(half):
     return bad
 
 
+def _strays_round_the_wall(half):
+    """Every run that crosses or goes round the wall to reach a box standing
+    on the side its own disc is already on - the long way the owner saw on a
+    power sheet whose circuits all start on the wall's top row and whose
+    breakouts stood under it: "it makes more sense to put the breakouts up
+    top right?" (2026-10-18). A run to a box over the wall from a disc in the
+    wall's upper half never passes the wall's foot, and the mirror; and no
+    run has any ink inside the wall but its one stub."""
+    m = _wall(half)
+    blocks = {b['title']: b for b in half['blocks']}
+    discs = {d['text']: d for d in half['discs']}
+    bad = list(_through_the_wall(half))
+    for r in half['runs']:
+        b, d = blocks[r['device']], discs[r['from']]
+        upper = d['y'] < m['y'] + m['h'] / 2
+        if b['side'] == 'top' and upper and any(p[1] > m['y'] + m['h'] + 0.5 for p in r['points']):
+            bad.append('%s goes under the wall to a box over it' % r['from'])
+        if b['side'] == 'bottom' and not upper and any(p[1] < m['y'] - 0.5 for p in r['points']):
+            bad.append('%s goes over the wall to a box under it' % r['from'])
+    return bad
+
+
 def _check_off_the_wall(half):
     """The whole of the new rule on one half, so one failure names every
     fault on it."""
@@ -481,29 +512,59 @@ def _crossings_between_devices(runs):
                         out.append((runs[i].get('from'), runs[k].get('from'), round(vx), round(hy)))
     return out
 
-def _check_blocks(half):
-    """The blocks are flat units at the foot, spread across the width, none
-    over the wall or over another, their sockets in a row inside them."""
+def _check_blocks(half, box_h=BOX_H):
+    """The blocks are flat units spread across the width, each over or under
+    the wall - on the side its own points are on - never on the wall or on
+    another, their sockets in a row inside them on the wall's side and the
+    name on the far side of the numbers."""
     s = half['scale']
     m = half['map']
     for b in half['blocks']:
-        assert abs(b['h'] - BOX_H * s) < 0.01, b
+        assert abs(b['h'] - box_h * s) < 0.01, b
         assert not _overlap(b, {'x': m['x'], 'y': m['y'], 'w': m['w'], 'h': m['h']}), (
             'a block never sits over the wall', b, m)
-        # A run comes down into its socket from above, so the unit's name
-        # goes UNDER the row of numbers - on the line above, the run's white
-        # casing ate the letters, and on the printer sheet it took the very
-        # digit that tells SR3 from SR1.
+        assert b['side'] in ('top', 'bottom'), b
+        if b['side'] == 'top':
+            assert b['y'] + b['h'] <= m['y'] + 0.01, ('a block over the wall stands over it', b, m)
+        else:
+            assert b['y'] >= m['y'] + m['h'] - 0.01, ('a block under the wall stands under it', b, m)
+        # A run comes into its socket from the wall's side, so the unit's
+        # name goes on the FAR side of the row of numbers - on the line the
+        # run crosses, its white casing ate the letters, and on the printer
+        # sheet it took the very digit that tells SR3 from SR1.
         assert TITLE_DY > SOCKET_DY + SOCK, (TITLE_DY, SOCKET_DY, SOCK)
         assert NOTE_DY < SOCKET_DY - SOCK, (NOTE_DY, SOCKET_DY, SOCK)
         assert TITLE_DY < BOX_H, (TITLE_DY, BOX_H)
         for sk in b['sockets']:
             assert b['x'] < sk['x'] < b['x'] + b['w'], (sk, b)
-            assert abs(sk['y'] - (b['y'] + SOCKET_DY * s)) < 0.01, (sk, b)
+            want = b['y'] + b['h'] - SOCKET_DY * s if b['side'] == 'top' else b['y'] + SOCKET_DY * s
+            assert abs(sk['y'] - want) < 0.01, (sk, b)
             assert abs(sk['r'] - SOCK * s) < 0.01, sk
+        if b['side'] == 'top':
+            assert b['titleY'] < min(sk['y'] - sk['r'] for sk in b['sockets']), ('the name over the numbers', b)
+        else:
+            assert b['titleY'] > max(sk['y'] + sk['r'] for sk in b['sockets']), ('the name under the numbers', b)
     for i, a in enumerate(half['blocks']):
         for b in half['blocks'][i + 1:]:
             assert not _overlap(a, b), ('two blocks overprint', a, b)
+    for b in half['blocks']:
+        lean = _lean(half, b)
+        if lean is not None and abs(lean) > 0.02 * m['h']:
+            assert b['side'] == ('top' if lean < 0 else 'bottom'), (
+                'a block stands on the side of the wall its own points are on', b['title'], b['side'], lean)
+
+
+def _lean(half, b):
+    """Where a block's own points stand on the wall: the mean, over the
+    discs its runs leave, of (distance to the wall's top - distance to its
+    foot) - negative nearer the top, positive nearer the foot, None for a
+    block no run on the sheet reaches."""
+    m = half['map']
+    discs = {d['text']: d for d in half['discs']}
+    ys = [discs[r['from']]['y'] for r in half['runs'] if r['device'] == b['title']]
+    if not ys:
+        return None
+    return sum((y - m['y']) - (m['y'] + m['h'] - y) for y in ys) / len(ys)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -775,8 +836,10 @@ def test_each_side_is_a_sheet_behind_its_own_map_and_runs_its_port_and_its_circu
     assert _c(run['colour']) == GREEN and run['dash'] == []
     assert abs(run['width'] - RUN_W * sig['scale']) < 0.01
     assert abs(_casing_of(dw, run)['width'] - (RUN_W + CASE_EXTRA) * sig['scale']) < 0.05
-    # the blocks stand under the wall, at the foot of the sheet
-    assert card['y'] > m['y'] + m['h'], (card, m)
+    # SR-1 starts on the wall's top row, so its card stands OVER the wall,
+    # the lanes' gap above the wall's head
+    assert card['side'] == 'top' and card['y'] + card['h'] < m['y'], (card, m)
+    assert abs(m['y'] - (card['y'] + card['h']) - sig['gap']['top']) < 0.01, (card, m, sig['gap'])
     # the power side
     assert [(d['text'], d['kind']) for d in pwr['discs']] == [('SR1-1', 'power'), ('SR1-2', 'power')]
     assert [b['title'] for b in pwr['blocks']] == ["SR1 · Multi 208 breakout · 125'"]
@@ -866,9 +929,15 @@ def test_a_return_lands_on_its_own_block_and_a_unit_replaces_the_card(page):
         assert [round(v / s, 2) for v in sig['runs'][1]['dash']] == RETURN_DASH
         _check_runs(sig, out)
         _check_blocks(sig)
-        # the blocks side by side at the foot, the two of them spread over
-        # the width the half has
-        assert a['x'] + a['w'] < b['x'] and abs(a['y'] - b['y']) < 0.01
+        # A MIXED SHEET: the primary starts on the top row, so its unit
+        # stands over the wall; the return ends on the bottom row, so its
+        # unit stands under it - each on its own side, and neither run
+        # crosses the wall to reach its unit. They keep the places across the
+        # width the one row gave them, spread over the width the half has.
+        assert a['side'] == 'top' and b['side'] == 'bottom', (a, b)
+        assert a['y'] + a['h'] <= m['y'] and b['y'] >= m['y'] + m['h'], (a, b, m)
+        assert _strays_round_the_wall(sig) == [], _strays_round_the_wall(sig)
+        assert a['x'] + a['w'] < b['x']
         assert abs(a['x'] - (DA['x'] + MARGIN * s)) < 0.5, (a, s)
         assert abs((b['x'] + b['w']) - (DA['x'] + (PROTO_W - MARGIN) * s)) < 0.5, (b, s)
         assert not [t for t in out['texts'] if BOX_WORD.search(t) and 'breakout box' not in t.lower()]
@@ -1126,7 +1195,15 @@ def test_smoke_live_show_b_sr_main(page):
                                                              for n in ns)
     assert [b['title'] for b in pwr['blocks']] == ["SR3 · Multi 208 breakout · 125'", "SR4 · Multi 208 breakout · 100'",
                                                    "SR2 · Multi 208 breakout · 100'", "SR1 · Multi 208 breakout · 125'"], pwr['blocks']
-    assert pwr['rows'] == 1 and len({round(b['y'], 2) for b in pwr['blocks']}) == 1
+    # SR3's and SR1's circuits stand on the wall's upper half, SR4's and
+    # SR2's on its lower: the outer pair stands over the wall, the inner
+    # pair under it - one row each side, each keeping its place across
+    assert pwr['rows'] == 1, pwr['rows']
+    assert {b['title'][:3]: b['side'] for b in pwr['blocks']} == \
+        {'SR3': 'top', 'SR4': 'bottom', 'SR2': 'bottom', 'SR1': 'top'}, pwr['blocks']
+    assert len({round(b['y'], 2) for b in pwr['blocks'] if b['side'] == 'top'}) == 1
+    assert len({round(b['y'], 2) for b in pwr['blocks'] if b['side'] == 'bottom'}) == 1
+    assert _strays_round_the_wall(pwr) == [], _strays_round_the_wall(pwr)
     # ordered by where their own circuits stand on the wall
     mean = {}
     for d in pwr['discs']:
@@ -1176,7 +1253,7 @@ def test_smoke_live_show_b_sr_main(page):
         rail = r['points'][1][0]
         assert rail < m['x'] or rail > m['x'] + m['w'], ('the rail stands past the wall', r, m)
         lane = r['points'][2][1]
-        assert m['y'] + m['h'] < lane < min(b['y'] for b in pwr['blocks']), (
+        assert m['y'] + m['h'] < lane < min(b['y'] for b in pwr['blocks'] if b['side'] == 'bottom'), (
             'the lane runs under the wall and over the blocks', r, m)
 
     # ---- signal ---------------------------------------------------------
@@ -1196,7 +1273,10 @@ def test_smoke_live_show_b_sr_main(page):
     assert all(abs((b['y'] - a['y']) - 3 * ph) < 0.02 for a, b in zip(prim, prim[1:])), (
         'the four primaries begin three rows apart - rows 1, 4, 7, 10', prim)
     assert [b['title'] for b in sig['blocks']] == ['CVT4K-S SR A · Card 1 · OPT 1-2', 'CVT4K-S SR B · Card 3 · OPT 1-2']
-    assert sig['rows'] == 1 and len({round(b['y'], 2) for b in sig['blocks']}) == 1
+    # SR A's four primaries start on rows 1, 4, 7 and 10 - nearer the top on
+    # the whole - and SR B's returns end on rows 3, 6, 9 and 11: SR A over
+    # the wall, SR B under it
+    assert sig['rows'] == 1 and [b['side'] for b in sig['blocks']] == ['top', 'bottom'], sig['blocks']
     a, b = sig['blocks']
     assert [s['state'] for s in a['sockets']] == ['primary'] * 4 + ['free'] * 12
     assert [s['state'] for s in b['sockets']] == ['return'] * 4 + ['free'] * 12
@@ -1383,6 +1463,7 @@ def _sweep_off_the_wall(pg, fixture, palette, titles):
             _check_off_the_wall(h)
             _check_runs(h)
             _check_blocks(h)
+            assert _strays_round_the_wall(h) == [], (title, _strays_round_the_wall(h))
             if h['runs']:
                 assert h['rows'] == 1, ('the blocks stand in one row', title, h['side'], h['rows'])
             seen += len(h['runs'])
@@ -1459,14 +1540,22 @@ def test_the_wall_fills_the_height_the_runs_do_not_need(page):
         for title, side in zip(_wiring(name), ('power', 'signal')):
             h = _one_side(_sheet(pg, opts, title), side)
             m = h['map']
-            assert h['head'] == 0, ('no run goes up on the seed show', title, h['head'])
+            # nothing over the wall but the boxes whose points start on its
+            # top row, the lanes' gap under them, and no run goes up
+            tops = [b for b in h['blocks'] if b['side'] == 'top']
+            if tops:
+                assert abs(min(b['y'] for b in tops) - h['area']['y']) < 0.01, (title, tops, h['area'])
+                assert abs(h['head'] - (m['y'] - min(b['y'] for b in tops))) < 0.01, (title, h['head'])
+            else:
+                assert h['head'] == 0, ('no run goes up on the seed show', title, h['head'])
             assert h['grow'] > 0, ('the wall grew', title, h['grow'])
             assert _top_of_its_room(h), ('a wall that grew stands at the top of its room', title, m, h['area'])
             assert _fills_its_room(h), (title, m, h['wallRoom'])
             _check_runs(h)
             _check_blocks(h)
             # the lanes under the wall run between its foot and the blocks
-            top_block = min(b['y'] for b in h['blocks'])
+            unders = [b['y'] for b in h['blocks'] if b['side'] == 'bottom']
+            top_block = min(unders) if unders else h['area']['y'] + h['area']['h']
             for r in h['runs']:
                 for p, q in zip(r['points'], r['points'][1:]):
                     if abs(p[1] - q[1]) < 0.01 and p[1] > m['y'] + m['h']:
@@ -1526,5 +1615,131 @@ def test_runs_that_go_up_keep_the_room_over_the_wall(page):
         assert a['y'] < y < m['y'], ('a lane over the head stands between the page top and the wall', y, m)
     assert h['grow'] == 0 or _top_of_its_room(h), (h['grow'], m, a, h['head'])
     _check_runs(h)
+    _check_blocks(h)
+    assert ids['errors'] == []
+
+
+# ---- each breakout on the side of the wall its own points are on ---------
+#
+# The owner, on a show's POWER WIRING sheet (2026-10-18): every circuit
+# starts on the wall's TOP row, the breakouts were drawn at the foot of the
+# page, and every run went up over the wall, across, down its sides and back
+# under it. "it makes more sense to put the breakouts up top right?";
+# "these should be dynamic so they are as close as the y can be to the
+# ports". So each box goes over the wall when its own points stand nearer
+# its top, under it when nearer its foot, and the gap between the wall and
+# its boxes is only what the lanes in it need - the wall grows into the rest.
+
+TOP_TITLE_DY, = _js_consts('TOP_TITLE_DY')
+
+
+def _gap_is_the_lanes(h, side):
+    """The gap between the wall and the boxes on `side` is a lane apiece for
+    the runs that travel along it and two lanes of air - not a fixed band."""
+    s, m = h['scale'], h['map']
+    boxes = [b for b in h['blocks'] if b['side'] == side and b['row'] == 0]
+    assert boxes, (side, h['blocks'])
+    n = h['lanes']['over' if side == 'top' else 'under']
+    need = (n + 2) * LANE_STEP * s
+    for b in boxes:
+        gap = m['y'] - (b['y'] + b['h']) if side == 'top' else b['y'] - (m['y'] + m['h'])
+        assert abs(gap - need) < 0.01, ('the gap is the lanes the runs need', side, n, gap, need)
+    assert abs(h['gap'][side] - need) < 0.01, (h['gap'], need)
+    return n
+
+
+def test_a_top_edge_power_sheet_puts_its_breakouts_over_the_wall(page):
+    """OVERHEAD, 12 x 4, a circuit down each column from the TOP row: its
+    breakouts stand OVER the wall, the lanes' gap above its head, their
+    sockets at their foot and their name over the numbers (a run comes up
+    into its socket, so the name goes on the side no run crosses). No run
+    goes past the wall's foot or crosses the wall, and the wall takes the
+    whole height under them - nothing is left between a box and its ports."""
+    pg, ids = page
+    n = pg.evaluate(TOP_RUN_SEED_JS)
+    pg.wait_for_timeout(400)
+    assert n == 12, n
+    opts = json.loads(_SHOW_JSON)
+    out = _sheet(pg, opts, 'OVERHEAD - Power Wiring')
+    h = _one_side(out, 'power')
+    m, a, s = h['map'], h['area'], h['scale']
+    assert h['blocks'] and all(b['side'] == 'top' for b in h['blocks']), h['blocks']
+    assert h['rowsTop'] >= 1 and h['rowsBottom'] == 0, (h['rowsTop'], h['rowsBottom'])
+    for b in h['blocks']:
+        assert b['y'] + b['h'] < m['y'], ('over the wall', b, m)
+        assert abs(b['titleY'] - (b['y'] + TOP_TITLE_DY * s)) < 0.01, b
+    assert abs(min(b['y'] for b in h['blocks']) - a['y']) < 0.01, ('the boxes at the top of the area', h['blocks'], a)
+    _gap_is_the_lanes(h, 'top')
+    for r in h['runs']:
+        assert all(p[1] <= m['y'] + m['h'] + 0.01 for p in r['points']), ('no run under the wall', r)
+    assert _strays_round_the_wall(h) == [], _strays_round_the_wall(h)
+    _check_runs(h, out)
+    _check_blocks(h)
+    assert ids['errors'] == []
+
+
+# A wall whose data ports each start on its BOTTOM row: bottom-left,
+# vertical, two rows of cabinets a port's worth every two columns.
+BOTTOM_DATA_SEED_JS = """async () => {
+    const app = window.app;
+    const j = (method, url, body) => fetch(url, {method,
+        headers: {'Content-Type': 'application/json'},
+        body: body === undefined ? undefined : JSON.stringify(body)}).then(r => r.json());
+    const proj = await j('GET', '/api/project');
+    proj.layers = []; proj.groups = []; proj.processors = []; proj.distros = [];
+    delete proj.port_assignments; delete proj.pullSheet; delete proj.binder;
+    await j('PUT', '/api/project', proj);
+    await j('POST', '/api/layer/add', {name: 'UNDER', columns: 8, rows: 2,
+        cabinet_width: 400, cabinet_height: 400, powerVoltage: 208, powerAmperage: 10,
+        panelWatts: 200, powerFlowPattern: 'tl-h', powerOrganized: true, flowPattern: 'bl-v',
+        processorType: 'novastar-armor'});
+    // the add takes the layer's size; its data flow is set on the layer
+    const added = (await j('GET', '/api/project')).layers[0];
+    await j('PUT', `/api/layer/${added.id}`, {flowPattern: 'bl-v', processorType: 'novastar-armor'});
+    let st = await j('POST', '/api/processors', {deviceId: 'novastar-h9'});
+    const pid = st.processors[0].id;
+    st = await j('PUT', `/api/processors/${pid}/slots/0`, {deviceId: 'novastar-card-h-16xrj45-2xfiber'});
+    const cardId = st.processors[0].slots[0].card.id;
+    app.project = await j('GET', '/api/project');
+    app.dedupeProjectLayers('wiring_bottom_seed');
+    const l = app.project.layers[0];
+    app.selectLayer(l);
+    await app.refreshProcessors();
+    await app._assignmentRequest('/api/port-assignments/place-overflow', 'POST', {layerId: String(l.id), cardId});
+    await app.refreshProcessors();
+    await app.refreshPortAssignment();
+    app.renderLayers();
+    window.canvasRenderer.render();
+    return true;
+}"""
+
+
+def test_a_bottom_edge_data_sheet_keeps_its_unit_under_the_wall(page):
+    """UNDER, 8 x 2, its data flowing bottom-left and vertical: every port
+    starts on the wall's BOTTOM row, so its card stays UNDER the wall - as
+    every unit always stood - with the name under the numbers. The gap
+    between the wall's foot and the card is the lanes the runs need and no
+    more: two lanes of air where no run travels a lane, which is less than
+    the fixed band the card used to stand at, and nothing goes over the
+    wall."""
+    pg, ids = page
+    pg.evaluate(BOTTOM_DATA_SEED_JS)
+    pg.wait_for_timeout(400)
+    opts = json.loads(_SHOW_JSON)
+    out = _sheet(pg, opts, 'UNDER - Data Wiring')
+    h = _one_side(out, 'signal')
+    m, s = h['map'], h['scale']
+    assert len(h['runs']) >= 2, h['runs']
+    for d in h['discs']:
+        assert d['y'] > m['y'] + m['h'] / 2, ('every port starts on the bottom row', d, m)
+    assert [b['side'] for b in h['blocks']] == ['bottom'], h['blocks']
+    assert h['rowsTop'] == 0 and h['head'] == 0, (h['rowsTop'], h['head'])
+    n = _gap_is_the_lanes(h, 'bottom')
+    if n == 0:
+        assert h['gap']['bottom'] < 26 * s, ('tighter than the old fixed band', h['gap'])
+    for r in h['runs']:
+        assert all(p[1] >= m['y'] - 0.01 for p in r['points']), ('no run over the wall', r)
+    assert _strays_round_the_wall(h) == [], _strays_round_the_wall(h)
+    _check_runs(h, out)
     _check_blocks(h)
     assert ids['errors'] == []

@@ -148,6 +148,7 @@ READ_JS = """() => {
         strip: strip.map(w => ({ text: w.text, mild: !!w.mild,
                                  offer: w.offer ? w.offer.label : null })),
         binderLoad: load,
+        serviceKeys: service.map(([k]) => k),
     };
 }"""
 
@@ -229,8 +230,13 @@ def test_us_400a_at_330a_is_an_error(seeded):
     assert out['strip'][0]['text'] == \
         'D1 — worst leg X 330.0 A / 320 A (80% of 400 A, continuous) — OVER', out['strip']
     assert out['strip'][0]['offer'] == 'Accept overload'
-    assert out['binderLoad'] == ('330.0 A on leg X · 83% · 118.8 kW · '
-                                 'limit 320 A (80% of 400 A) · OVER'), out['binderLoad']
+    # the binder's one Load line: every leg, the three-phase total - by
+    # hand 118800 W / (208 V x 1.73) = 330.1 A - the power, the limit and
+    # the legs past it
+    assert out['binderLoad'] == ('X 330.0 · Y 330.0 · Z 330.0 A · 3φ 330.1 A · 118.8 kW · '
+                                 'limit 320 A (80% of 400 A) · OVER on X, Y, Z'), out['binderLoad']
+    # the legs live on the Load line: no Legs line of their own
+    assert 'Legs' not in out['serviceKeys'] and out['serviceKeys'].count('Load') == 1, out['serviceKeys']
     assert not errors, errors
 
 
@@ -245,7 +251,9 @@ def test_us_400a_at_320a_is_ok(seeded):
     assert out['flag'] is None and out['bar'] == ''
     assert 'over' not in out['useClass']
     assert out['strip'] == []
-    assert out['binderLoad'] == '320.0 A on leg X · 80% · 115.2 kW · limit 320 A (80% of 400 A)'
+    # 115200 / (208 x 1.73) = 320.1 A
+    assert out['binderLoad'] == ('X 320.0 · Y 320.0 · Z 320.0 A · 3φ 320.1 A · 115.2 kW · '
+                                 'limit 320 A (80% of 400 A)'), out['binderLoad']
 
 
 def test_main_100_rated_lifts_the_limit_to_the_rating(seeded):
@@ -255,7 +263,7 @@ def test_main_100_rated_lifts_the_limit_to_the_rating(seeded):
     assert out['limitA'] == 400 and out['limitPct'] == 1
     assert not out['over'] and out['use'] == '330.0/400 A' and out['lim'] is None
     assert out['strip'] == []
-    assert out['binderLoad'] == '330.0 A on leg X · 83% · 118.8 kW · 100% rated main'
+    assert out['binderLoad'] == 'X 330.0 · Y 330.0 · Z 330.0 A · 3φ 330.1 A · 118.8 kW · 100% rated main'
     # the breakers switch alone does not
     setup(pg, distros=[dict(US400, breakers100=True)], wall={'panelWatts': 198})
     assert read(pg)['over']
@@ -271,7 +279,8 @@ def test_eu_63a_at_63a_is_ok_and_past_it_is_over(seeded):
     assert out['limitA'] == 63 and out['limitPct'] == 1
     assert not out['over'] and out['use'] == '63.0/63 A' and out['lim'] is None
     assert out['strip'] == []
-    assert out['binderLoad'] == '63.0 A on leg L1 · 100% · 43.5 kW'
+    # L1/L2/L3, and the total at 400 V: 43470 / (400 x 1.73) = 62.8 A
+    assert out['binderLoad'] == 'L1 63.0 · L2 63.0 · L3 63.0 A · 3φ 62.8 A · 43.5 kW', out['binderLoad']
     # 245 W: 6 x 2450 / 230 = 63.9 A - over the breaker, no 80% and no
     # main switch on an EU distro
     setup(pg, distros=[EU63], multis=3,
@@ -300,8 +309,8 @@ def test_accept_overload_turns_amber_notes_the_binder_and_undoes(seeded):
     assert out['legBars'] == ['hw-dock-bar-accepted'] * 3
     assert out['strip'] == [{'text': 'D1 — worst leg X 330.0 A / 320 A (80% of 400 A, continuous)'
                                      ' — over, accepted', 'mild': True, 'offer': None}], out['strip']
-    assert out['binderLoad'] == ('330.0 A on leg X · 83% · 118.8 kW · '
-                                 'limit 320 A (80% of 400 A) · OVER · overload accepted')
+    assert out['binderLoad'] == ('X 330.0 · Y 330.0 · Z 330.0 A · 3φ 330.1 A · 118.8 kW · '
+                                 'limit 320 A (80% of 400 A) · OVER on X, Y, Z · overload accepted')
     # it does not clear itself when the load changes - under the limit it
     # simply has nothing to say, and back over it is still accepted
     pg.evaluate("() => { const l = window.app.project.layers[0]; l.panelWatts = 150; "
@@ -529,3 +538,54 @@ def test_the_presets_route_validates_main_100(client):
     saved = [p for p in r.get_json()['presets'] if p['name'] == 'Main route test'][0]
     assert 'overloadAccepted' not in saved['distro']
     client.delete('/api/distro-presets', json={'name': 'Main route test'})
+
+
+# The binder's one Load line for each kind of system, from a load record
+# laid out by hand (the shape getDistroLoads returns), so each case reads
+# exactly: 3φ prints every leg and the 3φ total at the line-to-line
+# voltage, 120/240 its two legs and no 3φ figure, a single hot one figure;
+# OVER names only the legs past the limit.
+LOAD_TEXT_JS = """(cases) => {
+    const app = window.app;
+    return cases.map(([dist, legs, amps, watts, limitA, over, accepted]) => {
+        app.project.distros = [Object.assign({ id: 'dx', name: 'DX' }, dist)];
+        app._distroFaceMemo = null;
+        const d = app.getDistros().find(x => x.id === 'dx');
+        const names = legs ? Object.keys(legs) : [];
+        const L = legs ? Object.assign({ names }, ...names.map(k => ({ [k]: { amps: legs[k], over: legs[k] > limitA } }))) : null;
+        return app._bDistroLoadText(d, { legs: L, amps, watts, limitA, over, overloadAccepted: accepted });
+    });
+}"""
+
+
+def test_the_binder_load_line_names_every_leg_and_the_3_phase_total(seeded):
+    pg, errors = seeded
+    out = pg.evaluate(LOAD_TEXT_JS, [
+        # a show's 100 A 120/208 service, its X leg alone past 80 A:
+        # 30000 / (208 x 1.73) = 83.4 A
+        [{'ratingA': 100, 'system': '120/208'}, {'X': 87.1, 'Y': 79.4, 'Z': 79.4}, 87.1, 30000, 80, True, False],
+        # two legs past it, accepted
+        [{'ratingA': 100, 'system': '120/208'}, {'X': 87.1, 'Y': 79.4, 'Z': 81.4}, 87.1, 30000, 80, True, True],
+        # 230/400: L1/L2/L3, the total at 400 V - 30000 / 692 = 43.4 A -
+        # the limit the rating, so no limit is said
+        [{'ratingA': 63, 'system': '230/400'}, {'X': 45.0, 'Y': 43.0, 'Z': 42.0}, 45.0, 30000, 63, False, False],
+        # 120/240 split phase: two legs, no 3φ figure
+        [{'ratingA': 100, 'system': '120/240'}, {'X': 62.5, 'Y': 50.0}, 62.5, 13500, 80, False, False],
+        # 120V single hot: one figure
+        [{'ratingA': 60, 'system': '120'}, None, 50.0, 6000, 48, True, False],
+        # the main 100% rated
+        [{'ratingA': 100, 'system': '120/208', 'main100': True}, {'X': 87.1, 'Y': 79.4, 'Z': 79.4},
+         87.1, 30000, 100, False, False],
+    ])
+    assert out == [
+        'X 87.1 · Y 79.4 · Z 79.4 A · 3φ 83.4 A · 30.0 kW · limit 80 A (80% of 100 A) · OVER on X',
+        'X 87.1 · Y 79.4 · Z 81.4 A · 3φ 83.4 A · 30.0 kW · limit 80 A (80% of 100 A) · OVER on X, Z'
+        ' · overload accepted',
+        'L1 45.0 · L2 43.0 · L3 42.0 A · 3φ 43.4 A · 30.0 kW',
+        'X 62.5 · Y 50.0 A · 13.5 kW · limit 80 A (80% of 100 A)',
+        '50.0 A · 6.0 kW · limit 48 A (80% of 60 A) · OVER',
+        'X 87.1 · Y 79.4 · Z 79.4 A · 3φ 83.4 A · 30.0 kW · 100% rated main',
+    ], out
+    # no percentage and no separate Legs line: the Service block's pairs
+    assert '%' not in out[0].replace('80% of', '')
+    assert not errors, errors
