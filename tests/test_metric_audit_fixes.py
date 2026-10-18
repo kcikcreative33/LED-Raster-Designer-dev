@@ -121,7 +121,22 @@ RESET_JS = """async ({bodies, unit, strip}) => {
 
 
 def _reset(pg, bodies, unit='ft', strip=()):
-    return pg.evaluate(RESET_JS, {'bodies': bodies, 'unit': unit, 'strip': list(strip)})
+    # A project fetch the page started before the reset (its own boot or a
+    # socket echo) can land after it and put the previous module's screens
+    # back (CI, 2026-10-18). Reset again until the page holds exactly the
+    # screens asked for, settled.
+    want = [b['name'] for b in bodies]
+    names = None
+    for _ in range(4):
+        ids = pg.evaluate(RESET_JS, {'bodies': bodies, 'unit': unit, 'strip': list(strip)})
+        names = pg.evaluate("""async () => {
+            await window.app._layerSavesSettled();
+            await new Promise(r => setTimeout(r, 0));
+            return window.app.project.layers.map(l => l.name);
+        }""")
+        if names == want:
+            return ids
+    raise AssertionError(f'reset never held: {names} != {want}')
 
 
 def _screen(name, cols, rows, w=60, h=60, **extra):
