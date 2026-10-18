@@ -1533,7 +1533,7 @@ class _Binder {
                    { title: 'qty', w: 0.6, align: 'right' }],
             rows: rows.length
                 ? rows.map(r => ({ cells: [r.also ? `${this._bType(r.type)} · ${r.also}` : this._bType(r.type),
-                                           r.length || '—', String(r.qty)] }))
+                                           r.length || '—', this._bQty(r.qty)] }))
                 : [{ cells: ['no cables typed', '', ''] }],
         });
     }
@@ -2341,10 +2341,21 @@ class _Binder {
         return BINDER_TYPE_WORDS[t] || t;
     }
 
+    // en-US with thousands separators at any number of decimals
+    // ("1,724.4"); toFixed alone printed "1724.4".
     _bNum(n, digits) {
         const v = Number(n);
         if (!Number.isFinite(v)) return '—';
-        return digits === 0 ? Math.round(v).toLocaleString('en-US') : v.toFixed(digits);
+        const d = Number.isInteger(digits) && digits > 0 ? digits : 0;
+        return (d === 0 ? Math.round(v) : v).toLocaleString('en-US',
+            { minimumFractionDigits: d, maximumFractionDigits: d });
+    }
+
+    // A pull quantity: a count with thousands separators ("1,517"),
+    // anything else as it came.
+    _bQty(q) {
+        const v = Number(q);
+        return q !== null && q !== '' && Number.isFinite(v) ? this._bNum(v, 0) : String(q);
     }
 
     _bPlural(n, word) {
@@ -5129,7 +5140,7 @@ class _Binder {
                            { title: 'qty', w: 0.5, align: 'right' },
                            { title: 'label', w: 1.4, list: true }];
         const cableRows = (side) => (pos.rows || []).filter(r => (r.side || 'power') === side)
-            .map(r => ({ cells: ['', this._bType(r.type), r.length || '—', String(r.qty), r.label || ''] }));
+            .map(r => ({ cells: ['', this._bType(r.type), r.length || '—', this._bQty(r.qty), r.label || ''] }));
         const blocks = [];
         const power = cableRows('power');
         blocks.push({ lines: this._bTableLines(book, { title: 'Power cables', cols: cableCols,
@@ -5435,7 +5446,7 @@ class _Binder {
             cols: [tick, { title: 'cable', w: 1.5 }, { title: 'len', w: 0.6 },
                    { title: 'qty', w: 0.5, align: 'right' },
                    { title: 'label', w: 1.4, list: true }],
-            rows: rows.length ? rows.map(r => ({ cells: ['', this._bType(r.type), r.length || '—', String(r.qty), r.label || ''] }))
+            rows: rows.length ? rows.map(r => ({ cells: ['', this._bType(r.type), r.length || '—', this._bQty(r.qty), r.label || ''] }))
                 : [{ cells: ['', 'none', '', '', ''] }],
         });
     }

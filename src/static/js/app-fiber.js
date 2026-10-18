@@ -42,12 +42,15 @@ export const FIBER_STRAND_SUGGESTIONS = [4, 6, 8, 12, 24, 48];
 export const TAC_CONNECTORS = ['ST', 'LC duplex'];
 
 // Copper on an XD link, each kind with its 10G maximum in feet: Cat6A 60 m
-// and Cat5e 30 m are Brompton's, Cat6 100 ft the owner's. The server's
-// twin is processor_catalog.COPPER_LINK_KINDS; a test pins that they agree.
-export const COPPER_LINK_KINDS = [['Cat6A', 196], ['Cat6', 100], ['Cat5e', 98]];
+// and Cat5e 30 m are Brompton's, Cat6 100 ft the owner's. The meter
+// figures are converted exactly (60 m = 196.85 ft, 30 m = 98.43 ft); they
+// used to be floored to the foot, so a 98.4 ft Cat5e run was warned. The
+// server's twin is processor_catalog.COPPER_LINK_KINDS, written the same
+// way; a test pins that they agree.
+const FT_PER_M = 1 / 0.3048;
+export const COPPER_LINK_KINDS = [['Cat6A', 60 * FT_PER_M], ['Cat6', 100], ['Cat5e', 30 * FT_PER_M]];
 // The same maxima in a meters show (2026-10-16): Brompton's own 60 m and
-// 30 m, and the owner's 100 ft exactly (30.48 m) - the feet table above
-// holds the first two floored to the foot.
+// 30 m, and the owner's 100 ft exactly (30.48 m).
 export const COPPER_LINK_KINDS_M = [['Cat6A', 60], ['Cat6', 30.48], ['Cat5e', 30]];
 
 // One strand as the paper says it - the ONE JS implementation, pinned
@@ -167,7 +170,16 @@ class _Fiber {
         const max = copper ? this.copperLinkMax(copper.copper) : null;
         const ft = this.parseCableLength(copper && copper.ft);
         if (!max || !Number.isFinite(ft) || ft <= max) return '';
-        return `${copper.copper} runs ${this.cableLengthWords(max)} max at 10G`;
+        return `${copper.copper} runs ${this.copperLinkMaxWords(max)} max at 10G`;
+    }
+
+    // A 10G maximum as words, never rounded UP past the real limit: feet
+    // print to the tenth and meters to the centimeter, floored, so the
+    // figure said is always a length that fits ("196.8 ft" for Cat6A's
+    // 196.85, "98.4 ft" for Cat5e's 98.43; "100 ft", "30.48 m").
+    copperLinkMaxWords(max) {
+        const step = this.cableUnitAbbr() === 'm' ? 100 : 10;
+        return this.cableLengthWords(Math.floor(max * step + 1e-9) / step);
     }
 
     // Every resolved box, in tray order: [{ box, proc, card }]. A card

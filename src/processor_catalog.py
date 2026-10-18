@@ -1156,7 +1156,7 @@ def _cable_ft(value):
     return int(ft) if ft == int(ft) else ft
 
 
-def check_cable_store(data, port_numbers, what='card'):
+def check_cable_store(data, port_numbers, what='card', unit='ft'):
     """Why a PUT's ``snakes`` / ``portCables`` cannot be stored, or None.
 
     Every refusal names its reason: a socket the card or box does not have,
@@ -1175,7 +1175,7 @@ def check_cable_store(data, port_numbers, what='card'):
             try:
                 ft = float(rec['ft'])
             except (TypeError, ValueError):
-                return f'{where}: ft must be a number of feet.'
+                return f'{where}: ft must be a number of {cable_unit_words(unit)}.'
             if ft != ft or ft < 0 or ft in (float('inf'), float('-inf')):
                 return f'{where}: ft must be a non-negative number.'
         conn = rec.get('connector')
@@ -1854,7 +1854,17 @@ def link_ports_documented(cvt_device):
 # carry an etherCON beside the opticalCON DUO (the XD-S and XD-T are fiber
 # only by their datasheets). Each kind with its 10G maximum in feet:
 # Cat6A 60 m and Cat5e 30 m are Brompton's, Cat6 100 ft is the owner's.
-COPPER_LINK_KINDS = (('Cat6A', 196), ('Cat6', 100), ('Cat5e', 98))
+# The meter figures are converted exactly (60 m = 196.85 ft, 30 m =
+# 98.43 ft), the same expression app-fiber.js uses - floored to the foot,
+# a 98.4 ft Cat5e run read as over its limit.
+_FT_PER_M = 1 / 0.3048
+COPPER_LINK_KINDS = (('Cat6A', 60 * _FT_PER_M), ('Cat6', 100), ('Cat5e', 30 * _FT_PER_M))
+
+
+def cable_unit_words(unit):
+    """'meters' for a meters show, else 'feet' - what a refusal says a
+    length is typed in (the show's cable unit, app.cable_unit)."""
+    return 'meters' if unit == 'm' else 'feet'
 
 
 def copper_link_max_ft(kind):
@@ -2324,7 +2334,7 @@ def settle_fiber(project, used_before=None):
     return changed
 
 
-def check_fiber_cable(rec, cable=None, used_strands=0):
+def check_fiber_cable(rec, cable=None, used_strands=0, unit='ft'):
     """Why this body cannot make (cable None) or edit `cable`, or None.
 
     `used_strands` is the highest strand a link holds on the cable, which
@@ -2352,14 +2362,15 @@ def check_fiber_cable(rec, cable=None, used_strands=0):
                 return (f'Strand {used_strands} is in use - the count cannot '
                         f'go below it. Move that link first.')
     if 'ft' in rec and rec['ft'] not in (None, ''):
+        words = cable_unit_words(unit)
         if isinstance(rec['ft'], bool):
-            return 'ft must be a number of feet.'
+            return f'ft must be a number of {words}.'
         try:
             ft = float(rec['ft'])
         except (TypeError, ValueError):
-            return 'ft must be a number of feet.'
+            return f'ft must be a number of {words}.'
         if not math.isfinite(ft) or ft < 0:
-            return 'ft must be a number of feet, 0 or more.'
+            return f'ft must be a number of {words}, 0 or more.'
     if 'connector' in rec and rec['connector'] not in (None, ''):
         if kind != 'tac':
             return 'Only a TAC names a connector.'

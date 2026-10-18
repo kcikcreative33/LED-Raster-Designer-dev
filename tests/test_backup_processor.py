@@ -531,7 +531,10 @@ def test_an_xd_link_may_be_copper_and_nothing_else_takes_it(client):
     _ok(_link(client, pid, xds[1], 'p1', {'cable': None}))
     assert 'fiberLinks' not in _raw_box(client, xds[1])
     assert [k for k, _ft in catalog.COPPER_LINK_KINDS] == ['Cat6A', 'Cat6', 'Cat5e']
-    assert dict(catalog.COPPER_LINK_KINDS) == {'Cat6A': 196, 'Cat6': 100, 'Cat5e': 98}
+    # 60 m and 30 m to the exact foot (not floored): 196.85 and 98.43
+    assert dict(catalog.COPPER_LINK_KINDS) == {'Cat6A': pytest.approx(196.8504, abs=1e-4),
+                                               'Cat6': 100,
+                                               'Cat5e': pytest.approx(98.4252, abs=1e-4)}
 
 
 # ── the browser: the ⚙, the grouped Fiber section, the binder, the pull ──

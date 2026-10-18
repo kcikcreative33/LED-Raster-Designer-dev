@@ -995,7 +995,7 @@ class _DockCableSheets {
         f.value = ft !== null ? String(ft) : '';
         const max = this.copperLinkMax(l.copper.copper);
         f.title = `The ${l.copper.copper} run's length in ${this.cableUnitWord()}`
-            + (max ? ` - ${this.cableLengthWords(max)} is its 10G maximum.` : '.');
+            + (max ? ` - ${this.copperLinkMaxWords(max)} is its 10G maximum.` : '.');
         f.addEventListener('change', () => {
             const raw = f.value.trim();
             const v = raw === '' ? null : Number(raw);
