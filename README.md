@@ -1,4 +1,4 @@
-# LED Raster Designer v1.5.1
+# LED Raster Designer v1.5.2
 
 LED Raster Designer is a free app for planning LED video walls for live
 events, concerts, broadcast and installs. You lay out the cabinets, wire
@@ -124,8 +124,8 @@ when you're done.
 
 ### Paperwork
 
-Everything under **File > Export** saves straight to a file, with no print
-dialogs.
+Click the red **Export** button, or pick an export from the **File** menu.
+Everything saves straight to a file, with no print dialogs.
 
 | Export | What you get |
 |--------|-------------|
