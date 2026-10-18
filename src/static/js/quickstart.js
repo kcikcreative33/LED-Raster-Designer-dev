@@ -3112,7 +3112,7 @@
             target: function () { var d = distro(); return d ? '[data-hwpop="distro-' + d.id + '"]' : '#hardware-dock-body .hw-dock-gear'; },
             place: 'top', title: 'Set the distro&rsquo;s rating',
             avoid: [function () { var d = distro(); return d ? '[data-lrd-field="distro-rating-' + d.id + '"]' : null; }],
-            body: 'Behind the distro&rsquo;s &#9881;, Rating is the service in amps. Type 200 and the header&rsquo;s load bar reads against 200 A from now on.',
+            body: 'Behind the distro&rsquo;s &#9881;, Rating is the service in amps. Type 200 and the header&rsquo;s load bar reads against 200 A from now on &mdash; 160 A on a US distro, whose main carries 80% of its rating continuously unless it is 100% rated.',
             before: function () { switchView('power'); closePopover(); },
             act: function (t) {
                 var d = distro();
@@ -3125,14 +3125,14 @@
                 }).then(function () {
                     return t.type('[data-lrd-field="distro-rating-' + d.id + '"]', '200');
                 }).then(function () {
-                    return t.wait(function () { var q = distro(); return q && Number(q.ratingA) === 200 && /\/200 A$/.test(distroUse(q)); });
+                    return t.wait(function () { var q = distro(); return q && Number(q.ratingA) === 200 && /\/(?:200|160) A$/.test(distroUse(q)); });
                 }).then(function () { return t.pause(1000); });
             },
             check: function (mem) {
                 var d = distro();
                 if (!d || Number(d.ratingA) !== 200) return null;
                 var use = distroUse(d);
-                if (!/\/200 A$/.test(use)) return null;
+                if (!/\/(?:200|160) A$/.test(use)) return null;
                 return (d.name || 'The distro') + ' is rated 200 A: the header read ' + mem.before + ', now ' + use + '.';
             },
             after: function () { closePopover(); }

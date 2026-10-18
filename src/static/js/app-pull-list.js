@@ -114,13 +114,12 @@
 //     the box's location, else the position of the first screen whose
 //     ports it delivers (a box delivering nothing, with no location, is
 //     not listed); two boxes at one location merge to qty 2, label "A, B".
-//     One row per distro with a box in use - "the distro should not be
-//     named. it should say how many holes it uses. so 2 multi on a distro
-//     is a 12 way, 3-4 is a 24 way, 5-6 is a 36 way and 7-8 is a 48 way":
-//     the type is `<N> way` from the boxes in use, the label the distro's
-//     name, at the distro's location, else the position of the first
-//     screen it feeds. The table ends at 8: past it the type stays "48
-//     way" and Notes say "<n> multis" - nothing larger is assumed.
+//     One row per distro with a box in use: the type is the distro's
+//     TYPE as typed behind its gear (2026-10-18, "200A 24ch rack";
+//     a preset fills it with its name), "Distro" where it has none - the
+//     old "<N> way" from the boxes in use is gone. The label is the
+//     distro's name, at the distro's location, else the position of the
+//     first screen it feeds.
 //
 // Lengths print as `100'`, each-items as `EA`; quantities are integers;
 // Label is the short names covered ("SR 1-4", "SNAKE A", "SR1-1, SR1-6");
@@ -321,16 +320,11 @@ class _PullList {
         return title || device;
     }
 
-    // The distro on its own gear row, by how many holes it uses: "2 multi
-    // on a distro is a 12 way, 3-4 is a 24 way, 5-6 is a 36 way and 7-8 is
-    // a 48 way" (2026-09-07). The table ends at 8; past it the type stays
-    // "48 way" and the caller puts the count in Notes.
-    pullDistroWayType(boxes) {
-        const n = Number(boxes) || 0;
-        if (n <= 2) return '12 way';
-        if (n <= 4) return '24 way';
-        if (n <= 6) return '36 way';
-        return '48 way';
+    // The distro on its own gear row, by its TYPE (2026-10-18): what the
+    // user typed behind its gear, or a preset's name, else "Distro".
+    pullDistroType(d) {
+        const t = String((d && d.typeName) || '').trim();
+        return t || 'Distro';
     }
 
     // Every location the project knows - the beach names, in beach order.
@@ -925,13 +919,12 @@ class _PullList {
             const n = boxesOn.get(String(d.id)) || 0;
             const k = directOn.get(String(d.id)) || 0;
             if (!n && !k) continue;
-            // A distro feeding direct outputs only has no multi holes to
-            // count: it is "Distro", its outputs said in Notes.
-            const r = n
-                ? { type: this.pullDistroWayType(n), length: 'EA', qty: 1,
-                    label: d.name || '', notes: n > 8 ? `${n} multis` : '', side: 'power' }
-                : { type: 'Distro', length: 'EA', qty: 1, label: d.name || '',
-                    notes: `${k} direct output${k === 1 ? '' : 's'}`, side: 'power' };
+            // Named by its Type; a distro feeding direct outputs only says
+            // its outputs in Notes, as it always has.
+            const r = { type: this.pullDistroType(d), length: 'EA', qty: 1,
+                        label: d.name || '',
+                        notes: n ? '' : `${k} direct output${k === 1 ? '' : 's'}`,
+                        side: 'power' };
             if (!gearAt(r, this.pullLocationOf(d), distroFirstLayer.get(String(d.id)))) continue;
             hw('distro', d.id, d.name).rows.push({ ...r });
         }

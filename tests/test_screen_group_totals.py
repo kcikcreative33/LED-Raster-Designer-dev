@@ -1059,6 +1059,11 @@ def test_route_as_one_stored_true_crosses_exactly_as_absent(page):
 # vertical-first patterns starting from three different corners, half tiles
 # (which change a cabinet's load), and a wall with hidden and blank cabinets in
 # the middle of it (which change the traversal).
+#
+# One deliberate move since (owner, 2026-10-18: blank cabinets draw no power,
+# "they don't exist"): the 'holes' wall's blank cabinet at row 0, col 0 left
+# its power circuit - circuit 2 is 11 cabinets / 2200 W (10.58 A at 208 V),
+# not 12 / 2400 W, the multi 5200 W / 25 A. Its ports are unchanged.
 
 PIN_ROUTES = {
     'org_h':
@@ -1153,12 +1158,11 @@ PIN_ROUTES = {
         'e,344064],[0,1,1,false,360448],[0,2,1,false,376832],[0,3,1,false,393216],[0,4,1,false,4096'
         '00],[0,5,1,false,425984]],"autoPorts":1,"portsRequired":1,"power":[[[4,0],[4,1],[4,2],[4,3'
         '],[4,4],[4,5],[3,5],[3,4],[3,3],[3,2],[3,1],[3,0],[2,0],[2,1],[2,2]],[[1,0],[1,1],[1,2],[1'
-        ',3],[1,4],[1,5],[0,5],[0,4],[0,3],[0,2],[0,1],[0,0]]],"circuits":2,"soca":"[{\\"soca\\":1,\\"'
-        'number\\":1,\\"name\\":\\"S1\\",\\"distroId\\":null,\\"legs\\":[{\\"leg\\":1,\\"circuit\\":1,\\"label\\":'
-        '\\"S1-1\\",\\"tiles\\":15,\\"watts\\":3000,\\"amps\\":14.423076923076923,\\"x1\\":0,\\"x2\\":768},{\\"l'
-        'eg\\":2,\\"circuit\\":2,\\"label\\":\\"S1-2\\",\\"tiles\\":12,\\"watts\\":2400,\\"amps\\":11.5384615384'
-        '61538,\\"x1\\":0,\\"x2\\":768}],\\"watts\\":5400,\\"x1\\":0,\\"x2\\":768,\\"amps\\":25.96153846153846,'
-        '\\"length\\":null}]"}',
+        ',3],[1,4],[1,5],[0,5],[0,4],[0,3],[0,2],[0,1]]],"circuits":2,"soca":"[{\\"soca\\":1,\\"number'
+        '\\":1,\\"name\\":\\"S1\\",\\"distroId\\":null,\\"legs\\":[{\\"leg\\":1,\\"circuit\\":1,\\"label\\":\\"S1-1'
+        '\\",\\"tiles\\":15,\\"watts\\":3000,\\"amps\\":14.423076923076923,\\"x1\\":0,\\"x2\\":768},{\\"leg\\":2'
+        ',\\"circuit\\":2,\\"label\\":\\"S1-2\\",\\"tiles\\":11,\\"watts\\":2200,\\"amps\\":10.576923076923077,'
+        '\\"x1\\":0,\\"x2\\":768}],\\"watts\\":5200,\\"x1\\":0,\\"x2\\":768,\\"amps\\":25,\\"length\\":null}]"}',
     'group_of_one':
         '{"ports":[[0,0,1,true,0],[0,1,1,false,16384],[0,2,1,false,32768],[0,3,1,false,49152],[0,4,'
         '1,false,65536],[0,5,1,false,81920],[1,5,1,false,98304],[1,4,1,false,114688],[1,3,1,false,1'

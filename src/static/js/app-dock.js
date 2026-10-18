@@ -2394,20 +2394,44 @@ class _HardwareDock {
             this.distroSupplyText(d),
             'Drag onto a screen to assign its ports; drag along the tray to '
             + 'reorder.',
-            load && load.ratingA > 0
-                ? { frac: load.amps / load.ratingA, over: !!load.over,
-                    text: `${load.amps.toFixed(1)}/${load.ratingA} A` }
-                : null);
+            load && load.ratingA > 0 ? this._dockDistroGlance(d, load) : null);
         // An over-loaded service is a strip question, not just a red bar.
-        // The figure is the WORST LEG against the per-leg rating (1.5, bug
-        // fix 2), and the strip names the leg.
+        // The figure is the WORST LEG against the main's continuous limit
+        // (1.5, bug fix 2; the limit 2026-10-18 - 80% of the rating on a
+        // US system unless its main is 100% rated), and the strip names
+        // the leg. An accepted overload reads amber and says so, with the
+        // same figures.
         if (load && load.over) {
             const leg = load.legs && load.worstLeg
                 ? ` worst leg ${this.distroLegLabel(d, load.worstLeg)}` : '';
-            this._dockPowerWarnings.push({
-                text: `${d.name || d.id} —${leg} ${load.amps.toFixed(1)} A / `
-                    + `${load.ratingA} A (${Math.round(load.pct)}%) — OVER`,
-            });
+            const rule = this.distroMainLimit(d);
+            const note = this.distroMainLimitNote(rule);
+            const fig = `${d.name || d.id} —${leg} ${load.amps.toFixed(1)} A / `
+                + `${+load.limitA.toFixed(1)} A`
+                + (note ? ` (${note}, continuous)` : ` (${Math.round(load.pct)}%)`);
+            if (load.overloadAccepted) {
+                this._dockPowerWarnings.push({
+                    mild: true, text: `${fig} — over, accepted`,
+                });
+            } else {
+                this._dockPowerWarnings.push({
+                    text: `${fig} — OVER`,
+                    offer: {
+                        label: 'Accept overload',
+                        title: `Accept ${d.name || d.id}'s overload: the error turns `
+                            + 'amber and reads accepted, the figures stay. Untick it '
+                            + 'behind the distro\'s ⚙. One undoable step.'
+                            + (rule.us && !rule.main100
+                                ? ' If the main is 100% rated, tick Main 100% rated '
+                                    + 'behind the ⚙ instead.' : ''),
+                        run: () => {
+                            this.updateDistro(d.id, { overloadAccepted: true },
+                                              'Accept Overload');
+                            this.renderHardwareDock();
+                        },
+                    },
+                });
+            }
         }
         // The system's own checks (1.5): voltages it does not have, the
         // breaker and connector limits, powerCON XX at 208V, a paired
@@ -2618,6 +2642,43 @@ class _HardwareDock {
         return tile;
     }
 
+    // The distro header's glance (_dockBuildHandle): the busiest leg over
+    // the main's continuous limit - "87.1/80 A" - then where the limit
+    // came from when it is not the rating ("80% of 100 A"), then the flag
+    // when the leg is past it: red OVER, or amber "OVER · accepted". The
+    // three are spans of their own so a narrow tray wraps between them,
+    // never inside a figure. The bar fills against the rating (the real
+    // figure) and wears the flag's colour.
+    _dockDistroGlance(d, load) {
+        const rule = this.distroMainLimit(d);
+        const limit = load.limitA > 0 ? load.limitA : load.ratingA;
+        const note = this.distroMainLimitNote(rule);
+        const extra = [];
+        if (note) extra.push({ cls: 'hw-dock-unit-lim', text: `· ${note}` });
+        if (load.over) {
+            extra.push(load.overloadAccepted
+                ? { cls: 'hw-dock-unit-flag hw-dock-unit-flag-ok', text: 'OVER · accepted',
+                    title: 'Overload accepted - untick it behind the ⚙.' }
+                : { cls: 'hw-dock-unit-flag', text: 'OVER',
+                    title: 'The busiest leg is past the limit.' });
+        }
+        return {
+            frac: load.amps / load.ratingA,
+            over: !!load.over && !load.overloadAccepted,
+            accepted: !!load.over && !!load.overloadAccepted,
+            useClass: load.over
+                ? (load.overloadAccepted ? 'hw-dock-unit-use-accepted' : 'hw-dock-unit-use-over')
+                : '',
+            text: `${load.amps.toFixed(1)}/${+limit.toFixed(1)} A`,
+            title: `Busiest leg ${load.amps.toFixed(1)} A of a ${+limit.toFixed(1)} A limit`
+                + (note ? ` - ${note}: a show load is continuous, and a standard main `
+                    + 'carries 80% of its rating continuously. Tick Main 100% rated '
+                    + 'behind the ⚙ if it is.'
+                    : (rule.main100 ? ' - the main is 100% rated.' : ' - the rating.')),
+            extra,
+        };
+    }
+
     // The slim LEGS line under a 3-phase distro's header: per-leg amps with
     // a mini meter each and the NEMA-style imbalance figure - the roll-up's
     // own numbers (getDistroLoads), never re-summed. Null where there is
@@ -2646,7 +2707,11 @@ class _HardwareDock {
             const bar = document.createElement('span');
             bar.className = 'hw-dock-legbar';
             const meat = document.createElement('i');
-            if (load.legs[k].pct > 100) meat.className = 'hw-dock-bar-over';
+            // a leg past the main's limit wears the header's flag colour
+            if (load.legs[k].over) {
+                meat.className = load.overloadAccepted
+                    ? 'hw-dock-bar-accepted' : 'hw-dock-bar-over';
+            }
             meat.style.width =
                 `${Math.min(100, Math.round(load.legs[k].pct))}%`;
             bar.appendChild(meat);
@@ -2809,7 +2874,7 @@ class _HardwareDock {
         if (overflow) {
             this._dockPowerWarnings.push({
                 text: `${boxName} — more circuits than the `
-                    + `${boxSize === 3 ? 'three' : 'six'} a ${boxType.name} holds.`,
+                    + `${boxSize === 1 ? 'one' : boxSize === 3 ? 'three' : 'six'} a ${boxType.name} holds.`,
             });
         }
         // A stored type that contradicts what is on the box - the screen's
@@ -2870,7 +2935,7 @@ class _HardwareDock {
             + (feedLegA > 0
                 ? `. L21-30 feed, ${feedLegA} A per leg` : '')
             + (overflow ? `. OVERFLOW - more circuits than the `
-                + `${boxSize === 3 ? 'three' : 'six'} a ${boxType.name} holds` : '')
+                + `${boxSize === 1 ? 'one' : boxSize === 3 ? 'three' : 'six'} a ${boxType.name} holds` : '')
             + (typeInfo.faceBox && typeInfo.faceBox.paired
                 ? `. Paired with ${this._faceRowSummary(d, typeInfo.faceBox.primaryRowId)} - `
                     + 'the same circuits; patch a circuit to one connector or the other' : '')
@@ -3374,14 +3439,26 @@ class _HardwareDock {
         if (glance) {
             if (glance.text) {
                 const use = document.createElement('span');
-                use.className = 'hw-dock-unit-use';
+                use.className = 'hw-dock-unit-use'
+                    + (glance.useClass ? ` ${glance.useClass}` : '');
                 use.textContent = glance.text;
+                if (glance.title) use.title = glance.title;
                 head.appendChild(use);
             }
+            // Optional spans after the figure (the distro's limit note and
+            // flag), each its own so the header wraps between them.
+            (glance.extra || []).forEach(x => {
+                const el = document.createElement('span');
+                el.className = x.cls;
+                el.textContent = x.text;
+                if (x.title || glance.title) el.title = x.title || glance.title;
+                head.appendChild(el);
+            });
             const bar = document.createElement('span');
             bar.className = 'hw-dock-headbar';
             const meat = document.createElement('i');
             if (glance.over) meat.className = 'hw-dock-bar-over';
+            else if (glance.accepted) meat.className = 'hw-dock-bar-accepted';
             meat.style.width =
                 `${Math.min(Math.max(glance.frac || 0, 0), 1) * 100}%`;
             bar.appendChild(meat);

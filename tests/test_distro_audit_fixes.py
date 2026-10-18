@@ -169,7 +169,12 @@ def test_a_multi_left_on_a_direct_output_is_said_and_kept_apart(seeded):
     ev(pg, """
         const rows = app.getDistros()[0].outputRows.map(r => ({ ...r }));
         rows[0].count = 5;
-        app.updateDistro('d1', { outputRows: rows });
+        // An edit asks before it makes this state (2026-10-18), so it is
+        // built the way an existing show arrives already in it: the
+        // record carries the rows.
+        app.getDistros()[0].outputRows = rows;
+        app._distroFaceMemo = null;
+        app._circuitTailCache = null;
         return true;""")
     out = ev(pg, READ_FACE)
     assert out['kinds'] == ['direct', 'direct'], out
@@ -205,7 +210,12 @@ def test_a_socapex_row_turned_true1_under_a_multi_is_said(seeded):
     ev(pg, """
         const rows = app.getDistros()[0].outputRows.map(r => ({ ...r }));
         rows[1].connector = 'true1';
-        app.updateDistro('d1', { outputRows: rows });
+        // An edit asks before it makes this state (2026-10-18), so it is
+        // built the way an existing show arrives already in it: the
+        // record carries the rows.
+        app.getDistros()[0].outputRows = rows;
+        app._distroFaceMemo = null;
+        app._circuitTailCache = null;
         return true;""")
     out = ev(pg, READ_FACE)
     assert out['kinds'] == ['direct', 'direct'], out
