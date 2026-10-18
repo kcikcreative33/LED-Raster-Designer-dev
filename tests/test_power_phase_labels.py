@@ -1934,8 +1934,9 @@ def test_distro_sections_fold_and_the_header_keeps_the_glance(page):
         assert st['name'] is True, 'the inline name never hides'
         assert st['balance'] is True, 'Balance works on a folded distro'
         assert st['gear'] is True, 'the gear stays reachable'
-        assert '/400 A' in st['glanceText'], \
-            'the header glance reads amps against the rating'
+        # a 400 A US distro's main carries 80% continuously (2026-10-18)
+        assert '/320 A' in st['glanceText'], \
+            'the header glance reads amps against the main\'s limit'
     assert f['height'] < o['height'], \
         'folded, the unit is its header and legs line, not the whole body'
 

@@ -5701,13 +5701,33 @@ class _Binder {
             // the leg named where the distro has legs.
             const leg = load.legs && load.worstLeg
                 ? ` on leg ${this.distroLegLabel(d, load.worstLeg)}` : '';
+            // The limit it is read against (2026-10-18): 80% of the rating
+            // on a US system unless its main is 100% rated - said where it
+            // is not simply the rating - and an accepted overload noted
+            // beside the OVER it does not hide.
+            const rule = this.distroMainLimit(d);
+            const limit = rule.pct < 1
+                ? ` · limit ${+load.limitA.toFixed(1)} A (${this.distroMainLimitNote(rule)})`
+                : (rule.main100 ? ' · 100% rated main' : '');
             pairs.push(['Load', `${this._bNum(load.amps, 1)} A${leg} · ${this._bNum(load.pct, 0)}% · ${this._bNum(load.watts / 1000, 1)} kW`
-                + (load.over ? ' · OVER' : '')]);
+                + limit
+                + (load.over ? ' · OVER' : '')
+                + (load.over && load.overloadAccepted ? ' · overload accepted' : '')]);
             if (load.legs) {
                 const names = load.legs.names || ['X', 'Y', 'Z'];
                 pairs.push(['Legs', names.map(k =>
                     `${this.distroLegLabel(d, k)} ${this._bNum(load.legs[k].amps, 1)}`).join(' · ') + ' A']);
                 pairs.push(['Imbalance', `${this._bNum(load.imbalancePct, 1)}%`]);
+            }
+        }
+        // A multi left on a one-circuit output (a show already in that
+        // state, 2026-10-18): the output's load against what it carries.
+        if (typeof this._faceCrowding === 'function') {
+            for (const cr of this._faceCrowding(d)) {
+                const cap = this._crowdCapacityText(d, cr);
+                pairs.push([cap ? 'Over capacity' : 'Crowded',
+                    `${cap || `${cr.where} ${cr.box.conn.short} carries ${cr.circuits} circuits`}`
+                    + ' · a multi on a one-circuit output, move it to a multi output']);
             }
         }
         pairs.push(['Circuits', boxes.length ? `${allCircuits} on ${counts}` : 'none']);

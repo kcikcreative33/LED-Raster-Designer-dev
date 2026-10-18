@@ -907,9 +907,11 @@ Object.assign(CanvasRenderer.prototype, {
                 }
                 const voltage = parseFloat(layer.powerVoltage) || 0;
                 const panelWatts = parseFloat(layer.panelWatts) || 0;
+                // blank cabinets draw no power, like hidden ones (the
+                // totals' and the circuit packer's rule)
                 const equivalentPanels = Array.isArray(layer.panels)
                     ? layer.panels
-                        .filter(p => !p.hidden)
+                        .filter(p => !p.hidden && !p.blank)
                         .reduce((sum, p) => {
                             if (typeof window.app.getPanelLoadFactor === 'function') {
                                 return sum + window.app.getPanelLoadFactor(layer, p);
