@@ -30,7 +30,8 @@
 //        its ports land on, circuit to breakout, port to socket, one side
 //        on a whole page) - a screen with only one side has only that
 //        side's two sheets
-//   3.n  the PULL sheets - positions side by side, a column each
+//   3.n  the PULL sheets - positions side by side, each position's
+//        sections flowing across the sheet in columns
 //   4.n  hardware - the distros side by side, then the processors with
 //        the show's pull list beside them where it fits
 // A sheet whose tables do not fit continues on the next number of its
@@ -74,7 +75,8 @@
 // whose tables fit at 1 in neither layout is "tons of info": it stays at
 // 1, the map over the tables, and continues on the next sheet. Column
 // sheets (pull, hardware) spread their tables across the width and scale
-// as a whole (_bFillScale). The title block never scales.
+// as a whole (_bFillScale; the pull sheets choose their columns to that
+// end, _bPullSheets). The title block never scales.
 //
 // Every figure is read from buildPullSheet (app-pull-list.js) and the same
 // authorities the canvas reads; nothing is recomputed here. The title
@@ -184,10 +186,15 @@ const FILL_CAP = 2.4;
 // of the sheet (_bMapLayout's side layout); a short one takes nothing.
 const FILL_KEEP = 0.9;
 // A column sheet's subject head - the position's, the distro's name over
-// its tables - and the pull sheets' narrower column (four positions
-// across a Tabloid: cable · len · qty · label are short columns).
+// its tables - and the pull sheets' columns: at least PULL_COL_W (cable ·
+// len · qty · label are short columns), as wide as a table needs to print
+// whole up to PULL_COL_MAX (_bPullBlock).
 const GROUP_H = 60;
 const PULL_COL_W = 660;
+const PULL_COL_MAX = 1100;
+// A pull sheet whose lists all print on one line wins over a larger print
+// that wraps them, down to this share of that print's size.
+const PULL_WHOLE_KEEP = 0.85;
 
 // Cable types print in the GEAR LIST's own vocabulary - the same words the
 // workbook export writes - so the binder's Cables table and the pull sheet
@@ -2423,15 +2430,30 @@ class _Binder {
     // SCREEN sat half empty beside it (2026-09-09). Nothing is ever taken
     // below what its own content needs, so a table that already fits is
     // laid out exactly as it was. A list column asks only for its heading:
-    // its list wraps and says how many more.
-    _bColWidths(book, cols, rows, width, padX) {
+    // its list wraps and says how many more - unless the table asks for
+    // its lists `whole` and the width holds every one of them on one line
+    // (the pull sheet's columns, sized to their content), when a list
+    // column asks for its widest list. A `small` table (the pull sheet's
+    // Screens, four positions to a Tabloid) that cannot hold its headings
+    // and cells at full size asks for them at the smallest size they
+    // shrink to (_bText's 14), so they shrink rather than cut ("CIRCU…").
+    _bColWidths(book, cols, rows, width, padX, o = {}) {
         const fr = cols.reduce((s, c) => s + (c.w || 1), 0) || 1;
         const px = cols.map(c => (c.w || 1) / fr * width);
+        const sum = (a) => a.reduce((x, y) => x + y, 0);
+        const full = cols.map(c => ({ ...c, headShrink: false }));
         let need = this._bColNeeds(book, cols, rows, padX);
         // headings shrink only where the table cannot hold them whole
         if (cols.some(c => c.headShrink)) {
-            const whole = this._bColNeeds(book, cols.map(c => ({ ...c, headShrink: false })), rows, padX);
-            if (whole.reduce((a, b) => a + b, 0) <= width) need = whole;
+            const whole = this._bColNeeds(book, full, rows, padX);
+            if (sum(whole) <= width) need = whole;
+        }
+        if (o.whole) {
+            const lists = this._bColNeeds(book, full, rows, padX, true);
+            if (sum(lists) <= width) need = lists;
+        }
+        if (o.small && sum(need) > width) {
+            need = this._bColNeeds(book, cols.map(c => ({ ...c, headShrink: true })), rows, padX, false, true);
         }
         const want = px.map((p, i) => Math.max(0, need[i] - p));
         const give = px.map((p, i) => Math.max(0, p - need[i]));
@@ -2443,8 +2465,10 @@ class _Binder {
     }
 
     // What each column needs so nothing in it is cut: its heading, its
-    // widest cell - or, in a column that wraps, its widest piece.
-    _bColNeeds(book, cols, rows, padX) {
+    // widest cell - or, in a column that wraps, its widest piece (its
+    // widest whole list where `whole`); a cell that is not a list at the
+    // smallest size it shrinks to where `small`.
+    _bColNeeds(book, cols, rows, padX, whole = false, small = false) {
         const ctxM = book.measureCtx;
         return cols.map((c, i) => {
             if (c.tick) return 24 + padX * 2;
@@ -2475,13 +2499,17 @@ class _Binder {
                         n = Math.max(n, ctxM.measureText(p.text).width + padX * 2
                             + (p.swatch ? SWATCH_W : 0));
                     }
+                } else if (c.list && whole) {
+                    n = Math.max(n, ctxM.measureText(String(cell).trim()).width + padX * 2);
                 } else if (c.list) {
                     for (const piece of this._bCellPieces(cell, c.words)) {
                         n = Math.max(n, ctxM.measureText(piece.trim()).width + padX * 2);
                     }
                 } else {
+                    if (small) ctxM.font = this._bFont(14, 400);
                     n = Math.max(n, ctxM.measureText(String(cell)).width + padX * 2
                         + (c.swatch && r.swatch ? SWATCH_W : 0));
+                    if (small) ctxM.font = this._bFont(SZ.cell, 400);
                 }
             }
             return n;
@@ -2511,6 +2539,10 @@ class _Binder {
     // `headShrink` column's heading shrinks before the column asks its
     // neighbours for room (_bColNeeds).
     // `titleShrink` lets a long title shrink a little rather than be cut.
+    // `whole` (the pull sheet's tables) gives a list column the room for
+    // its widest list on one line wherever the width holds them all, and a
+    // `shrink` table's headings and cells the room to shrink rather than
+    // cut where it cannot hold them at full size (_bColWidths).
     // `width` is the column the block is measured in (COL_W unless the
     // sheet's columns are another size) - a row that has to wrap knows its
     // height there, and a wider column at paint time simply wraps looser.
@@ -2518,7 +2550,8 @@ class _Binder {
         const cols = spec.cols || [];
         const padX = 12;
         const mW = spec.width || COL_W;
-        const W = this._bColWidths(book, cols, spec.rows || [], mW, padX);
+        const W = this._bColWidths(book, cols, spec.rows || [], mW, padX,
+                                   { whole: !!spec.whole, small: !!spec.whole && !!spec.shrink });
         const layout = (w) => {
             const k = w / mW;
             let x = 0;
@@ -3487,13 +3520,12 @@ class _Binder {
         });
     }
 
-    // Subjects side by side on one sheet, a COLUMN each - a position's
-    // POWER CABLES / DATA CABLES / HARDWARE / SCREENS stacked under its
-    // name the way the workbook's blocks are; a distro's, a processor's
-    // tables under theirs - as many as fit the drawing area's width at
-    // base size, the next sheet taking the rest ("for pulls and stuff we
-    // can combine those screens on the PDF", 2026-09-08; the screens
-    // themselves stay one per sheet). A subject taller than a column takes
+    // Subjects side by side on one sheet, a COLUMN each - a distro's, a
+    // processor's tables under its name (the pull sheets lay their
+    // positions out their own way, _bPullSheets) - as many as fit the
+    // drawing area's width at base size, the next sheet taking the rest
+    // ("for pulls and stuff we can combine those screens on the PDF",
+    // 2026-09-08; the screens themselves stay one per sheet). A subject taller than a column takes
     // the columns it needs; taller than the sheet, it continues on the
     // next "(cont.)", its heads repeated, and leads that sheet, which
     // stays at 1. Otherwise the fill scale applies to the sheet as a
@@ -5108,18 +5140,213 @@ class _Binder {
 
     // ---- the pull sheets (3.n) ----------------------------------------------
 
-    // The positions side by side, a column each headed with its name, as
-    // many as fit a sheet; the sheet named by the positions it carries -
-    // "PULL · SR - MAIN, SR - Return, …".
+    // The positions side by side, each headed with its name, as many as fit
+    // a sheet; the sheet named by the positions it carries - "PULL · SR -
+    // MAIN, SR - Return, …". A position's sections - POWER CABLES, DATA
+    // CABLES, HARDWARE, SCREENS - FLOW ACROSS THE SHEET in columns rather
+    // than down one narrow column at its left edge (2026-10-18: "we dont
+    // have to have all the text vertical in a column like it is. it can
+    // space out to the right"): each column as wide as its sections need
+    // whole - a label list, a hardware row's details on one line, the
+    // Screens table's headings in full - and the sections, kept whole and
+    // in order, split into the columns that let the sheet print largest
+    // (_bPullSpread). Which positions share a sheet is decided first, each
+    // at its narrowest - PULL_COL_W, so a sheet carries the positions it
+    // always has (four to a Tabloid) - and the room left over then goes to
+    // spreading them. A position taller than a sheet in every arrangement
+    // runs down columns of PULL_COL_W and continues on the next sheet,
+    // "(cont.)", which stays at 1.
     _bPullSheets(book, positions) {
         const groups = positions.map(({ pos, members }) =>
             ({ kind: 'pull', name: pos.name, blocks: this._bPullBlocks(book, pos, members) }));
         const label = (gs) => gs.map(g => g.name + (g.cont ? ' (cont.)' : '')).join(', ');
-        this._bColumnSheets(book, {
-            colW: PULL_COL_W,
-            page: (gs) => ({ kind: 'pull', title: `Pull - ${label(gs)}`, sheetTitle: `PULL · ${label(gs)}`,
-                             subject: label(gs) }),
-        }, groups);
+        const page = (gs) => ({ kind: 'pull', title: `Pull - ${label(gs)}`, sheetTitle: `PULL · ${label(gs)}`,
+                                subject: label(gs) });
+        const da = book.geo.da;
+        const colH = da.h - GROUP_H;
+        const queue = groups.map(g => ({ ...g, cont: false,
+                                         blocks: (g.blocks || []).filter(b => b && (b.lines || []).length) }))
+            .filter(g => g.blocks.length);
+        while (queue.length) {
+            const placed = [];          // { group, options }
+            let used = 0, continues = false;
+            while (queue.length) {
+                const g = queue[0];
+                const gap = placed.length ? COL_GAP : 0;
+                const options = this._bPullArrangements(g.blocks, colH, da.w - used - gap, da.w);
+                if (options.length) {
+                    placed.push({ group: g, options });
+                    used += gap + Math.min(...options.map(o => o.w));
+                    queue.shift();
+                    continue;
+                }
+                if (placed.length) break;           // it starts the next sheet
+                const cut = this._bPullCut(g.blocks, colH, da.w);
+                placed.push({ group: g, options: [cut.option] });
+                queue.shift();
+                if (cut.rest.length) {
+                    queue.unshift({ ...g, blocks: cut.rest, cont: true });
+                    continues = true;
+                    break;
+                }
+                used = cut.option.w;
+            }
+            if (!placed.length) break;
+            const lay = continues ? null : this._bPullSpread(book, placed);
+            const picks = lay ? lay.picks
+                : placed.map(p => p.options.reduce((a, o) => (o.w < a.w ? o : a)));
+            const extent = lay ? lay.extent
+                : { w: picks.reduce((s, o) => s + o.w, 0) + (picks.length - 1) * COL_GAP,
+                    h: GROUP_H + Math.max(...picks.map(o => o.h)) };
+            const scale = lay ? lay.scale : 1;
+            const heads = placed.map(p => p.group.name + (p.group.cont ? ' (cont.)' : ''));
+            const cols = picks.reduce((n, o) => n + o.cols.length, 0);
+            this._bPage(book, { ...page(placed.map(p => p.group)), layout: 'tables', cols, scale, extent,
+                                names: heads }, (pg, scaled) => scaled(() => {
+                let x = da.x;
+                picks.forEach((o, j) => {
+                    this._bGroupHead(book, heads[j], x, da.y, o.w);
+                    let cx = x;
+                    for (const col of o.cols) {
+                        for (const it of col.items) it.line.draw(book.ctx, cx, da.y + GROUP_H + it.y, col.w);
+                        cx += col.w + COL_GAP;
+                    }
+                    x += o.w + COL_GAP;
+                });
+            }));
+        }
+    }
+
+    // A pull table as a block that can be laid out at any width: its lines
+    // at the pull sheet's base column (`lines`), `make(w)` for its lines in
+    // a column w wide, and the widths the sheet chooses between besides
+    // PULL_COL_W (four positions to a Tabloid, as the sheet has always
+    // held: the Screens table's headings set smaller there rather than
+    // cut) - `wMin`, the narrowest that cuts and shrinks nothing (every
+    // heading in full), and `wNat`, its natural width, every list on one
+    // line too - each kept between PULL_COL_W and PULL_COL_MAX (a longer
+    // list wraps as it did).
+    _bPullBlock(book, spec) {
+        const padX = 12;
+        const s = { ...spec, whole: true };
+        const cache = new Map();
+        const make = (w) => {
+            if (!cache.has(w)) cache.set(w, this._bTableLines(book, { ...s, width: w }));
+            return cache.get(w);
+        };
+        const sum = (a) => a.reduce((x, y) => x + y, 0);
+        const clamp = (v) => Math.min(PULL_COL_MAX, Math.max(PULL_COL_W, Math.ceil(v)));
+        const full = s.cols.map(c => ({ ...c, headShrink: false }));
+        const wMin = clamp(sum(this._bColNeeds(book, full, s.rows, padX)));
+        const wNat = Math.max(wMin, clamp(sum(this._bColNeeds(book, full, s.rows, padX, true))));
+        return { lines: make(PULL_COL_W), make, wTight: PULL_COL_W, wMin, wNat };
+    }
+
+    // Every way a position's blocks, whole and in order, go into columns
+    // side by side no taller than colH and no wider in all than availW:
+    // each split of the run into consecutive columns, each column at its
+    // blocks' natural width (`tier` 2), at their narrowest with every
+    // heading in full (1) and at PULL_COL_W (0). A block that cannot
+    // be re-laid (a continuation's remainder) keeps the width it was laid
+    // out at.
+    //   [{ w, h, tier, cols: [{ w, h, items: [{ line, y }] }] }]
+    _bPullArrangements(blocks, colH, availW, maxW) {
+        const n = blocks.length;
+        if (!n) return [];
+        const widthOf = (b, key) => (b.make ? b[key] : (b.fixedW || PULL_COL_W));
+        const linesAt = (b, w) => (b.make ? b.make(w) : b.lines);
+        const out = [];
+        const seen = new Set();
+        const splits = n <= 10 ? 1 << (n - 1) : 1;
+        for (let m = 0; m < splits; m++) {
+            const runs = [];
+            let cur = [];
+            blocks.forEach((b, i) => {
+                cur.push(b);
+                if (i < n - 1 && ((m >> i) & 1)) { runs.push(cur); cur = []; }
+            });
+            runs.push(cur);
+            for (const [tier, key] of [[2, 'wNat'], [1, 'wMin'], [0, 'wTight']]) {
+                const widths = runs.map(run => Math.min(maxW, Math.max(...run.map(b => widthOf(b, key)))));
+                const w = widths.reduce((s, x) => s + x, 0) + (runs.length - 1) * COL_GAP;
+                const id = `${m}:${widths.join(',')}`;
+                if (w > availW || seen.has(id)) continue;
+                seen.add(id);
+                const cols = runs.map((run, c) => {
+                    const col = { w: widths[c], h: 0, items: [] };
+                    let y = 0;
+                    run.forEach((b, k) => {
+                        if (k) y += BLOCK_GAP;
+                        for (const line of linesAt(b, widths[c])) { col.items.push({ line, y }); y += line.h; }
+                    });
+                    col.h = y;
+                    return col;
+                });
+                if (cols.some(c => c.h > colH)) continue;
+                out.push({ w, h: Math.max(...cols.map(c => c.h)), cols, tier });
+            }
+        }
+        return out;
+    }
+
+    // A position no arrangement holds: its blocks down columns of
+    // PULL_COL_W, split where a column ends, as many columns as the sheet
+    // has; what is left comes back as `rest` for the next sheet, laid out
+    // at that width.
+    _bPullCut(blocks, colH, availW) {
+        const colW = Math.min(availW, Math.max(...blocks.map(b => (b.make ? b.wTight : (b.fixedW || PULL_COL_W)))));
+        const across = Math.max(1, Math.floor((availW + COL_GAP) / (colW + COL_GAP)));
+        const pack = this._bPack(blocks.map(b => (b.make ? { lines: b.make(colW) } : b)), colH, across);
+        const cols = pack.cols.map(c => ({ w: colW, h: c.h, items: c.items }));
+        return { option: { w: cols.length * colW + (cols.length - 1) * COL_GAP,
+                           h: Math.max(0, ...cols.map(c => c.h)), cols },
+                 rest: pack.rest.map(r => ({ ...r, fixedW: colW })) };
+    }
+
+    // The sheet's arrangement: for each height the columns might reach, every
+    // position at its narrowest arrangement that stays under it; of those,
+    // the one that prints largest (_bFillScale), and among any within 2 %
+    // of that, the one that spreads widest across the sheet. Arrangements
+    // whose columns are all at their natural width - no label list or
+    // hardware detail wrapped - win wherever they print at least
+    // PULL_WHOLE_KEEP of the largest any arrangement could; else ones with
+    // every heading in full wherever the sheet holds them; else the
+    // narrow columns.
+    //   { picks: [arrangement per position], scale, extent }
+    _bPullSpread(book, placed) {
+        const da = book.geo.da;
+        const choose = (tier) => {
+            const opts = placed.map(p => p.options.filter(o => o.tier >= tier));
+            if (opts.some(os => !os.length)) return null;
+            const heights = [...new Set(opts.flat().map(o => o.h))].sort((a, b) => a - b);
+            const cands = [];
+            for (const top of heights) {
+                const picks = [];
+                for (const os of opts) {
+                    let o = null;
+                    for (const x of os) {
+                        if (x.h <= top && (!o || x.w < o.w || (x.w === o.w && x.h < o.h))) o = x;
+                    }
+                    if (!o) break;
+                    picks.push(o);
+                }
+                if (picks.length !== placed.length) continue;
+                const w = picks.reduce((s, o) => s + o.w, 0) + (picks.length - 1) * COL_GAP;
+                if (w > da.w) continue;
+                const extent = { w, h: GROUP_H + Math.max(...picks.map(o => o.h)) };
+                cands.push({ picks, extent, scale: this._bFillScale(book, extent) });
+            }
+            if (!cands.length) return null;
+            const best = Math.max(...cands.map(c => c.scale));
+            const span = (c) => c.extent.w * c.scale;
+            return cands.filter(c => c.scale >= best / 1.02)
+                .reduce((a, c) => (span(c) > span(a) + 0.5
+                    || (Math.abs(span(c) - span(a)) <= 0.5 && c.scale > a.scale) ? c : a));
+        };
+        const any = choose(0);
+        const whole = choose(2);
+        if (whole && any && whole.scale >= any.scale * PULL_WHOLE_KEEP) return whole;
+        return choose(1) || any;
     }
 
     _bPullBlocks(book, pos, members) {
@@ -5132,13 +5359,11 @@ class _Binder {
             .map(r => ({ cells: ['', this._bType(r.type), r.length || '—', String(r.qty), r.label || ''] }));
         const blocks = [];
         const power = cableRows('power');
-        blocks.push({ lines: this._bTableLines(book, { title: 'Power cables', cols: cableCols,
-            width: PULL_COL_W,
-            rows: power.length ? power : [{ cells: ['', 'none', '', '', ''] }] }) });
+        blocks.push(this._bPullBlock(book, { title: 'Power cables', cols: cableCols,
+            rows: power.length ? power : [{ cells: ['', 'none', '', '', ''] }] }));
         const data = cableRows('data');
-        blocks.push({ lines: this._bTableLines(book, { title: 'Data cables', cols: cableCols,
-            width: PULL_COL_W,
-            rows: data.length ? data : [{ cells: ['', 'none', '', '', ''] }] }) });
+        blocks.push(this._bPullBlock(book, { title: 'Data cables', cols: cableCols,
+            rows: data.length ? data : [{ cells: ['', 'none', '', '', ''] }] }));
         // Hardware: the socas, the distros, the cards these screens hang on.
         const hw = [];
         const seenBox = new Set(), seenDistro = new Set(), seenCard = new Set();
@@ -5165,12 +5390,11 @@ class _Binder {
                                             home.named ? home.card.deviceName : ''] });
             }
         }
-        blocks.push({ lines: this._bTableLines(book, {
+        blocks.push(this._bPullBlock(book, {
             title: 'Hardware',
-            width: PULL_COL_W,
             cols: [tick, { title: 'item', w: 1.2 }, { title: 'detail', w: 2, list: true }],
             rows: hw.length ? hw : [{ cells: ['', 'none', ''] }],
-        }) });
+        }));
         // Screens with their gang counts - named as the set prints them,
         // each SIDE by its own tab (owner, 2026-10-01: "Depends on if it is
         // power or data and on if grouped or screen group"). A group routed
@@ -5248,18 +5472,20 @@ class _Binder {
                                        circuits, ports, gangs] });
             }
         }
-        blocks.push({ lines: this._bTableLines(book, {
+        blocks.push(this._bPullBlock(book, {
             title: 'Screens',
-            width: PULL_COL_W,
             cols: [tick, { title: 'screen', w: 1.3 }, { title: 'size', w: 0.7 },
                    { title: 'panels', w: 0.6, align: 'right' }, { title: 'circuits', w: 0.6, align: 'right' },
                    { title: 'ports', w: 0.5, align: 'right' }, { title: 'shared', w: 0.9 }],
             rows: screens,
-            // Seven columns in the pull sheet's narrow column: the headings
-            // take the room their neighbours spare (_bColWidths) and the
-            // cells shrink a little rather than cut ("28× 2fer").
+            // Seven columns: the sheet gives the table the width its
+            // headings and cells need whole (_bPullBlock - "CIRCU…" in the
+            // old narrow column, 2026-10-18); in a column narrower than
+            // that the headings take the room their neighbours spare
+            // (_bColWidths) and the cells shrink a little rather than cut
+            // ("28× 2fer").
             shrink: true,
-        }) });
+        }));
         return blocks;
     }
 
