@@ -1532,6 +1532,79 @@ def test_a_sheet_whose_tables_do_not_fit_continues_on_the_next_number(page):
     assert listed == [(p[1], p[3]) for p in plan], listed
 
 
+PULL_SPREAD_JS = """([opts, n]) => {
+    const app = window.app;
+    const real = app.buildPullSheet;
+    // the show's positions cut to `n` - one, the sheet a small show prints
+    // (3.1 with a single beach) - or copied up to it, four sharing a sheet
+    app.buildPullSheet = function () {
+        const list = real.call(this);
+        const ps = list.positions.slice();
+        for (let c = 2; ps.length < n; c++) {
+            ps.push(...list.positions.map(p => ({ ...p, name: `${p.name} ${c}`, key: `${p.key}-${c}` })));
+        }
+        return { ...list, positions: ps.slice(0, n) };
+    };
+    try {
+        const plan = app.planBinder(opts);
+        const idx = plan.findIndex(p => p.kind === 'pull');
+        const r = app.renderBinderPage(opts, idx);
+        const tbX = r.titleBlock && typeof r.titleBlock.x === 'number' ? r.titleBlock.x : Infinity;
+        return { title: plan[idx].title, cols: plan[idx].cols, names: plan[idx].names,
+                 scale: plan[idx].scale, extent: plan[idx].extent,
+                 ops: r.record.ops.filter(o => o.op === 'text' && String(o.text).trim() && o.x < tbX)
+                     .map(o => ({ t: o.text, x: o.x, size: o.size, weight: o.weight })) };
+    } finally {
+        app.buildPullSheet = real;
+    }
+}"""
+
+PULL_SECTIONS = ('POWER CABLES', 'DATA CABLES', 'HARDWARE', 'SCREENS')
+PULL_HEADINGS = ('CABLE', 'LEN', 'QTY', 'LABEL', 'ITEM', 'DETAIL',
+                 'SCREEN', 'SIZE', 'PANELS', 'CIRCUITS', 'PORTS', 'SHARED')
+
+
+@pytest.mark.parametrize('n', [1, 2, 4], ids=['one position', 'two positions', 'four positions'])
+def test_the_pull_sheet_spreads_across_the_page_and_cuts_no_heading(page, n):
+    """The pull sheet's sections flow ACROSS the drawing area in columns
+    rather than down one narrow column at its left edge (2026-10-18: "we
+    dont have to have all the text vertical in a column like it is. it can
+    space out to the right"): a sheet with three or more sections uses more
+    than half the drawing width, and no heading is cut - the Screens
+    table's CIRCUITS and PORTS read "CIRCU…" and "POR…" in the old narrow
+    column, PANELS in small type. Where the sheet has the room (one
+    position, two) every section title and column heading prints at its
+    full size; four positions still share a Tabloid, each in its narrow
+    column, the Screens headings set smaller there but whole."""
+    pg, ids = page
+    out = pg.evaluate("(a) => (%s)(a)" % PULL_SPREAD_JS, [json.loads(_SHOW_JSON), n])
+    texts = [o['t'] for o in out['ops']]
+    sections = [s for s in PULL_SECTIONS if s in texts]
+    assert len(sections) >= 3, texts
+    assert len(out['names']) == n, out['names']
+    if n == 1:
+        assert out['title'] == 'Pull - SR Beach' and out['cols'] >= 2, (out['title'], out['cols'])
+    if n == 4:
+        assert out['cols'] == 4, out['cols']
+    # the drawing's extent at its scale, and the text itself, reach past
+    # the middle of the drawing area
+    used = out['extent']['w'] * out['scale']
+    assert used > DA['w'] / 2 and used <= DA['w'] + 1, (out['extent'], out['scale'])
+    assert max(o['x'] for o in out['ops']) > DA['x'] + DA['w'] / 2, out['ops']
+    # nothing on the sheet is cut, and every heading is whole and full size
+    assert not [t for t in texts if t.endswith('…')], [t for t in texts if t.endswith('…')]
+    sc = out['scale'] or 1
+    for h in PULL_HEADINGS:
+        sizes = [o['size'] for o in out['ops'] if o['t'] == h and o['weight'] == 700]
+        assert len(sizes) >= n, (h, texts)
+        if n < 4:
+            assert all(abs(s - 21 * sc) < 0.05 for s in sizes), (h, sizes, sc)
+    for h in sections:
+        sizes = [o['size'] for o in out['ops'] if o['t'] == h and o['weight'] == 700]
+        assert sizes and all(abs(s - 25 * sc) < 0.05 for s in sizes), (h, sizes, sc)
+    assert ids['errors'] == []
+
+
 def test_the_overview_maps_the_show_and_lists_the_contents(page):
     """Sheet 1.1: the POSITIONS, SHOW TOTALS and CONTENTS tables in the
     top-left, the show map under them as view 1 across the width with its
