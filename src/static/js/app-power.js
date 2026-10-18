@@ -206,7 +206,8 @@ class _Power {
         
         // Calculate total ports required from assignments
         const usesRectangle = this.usesRectangleConstraint(processorType);
-        const visiblePanels = this.currentLayer.panels ? this.currentLayer.panels.filter(p => !p.hidden).length : 0;
+        // Data side: a legacy `blank` is no cabinet, exactly like hidden.
+        const visiblePanels = this.currentLayer.panels ? this.currentLayer.panels.filter(p => !p.hidden && !p.blank).length : 0;
         const panelCountForStatus = usesRectangle && this.currentLayer.panels ? this.currentLayer.panels.length : visiblePanels;
         const assignments = this.calculatePortAssignments(this.currentLayer);
         // v0.11.0: calculatePortAssignments is the only thing that knows where

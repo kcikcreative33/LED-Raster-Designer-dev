@@ -2248,7 +2248,7 @@ export class LEDRasterApp {
     //    SX40/S8 feature and needs an HDMI source. The "Low Latency Mode" on
     //    T1/M2 is a different feature and costs no capacity at all.
     //  - Megapixel: "HELIOS(R) LED Processing Platform - User Guide" v26.04.0
-    //    (2026-04-20). Tile LL + Processor LL do not change the Appendix K.14
+    //    (2026-04-20). Tile LL + Processor LL do not change the Appendix K.15
     //    port capacities; the real cost is halved daisy-chain length in
     //    stacked columns.
     //  - NovaStar: low latency constrains port GEOMETRY rather than the pixel
@@ -2429,7 +2429,9 @@ export class LEDRasterApp {
     // comes from a formula is ROUNDED DOWN (owner, 2026-09-26: "make sure
     // the table values are rounded down") - a pixel over the real limit is
     // a port that does not fit. 5G is NovaStar's published table verbatim,
-    // already below its formula.
+    // already below its formula. A rate between two rows is answered by
+    // lookupPortCapacity from portCapacityFormulas (below) where a formula
+    // exists, and never by interpolation.
     portCapacityTables = {
         // NovaStar Armor (MSD/MRV) legacy 1G receiving cards
         // 8-bit uses 24x; 10/12-bit use 48x (max 120 Hz)
@@ -2480,10 +2482,10 @@ export class LEDRasterApp {
         },
         // v0.11.0: Megapixel HELIOS switch-to-tile output port capacity.
         // Source: "HELIOS(R) LED Processing Platform - User Guide", v26.04.0 (2026-04-20),
-        // Appendix K.14 "HELIOS & Switch - Output Port Capacity (Pixels)", p.216.
+        // Appendix K.15 "HELIOS & Switch - Output Port Capacity (Pixels)", p.216.
         // Megapixel publishes no 8-bit figures for HELIOS, so only 10/12 exist here.
         // Prior values came from the rounded switch spec-sheet figure (425,000 px
-        // @ 12-bit/60Hz) and ran up to ~6% HIGH against K.14; do not reintroduce them.
+        // @ 12-bit/60Hz) and ran up to ~6% HIGH against K.15; do not reintroduce them.
         // 2.5G requires 2.5G-capable tiles; most tiles are 1G only.
         'megapixel-1g': {
             10: { 24:1237000, 25:1187000, 30:985000, 48:608000, 50:583000, 60:482000, 120:230000, 144:188000, 180:146000, 200:129000, 240:104000 },
@@ -2492,6 +2494,45 @@ export class LEDRasterApp {
         'megapixel-2.5g': {
             10: { 24:3094000, 25:2968000, 30:2464000, 48:1520000, 50:1457000, 60:1205000, 120:576000, 144:471000, 180:366000, 200:324000, 240:261000 },
             12: { 24:2578000, 25:2473000, 30:2053000, 48:1267000, 50:1214000, 60:1004000, 120:480000, 144:393000, 180:305000, 200:270000, 240:218000 }
+        }
+    };
+
+    // The formula behind the tables that ARE formula-derived, so a frame rate
+    // between two published rows gets its own exact figure instead of a
+    // straight line between its neighbours. Capacity runs as 1 / frame rate,
+    // so a straight line always sits ABOVE the curve: Armor 8-bit 72 Hz read
+    // 593,749 by interpolation where the formula gives 549,768 (+8%).
+    //
+    //   capacity = floor(budget / (perPixel x frame rate))
+    //
+    // - NovaStar Armor / COEX 1G: 95% of 1 Gbit, at 24 / 48 / 48 (Armor) or
+    //   24 / 32 / 48 (COEX 1G) per pixel for 8 / 10 / 12-bit.
+    // - Brompton: the published 24 Hz figure x 24, per bit depth. The retired
+    //   brompton-ull table is the same budget halved (perPixel 2), which is
+    //   what Ultra Low Latency's floor(capacity / 2) gives too.
+    //
+    // Every published row above is EXACTLY this formula, floored
+    // (tests/test_capacity_formulas.py holds each cell to it), so the table
+    // and the formula cannot drift apart. NovaStar 5G and Megapixel HELIOS
+    // are deliberately absent: their tables are the manufacturers' published
+    // figures, 5G already below its own formula and HELIOS on no 1 / frame
+    // rate curve at all. lookupPortCapacity never invents a figure for them.
+    portCapacityFormulas = {
+        'novastar-armor': {
+            budget:   { 8: 950000000, 10: 950000000, 12: 950000000 },
+            perPixel: { 8: 24, 10: 48, 12: 48 }
+        },
+        'novastar-coex-1g': {
+            budget:   { 8: 950000000, 10: 950000000, 12: 950000000 },
+            perPixel: { 8: 24, 10: 32, 12: 48 }
+        },
+        'brompton': {
+            budget:   { 8: 31500000, 10: 25200000, 12: 21000000 },
+            perPixel: { 8: 1, 10: 1, 12: 1 }
+        },
+        'brompton-ull': {
+            budget:   { 8: 31500000, 10: 25200000, 12: 21000000 },
+            perPixel: { 8: 2, 10: 2, 12: 2 }
         }
     };
 }
