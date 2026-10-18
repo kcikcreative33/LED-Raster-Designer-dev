@@ -434,7 +434,10 @@ BINDER_JS = """() => {
     const tables = [];
     const original = app._bTableLines;
     const subject = app._bSubjectRows;
+    const pullBlock = app._bPullBlock;
     app._bTableLines = function (book, spec) { tables.push(spec); return []; };
+    // the pull sheet lays each section out through _bPullBlock (2026-10-18)
+    app._bPullBlock = function (book, spec) { tables.push(spec); return { lines: [], w: 0, h: 0 }; };
     app._bSubjectRows = () => [{ type: 'Data Jump', length: "2'", qty: 1517 }];
     const row = { type: 'Data Jump', length: "2'", qty: 1517, label: 'X', side: 'data' };
     try {
@@ -447,6 +450,7 @@ BINDER_JS = """() => {
     } finally {
         app._bTableLines = original;
         app._bSubjectRows = subject;
+        app._bPullBlock = pullBlock;
     }
     const qtys = tables.map(t => t.rows.map(r => r.cells).filter(c => c.includes('Data Jump'))
         .map(c => c[c.indexOf('Data Jump') + 2])).flat();
