@@ -154,6 +154,42 @@ because of it.
 - FIX: Processors that hold no cards - Brompton, HELIOS, MX40 Pro and
   the rest - are called processors throughout, where the binder and the
   tray called them cards. H series, MX2000 and MX6000 keep their cards.
+- FIX: A US distro's busiest leg is held to 80% of its rating, the
+  continuous-load limit, unless its new Main 100% rated switch is on; the
+  L21-30 feed check follows the same rule. Over the limit shows a red
+  OVER, and Accept overload turns it amber, kept with the show and noted
+  in the binder. EU distros stay at their rating.
+- FIX: The binder's distro Load line shows every leg's amps, the 3-phase
+  total, kW, the limit and the legs over it, in one line.
+- FIX: A distro has a Type, filled from its preset, that the pull sheet
+  prints in place of "24 way". EU powerCON outputs default to 16 A, and
+  any direct output's rating can be overridden.
+- FIX: A distro change that would leave a multi on a one-circuit output
+  is stopped and asks for a fix: take the multi off or cancel. One left
+  there by an older show shows as over capacity.
+- FIX: Blank cabinets draw no power and carry no data.
+- FIX: Balance tries every arrangement of a distro's partly filled multis
+  and offers the best, never loads the busiest leg harder, and shows the
+  real before and after. It leaves locked screens where they are and no
+  longer puts two loads on one circuit through paired connectors; Reset
+  keeps a locked screen's labels.
+- FIX: Port capacity between published frame rates follows the
+  processor's own formula, rounded down, or the next published rate up
+  for NovaStar 5G and HELIOS, where it read high. A cabinet too big for
+  one port is an error in Max Capacity too.
+- FIX: Changing the weight unit on one screen of a group, or on several
+  selected screens, converts each screen's own weight instead of
+  changing the others. Feet-and-inch size labels no longer read 10' 51"
+  or 20' 12.0". A half tile weighs its panel library half model when one
+  matches exactly.
+- FIX: Wiring sheets put each breakout box on the side of the wall its
+  ports or circuits start on, close to the wall, with its inputs on the
+  caption row; the wall grows to the full width or height and the
+  drawing sits centered.
+- FIX: Binder tables center every column and size their columns to
+  what they hold. The Ports table leaves out OUTPUT where it only repeats
+  the port name, pull sheets spread across the page, and LEN reads
+  LENGTH.
 - FIX: Multi numbers on the Power tab no longer shift when a screen is
   added to a shared distro, removed or reordered. A removed screen leaves
   its gap for the next one, and only Reset offsets in the Balance dialog
