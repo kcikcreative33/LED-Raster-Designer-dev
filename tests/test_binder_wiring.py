@@ -1422,3 +1422,109 @@ def test_live_show_b_runs_travel_outside_the_wall(page, palette):
     n = _sweep_off_the_wall(pg, SCRATCH_FIXTURE, palette, _wiring('SR - MAIN'))
     assert n == 30, ('22 circuits and eight port ends', n)
     assert ids['errors'] == []
+
+
+# ---- the wall takes the height the runs do not need ----------------------
+#
+# The owner, comparing a show's 2.3 DATA with its 2.4 DATA WIRING
+# (2026-10-18): "there is a ton of vertical space it could fill before we
+# even start thinking about below where it is ... the bottom of the screens
+# lines up, it's the tops that don't". The wall was held to rev 1.1's
+# height and to a rail allowance guessed from the run count, and centred in
+# what was left. It now grows from there into its whole room - the lanes
+# over its head, the lanes under its foot and the blocks keep theirs - for
+# as long as the runs read no worse, and a wall that grew stands at the top
+# of its room.
+
+MAX_WALL_H, LANE_STEP = _js_consts('MAX_WALL_H', 'LANE_STEP')
+
+
+def _top_of_its_room(h):
+    """The wall's top where its room begins: the drawing area's top, or
+    the foot of the lanes the runs that go up need."""
+    return abs(h['map']['y'] - (h['area']['y'] + h['head'])) < 1.0
+
+
+def test_the_wall_fills_the_height_the_runs_do_not_need(page):
+    """The seed show's wiring sheets: every run leaves the wall by its
+    side or its foot, so nothing needs the room over its head - the wall
+    grows into it, its top at the drawing area's top (or, where it is
+    wider than tall, as wide as its room allows), well past the height rev
+    1.1 held it to, with the blocks and the lanes under it still clear."""
+    pg, ids = page
+    pg.evaluate(SEED_JS)
+    pg.wait_for_timeout(600)
+    opts = json.loads(_SHOW_JSON)
+    for name in ('WALL-A', 'WALL-B', 'CENTER'):
+        for title, side in zip(_wiring(name), ('power', 'signal')):
+            h = _one_side(_sheet(pg, opts, title), side)
+            m = h['map']
+            assert h['head'] == 0, ('no run goes up on the seed show', title, h['head'])
+            assert h['grow'] > 0, ('the wall grew', title, h['grow'])
+            assert _top_of_its_room(h), ('a wall that grew stands at the top of its room', title, m, h['area'])
+            assert _fills_its_room(h), (title, m, h['wallRoom'])
+            _check_runs(h)
+            _check_blocks(h)
+            # the lanes under the wall run between its foot and the blocks
+            top_block = min(b['y'] for b in h['blocks'])
+            for r in h['runs']:
+                for p, q in zip(r['points'], r['points'][1:]):
+                    if abs(p[1] - q[1]) < 0.01 and p[1] > m['y'] + m['h']:
+                        assert p[1] < top_block, ('a lane among the blocks', title, r)
+    wa = _one_side(_sheet(pg, opts, 'WALL-A - Data Wiring'), 'signal')
+    assert wa['map']['h'] > MAX_WALL_H * wa['scale'] + 1, ('past rev 1.1 height', wa['map'])
+    assert ids['errors'] == []
+
+
+# A wall whose circuits each begin on its TOP ROW, in a row shoulder to
+# shoulder: only the two at the ends can leave by a side, every other one
+# goes up and over the wall's head.
+TOP_RUN_SEED_JS = """async () => {
+    const app = window.app;
+    const j = (method, url, body) => fetch(url, {method,
+        headers: {'Content-Type': 'application/json'},
+        body: body === undefined ? undefined : JSON.stringify(body)}).then(r => r.json());
+    const proj = await j('GET', '/api/project');
+    proj.layers = []; proj.groups = []; proj.processors = []; proj.distros = [];
+    delete proj.port_assignments; delete proj.pullSheet; delete proj.binder;
+    await j('PUT', '/api/project', proj);
+    await j('POST', '/api/layer/add', {name: 'OVERHEAD', columns: 12, rows: 4,
+        cabinet_width: 200, cabinet_height: 200, powerVoltage: 208, powerAmperage: 10,
+        panelWatts: 500, powerFlowPattern: 'tl-v', powerOrganized: true, flowPattern: 'tl-h',
+        processorType: 'novastar-armor'});
+    app.project = await j('GET', '/api/project');
+    app.dedupeProjectLayers('wiring_top_seed');
+    app.selectLayer(app.project.layers[0]);
+    await app.refreshProcessors();
+    await app.refreshPortAssignment();
+    app.renderLayers();
+    return app.screenCircuits(app.project.layers[0]).length;
+}"""
+
+
+def test_runs_that_go_up_keep_the_room_over_the_wall(page):
+    """OVERHEAD, 12 x 4, a circuit down each column: ten of its twelve runs
+    go up out of the top row and across over the wall's head. That room is
+    the runs': the wall's top stays under every lane over its head, the
+    room given those lanes is at least a lane apiece, and the wall takes
+    only the height the lanes and the blocks do not need - a wall that grew
+    stands right under the lanes, one that could not grow without the runs
+    reading worse stays as rev 1.1 drew it."""
+    pg, ids = page
+    n = pg.evaluate(TOP_RUN_SEED_JS)
+    pg.wait_for_timeout(400)
+    assert n == 12, n
+    opts = json.loads(_SHOW_JSON)
+    h = _one_side(_sheet(pg, opts, 'OVERHEAD - Power Wiring'), 'power')
+    m, a, s = h['map'], h['area'], h['scale']
+    up = [r for r in h['runs'] if r['points'][1][1] < r['points'][0][1] - 0.1]
+    assert len(up) >= 8, ('the runs go up', len(up), len(h['runs']))
+    assert h['head'] >= 2 * LANE_STEP * s, ('room over the head for the lanes', h['head'])
+    assert m['y'] >= a['y'] + h['head'] - 0.5, ('the wall leaves the lanes their room', m, a, h['head'])
+    overs = sorted({round(r['points'][1][1], 2) for r in up})
+    for y in overs:
+        assert a['y'] < y < m['y'], ('a lane over the head stands between the page top and the wall', y, m)
+    assert h['grow'] == 0 or _top_of_its_room(h), (h['grow'], m, a, h['head'])
+    _check_runs(h)
+    _check_blocks(h)
+    assert ids['errors'] == []
