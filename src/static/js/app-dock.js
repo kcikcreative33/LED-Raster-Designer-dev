@@ -2899,19 +2899,28 @@ class _HardwareDock {
         }
         // An L21-30 box's feed is rated per leg (30 A), and the box's
         // circuits load the feed legs as phasors - the same maths the
-        // distro's own LEGS line runs, scoped to this one feed. Over is a
-        // strip question and reddens the box like any other clash.
+        // distro's own LEGS line runs, scoped to this one feed. The leg is
+        // held to the main's continuous rule (2026-10-18): 80% of 30 A -
+        // 24 A - on a US system unless the distro's main is 100% rated
+        // (distroFeedLimit), and the strip says the limit the way the
+        // main's does: "29.98 A / 24 A (80% of 30 A)". Over is a strip
+        // question and reddens the box like any other clash.
         let feedOver = false;
+        const feedRule = feedLegA > 0 && typeof this.distroFeedLimit === 'function'
+            ? this.distroFeedLimit(d, feedLegA)
+            : { ratingA: feedLegA, pct: 1, limitA: feedLegA, us: false, main100: false };
+        const feedNote = typeof this.distroMainLimitNote === 'function' ? this.distroMainLimitNote(feedRule) : '';
+        const feedLimitText = `${+feedRule.limitA.toFixed(2)} A`
+            + (feedNote ? ` (${feedNote})` : (feedRule.main100 ? ' (100% rated main)' : ''));
         if (feedLegA > 0 && memberRecs.length
                 && typeof this.boxFeedLegAmps === 'function') {
             const fl = this.boxFeedLegAmps(d, memberRecs.filter(r => r.s));
             const worst = Math.max(fl.X, fl.Y, fl.Z);
-            if (worst > feedLegA) {
+            if (worst > feedRule.limitA) {
                 feedOver = true;
                 sec.classList.add('hw-dock-multi-clash');
                 this._dockPowerWarnings.push({
-                    text: `${boxName} — feed leg at ${worst.toFixed(1)} A `
-                        + `of ${feedLegA} A — OVER`,
+                    text: `${boxName} — feed leg at ${worst.toFixed(2)} A / ${feedLimitText} — OVER`,
                 });
             }
         }
@@ -2933,7 +2942,7 @@ class _HardwareDock {
                         : 'no circuits free')
                 : 'free')
             + (feedLegA > 0
-                ? `. L21-30 feed, ${feedLegA} A per leg` : '')
+                ? `. L21-30 feed, ${feedLimitText} per leg` : '')
             + (overflow ? `. OVERFLOW - more circuits than the `
                 + `${boxSize === 1 ? 'one' : boxSize === 3 ? 'three' : 'six'} a ${boxType.name} holds` : '')
             + (typeInfo.faceBox && typeInfo.faceBox.paired

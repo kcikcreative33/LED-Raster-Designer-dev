@@ -159,6 +159,18 @@ def _swatch_before(sheet, text_op):
     return hits[0] if hits else None
 
 
+def _line_centre(pg, sheet, text_op):
+    """The middle of a swatched strand's line - its swatch, the gap the
+    swatch keeps, then its name - where a centred cell stands it."""
+    sw = _swatch_before(sheet, text_op)
+    assert sw, text_op
+    w = pg.evaluate("""([t, size, weight]) => {
+        const ctx = document.createElement('canvas').getContext('2d');
+        ctx.font = window.app._bFont(size, weight);
+        return ctx.measureText(t).width; }""", [text_op['text'], text_op['size'], text_op['weight']])
+    return (sw['x'] + text_op['x'] + w) / 2
+
+
 def _tint(hex_colour, k=0.24):
     n = int(hex_colour.lstrip('#'), 16)
     ch = lambda v: f'{round(255 - (255 - v) * k):02x}'  # noqa: E731
@@ -251,14 +263,20 @@ def test_the_processor_sheet_stacks_and_swatches_every_strand(page):
     assert _outline_round(sheet, sheet['texts'][at + 4:at + 8]), 'X2 is not outlined'
     # FIBER CONNECTIONS: at the processor 1 Blue over 2 Orange; at the
     # breakout the TAC pair flipped, 2 Orange over 1 Blue - never side by
-    # side, and no " ·" trailing a strand that has a line of its own
+    # side, and no " ·" trailing a strand that has a line of its own. Each
+    # line - its swatch and its name - stands on the cell's middle
+    # (2026-10-18), so the two lines share a centre, not a left edge.
     pairs = [(a, b) for a, b in zip(sheet['texts'], sheet['texts'][1:])
              if (a['text'], b['text']) in (('1 Blue', '2 Orange'), ('2 Orange', '1 Blue'),
                                            ('13 Blue/Black', '14 Orange/Black'),
                                            ('14 Orange/Black', '13 Blue/Black'))]
     assert len(pairs) >= 5, words                      # B's pair and Fiber connections' four
     for a, b in pairs:
-        assert abs(a['x'] - b['x']) < 0.5 and abs((b['y'] - a['y']) - 30 * s) < 0.6, (a, b)
+        # an outlined input group (Breakout boxes) keeps its strands in one
+        # column inside the outline; a strand list cell centres each line
+        grouped = abs(a['x'] - b['x']) < 0.5 and _outline_round(sheet, [a, b])
+        assert grouped or abs(_line_centre(pg, sheet, a) - _line_centre(pg, sheet, b)) < 0.6, (a, b)
+        assert abs((b['y'] - a['y']) - 30 * s) < 0.6, (a, b)
     assert not [w for w in words if w.endswith(' ·') and w.split(' ')[0].isdigit()], words
     # STRAND MAP: the names bold, the cell tinted, the swatch 24 px
     bold = {t['text']: t for t in sheet['texts'] if t['weight'] == 700}

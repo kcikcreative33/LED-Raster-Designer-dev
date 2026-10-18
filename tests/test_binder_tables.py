@@ -376,11 +376,11 @@ def _ports_table(page):
     """The Ports table of a data sheet, read off its text ops: a list of
     sections {band: [lines], backup: [lines], groups: [{head: (primary,
     backup), rows}]}, a row being a dict keyed by the column headings, the
-    backup half's prefixed "B ". A band's lines sit at their half's PORT
-    column, a snake heading indented past it, and a row puts a cell under
-    its half's headings (HOME RUN and PANELS centred under theirs - the
-    heading and its cells share one x). A table without OUTPUT reads the
-    same, its rows without the key."""
+    backup half's prefixed "B ". Every column stands centred (2026-10-18),
+    each heading and its cells on one x; a band's lines read from their
+    half's left edge and a snake heading indented past it, both drawn
+    left-aligned. A table without OUTPUT reads the same, its rows without
+    the key."""
     texts = page['texts']
     port = next(o for o in texts if o['t'] == 'PORT')
     heads = sorted([o for o in texts if abs(o['y'] - port['y']) < 0.5
@@ -394,7 +394,16 @@ def _ports_table(page):
     last = heads[-1]['x']
     keys = per_half + (['B ' + k for k in per_half] if split else []) + ['PANELS']
     xs = {round(h['x'], 1): k for h, k in zip(heads, keys)}
-    bx = heads[len(per_half)]['x'] if split else float('inf')
+    # the table's left edge is its title's; each centred heading then
+    # gives its column's width (twice its centre's distance from the
+    # column's left), so the backup half's left edge is exact
+    title = max((o for o in texts if o['t'] == 'PORTS' and o['y'] < port['y']), key=lambda o: o['y'])
+    edge, lefts = title['x'], []
+    for h in heads:
+        lefts.append(edge)
+        edge += 2 * (h['x'] - edge)
+    bx = lefts[len(per_half)] if split else float('inf')
+    s = port['size'] / 21                     # the sheet's fill
     # the next table's column starts where its own headings do, on the
     # same line as these
     right = min([o['x'] for o in texts if o['x'] > last + 1 and (
@@ -402,11 +411,9 @@ def _ports_table(page):
                 + [float('inf')])
     # a band reads ABOVE its headings (2026-09-26), so the table starts
     # at its title, and a headings line - repeated under every band - is
-    # skipped
-    title = max((o for o in texts if o['t'] == 'PORTS' and o['y'] < port['y']), key=lambda o: o['y'])
-    # (PANELS is right-aligned: its heading's x is the table's right edge)
+    # skipped; nothing of this table stands right of PANELS' centre
     right = min(right, last + 1)
-    ops = [o for o in texts if o['y'] > title['y'] + 1 and port['x'] - 1 <= o['x'] < right
+    ops = [o for o in texts if o['y'] > title['y'] + 1 and title['x'] - 1 <= o['x'] < right
            and o['t'] not in ('PRIMARY', 'BACKUP')]
     stop = next((o['y'] for o in sorted(texts, key=lambda o: o['y'])
                  if o['y'] > port['y'] and o['x'] < right
@@ -422,26 +429,35 @@ def _ports_table(page):
         if [o['t'] for o in line] == names[:len(want)]:
             prev = 'heads'
             continue
-        cells = {xs.get(round(o['x'], 1)): o['t'] for o in line}
-        if None in cells:
-            # a snake heading, in halves, indented past the band's edge
-            assert sections and set(cells) == {None}, (y, line)
-            half = lambda b: next((o['t'] for o in line if (o['x'] >= bx) == b), None)
-            sections[-1]['groups'].append({'head': (half(False), half(True)), 'rows': []})
-            prev = 'head'
-        elif 'PANELS' not in cells:
+        # a band starts at its half's edge and its pad, a snake heading set
+        # in 22 past that; nothing else of the sheet stands there
+        inset = lambda o: (o['x'] - (bx if o['x'] >= bx else title['x'])) / s
+        left = [o for o in line if o['align'] == 'left' and min(abs(inset(o) - 12), abs(inset(o) - 34)) < 1.5]
+        line = [o for o in line if o['align'] != 'left' or o in left]
+        if not line:
+            continue
+        half = lambda b: next((o['t'] for o in left if (o['x'] >= bx) == b), None)
+        if left:
+            assert len(left) == len(line), ('a band line holds no cell', line)
+            if max(inset(o) for o in left) > 12 + 11:
+                assert sections, (y, line)
+                sections[-1]['groups'].append({'head': (half(False), half(True)), 'rows': []})
+                prev = 'head'
+                continue
             # a band line: a new band, or its second (fiber) line
             if prev != 'band':
                 sections.append({'band': [], 'backup': [], 'groups': [{'head': None, 'rows': []}]})
-            if 'PORT' in cells:
-                sections[-1]['band'].append(cells['PORT'])
-            if 'B PORT' in cells:
-                sections[-1]['backup'].append(cells['B PORT'])
+            if half(False) is not None:
+                sections[-1]['band'].append(half(False))
+            if half(True) is not None:
+                sections[-1]['backup'].append(half(True))
             prev = 'band'
-        else:
-            assert set(cells) >= set(per_half) | {'PANELS'}, ('a row fills its primary half', line)
-            sections[-1]['groups'][-1]['rows'].append(cells)
-            prev = 'row'
+            continue
+        cells = {xs.get(round(o['x'], 1)): o['t'] for o in line}
+        assert None not in cells, ('every cell stands under its heading', line)
+        assert set(cells) >= set(per_half) | {'PANELS'}, ('a row fills its primary half', line)
+        sections[-1]['groups'][-1]['rows'].append(cells)
+        prev = 'row'
     for sec in sections:
         sec['groups'] = [g for g in sec['groups'] if g['head'] or g['rows']]
     return sections
@@ -761,14 +777,15 @@ def test_output_stays_where_nothing_is_placed(variants):
     assert rows and all(r['OUTPUT'] == '—' for r in rows), rows
 
 
-def test_home_run_and_panels_stand_centred_under_their_headings(seeded, variants):
-    """HOME RUN and PANELS are drawn centred, each heading and every cell
-    under it on one x - never a short "25'" stranded at the left of a wide
-    column; PORT and OUTPUT read from the left."""
+def test_every_column_stands_centred_under_its_heading(seeded, variants):
+    """Every column is drawn centred (2026-10-18: "center every column in
+    every binder table"), each heading and every cell under it on one x -
+    never a short "25'" stranded at the left of a wide column; PORT and
+    OUTPUT, which read from the left before, stand centred too."""
+    want = 'center'
     for page in (seeded['MAIN - Data - Front View'], _sheet(variants['tabloid'], 'LOOSE - Data - Front View')):
         heads = _heads_line(page)
         for h in heads:
-            want = 'center' if h['t'] in ('HOME RUN', 'PANELS') else 'left'
             assert h['align'] == want, (page['title'], h)
             cells = [o for o in page['texts'] if abs(o['x'] - h['x']) < 0.5 and o['y'] > h['y'] + 1
                      and o['size'] == page_cell_size(page)]
@@ -786,9 +803,10 @@ def page_cell_size(page):
 
 def test_each_column_is_its_contents_width(variants):
     """LOOSE's one-half table: each column exactly as wide as its heading or
-    its widest cell and the pad either side - PORT to OUTPUT is PORT's
-    need, the HOME RUN heading's centre half its need on, and so on - so
-    the table is far narrower than the old fixed 1020."""
+    its widest cell and the pad either side - every heading on its
+    column's centre, so PORT's centre to OUTPUT's is half of each one's
+    need, and so on - so the table is far narrower than the old fixed
+    1020."""
     page = _sheet(variants['tabloid'], 'LOOSE - Data - Front View')
     heads = {o['t']: o for o in _heads_line(page)}
     rows = _all_rows(_ports_table(page))
@@ -804,8 +822,8 @@ def test_each_column_is_its_contents_width(variants):
     port, out, home, panels = (need('PORT', 'PORT'), need('OUTPUT', 'OUTPUT'),
                                need('HOME RUN', 'HOME RUN'), need('PANELS', 'PANELS'))
     near = lambda a, b: abs(a - b) <= 1.5 * s
-    assert near(heads['OUTPUT']['x'] - heads['PORT']['x'], port * s), (heads, port, s)
-    assert near(heads['HOME RUN']['x'] - heads['OUTPUT']['x'], (out - 12 + home / 2) * s), (heads, out, home)
+    assert near(heads['OUTPUT']['x'] - heads['PORT']['x'], (port / 2 + out / 2) * s), (heads, port, s)
+    assert near(heads['HOME RUN']['x'] - heads['OUTPUT']['x'], (out / 2 + home / 2) * s), (heads, out, home)
     assert near(heads['PANELS']['x'] - heads['HOME RUN']['x'], (home / 2 + panels / 2) * s), (heads, home, panels)
     assert port + out + home + panels < 700, (port, out, home, panels)
 

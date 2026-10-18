@@ -308,6 +308,18 @@ class _DistroSystems {
         return { ratingA, pct, limitA: ratingA * pct, us, main100 };
     }
 
+    // AN L21-30 BOX'S FEED LIMIT (owner, 2026-10-18): the feed is rated
+    // per leg (30 A) and its load is as continuous as the main's, so it
+    // takes the main's rule - 80% of the rating per leg on a US system
+    // unless the distro's main is 100% rated (`main100`), the rating
+    // itself elsewhere. The same shape as distroMainLimit, so
+    // distroMainLimitNote says where it came from ("80% of 30 A").
+    distroFeedLimit(d, feedLegA) {
+        const main = this.distroMainLimit(d);
+        const ratingA = Number(feedLegA) || 0;
+        return { ratingA, pct: main.pct, limitA: ratingA * main.pct, us: main.us, main100: main.main100 };
+    }
+
     // "80% of 100 A" - how a header and a strip say the limit came from
     // the rating; empty where the limit IS the rating.
     distroMainLimitNote(rule) {

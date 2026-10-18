@@ -775,8 +775,12 @@ Object.assign(CanvasRenderer.prototype, {
         const panelWeightKg = panelWeightUnit === 'lb' ? (panelWeightValue / 2.20462) : panelWeightValue;
         // The roll-up already weighs each member against its OWN cabinet, so a
         // group's weight can never be one member's per-cabinet figure applied
-        // to everybody's cabinets.
-        const totalWeightKg = groupTotals ? groupTotals.weightKg : equivalentPanels * panelWeightKg;
+        // to everybody's cabinets. Each cabinet weighs its own: a half tile
+        // the panel library's half where it has one (getPanelWeightKg).
+        const totalWeightKg = groupTotals ? groupTotals.weightKg
+            : (window.app && typeof window.app.getLayerWeightKg === 'function'
+                ? window.app.getLayerWeightKg(layer, ownActivePanels)
+                : equivalentPanels * panelWeightKg);
         const totalWeightLb = groupTotals ? groupTotals.weightLb : totalWeightKg * 2.20462;
         // One decimal, with en-US thousands separators ("156,788.9 kg").
         const weightText = (v) => (Number(v) || 0).toLocaleString('en-US',

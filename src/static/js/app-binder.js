@@ -1528,7 +1528,7 @@ class _Binder {
         return out;
     }
 
-    // The CABLES THIS SCREEN table: CABLE, LEN, QTY - a cable crossing into
+    // The CABLES THIS SCREEN table: CABLE, LENGTH, QTY - a cable crossing into
     // another member reading "Data Cable · also on WALL SL", wrapped under
     // its type.
     _bCableTable(book, s, side) {
@@ -1536,8 +1536,9 @@ class _Binder {
         const crossing = rows.some(r => r.also);
         return this._bTableLines(book, {
             title: 'Cables this screen',
-            cols: [{ title: 'cable', w: 1.7, ...(crossing ? { list: 2 } : {}) }, { title: 'len', w: 0.7 },
-                   { title: 'qty', w: 0.6, align: 'right' }],
+            cols: [{ title: 'cable', w: 1.7, ...(crossing ? { list: 2 } : { lend: true }) },
+                   { title: 'length', w: 0.7, borrow: 'len' },
+                   { title: 'qty', w: 0.6, align: 'right', lend: true }],
             rows: rows.length
                 ? rows.map(r => ({ cells: [r.also ? `${this._bType(r.type)} · ${r.also}` : this._bType(r.type),
                                            r.length || '—', this._bQty(r.qty)] }))
@@ -1926,9 +1927,15 @@ class _Binder {
 
         // 2. REVISIONS: No · Date · By · Description, the log in order
         this._bText(book, 'Revisions:', x + pad, y + 32, { size: SZ.tbLabel, weight: 700 });
+        // Every column stands on its middle, its heading and its rows
+        // (owner, 2026-10-18: "center every column in every binder table").
         const cols = [[0, 'No.'], [0.13, 'Date'], [0.38, 'By'], [0.56, 'Description']];
         const cx = (f) => x + pad + f * inner;
-        cols.forEach(([f, t]) => this._bText(book, t, cx(f) + 4, y + 62, { size: SZ.tbSmall, weight: 400 }));
+        const ends = [...cols.slice(1).map(([f]) => f), 1];
+        const mid = (j) => (cx(cols[j][0]) + cx(ends[j])) / 2;
+        const room = (j) => (ends[j] - cols[j][0]) * inner - 8;
+        cols.forEach(([, t], j) => this._bText(book, t, mid(j), y + 62,
+                                               { size: SZ.tbSmall, weight: 400, align: 'center', maxWidth: room(j) }));
         ctx.fillStyle = RULE;
         ctx.fillRect(x + pad, y + 68, inner, 2);
         ctx.strokeStyle = RULE;
@@ -1949,10 +1956,11 @@ class _Binder {
         for (const r of b.revisions) {
             const lines = this._bWrap(book, r.description, SZ.tbSmall, 400, descW, 3);
             if (ry + (lines.length - 1) * 22 > y + hRev - 4) break;
-            this._bText(book, String(r.no || printed + 1), cx(0) + 4, ry, { size: SZ.tbSmall, maxWidth: 0.13 * inner - 8 });
-            this._bText(book, r.date, cx(0.13) + 4, ry, { size: SZ.tbSmall, maxWidth: 0.25 * inner - 8 });
-            this._bText(book, r.by, cx(0.38) + 4, ry, { size: SZ.tbSmall, maxWidth: 0.18 * inner - 8 });
-            lines.forEach((t, k) => this._bText(book, t, cx(0.56) + 4, ry + k * 22, { size: SZ.tbSmall, log: false }));
+            this._bText(book, String(r.no || printed + 1), mid(0), ry, { size: SZ.tbSmall, align: 'center', maxWidth: room(0) });
+            this._bText(book, r.date, mid(1), ry, { size: SZ.tbSmall, align: 'center', maxWidth: room(1) });
+            this._bText(book, r.by, mid(2), ry, { size: SZ.tbSmall, align: 'center', maxWidth: room(2) });
+            lines.forEach((t, k) => this._bText(book, t, mid(3), ry + k * 22,
+                                                { size: SZ.tbSmall, align: 'center', log: false }));
             if (book.log && page.painting) {
                 book.log.texts.push(r.description);
                 if (book.log.textInfo) book.log.textInfo.push({ text: r.description, size: SZ.tbSmall, weight: 400 });
@@ -2240,9 +2248,12 @@ class _Binder {
         ctx.font = this._bFont(size, opts.weight);
         // A heading shrinks a little before it is cut: "PANELS" in a narrow
         // column is still "PANELS".
+        // (`minSize`: a heading that must never be cut - LENGTH in a crowded
+        // table - may go smaller than that)
         if (opts.shrink && opts.maxWidth) {
-            while (size > 14 && ctx.measureText(t).width > opts.maxWidth) {
-                size -= 1;
+            const floor = opts.minSize || 14;
+            while (size > floor && ctx.measureText(t).width > opts.maxWidth) {
+                size -= opts.minSize ? 0.5 : 1;
                 ctx.font = this._bFont(size, opts.weight);
             }
         }
@@ -2256,6 +2267,26 @@ class _Binder {
             if (book.log.textInfo) book.log.textInfo.push({ text: t, size, weight: opts.weight || 400 });
         }
         return t;
+    }
+
+    // The width `text` takes drawn by _bText with these options - shrunk
+    // and cut as it would be - so a piece drawn beside it (a strand's
+    // swatch) can stand with it on a column's middle.
+    _bTextWidth(book, text, o) {
+        const ctx = book.measureCtx || book.ctx;
+        const opts = o || {};
+        let t = String(text == null ? '' : text);
+        if (opts.upper) t = this._bCaps(t);
+        let size = opts.size || SZ.cell;
+        ctx.font = this._bFont(size, opts.weight);
+        if (opts.shrink && opts.maxWidth) {
+            while (size > 14 && ctx.measureText(t).width > opts.maxWidth) {
+                size -= 1;
+                ctx.font = this._bFont(size, opts.weight);
+            }
+        }
+        if (opts.maxWidth) t = this._bFit(ctx, t, opts.maxWidth);
+        return ctx.measureText(t).width;
     }
 
     // Does `text` fit `maxWidth` at `size`, shrinking as _bText would?
@@ -2448,7 +2479,20 @@ class _Binder {
     // Screens, four positions to a Tabloid) that cannot hold its headings
     // and cells at full size asks for them at the smallest size they
     // shrink to (_bText's 14), so they shrink rather than cut ("CIRCU…").
+    //
+    // A column that BORROWS (`borrow`: the cable tables' LENGTH, its old
+    // heading "len" the value) is laid out as it was under its old heading,
+    // so every other column keeps the width - and the wrapping - it had;
+    // then it takes the room its whole heading needs from the spare of
+    // the columns that LEND (`lend`: CABLE and QTY, whose text never wraps
+    // or changes with their width), and past what they can spare, from
+    // any column's room beyond its own content - never below it, so no
+    // other cell changes. Where a crowded table has no room left anywhere
+    // the heading shrinks to fit (`minSize`, _bText) - smaller,
+    // never cut (owner, 2026-10-18: "LEN" → "LENGTH", widened as needed so
+    // it is not truncated).
     _bColWidths(book, cols, rows, width, padX, o = {}) {
+        if (cols.some(c => c.borrow)) return this._bBorrowWidths(book, cols, rows, width, padX, o);
         const fr = cols.reduce((s, c) => s + (c.w || 1), 0) || 1;
         const px = cols.map(c => (c.w || 1) / fr * width);
         const sum = (a) => a.reduce((x, y) => x + y, 0);
@@ -2473,6 +2517,53 @@ class _Binder {
         if (wantAll <= 0.5 || giveAll <= 0.5) return px;
         const move = Math.min(wantAll, giveAll);
         return px.map((p, i) => p + move * (want[i] / wantAll) - move * (give[i] / giveAll));
+    }
+
+    // The columns as they were before a borrowing column's heading grew
+    // (_bColWidths): its old heading in its place.
+    _bUnborrowed(cols) {
+        return cols.map(c => {
+            if (!c.borrow) return c;
+            const { borrow, ...rest } = c;
+            return { ...rest, title: borrow };
+        });
+    }
+
+    _bBorrowWidths(book, cols, rows, width, padX, o) {
+        const was = this._bUnborrowed(cols);
+        const W = this._bColWidths(book, was, rows, width, padX, o);
+        // each column's content as the layout measured it: a `whole`
+        // table's lists on one line where the width holds them all
+        const sum = (a) => a.reduce((x, y) => x + y, 0);
+        let needWas = this._bColNeeds(book, was, rows, padX);
+        if (o.whole) {
+            const lists = this._bColNeeds(book, was, rows, padX, true);
+            if (sum(lists) <= width) needWas = lists;
+        }
+        const ctxM = book.measureCtx;
+        cols.forEach((c, i) => {
+            if (!c.borrow) return;
+            const head = (size) => {
+                ctxM.font = this._bFont(size, 700);
+                return ctxM.measureText(this._bCaps(c.title || '')).width + padX * 2;
+            };
+            const take = (want, from) => {
+                const spare = from.map(j => Math.max(0, W[j] - needWas[j]));
+                const all = spare.reduce((a, b) => a + b, 0);
+                const got = Math.min(want, all);
+                if (got <= 0) return 0;
+                from.forEach((j, k) => { W[j] -= got * spare[k] / all; });
+                W[i] += got;
+                return got;
+            };
+            // the lenders first, then any column's room beyond its content
+            for (const from of [cols.map((d, j) => (d.lend ? j : -1)).filter(j => j >= 0),
+                                cols.map((d, j) => j).filter(j => j !== i)]) {
+                const want = Math.max(needWas[i], head(SZ.th)) - W[i];
+                if (want > 0.5) take(want, from);
+            }
+        });
+        return W;
     }
 
     // What each column needs so nothing in it is cut: its heading, its
@@ -2557,7 +2648,12 @@ class _Binder {
     // `width` is the column the block is measured in (COL_W unless the
     // sheet's columns are another size) - a row that has to wrap knows its
     // height there, and a wider column at paint time simply wraps looser.
-    // A `center` column stands its heading and its cells on its middle.
+    // EVERY column stands its heading and its cells on its middle (owner,
+    // 2026-10-18: "center every column in every binder table") - a wrapped
+    // list each line, a strand list each line with its swatch, an input
+    // column its outlined groups, the tick its box; a column's `align` is
+    // no longer read. A band over a run of rows still reads from the
+    // table's left edge: it heads the table, it is not a column.
     //
     // `fit` (the data sheet's Ports table): every column its CONTENT'S
     // width - its heading or its widest cell, and a band at least its
@@ -2590,15 +2686,16 @@ class _Binder {
             let x = 0;
             return cols.map((c, i) => {
                 const cw = W[i] * k;
-                const out = { x, w: cw, align: c.align || 'left', tick: !!c.tick };
+                // every column stands on its middle, its heading and its
+                // cells (owner, 2026-10-18: "center every column in every
+                // binder table")
+                const out = { x, w: cw, align: 'center', tick: !!c.tick };
                 x += cw;
                 return out;
             });
         };
-        // where a column's text stands: its left pad, its right pad, or
-        // its middle
-        const anchor = (c, x) => (c.align === 'right' ? x + c.x + c.w - padX
-            : c.align === 'center' ? x + c.x + c.w / 2 : x + c.x + padX);
+        // where a column's text stands: its middle
+        const anchor = (c, x) => x + c.x + c.w / 2;
         const lines = [];
         if (spec.title) {
             lines.push({ h: H4_H, head: true, draw: (ctx, x, y, cw) => {
@@ -2634,8 +2731,8 @@ class _Binder {
                 const L = layout(w);
                 for (const g of groups) {
                     const sp = spanOf(L, g);
-                    this._bText(book, g.title, x + sp.x + padX, y + 28,
-                                { size: SZ.th, weight: 700, upper: true,
+                    this._bText(book, g.title, x + sp.x + sp.w / 2, y + 28,
+                                { size: SZ.th, weight: 700, upper: true, align: 'center',
                                   maxWidth: sp.w - padX * 2, shrink: true });
                     ctx.fillStyle = RULE;
                     ctx.fillRect(x + sp.x + (g.from ? 6 : 0), y + TH_H - 4, sp.w - (g.from ? 6 : 0), 2);
@@ -2651,7 +2748,8 @@ class _Binder {
                 const ax = anchor(L[i], x);
                 this._bText(book, c.title || '', ax, y + 28,
                             { size: SZ.th, weight: 700, upper: true, align: L[i].align,
-                              maxWidth: L[i].w - padX * 2, shrink: true });
+                              maxWidth: L[i].w - padX * 2, shrink: true,
+                              ...(c.borrow ? { minSize: 8 } : {}) });
             });
             ctx.fillStyle = RULE;
             ctx.fillRect(x, y + TH_H - 4, w, 4);
@@ -2760,22 +2858,24 @@ class _Binder {
                 (r.cells || []).forEach((cell, i) => {
                     if (!L[i]) return;
                     if (i === inputsAt) {
+                        const head = this._bInputsHead(book, spec.rows, i);
                         this._bInputsCell(book, ctx, r.inputs[inputsAt], inLay, x + L[i].x + padX, y0,
-                                          L[i].w - padX * 2, this._bInputsHead(book, spec.rows, i), weight);
+                                          L[i].w - padX * 2, head, weight,
+                                          this._bInputsWide(book, spec.rows, i, head));
                         return;
                     }
                     const y = inLay ? y0 + Math.max(0, (h - ROW_H - (cellLines(i) - 1) * LIST_H) / 2) : y0;
                     if (L[i].tick) {
                         ctx.strokeStyle = INK;
                         ctx.lineWidth = 2;
-                        ctx.strokeRect(x + L[i].x + padX, y + 7, 24, 24);
+                        ctx.strokeRect(x + L[i].x + (L[i].w - 24) / 2, y + 7, 24, 24);
                         return;
                     }
                     const ax = anchor(L[i], x);
                     const maxWidth = L[i].w - padX * 2;
                     if (partsOf(i)) {
                         this._bPartsCell(book, ctx, this._bPartLines(book, partsOf(i), weight, maxWidth),
-                                         ax, y, maxWidth, weight);
+                                         x + L[i].x + padX, y, maxWidth, weight, true);
                         return;
                     }
                     if (wrapped[i]) {
@@ -2807,10 +2907,14 @@ class _Binder {
                         // print still says which strand it is
                         ctx.fillStyle = this._bTint(r.swatch.base, 0.24);
                         ctx.fillRect(x + L[i].x + 3, y + 3, L[i].w - 6, h - 7);
-                        this._bSwatch(ctx, r.swatch, ax, y + 27);
-                        const o = { size: SZ.cell, weight: 700, align: L[i].align,
+                        // the swatch and its name stand together on the
+                        // column's middle, the name never past the cell
+                        const o = { size: SZ.cell, weight: 700, align: 'left',
                                     maxWidth: maxWidth - SWATCH_W, shrink: !!spec.shrink };
-                        this._bText(book, cell, ax + SWATCH_W, y + 27, o);
+                        const tw = Math.min(o.maxWidth, this._bTextWidth(book, cell, o));
+                        const sx = ax - (SWATCH_W + tw) / 2;
+                        this._bSwatch(ctx, r.swatch, sx, y + 27);
+                        this._bText(book, cell, sx + SWATCH_W, y + 27, o);
                         return;
                     }
                     const o = { size: SZ.cell, weight, align: L[i].align,
@@ -2985,14 +3089,17 @@ class _Binder {
     // thin outline round the lot. A group of words alone ({ text }) is its
     // words on one line, outlined the same. Returns the texts it drew.
     // `log` false where the caller logs the cell as one text (a table's).
-    _bDrawGroup(book, ctx, g, x, top, head, maxWidth, size, weight, log = true) {
+    // `boxW`: the outline that wide rather than the group's own (a centred
+    // input column draws every group's outline alike, _bInputsCell).
+    _bDrawGroup(book, ctx, g, x, top, head, maxWidth, size, weight, log = true, boxW = 0) {
         const drawn = [];
         const lines = this._bGroupLines(g);
         const bottom = top + (lines - 1) * LIST_H;
         if (!(g.strands && g.strands.length)) {
             drawn.push(this._bText(book, g.text || '', x, top, { size, weight, maxWidth, shrink: true, log }));
             ctx.font = this._bFont(size, weight);
-            this._bGroupOutline(ctx, x, top, bottom, Math.min(maxWidth, ctx.measureText(String(g.text || '')).width), size);
+            this._bGroupOutline(ctx, x, top, bottom,
+                                boxW || Math.min(maxWidth, ctx.measureText(String(g.text || '')).width), size);
             return drawn;
         }
         const label = [g.head, g.sub].filter(Boolean);
@@ -3012,8 +3119,15 @@ class _Binder {
             ctx.font = this._bFont(size, weight);
             wide = Math.max(wide, (st.swatch ? sw : 0) + ctx.measureText(st.text).width);
         });
-        this._bGroupOutline(ctx, x, top, bottom, Math.min(maxWidth, head + wide), size);
+        this._bGroupOutline(ctx, x, top, bottom, boxW || Math.min(maxWidth, head + wide), size);
         return drawn;
+    }
+
+    // The widest group in an input column (_bGroupsWide over every row's
+    // groups), its label column `head` included - the width a centred
+    // column draws every outline at.
+    _bInputsWide(book, rows, i, head) {
+        return this._bGroupsWide(book.measureCtx, (rows || []).flatMap(r => (r.inputs || {})[i] || []), SZ.cell, head);
     }
 
     // AN INPUT COLUMN'S CELL (the Breakout boxes table's FIBER): its groups
@@ -3047,12 +3161,18 @@ class _Binder {
     }
 
     // An input column's cell drawn at (ax, y), logged as ONE text, the
-    // whole cell, the way a list cell is.
-    _bInputsCell(book, ctx, groups, lay, ax, y, maxWidth, head, weight) {
+    // whole cell, the way a list cell is. `wide` (a centred column): every
+    // group's outline that wide - the column's widest group - and the lot
+    // standing on the cell's middle, so the outlines line up one under
+    // another and their labels and strands with them.
+    _bInputsCell(book, ctx, groups, lay, ax, y, maxWidth, head, weight, wide = 0) {
         const drawn = [];
+        const inner = maxWidth - GROUP_PAD * 2;
+        const boxW = wide > 0 ? Math.min(inner, wide) : 0;
+        const off = boxW ? Math.max(0, (inner - boxW) / 2) : 0;
         groups.forEach((g, gi) => {
-            drawn.push(...this._bDrawGroup(book, ctx, g, ax + GROUP_PAD, y + lay.at[gi].from, head,
-                                           maxWidth - GROUP_PAD * 2, SZ.cell, weight, false));
+            drawn.push(...this._bDrawGroup(book, ctx, g, ax + GROUP_PAD + off, y + lay.at[gi].from, head,
+                                           inner - off, SZ.cell, weight, false, boxW));
         });
         if (book.log && book.page && book.page.painting) {
             const t = drawn.join(' ');
@@ -3109,11 +3229,20 @@ class _Binder {
     }
 
     // A `parts` cell drawn: line by line, each strand its swatch then its
-    // name. Logged as ONE text, the whole cell, as a list cell is.
-    _bPartsCell(book, ctx, lines, ax, y, maxWidth, weight) {
+    // name, from the cell's left edge `ax` - or, `center`, each line on
+    // the cell's middle. Logged as ONE text, the whole cell, as a list
+    // cell is.
+    _bPartsCell(book, ctx, lines, ax, y, maxWidth, weight, center = false) {
         const drawn = [];
         lines.forEach((line, k) => {
             let cx = ax;
+            if (center) {
+                ctx.font = this._bFont(SZ.cell, weight);
+                const gap = ctx.measureText(' ').width;
+                const lw = line.reduce((s, p, j) => s + (j ? gap : 0) + (p.swatch ? SWATCH_W : 0)
+                    + ctx.measureText(p.text).width, 0);
+                cx = ax + Math.max(0, (maxWidth - lw) / 2);
+            }
             line.forEach((p, j) => {
                 if (j) {
                     ctx.font = this._bFont(SZ.cell, weight);
@@ -5339,6 +5468,7 @@ class _Binder {
         };
         const sum = (a) => a.reduce((x, y) => x + y, 0);
         const clamp = (v) => Math.min(PULL_COL_MAX, Math.max(PULL_COL_W, Math.ceil(v)));
+        // every heading in full - LENGTH's too (_bColWidths)
         const full = s.cols.map(c => ({ ...c, headShrink: false }));
         const wMin = clamp(sum(this._bColNeeds(book, full, s.rows, padX)));
         const wNat = Math.max(wMin, clamp(sum(this._bColNeeds(book, full, s.rows, padX, true))));
@@ -5455,8 +5585,8 @@ class _Binder {
     _bPullBlocks(book, pos, members) {
         const list = book.list;
         const tick = { title: '', w: 0.28, tick: true };
-        const cableCols = [tick, { title: 'cable', w: 1.5 }, { title: 'len', w: 0.6 },
-                           { title: 'qty', w: 0.5, align: 'right' },
+        const cableCols = [tick, { title: 'cable', w: 1.5, lend: true }, { title: 'length', w: 0.6, borrow: 'len' },
+                           { title: 'qty', w: 0.5, align: 'right', lend: true },
                            { title: 'label', w: 1.4, list: true }];
         const cableRows = (side) => (pos.rows || []).filter(r => (r.side || 'power') === side)
             .map(r => ({ cells: ['', this._bType(r.type), r.length || '—', this._bQty(r.qty), r.label || ''] }));
@@ -5781,8 +5911,8 @@ class _Binder {
         const tick = { title: '', w: 0.28, tick: true };
         return this._bTableLines(book, {
             title,
-            cols: [tick, { title: 'cable', w: 1.5 }, { title: 'len', w: 0.6 },
-                   { title: 'qty', w: 0.5, align: 'right' },
+            cols: [tick, { title: 'cable', w: 1.5, lend: true }, { title: 'length', w: 0.6, borrow: 'len' },
+                   { title: 'qty', w: 0.5, align: 'right', lend: true },
                    { title: 'label', w: 1.4, list: true }],
             rows: rows.length ? rows.map(r => ({ cells: ['', this._bType(r.type), r.length || '—', this._bQty(r.qty), r.label || ''] }))
                 : [{ cells: ['', 'none', '', '', ''] }],
