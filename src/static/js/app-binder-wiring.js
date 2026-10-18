@@ -156,8 +156,9 @@ const MARGIN = 22;
 // that dropped straight has to travel, none takes a rail it did not, and
 // no two runs cross that did not (_bwPlanHalf, `grown`).
 const MAX_WALL_H = 360;
-// The steps the wall's growth is searched in (halvings past the first try).
-const GROW_STEPS = 4;
+// The steps the wall's growth is searched in (halvings past the first try):
+// six take it to within a sixty-fourth of the room the runs allow.
+const GROW_STEPS = 6;
 const FOOT_PAD = 6;              // the air under the last block row
 const FOOT_LINE = 14;            // and the "not placed" line's own room
 // The rails: the room outside the wall the sideways runs and the escape
@@ -546,6 +547,16 @@ class _BinderWiring {
     // way out stands, and a disc is never the thing given up.
     // Of two ends as near as each other, the one on the side the run's box
     // stands (`near`) goes first: out that way it is already on its way.
+    //
+    // BY ITS BOX'S OWN EDGE FIRST, where the disc stands on that edge -
+    // no further from it than from its nearer side, or than its own
+    // diameter - and that way is clear (2026-10-18). A disc in the wall's
+    // corner left by its side only while its socket stood clear of the
+    // wall beside it, and that held the wall to the width of the row of
+    // boxes: on a power sheet whose breakouts stand over the wall, the
+    // two corner circuits alone kept the wall at half its growth and the
+    // owner saw a wall "too justified" that "could be much bigger". Out by
+    // its box's edge the run is on its way whatever the wall's width.
     _bwExit(d, wall, labels, own, pad, room, near = 'bottom') {
         const far = (e, at) => e === 'left' ? [room.x0, at] : e === 'right' ? [room.x1, at]
             : e === 'top' ? [at, room.y0] : [at, room.y1];
@@ -554,6 +565,13 @@ class _BinderWiring {
             .sort((p, q) => (Math.abs(p.s.gap - q.s.gap) > 0.01 ? p.s.gap - q.s.gap
                 : (p.e === near ? -1 : 0) - (q.e === near ? -1 : 0)));
         const sides = by(['left', 'right']), ends = by(['top', 'bottom']);
+        const own0 = this._bwStub(d, near, wall, 0);
+        if (own0.gap <= Math.max(sides[0].s.gap, 2 * d.r) + 0.01) {
+            for (const off of _BinderWiring.OFFSETS) {
+                const s = this._bwStub(d, near, wall, off);
+                if (!this._bwCost(s.head, far(near, s.at), pad, labels, own)) return { edge: near, stub: s, cost: 0 };
+            }
+        }
         let best = null;
         for (const list of [sides, ends]) {
             for (const c of list) {
@@ -738,10 +756,12 @@ class _BinderWiring {
         // The room over the wall's head and under its foot: the boxes on
         // that side and the gap the lanes want. The wall takes what is left
         // of the side's own area - its height is read from that area and
-        // bounded by nothing else - and stands at the top of its room, the
-        // boxes under it hard against its foot: what height the wall cannot
-        // use is left at the foot of the page, never between a box and the
-        // ports it serves.
+        // bounded by nothing else - with its boxes hard against it, never
+        // a gap between a box and the ports it serves. What height the wall
+        // cannot use (a wide wall stopped by the width) is shared above and
+        // below the whole drawing - boxes, lanes and wall - so it stands in
+        // the middle of the sheet (owner, 2026-10-18: "it can be moved down
+        // since it's too justified").
         //
         // `grow` = { t, rail }: t 0 is the wall rev 1.1 drew (railRoom
         // either side, MAX_WALL_H tall); t 1 is the whole room - only
@@ -760,9 +780,10 @@ class _BinderWiring {
                            w: rw * K, h: rh * K };
             const probe = this._bMeasureMap(book, spec, room);
             const h = probe ? probe.area.h : 0;
-            const mapArea = { ...room, h: Math.max(1, h) };
+            const spare = Math.max(0, (A.h - foot * K) - (head + tail) * K - h);
+            const mapArea = { ...room, y: room.y + spare / 2, h: Math.max(1, h) };
             return { mapArea, geo: this._bMeasureMap(book, spec, mapArea), roomH, room,
-                     head, gap: { top: gap.top, bottom: gap.bottom } };
+                     head, spare, gap: { top: gap.top, bottom: gap.bottom } };
         };
         const wallOf = (Wc) => (Wc.geo ? Wc.geo.wall : { x: A.x, y: Wc.mapArea.y, w: A.w, h: 0 });
 
@@ -1031,8 +1052,13 @@ class _BinderWiring {
                     : T === 'top' ? b.y + (BOXH - SOCKET_DY + SOCK) * K : b.y + (SOCKET_DY - SOCK) * K;
                 const { edge, stub } = this._bwExit(disc, wall, ink, ownOf(disc), pad, room, near);
                 // is the socket already clear of the wall on the side this
-                // run can travel? then the rail IS the way to it
-                const left = tx < wall.x - 0.5, right = tx > wall.x + wall.w + 0.5;
+                // run can travel? then the rail IS the way to it. Clear
+                // means as far out as the first rail stands: a socket a
+                // hair past the edge would run its line down the edge
+                // discs' own rims (a wall grown to within two units of
+                // one did exactly that)
+                const clear = RAIL_OUT * K;
+                const left = tx < wall.x - clear, right = tx > wall.x + wall.w + clear;
                 const out = edge === 'left' ? left : edge === 'right' ? right : (left || right);
                 // and if it is not, the side it travels is the one its
                 // socket is nearer to, so the lane by the wall is short
@@ -1195,11 +1221,13 @@ class _BinderWiring {
         // `grown`: the wall grows while the runs read no worse than they do
         // round the wall rev 1.1 drew - first the whole room, then halving
         // back towards rev 1.1's wall until a growth that reads as well is
-        // found. The rails keep the room the runs that take one need (and
-        // RAIL_BASE of air where none does).
+        // found. The rails keep the room the runs that take one need, and
+        // where none does the wall may reach the sheet's margins - the
+        // owner, 2026-10-18, of a wall held well inside them: "could be
+        // much bigger if it is scaled up".
         const base = reading(L);
         const nRail = Math.max(L.runs.railedLeft, L.runs.railedRight);
-        const rail = Math.min(railRoom, nRail ? RAIL_OUT + nRail * RAIL_STEP + RAIL_STEP : RAIL_BASE);
+        const rail = Math.min(railRoom, nRail ? RAIL_OUT + nRail * RAIL_STEP + RAIL_STEP : 0);
         const asGood = (C) => {
             const r = reading(C);
             for (const k of r.railed) if (!base.railed.has(k)) return false;
@@ -1232,6 +1260,7 @@ class _BinderWiring {
                  gap: { top: W.gap.top * K, bottom: W.gap.bottom * K },
                  lanes: { over: first.over, under: first.under },
                  pitch: fit * K, grow: L.grow ? L.grow.t : 0, head: W.head * K,
+                 spare: W.spare || 0, rail: L.grow ? L.grow.rail * K : null, availW: availW * K,
                  unplaced, total: facts.stubs.length, facts };
     }
 
@@ -1528,6 +1557,7 @@ class _BinderWiring {
         const log = book.log && book.page && book.page.painting ? {
             side: P.side, scale: K, rows: P.rows, pitch: P.pitch, grow: P.grow || 0, head: P.head || 0,
             rowsTop: P.rowsTop || 0, rowsBottom: P.rowsBottom || 0,
+            spare: P.spare || 0, rail: P.rail, availW: P.availW,
             gap: P.gap || null, lanes: P.lanes || null,
             area: { x: A.x, y: A.y, w: A.w, h: A.h },
             wallRoom: P.wallRoom ? { x: P.wallRoom.x, y: P.wallRoom.y, w: P.wallRoom.w, h: P.wallRoom.h } : null,

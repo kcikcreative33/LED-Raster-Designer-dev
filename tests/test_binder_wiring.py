@@ -428,11 +428,25 @@ def _covers_lettering(half):
     return bad
 
 
+def _own_edge_first(half, d, side):
+    """Whether a disc stands on its box's own edge (2026-10-18): no further
+    from it than from its nearer side, or than its own diameter. Such a run
+    leaves by that edge when that way is clear - out that way it is on its
+    way to its box whatever the wall's width, so a corner run no longer
+    holds the wall to the width of the row of boxes."""
+    w = _wall(half)
+    sides = min((d['x'] - d['r']) - w['x'], (w['x'] + w['w']) - (d['x'] + d['r']))
+    own = (d['y'] - d['r']) - w['y'] if side == 'top' else (w['y'] + w['h']) - (d['y'] + d['r'])
+    return own <= max(sides, 2 * d['r']) + 0.01
+
+
 def _dearer_way_out(half):
-    """A run leaves by an edge the map left CLEAR - the nearer SIDE by
-    preference, because a run beside the wall reads best and it is the
-    drawing that was approved; an end only where both sides are blocked."""
+    """A run leaves by an edge the map left CLEAR: by its box's own edge
+    where its disc stands on that edge, else the nearer SIDE by preference,
+    because a run beside the wall reads best and it is the drawing that was
+    approved; the far end only where both sides are blocked."""
     discs = {d['text']: d for d in half['discs']}
+    blocks = {b['title']: b for b in half['blocks']}
     bad = []
     for r in half['runs']:
         d = discs[r['from']]
@@ -444,6 +458,14 @@ def _dearer_way_out(half):
             else ('top' if b[1] < a[1] else 'bottom')
         if took not in [e for e, _g in clear]:
             bad.append('%s leaves by its %s, which the map had written on' % (r['from'], took))
+            continue
+        side = blocks[r['device']]['side']
+        first = _own_edge_first(half, d, side) and side in [e for e, _g in clear]
+        if first:
+            if took != side:
+                bad.append('%s leaves by its %s with its box\'s own edge clear' % (r['from'], took))
+            continue
+        if took == side:
             continue
         sides = [(e, g) for e, g in clear if e in ('left', 'right')]
         if sides and took not in ('left', 'right'):
@@ -1153,7 +1175,8 @@ def test_smoke_live_show_b_sr_main(page):
     down; a run whose socket stands UNDER the wall comes down a rail beside
     it and back along a lane under its foot. The wall is held to the height
     rev 1.1 drew it at, so it stays narrow and centred and the outer fans
-    have room: all six SR3 circuits and all six SR1 circuits drop straight,
+    have room: SR3's and SR1's circuits drop straight - all but the one on
+    the wall's top row, which leaves by the top, its breakout's own edge -
     and SR4's and SR2's go round, nesting inside them - so NO RUN CROSSES A
     RUN OF ANOTHER BREAKOUT. The 25 crossings left are each fan's own; in
     rev 1.1's order (SR1 before SR2) there were 55, and the user chose
@@ -1225,13 +1248,23 @@ def test_smoke_live_show_b_sr_main(page):
     _check_runs(pwr, pw)
     _check_blocks(pwr)
     shapes = [_segs(r) for r in pwr['runs']]
-    assert not [s for s in shapes if s[0] != 'h'], ('every circuit leaves by a side', shapes)
     m = pwr['map']
+    # every circuit leaves by a side but the four on the wall's top and foot
+    # rows, which leave by their breakout's own edge - SR3-1 and SR1-1 up
+    # to the breakouts over the wall, SR4-6 and SR2-6 down to those under it
+    by_own_edge = sorted(r['from'] for r, sh in zip(pwr['runs'], shapes) if sh[0] == 'v')
+    assert by_own_edge == ['SR1-1', 'SR2-6', 'SR3-1', 'SR4-6'], (by_own_edge, shapes)
+    for r, sh in zip(pwr['runs'], shapes):
+        if sh[0] == 'v':
+            up = r['points'][1][1] < r['points'][0][1]
+            assert up == (r['from'] in ('SR1-1', 'SR3-1')), r
     # TWO SEGMENTS WHERE TWO SUFFICE, and only there: straight down exactly
     # when the socket is already clear of the wall on the side the run
     # leaves by - the drawing that was approved - and round by a rail and a
     # lane when it stands under the wall.
     for r, sh in zip(pwr['runs'], shapes):
+        if sh[0] == 'v':
+            continue
         head, turn = r['points'][0], r['points'][1]
         tail = r['points'][-1]
         clear = tail[0] < m['x'] if turn[0] < head[0] else tail[0] > m['x'] + m['w']
@@ -1241,7 +1274,7 @@ def test_smoke_live_show_b_sr_main(page):
     # and every SR1 circuit off the right - and the two middle fans, whose
     # blocks stand under the wall, come round inside them. The same with the
     # title block on or off.
-    want = ['SR1-%d' % n for n in (1, 2, 3, 4, 5, 6)] + ['SR3-%d' % n for n in (1, 2, 3, 4, 5, 6)]
+    want = ['SR1-%d' % n for n in (2, 3, 4, 5, 6)] + ['SR3-%d' % n for n in (2, 3, 4, 5, 6)]
     assert straight == sorted(want), straight
     # The reason for that order: no run crosses a run of ANOTHER breakout.
     # In rev 1.1's order every SR1 run crossed every SR2 run - 30 of them.
@@ -1380,9 +1413,12 @@ def test_a_row_of_circuits_leaves_by_the_top_and_an_unplaced_port_draws_no_run(p
     _check_runs(pwr, out)
     _check_blocks(pwr)
     shapes = [_segs(r) for r in pwr['runs']]
-    assert len([s for s in shapes if s[0] == 'h']) == 2, ('the two on the ends leave by their side', shapes)
-    assert len([s for s in shapes if s[0] == 'v']) == 3, (
-        'the three shut in leave by an end of their own column', shapes)
+    # the breakout stands over the wall, so a run leaves by the top - its
+    # box's own edge - wherever that way is clear: the three shut in, and an
+    # end disc as well (an end whose top is written on keeps its side)
+    assert all(b['side'] == 'top' for b in pwr['blocks']), pwr['blocks']
+    assert len([s for s in shapes if s[0] == 'v']) >= 3, (
+        'the circuits leave by an end of their own column', shapes)
     for r, sh in zip(pwr['runs'], shapes):
         if sh[0] != 'v':
             continue
@@ -1419,8 +1455,9 @@ def test_the_dj_booth_sheet_the_user_pointed_at(page, palette):
     tag and over the screen's daisy-chain arrows, and then turn down through
     the second row: all four tags cut and unreadable. Now each one goes
     STRAIGHT OUT to the end of the wall it is already at, down a rail beside
-    it, and back along a lane under its foot - four segments, and nothing of
-    the wall crossed but the stub off its own disc."""
+    it, and back along a lane under its foot - four segments - or, a disc
+    on its box's own edge, out by that edge and along the lanes' gap; and
+    nothing of the wall crossed but the stub off its own disc."""
     pg, ids = page
     with open(SHOW_A_FIXTURE, encoding='utf-8') as fh:
         pg.evaluate(LOAD_JS, json.load(fh))
@@ -1437,7 +1474,9 @@ def test_the_dj_booth_sheet_the_user_pointed_at(page, palette):
         _check_off_the_wall(h)
         _check_runs(h)
         _check_blocks(h)
-        assert [_segs(r) for r in h['runs']] == [['h', 'v', 'h', 'v']] * len(h['runs']), (
+        # round by a rail, or - a disc on its box's own edge - out by that
+        # edge and along the lanes' gap (2026-10-18)
+        assert all(sh in (['h', 'v', 'h', 'v'], ['v', 'h', 'v']) for sh in [_segs(r) for r in h['runs']]), (
             h['side'], [_segs(r) for r in h['runs']])
     assert ids['errors'] == []
 
@@ -1514,16 +1553,43 @@ def test_live_show_b_runs_travel_outside_the_wall(page, palette):
 # height and to a rail allowance guessed from the run count, and centred in
 # what was left. It now grows from there into its whole room - the lanes
 # over its head, the lanes under its foot and the blocks keep theirs - for
-# as long as the runs read no worse, and a wall that grew stands at the top
-# of its room.
+# as long as the runs read no worse. What height it cannot use - a wide
+# wall stopped by the width - is shared above and below the whole drawing,
+# boxes, lanes and wall, so it stands in the middle of the sheet (owner,
+# 2026-10-18, of a wall pinned to the top: "it can be moved down since it's
+# too justified and could be much bigger if it is scaled up").
 
-MAX_WALL_H, LANE_STEP = _js_consts('MAX_WALL_H', 'LANE_STEP')
+MAX_WALL_H, LANE_STEP, FOOT_PAD, FOOT_LINE = _js_consts('MAX_WALL_H', 'LANE_STEP', 'FOOT_PAD', 'FOOT_LINE')
 
 
-def _top_of_its_room(h):
-    """The wall's top where its room begins: the drawing area's top, or
-    the foot of the lanes the runs that go up need."""
-    return abs(h['map']['y'] - (h['area']['y'] + h['head'])) < 1.0
+def _air(h):
+    """The paper left over the drawing (boxes, lanes and wall) and under
+    it, down to the room kept at the area's foot."""
+    s, a, m = h['scale'], h['area'], h['map']
+    foot = (FOOT_PAD + (FOOT_LINE if h['unplaced'] else 0)) * s
+    tops = [b['y'] for b in h['blocks']] + [m['y']]
+    bots = [b['y'] + b['h'] for b in h['blocks']] + [m['y'] + m['h']]
+    return min(tops) - a['y'], (a['y'] + a['h'] - foot) - max(bots)
+
+
+def _centred(h):
+    """The drawing stands in the middle of its area: as much paper over it
+    as under it, and the wall at the head of the lanes' gap and the boxes
+    over it plus half the paper left."""
+    over, under = _air(h)
+    return (abs(over - under) < 1.0 and over > -0.01
+            and abs(h['map']['y'] - (h['area']['y'] + h['head'] + h['spare'] / 2)) < 1.0)
+
+
+def _reaches_its_limit(h):
+    """The wall grew to what binds it: the full height of its room, or the
+    sheet's width less only the rails the runs that take one need."""
+    m, room = h['map'], h['wallRoom']
+    if h['grow'] < 1:
+        return False
+    tall = abs(m['h'] - room['h']) < 1.0
+    wide = abs(room['w'] - (h['availW'] - 2 * h['rail'])) < 1.0 and abs(m['w'] - room['w']) < 1.0
+    return tall or wide
 
 
 def test_the_wall_fills_the_height_the_runs_do_not_need(page):
@@ -1541,15 +1607,14 @@ def test_the_wall_fills_the_height_the_runs_do_not_need(page):
             h = _one_side(_sheet(pg, opts, title), side)
             m = h['map']
             # nothing over the wall but the boxes whose points start on its
-            # top row, the lanes' gap under them, and no run goes up
+            # top row and the lanes' gap under them, and no run goes up
             tops = [b for b in h['blocks'] if b['side'] == 'top']
             if tops:
-                assert abs(min(b['y'] for b in tops) - h['area']['y']) < 0.01, (title, tops, h['area'])
                 assert abs(h['head'] - (m['y'] - min(b['y'] for b in tops))) < 0.01, (title, h['head'])
             else:
                 assert h['head'] == 0, ('no run goes up on the seed show', title, h['head'])
             assert h['grow'] > 0, ('the wall grew', title, h['grow'])
-            assert _top_of_its_room(h), ('a wall that grew stands at the top of its room', title, m, h['area'])
+            assert _centred(h), ('the drawing stands in the middle of its area', title, _air(h), m, h['area'])
             assert _fills_its_room(h), (title, m, h['wallRoom'])
             _check_runs(h)
             _check_blocks(h)
@@ -1613,7 +1678,7 @@ def test_runs_that_go_up_keep_the_room_over_the_wall(page):
     overs = sorted({round(r['points'][1][1], 2) for r in up})
     for y in overs:
         assert a['y'] < y < m['y'], ('a lane over the head stands between the page top and the wall', y, m)
-    assert h['grow'] == 0 or _top_of_its_room(h), (h['grow'], m, a, h['head'])
+    assert _centred(h), (_air(h), m, a, h['head'])
     _check_runs(h)
     _check_blocks(h)
     assert ids['errors'] == []
@@ -1668,7 +1733,13 @@ def test_a_top_edge_power_sheet_puts_its_breakouts_over_the_wall(page):
     for b in h['blocks']:
         assert b['y'] + b['h'] < m['y'], ('over the wall', b, m)
         assert abs(b['titleY'] - (b['y'] + TOP_TITLE_DY * s)) < 0.01, b
-    assert abs(min(b['y'] for b in h['blocks']) - a['y']) < 0.01, ('the boxes at the top of the area', h['blocks'], a)
+    # a 12 x 4 wall is wide: it grows to the sheet's whole width - no rail
+    # run, so no rail room - and the paper it leaves goes half over the
+    # boxes and half under the wall
+    assert _reaches_its_limit(h), (h['grow'], h['map'], h['wallRoom'], h['availW'], h['rail'])
+    assert h['rail'] == 0 and abs(h['map']['w'] - h['availW']) < 1.0, (h['map'], h['availW'])
+    over, under = _air(h)
+    assert over > 10 * s and _centred(h), (over, under)
     _gap_is_the_lanes(h, 'top')
     for r in h['runs']:
         assert all(p[1] <= m['y'] + m['h'] + 0.01 for p in r['points']), ('no run under the wall', r)
@@ -1734,6 +1805,9 @@ def test_a_bottom_edge_data_sheet_keeps_its_unit_under_the_wall(page):
         assert d['y'] > m['y'] + m['h'] / 2, ('every port starts on the bottom row', d, m)
     assert [b['side'] for b in h['blocks']] == ['bottom'], h['blocks']
     assert h['rowsTop'] == 0 and h['head'] == 0, (h['rowsTop'], h['head'])
+    # wide and short: as wide as the sheet allows, and in the middle of it
+    assert _reaches_its_limit(h), (h['grow'], h['map'], h['wallRoom'], h['availW'], h['rail'])
+    assert _centred(h), _air(h)
     n = _gap_is_the_lanes(h, 'bottom')
     if n == 0:
         assert h['gap']['bottom'] < 26 * s, ('tighter than the old fixed band', h['gap'])
