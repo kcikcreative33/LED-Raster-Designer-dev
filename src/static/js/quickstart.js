@@ -2700,7 +2700,7 @@
             sheetStep: true,
             target: function () { var o = owner(), s = snake(); return o && s ? '[data-lrd-field="data-snake-ft-' + o.id + '-' + s.id + '"]' : '[data-lrd-field^="data-snake-ft-"]'; },
             place: 'top', title: 'The snake&rsquo;s home run',
-            body: 'Type the snake&rsquo;s home run in feet on its row. Tab walks down the column to the next length.',
+            body: 'Type the snake&rsquo;s home run on its row, in the show&rsquo;s cable unit. Tab walks down the column to the next length.',
             before: function () { switchView('data-flow'); openSheet(); },
             act: function (t) {
                 var o = owner(), s = snake();
