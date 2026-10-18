@@ -1278,7 +1278,9 @@ def test_the_map_takes_the_room_the_tables_leave(page):
     their inch sizes while the tables scale."""
     pg, ids = page
     ww, wh = 4 * 200, 3 * 200
-    for title, cols, col_w in (('WALL-A - Power - Front View', 3, COL_W), ('WALL-A - Data - Front View', 2, DATA_COL_W)):
+    # (WALL-A's one-half Ports table is only as wide as its content -
+    # under COL_W - so its data sheet packs the tables' own three columns)
+    for title, cols, col_w in (('WALL-A - Power - Front View', 3, COL_W), ('WALL-A - Data - Front View', 3, COL_W)):
         out = _render(pg, SHOW, title)
         p = out['page']
         s = p['scale']
@@ -2485,8 +2487,12 @@ def test_a_box_delivering_the_port_is_listed_instead_of_the_card(page):
         }""", [ids, box_id])
         texts = _render(pg, SHOW, 'WALL-A - Data - Front View')['texts']
         assert "CVT4K-S SR · OPT 1-2 · 16 ports · 12 Tac Fiber 250'" in texts, texts
-        # under the band that names the box whole, a row names it short
-        assert 'SR · 1' in texts
+        # under the band that names the box whole, a row would name it
+        # short - "SR · 1" - which only repeats its port, "SR-1": OUTPUT is
+        # left out (2026-10-18), the port's run beside it
+        assert 'SR · 1' not in texts and 'OUTPUT' not in texts
+        i = texts.index('SR-1')
+        assert texts[i - 3:i + 2] == ['PORT', 'HOME RUN', 'PANELS', 'SR-1', '—'], texts[i - 4:i + 3]
         # the processor sheet: the box under its card, with its fiber
         proc = _render(pg, SHOW, PROC)['texts']
         b = proc.index('BREAKOUT BOXES')
@@ -2538,10 +2544,12 @@ def test_a_box_delivering_the_port_is_listed_instead_of_the_card(page):
             j = texts.index('CVT4K-S SR · OPT 1-2 · 16 ports')
             assert texts[j:j + 4] == ['CVT4K-S SR · OPT 1-2 · 16 ports', 'no fiber length',
                                       'CVT4K-S BK · OPT 1-2 · 16 ports', 'no fiber'], texts[j:j + 6]
-            assert texts[j + 4:j + 11] == ['PORT', 'OUTPUT', 'HOME RUN', 'PORT', 'OUTPUT', 'HOME RUN',
-                                           'PANELS'], texts[j:j + 12]
+            # every socket - "SR · 1", "BK · 1" - repeats its port's name,
+            # so neither half prints OUTPUT (2026-10-18)
+            assert texts[j + 4:j + 9] == ['PORT', 'HOME RUN', 'PORT', 'HOME RUN', 'PANELS'], texts[j:j + 12]
             i = texts.index('SR-1')
-            assert i > j and texts[i:i + 5] == ['SR-1', 'SR · 1', '—', 'BK-1', 'BK · 1'], texts[i:i + 8]
+            assert i > j and texts[i:i + 4] == ['SR-1', '—', 'BK-1', '—'], texts[i:i + 8]
+            assert 'SR · 1' not in texts and 'BK · 1' not in texts
             assert not [t for t in texts if t.endswith('…')]
         finally:
             pg.evaluate("""async ([ids, b]) => {
@@ -3109,9 +3117,13 @@ def test_smoke_live_show_b(page):
     assert data[i:i + 4] == [band_a, 'no fiber', band_b, 'no fiber'], data[i:i + 6]
     assert ['SR A-1', 'SR A-2', 'SR A-3', 'SR A-4'] == [t for t in data if re.fullmatch(r'SR A-\d', t)]
     assert ['SR B-1', 'SR B-2', 'SR B-3', 'SR B-4'] == [t for t in data if re.fullmatch(r'SR B-\d', t)]
+    # each row a port, its run, its return port, its run, its panels -
+    # no OUTPUT: "SR A · 1" and "SR B · 1" only repeat the ports' names
+    # (2026-10-18)
+    assert 'OUTPUT' not in data and not [t for t in data if re.fullmatch(r'SR [AB] · \d', t)], data
     for n in (1, 2, 3, 4):
         k = data.index(f'SR A-{n}')
-        assert data[k + 1] == f'SR A · {n}' and data[k + 3:k + 5] == [f'SR B-{n}', f'SR B · {n}'], data[k:k + 7]
+        assert data[k + 2] == f'SR B-{n}', data[k:k + 5]
     assert not [t for t in data if t.startswith('slot ') or t.startswith('backs up') or t == 'PX']
     # Each snake's home run is stated ONCE, as a heading over its own half
     # of the rows, and each end carries only the extension it adds
@@ -3122,8 +3134,8 @@ def test_smoke_live_show_b(page):
     heading_b = "SR B · 4 channel snake · 100'"
     assert data.count(heading_a) == 1 and data.count(heading_b) == 1, [t for t in data if 'channel' in t]
     assert data.index(heading_a) + 1 == data.index(heading_b) < data.index('SR A-1'), data
-    assert [data[data.index(f'SR A-{n}') + 2] for n in (1, 2, 3, 4)] == ["+10'", '—', "+25'", "+25'"], data
-    assert [data[data.index(f'SR A-{n}') + 5] for n in (1, 2, 3, 4)] == ["+10'", '—', "+10'", "+75'"], data
+    assert [data[data.index(f'SR A-{n}') + 1] for n in (1, 2, 3, 4)] == ["+10'", '—', "+25'", "+25'"], data
+    assert [data[data.index(f'SR A-{n}') + 3] for n in (1, 2, 3, 4)] == ["+10'", '—', "+10'", "+75'"], data
     cables = data[data.index('CABLES THIS SCREEN'):data.index('FACTS')]
     k = cables.index('Ether-con Barrel')
     assert cables[k:k + 3] == ['Ether-con Barrel', 'EA', '6'], cables
