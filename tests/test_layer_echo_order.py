@@ -64,3 +64,46 @@ def test_a_late_echo_never_puts_an_older_copy_back(e2e_server, pw_browser):
         assert out['seen'][-1] == 'SECOND' and out['server'] == 'SECOND', out
     finally:
         ctx.close()
+
+
+# The page's own newest echo says nothing its PUT's reply did not, yet it
+# rebuilt the whole hardware tray at whatever moment it landed: under load
+# that was mid-drag, and a drag back to the tray missed its drop. Echoes
+# are held back here so they land after the reply.
+OWN_ECHO_JS = """async () => {
+    const app = window.app;
+    document.querySelector('[data-mode="power"]').click();
+    if (!(app.project.distros || []).length) app.addDistro();
+    await app._layerSavesSettled();
+    await new Promise(r => setTimeout(r, 600));
+    const l = app.project.layers[0];
+    let echoes = 0;
+    app.socket.on('layer_updated', () => { echoes++; });
+    let renders = 0;
+    const orig = app.renderHardwareDock;
+    app.renderHardwareDock = function () { renders++; return orig.apply(this, arguments); };
+    l.name = 'OWN EDIT'; app.updateLayers([l]);
+    await app._layerSavesSettled();
+    await new Promise(r => setTimeout(r, 50));
+    const afterReply = renders;
+    for (let i = 0; i < 60 && !echoes; i++) await new Promise(r => setTimeout(r, 25));
+    await new Promise(r => setTimeout(r, 100));
+    app.renderHardwareDock = orig;
+    return { echoes, rendersAfterEcho: renders - afterReply, name: app.project.layers[0].name };
+}"""
+
+
+def test_the_pages_own_echo_does_not_rebuild_the_tray(e2e_server, pw_browser):
+    ctx = pw_browser.new_context()
+    ctx.add_init_script("try{localStorage.setItem('lrd_quickstart_disabled','1');}catch(e){}")
+    ctx.add_init_script(DELAY_LAYER_UPDATED)
+    pg = ctx.new_page()
+    try:
+        pg.goto(e2e_server, wait_until='domcontentloaded')
+        pg.wait_for_function("() => !!(window.app && window.app._initialLoadComplete)")
+        out = pg.evaluate(OWN_ECHO_JS)
+        assert out['echoes'] >= 1, out
+        assert out['rendersAfterEcho'] == 0, out
+        assert out['name'] == 'OWN EDIT', out
+    finally:
+        ctx.close()

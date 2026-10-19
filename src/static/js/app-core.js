@@ -786,14 +786,29 @@ export class LEDRasterApp {
                               { id: layer.id });
                 return;
             }
-            // The echo of this page's own older PUT: a newer edit of the
-            // screen was already sent, and its reply or echo is the truth.
+            // The echo of this page's own PUT. An older one would put a
+            // stale copy back over a newer edit. The newest one usually
+            // holds exactly what the page already has, and applying it
+            // anyway rebuilt the whole tray at whatever moment it landed -
+            // under load, mid-drag, so a drag back to the tray missed its
+            // drop (full suite, 2026-10-19). Other windows' echoes apply.
             const echo = layer && layer._echo;
             if (layer) delete layer._echo;
-            if (echo && echo.client === this._echoClientId
-                    && echo.seq < ((this._layerPutSeq && this._layerPutSeq.get(layer.id)) || 0)) {
-                sendClientLog('socket_layer_updated_suppressed_older_put', { id: layer.id });
-                return;
+            if (echo && echo.client === this._echoClientId) {
+                const latest = (this._layerPutSeq && this._layerPutSeq.get(layer.id)) || 0;
+                if (echo.seq < latest) {
+                    sendClientLog('socket_layer_updated_suppressed_older_put', { id: layer.id });
+                    return;
+                }
+                // The newest one: applied only when the server changed
+                // something the page does not already hold (a normalized
+                // path, a derived field); the same copy is let go.
+                const mine = (this.project && this.project.layers || []).find(l => l.id === layer.id);
+                if (mine && typeof this._canonicalJson === 'function'
+                        && this._canonicalJson(mine) === this._canonicalJson(layer)) {
+                    sendClientLog('socket_layer_updated_suppressed_same_copy', { id: layer.id });
+                    return;
+                }
             }
             sendClientLog('socket_layer_updated', { id: layer.id });
             this.applyServerLayer(layer, 'socket_layer_updated');
