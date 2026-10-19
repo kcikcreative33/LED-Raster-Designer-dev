@@ -1,7 +1,7 @@
 LED RASTER DESIGNER - VERSION HISTORY
 =====================================
 
-v1.5.2 - October 18, 2026
+v1.5.2 - October 19, 2026
 ----------------------------
 
 Every export now has its own place in the File menu.
