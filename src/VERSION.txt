@@ -29,6 +29,22 @@ FIXES
   its own.
 - FIX: Holding Alt, sweeping across runs and right-clicking shares them
   through a 2fer or 3fer, in automatic and custom mode and across a group.
+- FIX: Right-click a circuit, or Alt-click it first, and pick 3fer it to
+  split it into one leg per column (or per row on a wall cabled across) on
+  that same circuit. Only the one that matches its width is offered: 2fer
+  for two columns, 3fer for three, 4fer for four.
+- FIX: The 3fer Screen button splits a circuit that spans three columns
+  into its own three legs, the way automatic mode does, instead of joining
+  it to its neighbours.
+- FIX: In a group, Share circuits via splitters is one setting for the
+  whole wall. Before, each screen had its own, and a fill followed the
+  first screen's even when another screen showed it ticked.
+- FIX: 3fers drawn by hand number their circuits 1, 2, 3, the same as
+  automatic mode, and the pull sheet and binder count 4fers and wider.
+- FIX: Grouping locked and unlocked screens asks whether to lock or unlock
+  the whole group, and locking one screen of a group locks them all.
+- FIX: A distro name you're halfway through typing keeps what you typed
+  when the tray redraws.
 - FIX: In custom mode a group is one wall. Its circuits are numbered as
   one, and runs on different screens can share a circuit. A run drawn
   earlier on another screen joins the wall when you share it.
