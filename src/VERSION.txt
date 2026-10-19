@@ -1,6 +1,42 @@
 LED RASTER DESIGNER - VERSION HISTORY
 =====================================
 
+v1.5.3 - October 19, 2026
+----------------------------
+
+2fers and 3fers now work the way you'd expect in custom mode and across a
+group, and What's New can walk you through what changed after an update.
+
+WHAT'S NEW, SHOWN TO YOU
+
+After an update, the What's New window has a Show me button. It runs just
+the Advanced Guide steps added since the version you had, right in the app,
+so you can see each change instead of reading about it. Help > What's New
+opens it any time.
+
+The Advanced Guide now covers 1.5 too: distros built from their outputs,
+the 80% limit, feet or meters, cabinets across screens, the exports in the
+File menu, and 2fers and 3fers.
+
+FIXES
+
+- FIX: Taking over a 3fer with Alt keeps it a 3fer. Before, its three
+  runs turned into one long run and the 3fer disappeared.
+- FIX: With 2fers and 3fers turned on, filling a selection in custom mode
+  makes them the same way automatic mode does, one run per column.
+- FIX: The 2fer and 3fer Screen buttons only join runs that fit on one
+  circuit together, so they never build an OVER. A run left over stays on
+  its own.
+- FIX: Holding Alt, sweeping across runs and right-clicking shares them
+  through a 2fer or 3fer, in automatic and custom mode and across a group.
+- FIX: In custom mode a group is one wall. Its circuits are numbered as
+  one, and runs on different screens can share a circuit. A run drawn
+  earlier on another screen joins the wall when you share it.
+- FIX: Turning custom mode on starts the screen empty, circuit labels you
+  typed included.
+- FIX: Clearing a circuit you took over no longer clears the 2fer or 3fer
+  of another circuit with the same number.
+
 v1.5.2 - October 19, 2026
 ----------------------------
 

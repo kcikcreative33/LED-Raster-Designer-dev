@@ -1,4 +1,4 @@
-# LED Raster Designer v1.5.2
+# LED Raster Designer v1.5.3
 
 LED Raster Designer is a free app for planning LED video walls for live
 events, concerts, broadcast and installs. You lay out the cabinets, wire
