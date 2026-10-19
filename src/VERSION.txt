@@ -4,19 +4,13 @@ LED RASTER DESIGNER - VERSION HISTORY
 v1.5.2 - October 19, 2026
 ----------------------------
 
-Every export now has its own place in the File menu, and beta builds say
-they're betas.
+Every export now has its own place in the File menu.
 
 FIXES
 
 - FIX: Export SVG, Export PDF and Export Resolume XML are in the File
   menu with the other exports. Before, they were only in the format list
   of the Export button's dialog, which made them easy to miss.
-- FIX: A beta build names itself, like "v1.5.2-beta.1", next to the
-  logo, in the window title, in About and the update dialog, and in the
-  shows it saves. When the full release comes out, the beta is offered it
-  like any other update. Before, a beta called itself by the release
-  number, so it was never told the release had shipped.
 - FIX: Opening a show right after New Project can no longer get the new
   show's default raster size written onto it.
 
