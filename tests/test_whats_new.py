@@ -1,25 +1,27 @@
-"""The "What's New" splash: shown once when MAJOR.MINOR changes, never on a
-patch, never stacked on the first-run tour, reopenable from Help.
+"""The "What's New" window: shown once after an update that has something
+to say (a new MAJOR.MINOR's highlights, or Advanced Guide steps added by
+any release, patches included), with Show me running exactly those steps;
+never stacked on the first-run guide; reopenable from Help.
 
 Two halves:
 
   Static (no browser) - the rot guard and the wiring:
     - VERSION.txt's top version MUST have an entry in whatsnew_content.js.
       This is the test that FAILS when a new MAJOR.MINOR ships without its
-      curated highlights - bump VERSION.txt to 0.13/1.0 and this trips until
-      someone writes the 0.13/1.0 entry.
+      curated highlights.
     - every entry is 4-8 items, plain text, no emoji;
-    - index.html loads both scripts and carries the Help menu item, and
-      app-menubar.js dispatches it - the new files cannot silently rot.
+    - index.html loads both scripts and carries ONE Help menu item for What's
+      New, and app-menubar.js dispatches it.
 
   Browser (Playwright, shared e2e server) - the gating matrix and the modal:
-    - decide(): patch change silent, minor/major change shows, first run
-      stamps silently (the Quick Start tour keeps the first launch), a
-      feature version with no entry stamps silently;
-    - autoRun(): update shows the splash, dismissing stamps, a second run
-      stays quiet; first run never shows;
-    - Help -> What's New reopens it regardless of the stamp;
-    - fit/theme sanity: panel inside the viewport, opaque, both buttons.
+    - newSteps() filters the Advanced steps by `since`, in guide order;
+    - decide(): a patch with new steps offers them, a patch without is
+      silent, skipped versions get every step since, a minor/major change
+      shows its entry, first run stamps silently, older versions are quiet;
+    - autoRun(): a patch update with steps opens the window with Show me,
+      Close stamps and skips, a patch with none is not offered;
+    - Show me runs only the new steps, each from its entry snapshot;
+    - Help -> What's New reopens it regardless of the stamp.
 
 Run the browser half ALONE (the harness pins one port):
     python -m pytest tests/test_whats_new.py -v --browser chromium
@@ -152,6 +154,18 @@ def test_menu_action_dispatches_to_whatsnew():
     assert 'WhatsNew.open()' in src
 
 
+def test_help_menu_has_one_whats_new_entry():
+    """The What's New in 1.0 guide is gone: its menu item and handler with
+    it. One entry opens the window; Show me lives inside it."""
+    html = _read(INDEX_HTML)
+    help_menu = html[html.index('id="menu-help"'):]
+    help_menu = help_menu[:help_menu.index('</div>\n\n')] if '</div>\n\n' in help_menu else help_menu
+    labels = re.findall(r'data-label="([^"]*New[^"]*)"', help_menu)
+    assert labels == ['What’s New…'], labels
+    assert 'whats-new-tour' not in html
+    assert 'whats-new-tour' not in _read(MENUBAR_JS)
+
+
 def test_logic_uses_its_own_storage_key():
     src = _read(LOGIC_JS)
     assert "lrd_whatsnew_seen" in src
@@ -187,37 +201,109 @@ def _decide(page, current, stamped):
         "([c, s]) => window.WhatsNew.decide(c, s)", [current, stamped])
 
 
-def test_decide_patch_change_is_silent(page):
-    assert _decide(page, '1.0.2', '1.0') == {'show': False, 'stamp': None}
-    assert _decide(page, '1.0.2', '1.0.0') == {'show': False, 'stamp': None}
+def _new_steps(page, after, up_to):
+    return page.evaluate(
+        "([a, u]) => window.QuickStart.newSteps(a, u)", [after, up_to])
 
 
-def test_decide_minor_change_shows(page):
-    # 0.11 -> 1.0 is the entry the content carries (0.12 never shipped; its
-    # highlights became the 1.0 entry), and the rule is the same code path
-    # for a minor and a major step.
-    assert _decide(page, '1.0.0', '0.11') == {'show': True, 'stamp': None}
+def _since_table(page):
+    """[(key, since)] of the Advanced Guide, in guide order."""
+    return [tuple(x) for x in page.evaluate("""() => {
+        const S = window.QuickStart.steps();
+        return window.QuickStart.tours().advanced.map(s =>
+            [Object.keys(S).find(k => S[k] === s), s.since || null]);
+    }""")]
+
+
+def _v(s):
+    return tuple(int(x) for x in s.split('.'))
+
+
+def _pad(t):
+    return t + (0,) * (4 - len(t))
+
+
+# ── the steps the walkthrough runs ───────────────────────────────────────
+
+def test_new_steps_filter_by_since(page):
+    """newSteps(after, upTo) is every Advanced step whose `since` is newer
+    than `after` and not newer than `upTo`, in guide order, checked
+    against the step table for several windows, and by name for the 1.5.3
+    steps."""
+    table = _since_table(page)
+    assert any(s for _, s in table), 'no Advanced step carries since'
+    for after, up_to in (('1.4.9', '1.5.0'), ('1.5.0', '1.5.2'), ('1.5.2', '1.5.3'),
+                         ('1.5', '1.5.3'), ('1.0', '1.5.3'), ('1.5.3', '1.5.3')):
+        want = [k for k, s in table if s
+                and _pad(_v(after)) < _pad(_v(s)) <= _pad(_v(up_to))]
+        assert _new_steps(page, after, up_to) == want, (after, up_to)
+    assert _new_steps(page, '1.5.2', '1.5.3') == [
+        'takeOver', 'customPower', 'customDraw', 'sweepShare']
+    # A step is never newer than the running version.
+    assert not set(_new_steps(page, '1.5.2', '1.5.2'))
+    assert _new_steps(page, 'junk', '1.5.3') == []
+
+
+# ── decide(): the gating matrix ──────────────────────────────────────────
+
+def test_decide_patch_update_with_new_steps_offers_them(page):
+    d = _decide(page, '1.5.3', '1.5.2')
+    assert d['show'] is True and d['stamp'] is None, d
+    assert d['window'] == {'key': None, 'after': '1.5.2', 'upTo': '1.5.3',
+                           'steps': _new_steps(page, '1.5.2', '1.5.3')}, d
+    assert d['window']['steps'], d
+
+
+def test_decide_skipped_versions_get_every_step_since(page):
+    """1.5.0 -> 1.5.3: every step added in 1.5.1, 1.5.2 and 1.5.3, in
+    guide order. A stamp from before 1.5.3 holds MAJOR.MINOR only ('1.5'),
+    which reads as 1.5.0."""
+    d = _decide(page, '1.5.3', '1.5.0')
+    assert d['show'] and d['window']['steps'] == _new_steps(page, '1.5.0', '1.5.3'), d
+    assert 'fileExports' in d['window']['steps'], d
+    assert _decide(page, '1.5.3', '1.5')['window']['steps'] == d['window']['steps']
+
+
+def test_decide_patch_without_new_steps_is_silent(page):
+    assert _decide(page, '1.5.4', '1.5.3') == {'show': False, 'stamp': '1.5.4', 'window': None}
+    assert _decide(page, '1.0.2', '1.0.1') == {'show': False, 'stamp': '1.0.2', 'window': None}
+
+
+def test_decide_minor_change_shows_the_entry_and_its_steps(page):
+    d = _decide(page, '1.5.0', '1.4.2')
+    assert d['show'] and d['window']['key'] == '1.5', d
+    assert d['window']['steps'] == _new_steps(page, '1.4.2', '1.5.0'), d
+    # A feature version with an entry and no steps still shows (no Show me).
+    d = _decide(page, '1.4.0', '1.3.2')
+    assert d['show'] and d['window']['key'] == '1.4' and d['window']['steps'] == [], d
 
 
 def test_decide_major_change_shows(page):
-    d = page.evaluate("window.WhatsNew._majorMinor('1.0.3')")
-    assert d == '1.0'
-    assert _decide(page, '1.0.1', '0.11.2') == {'show': True, 'stamp': None}
+    assert page.evaluate("window.WhatsNew._majorMinor('1.0.3')") == '1.0'
+    d = _decide(page, '1.0.1', '0.11.2')
+    assert d['show'] and d['window']['key'] == '1.0', d
 
 
 def test_decide_first_run_stamps_silently(page):
-    """No stamp = brand-new install: never show (the tour owns first run)."""
-    assert _decide(page, '1.0.0', None) == {'show': False, 'stamp': '1.0'}
+    """No stamp = brand-new install: never show (the guide owns first run)."""
+    assert _decide(page, '1.5.3', None) == {'show': False, 'stamp': '1.5.3', 'window': None}
+
+
+def test_decide_same_or_older_version_is_silent(page):
+    assert _decide(page, '1.5.3', '1.5.3') == {'show': False, 'stamp': None, 'window': None}
+    assert _decide(page, '1.5.2', '1.5.3') == {'show': False, 'stamp': '1.5.2', 'window': None}
 
 
 def test_decide_unknown_version_stamps_silently(page):
-    """Feature version changed but no curated entry: quiet, stamped."""
-    assert _decide(page, '1.99.0', '1.0') == {'show': False, 'stamp': '1.99'}
+    """Feature version changed but no curated entry and no steps: quiet."""
+    assert _decide(page, '1.99.0', '1.98.0') == {'show': False, 'stamp': '1.99.0', 'window': None}
 
 
 def test_decide_garbage_version_is_silent(page):
-    assert _decide(page, 'not-a-version', '0.11') == {'show': False, 'stamp': None}
+    assert _decide(page, 'not-a-version', '0.11') == {'show': False, 'stamp': None, 'window': None}
 
+
+# ── autoRun(): what the first launch after an update does ───────────────
 
 def _modal_visible(page):
     return page.evaluate(
@@ -225,33 +311,79 @@ def _modal_visible(page):
         " return !!m && m.style.display !== 'none'; }")
 
 
-def test_autorun_update_shows_then_stamp_silences(page):
-    """Stamp behind the running version -> splash; dismiss stamps; quiet after."""
-    page.evaluate("localStorage.setItem(window.WhatsNew.LS_KEY, '0.10')")
-    page.evaluate("window.WhatsNew.autoRun(true)")
+def _serve_version(page, version):
+    page.unroute('**/api/version')
+    page.route('**/api/version', lambda r: r.fulfill(json={'version': version}))
+
+
+def _wait_modal(page):
     page.wait_for_function(
         "() => { const m = document.getElementById('whatsnew-modal');"
         " return !!m && m.style.display === 'block'; }")
-    # It announces the running feature version (server ships 0.x).
+
+
+def test_autorun_update_shows_then_stamp_silences(page):
+    """Stamp behind the running version -> window; dismiss stamps the
+    running version; quiet after."""
+    page.unroute('**/api/version')
+    page.evaluate("localStorage.setItem(window.WhatsNew.LS_KEY, '0.10')")
+    page.evaluate("window.WhatsNew.autoRun(true)")
+    _wait_modal(page)
     heading = page.evaluate(
         "document.querySelector('#whatsnew-modal .modal-content').textContent")
-    server_mm = page.evaluate(
-        "fetch('/api/version').then(r => r.json())"
-        ".then(d => window.WhatsNew._majorMinor(d.version))")
+    server = page.evaluate("fetch('/api/version').then(r => r.json()).then(d => d.version)")
+    server_mm = page.evaluate("(v) => window.WhatsNew._majorMinor(v)", server)
     assert ('v' + server_mm) in heading
-    # Dismissing stamps the version...
     page.click('#whatsnew-close')
     assert not _modal_visible(page)
-    assert page.evaluate(
-        "localStorage.getItem(window.WhatsNew.LS_KEY)") == server_mm
-    # ...so the next launch is silent.
+    assert page.evaluate("localStorage.getItem(window.WhatsNew.LS_KEY)") == server
     page.evaluate("window.WhatsNew.autoRun(true)")
     page.wait_for_timeout(400)
     assert not _modal_visible(page)
 
 
+def test_autorun_patch_update_with_new_steps_offers_show_me(page):
+    """1.5.2 -> 1.5.3: the window opens on a patch release because the
+    release added guide steps; with no entry of its own it lists their
+    titles, offers Show me, and Close skips them (stamped, quiet after)."""
+    _serve_version(page, '1.5.3')
+    try:
+        page.evaluate("localStorage.setItem(window.WhatsNew.LS_KEY, '1.5.2')")
+        page.evaluate("window.WhatsNew.autoRun(true)")
+        _wait_modal(page)
+        text = page.evaluate("document.querySelector('#whatsnew-modal .modal-content').textContent")
+        titles = page.evaluate("""(keys) => keys.map(k => {
+            const t = document.createElement('textarea');
+            t.innerHTML = window.QuickStart.steps()[k].title; return t.value; })""",
+            _new_steps(page, '1.5.2', '1.5.3'))
+        assert 'v1.5.3' in text, text
+        for t in titles:
+            assert t in text, (t, text)
+        assert page.evaluate("!!document.getElementById('whatsnew-show-me')")
+        page.click('#whatsnew-close')
+        assert page.evaluate("localStorage.getItem(window.WhatsNew.LS_KEY)") == '1.5.3'
+        assert not page.evaluate("window.QuickStart.state().visible")
+        page.evaluate("window.WhatsNew.autoRun(true)")
+        page.wait_for_timeout(400)
+        assert not _modal_visible(page)
+    finally:
+        page.unroute('**/api/version')
+
+
+def test_autorun_patch_update_without_new_steps_is_not_offered(page):
+    _serve_version(page, '1.5.4')
+    try:
+        page.evaluate("localStorage.setItem(window.WhatsNew.LS_KEY, '1.5.3')")
+        page.evaluate("window.WhatsNew.autoRun(true)")
+        page.wait_for_function(
+            "() => localStorage.getItem(window.WhatsNew.LS_KEY) === '1.5.4'")
+        assert not _modal_visible(page)
+    finally:
+        page.unroute('**/api/version')
+
+
 def test_autorun_first_run_never_stacks_on_tour(page):
-    """Fresh install: no splash, stamp written silently."""
+    """Fresh install: no window, stamp written silently."""
     page.evaluate("localStorage.removeItem(window.WhatsNew.LS_KEY)")
     page.evaluate("window.WhatsNew.autoRun(true)")
     page.wait_for_function(
@@ -262,14 +394,13 @@ def test_autorun_first_run_never_stacks_on_tour(page):
 def test_help_reopens_regardless_of_stamp(page):
     """The stamp silences auto-show only; Help -> What's New always opens."""
     page.evaluate("window.WhatsNew.open()")
-    page.wait_for_function(
-        "() => { const m = document.getElementById('whatsnew-modal');"
-        " return !!m && m.style.display === 'block'; }")
+    _wait_modal(page)
     assert _modal_visible(page)
 
 
-def test_modal_fits_theme_and_offers_walkthrough(page):
-    """Open panel sits inside the viewport, opaque, with both buttons."""
+def test_modal_fits_theme_and_offers_show_me(page):
+    """Open panel sits inside the viewport, opaque, with Show me (the
+    running feature version brought guide steps) and Close."""
     box = page.evaluate(
         "() => { const p = document.querySelector('#whatsnew-modal .modal-content');"
         " const r = p.getBoundingClientRect();"
@@ -279,23 +410,59 @@ def test_modal_fits_theme_and_offers_walkthrough(page):
     assert box['top'] >= 0 and box['left'] >= 0
     assert box['right'] <= box['vw'] and box['bottom'] <= box['vh']
     assert box['bg'] not in ('rgba(0, 0, 0, 0)', 'transparent')
-    # The tour has a stable entry point, so the walkthrough button is there.
-    assert page.evaluate("!!document.getElementById('whatsnew-tour')")
+    assert page.evaluate("document.getElementById('whatsnew-show-me').textContent") == 'Show me'
     assert page.evaluate("!!document.getElementById('whatsnew-close')")
-    # And the walkthrough button hands off to the what's-new TOUR - the
-    # splash's natural continuation - not the Advanced Guide (which stays
-    # the fallback for a quickstart without the tour registry).
-    page.click('#whatsnew-tour')
+    page.click('#whatsnew-close')
     assert not _modal_visible(page)
-    # The catch overlay shows a beat before the callout paints, so wait for
-    # the title itself, not the catch.
-    page.wait_for_function(
-        "() => { const h = document.querySelector('#qs-callout h3');"
-        " return !!h && h.textContent.length > 0; }")
-    first_title = page.evaluate(
-        "() => document.querySelector('#qs-callout h3').textContent")
-    # Matched apostrophe-free and case-free: the title's curly quote and
-    # its capitals are not the fact under test, the destination tour is.
-    assert "new in 1.0" in first_title.lower(), (
-        f'the splash handed off to the wrong tour: {first_title!r}')
-    page.evaluate("window.QuickStart.end()")
+
+
+# ── Show me runs exactly the new steps ───────────────────────────────────
+
+@pytest.fixture
+def guide_page(e2e_server, pw_browser):
+    """The snapshot builder's viewport, so the steps play on the walls the
+    shipped snapshots frame."""
+    context = pw_browser.new_context(viewport={'width': 1600, 'height': 950})
+    context.add_init_script(
+        "try{localStorage.setItem('lrd_quickstart_disabled','1');}catch(e){}")
+    pg = context.new_page()
+    pg.goto(e2e_server, wait_until='domcontentloaded')
+    pg.wait_for_function(
+        "() => !!(window.app && window.app.project && window.canvasRenderer"
+        " && window.QuickStart && window.WhatsNew)")
+    pg.wait_for_timeout(1500)
+    yield pg
+    pg.evaluate("() => window.QuickStart.end()")
+    context.close()
+
+
+def test_show_me_runs_only_the_new_steps(guide_page):
+    """1.5.2 -> 1.5.3, Show me: the walkthrough is exactly the steps added
+    in 1.5.3, in guide order, each landing on its own entry snapshot and
+    taking; Done puts the person's project back."""
+    from test_tour_anchors import _wait_step
+    pg = guide_page
+    _serve_version(pg, '1.5.3')
+    keys = _new_steps(pg, '1.5.2', '1.5.3')
+    before = pg.evaluate("() => window.app._canonicalJson(window.app.project)")
+    pg.evaluate("localStorage.setItem(window.WhatsNew.LS_KEY, '1.5.2')")
+    pg.evaluate("window.WhatsNew.autoRun(true)")
+    _wait_modal(pg)
+    pg.evaluate("window.QuickStart.setSpeed(3)")
+    pg.click('#whatsnew-show-me')
+    assert not _modal_visible(pg)
+    assert pg.evaluate("localStorage.getItem(window.WhatsNew.LS_KEY)") == '1.5.3'
+    titles = pg.evaluate("(keys) => keys.map(k => window.QuickStart.steps()[k].title)", keys)
+    for i, key in enumerate(keys):
+        if i:
+            pg.locator('#qs-next').click()
+        st = _wait_step(pg, i)
+        qs = pg.evaluate("window.QuickStart.state()")
+        assert qs['tour'] == 'whatsNew' and qs['steps'] == keys, qs
+        assert st['qs']['index'] == i and st['state'] == 'done' and not st['fail'], (key, st)
+        assert qs['jumpedVia'] == 'snapshot', (key, qs)
+        assert pg.evaluate("document.querySelector('#qs-callout h3').innerHTML") == titles[i]
+    assert pg.evaluate("document.getElementById('qs-next').textContent") == 'Done'
+    pg.locator('#qs-next').click()
+    pg.wait_for_function("() => !window.QuickStart.state().visible && !window.QuickStart.state().running")
+    assert pg.evaluate("() => window.app._canonicalJson(window.app.project)") == before

@@ -10,9 +10,10 @@
  *
  *   - Quick Start: short first-run tour, auto-shows once, skippable, with a
  *     "Don't show on startup" checkbox. Reopen from Help -> Quick Start Guide.
- *   - What's New in 1.0: the surfaces that changed. Help -> What's New in
- *     1.0, and the splash's walkthrough button.
  *   - Advanced Guide: the whole show, built step by step in front of you.
+ *   - What's New: only the Advanced Guide steps added since a version (each
+ *     step's `since`), each started from its own entry snapshot. The What's
+ *     New window's Show me runs it (whatsnew.js, also Help -> What's New).
  *
  * Fully self-contained and offline (no CDN).
  *
@@ -20,7 +21,7 @@
  * check? }. `act(t)` is the demonstration and `t` the toolkit (moveTo, hover,
  * click, type, select, drag, rightClick, pickMenu, cabinetPoint, wait, pause,
  * say, spot; `t.pace` is the timing table). `check(mem)` returns the result note when the action took, or null
- * when it did not. The three tours are composed from ONE step library (STEPS)
+ * when it did not. The tours are composed from ONE step library (STEPS)
  * so copy lives once; tests/test_tour_anchors.py drives every tour and proves
  * each step's anchor resolves AND its check returns a note.
  */
@@ -1619,7 +1620,14 @@
         snaps: [], saved: null, token: 0, visible: false, spotEl: null,
         // How the last Go to ahead landed: 'snapshot' (one restore of the
         // shipped entry snapshot) or 'apply' (the steps between were run).
-        jumpedVia: null
+        // On What's New, how the step on screen got its entry state.
+        jumpedVia: null,
+        // The step keys on screen, in order.
+        keys: [],
+        // What's New only: for each step, its index in the Advanced Guide
+        // (whose entry snapshot it starts from), and the Advanced step
+        // whose entry state the show holds right now (null: unknown).
+        entries: null, entryAt: null
     };
 
     function setState(v) { if (els) els.callout.setAttribute('data-qs-state', v); }
@@ -1766,6 +1774,8 @@
         if (!(n >= 1 && n <= S.list.length) || n === S.idx + 1) return Promise.resolve();
         var i = n - 1;
         if (i < S.idx) return go(i, { restore: S.snaps[i] });
+        // A What's New step enters from its own entry state (enterStep).
+        if (S.entries) return go(i);
         if (opts.apply) { S.jumpedVia = 'apply'; return applyAhead(n, i); }
         var name = S.name, tokenAt = S.token;
         S.running = true;   // Next, Back, Enter and a second Go to wait for the file
@@ -1829,6 +1839,126 @@
         els.fast.style.display = text ? 'flex' : 'none';
     }
 
+    // ── What's New: Advanced Guide steps on their own ────────────────────
+    // A What's New step runs WITHOUT the steps before it, so it starts from
+    // the Advanced Guide's entry snapshot of that step in the shipped file:
+    // the show exactly as the guide hands it to the step, restored the way
+    // Go to restores one. Without a matching file (a changed guide, a build
+    // whose file was not regenerated, no network) the Advanced steps before
+    // it are applied behind the shade instead (applyEntry), as Go to does.
+    function enterStep(i) {
+        var k = S.entries[i];
+        return shippedSnapshots('advanced', k).catch(function () { return null; }).then(function (snaps) {
+            if (snaps) {
+                S.jumpedVia = 'snapshot';
+                return restoreProject(snaps[k], 'Tutorial Step').then(function () { S.entryAt = k; });
+            }
+            S.jumpedVia = 'apply';
+            return applyEntry(k);
+        }).catch(function (e) {
+            // The step still plays; if its entry state is not there its
+            // check says so.
+            console.warn('QuickStart: entry state failed', e);
+        });
+    }
+    // The Advanced Guide applied up to step k's entry: from where the show
+    // already is when that is at or before k (the step before took), else
+    // from a fresh scratch show. Every pace is zero and only the app's own
+    // responses are waited for, as in applyAhead.
+    function applyEntry(k) {
+        var adv = TOURS.advanced.steps;
+        var from = S.entryAt != null && S.entryAt <= k ? S.entryAt : null;
+        S.jumping = true;
+        S.fast = true;
+        document.body.classList.add('qs-jumping');
+        hideCursor();
+        var done = function () {
+            S.jumping = false;
+            S.fast = false;
+            document.body.classList.remove('qs-jumping');
+            fastBanner('');
+        };
+        var start = from == null
+            ? buildScratch(TOURS.advanced.seed).then(function () { return 0; })
+            : Promise.resolve(from);
+        return start.then(function (j0) {
+            var chain = Promise.resolve();
+            for (var j = j0; j < k; j++) {
+                (function (j) {
+                    chain = chain.then(function () {
+                        if (!S.visible) throw new Error('the guide was closed');
+                        fastBanner('Getting the step ready', 'applying Advanced Guide step ' + (j + 1) + ' of ' + adv.length,
+                                   (j - j0) / Math.max(1, k - j0));
+                        return applyStep(STEPS[adv[j]]);
+                    });
+                })(j);
+            }
+            return chain;
+        }).then(function () { done(); S.entryAt = k; },
+                function (e) { done(); S.entryAt = null; throw e; });
+    }
+    // One step applied, unseen: before, the act, its check, after. A step
+    // whose check returns no note stops the apply.
+    function applyStep(step) {
+        var leave = function () {
+            passthrough(false);
+            if (step.after) { try { step.after(null); } catch (e) { console.warn('QuickStart after()', e); } }
+        };
+        return Promise.resolve().then(function () {
+            if (step.before) return step.before();
+        }).then(function () {
+            ensureCalloutHome();
+            revealStep(step);
+            if (!step.act) return 'idle';
+            T.mem = {};
+            passthrough(true);
+            return Promise.resolve().then(function () { return step.act(T); }).then(function () {
+                return step.check ? step.check(T.mem) : 'Done.';
+            });
+        }).then(function (note) {
+            leave();
+            if (!note) throw new Error('"' + step.title + '" did not take');
+        }, function (e) { leave(); throw e; });
+    }
+
+    // "1.5.2" / "v1.5" -> [1, 5, 2] / [1, 5]; null when unparseable.
+    function versionParts(v) {
+        var m = /^v?(\d+(?:\.\d+)*)/.exec(String(v == null ? '' : v).trim());
+        return m ? m[1].split('.').map(Number) : null;
+    }
+    // Like a sort comparator; a missing part reads as 0 (1.5 = 1.5.0).
+    function versionCmp(a, b) {
+        var n = Math.max(a.length, b.length);
+        for (var i = 0; i < n; i++) {
+            var d = (a[i] || 0) - (b[i] || 0);
+            if (d) return d;
+        }
+        return 0;
+    }
+    // The Advanced Guide's step keys, in guide order, whose `since` is
+    // newer than `after` and not newer than `upTo` (null: no bound there).
+    function newSteps(after, upTo) {
+        var lo = after == null ? null : versionParts(after);
+        var hi = upTo == null ? null : versionParts(upTo);
+        if ((after != null && !lo) || (upTo != null && !hi)) return [];
+        return TOURS.advanced.steps.filter(function (k, i, all) {
+            var s = versionParts(STEPS[k] && STEPS[k].since);
+            return !!s && all.indexOf(k) === i
+                && (!lo || versionCmp(s, lo) > 0) && (!hi || versionCmp(s, hi) <= 0);
+        });
+    }
+    // Run Advanced Guide steps on their own, in guide order: What's New.
+    function startSteps(keys) {
+        var adv = TOURS.advanced.steps;
+        keys = keys || [];
+        var picked = adv.filter(function (k, i) { return adv.indexOf(k) === i && keys.indexOf(k) >= 0; });
+        if (!picked.length) return Promise.resolve();
+        return show('whatsNew', {
+            title: 'What&rsquo;s New', seed: TOURS.advanced.seed, steps: picked,
+            entries: picked.map(function (k) { return adv.indexOf(k); })
+        });
+    }
+
     function leaveCurrent(next) {
         var step = S.idx >= 0 && S.idx < S.list.length ? S.list[S.idx] : null;
         if (step && step.after) { try { step.after(next); } catch (e) { console.warn('QuickStart after()', e); } }
@@ -1846,7 +1976,15 @@
         S.running = true;
         setState('running');
         var chain = Promise.resolve();
-        if (opts.restore) chain = chain.then(function () { return restoreProject(opts.restore, 'Tutorial Back'); });
+        var entered = false;
+        if (opts.restore) {
+            chain = chain.then(function () { return restoreProject(opts.restore, 'Tutorial Back'); }).then(function () {
+                if (S.entries) S.entryAt = S.entries[i];
+            });
+        } else if (S.entries) {
+            entered = true;
+            chain = chain.then(function () { return enterStep(i); });
+        }
         return chain.then(function () {
             if (step.before) { try { return step.before(); } catch (e) { console.warn('QuickStart before()', e); } }
         }).then(function () {
@@ -1856,7 +1994,7 @@
             // steps before this one would have left it: the walls in the
             // view the step just switched to (buildScratch frames the same
             // way at the start; a Back keeps the framing the person had).
-            if (opts.frame) { try { frameWalls(); } catch (e) {} }
+            if (opts.frame || entered) { try { frameWalls(); } catch (e) {} }
             // What this step shows is on screen before it is rung: the
             // panel its target lives in open, every fold above it undone,
             // and the right sidebar open so the callout has its spot.
@@ -1901,6 +2039,8 @@
             showResult(note, err);
             settle();
             setState(note ? 'done' : 'failed');
+            // The step took: the show holds the next Advanced step's entry.
+            if (S.entries) S.entryAt = note ? S.entries[S.idx] + 1 : null;
             return afterStep();
         });
     }
@@ -2244,8 +2384,10 @@
     }
 
     // ── show / end ───────────────────────────────────────────────────────
-    function show(name) {
-        var tour = TOURS[name];
+    // `custom` is a tour built on the fly ({ title, seed, steps, entries }):
+    // What's New (startSteps).
+    function show(name, custom) {
+        var tour = custom || TOURS[name];
         if (!tour) return Promise.resolve();
         if (!els) build();
         // The ghost cursor starts from the middle of the window, not from
@@ -2263,6 +2405,9 @@
         S.idx = -1;
         S.home = null;
         S.jumpedVia = null;
+        S.keys = tour.steps.slice();
+        S.entries = tour.entries ? tour.entries.slice() : null;
+        S.entryAt = null;
         S.visible = true;
         els.catch.style.display = 'block';
         els.spot.style.display = 'block';
@@ -2307,6 +2452,9 @@
         S.idx = -1;
         S.list = [];
         S.snaps = [];
+        S.keys = [];
+        S.entries = null;
+        S.entryAt = null;
         var chain = saved ? sleep(ms(300)).then(function () { return restoreWorld(saved); }) : Promise.resolve();
         return chain.catch(function (e) {
             console.warn('QuickStart: restore failed', e);
@@ -2324,11 +2472,6 @@
             title: 'The full guide', center: true,
             body: 'This guide builds a small show in front of you on a scratch project. Your own project is put back when you leave.',
             before: function () { switchView('pixel-map'); }
-        },
-        introWhatsNew: {
-            title: 'What&rsquo;s new in 1.0', center: true,
-            body: 'The tray, drag-to-wire, right-click clears, snakes, cable sheets, redundancy in one bar and the binder, each shown live on a scratch show. Your own project is put back when you leave.',
-            before: function () { switchView('data-flow'); }
         },
         introQuick: {
             title: 'Welcome to LED Raster Designer', center: true,
@@ -3337,26 +3480,6 @@
                 return (d.name || 'SL') + ' multi 1 took ' + n + ' of ' + size + ' circuits' + (n < size ? ', all the wall needs.' : '.');
             }
         },
-        // What's New in 1.0 only: its distro has no output rows, so the
-        // spare number's chip is still the picker.
-        typeChip: {
-            target: function () { var d = distro(); return d ? '[data-lrd-field="distro-box-type-' + d.id + '-2"]' : '.hw-dock-typechip'; },
-            place: 'top', title: 'The type chip',
-            body: 'Every number wears its connector as a chip. On the spare number the chip is the picker: click it to cycle the types the distro offers.',
-            before: function () { switchView('power'); },
-            act: function (t) {
-                var d = distro();
-                t.mem.before = A().distroBoxType(d, 2).type.id;
-                return t.click('[data-lrd-field="distro-box-type-' + d.id + '-2"]').then(function () {
-                    return t.wait(function () { return A().distroBoxType(distro(), 2).type.id !== t.mem.before; });
-                });
-            },
-            check: function (mem) {
-                var d = distro();
-                var ty = A().distroBoxType(d, 2).type;
-                return ty.id !== mem.before ? (d.name || 'SL') + ' 2 is now a ' + ty.name + '.' : null;
-            }
-        },
         clearCircuit: {
             target: function () { var d = distro(); return d ? '[data-hwdock="tail-' + d.id + '-1-3"]' : '[data-hwdock^="tail-"]'; },
             place: 'top', title: 'Clear one circuit',
@@ -3783,8 +3906,7 @@
         // before the multi steps: the preset's first row is Socapex at 208V,
         // the multi every power step after drags onto the wall. A distro
         // with rows IS its face, so its type chips only read the row; the
-        // Advanced Guide has no type chip step (What's New in 1.0, whose
-        // distro has no rows, keeps it).
+        // guide has no type chip step.
         distroPreset: {
             since: '1.5.0',
             target: function () { var d = distro(); return d ? '[data-hwpop="distro-' + d.id + '"]' : '#hardware-dock-body .hw-dock-gear'; },
@@ -4221,7 +4343,7 @@
         },
         helpMenu: {
             target: '[data-menu="help"]', place: 'bottom', title: 'Help',
-            body: 'Every guide lives under Help: Quick Start, What&rsquo;s New in 1.0, the Advanced Guide and the keyboard shortcuts.',
+            body: 'Every guide lives under Help: Quick Start, What&rsquo;s New, the Advanced Guide and the keyboard shortcuts.',
             before: function () { closePrefs(); },
             act: function (t) {
                 return t.click('[data-menu="help"]').then(function () {
@@ -4237,11 +4359,6 @@
         outroAdvanced: {
             title: 'That&rsquo;s the guide', center: true,
             body: 'Done puts your own project back. Reopen any guide from Help.',
-            before: function () { hideMenus(); closeExport(); closePrefs(); }
-        },
-        outroWhatsNew: {
-            title: 'That&rsquo;s 1.0', center: true,
-            body: 'Done puts your own project back. Reopen this from Help &rsaquo; What&rsquo;s New in 1.0, or take the Advanced Guide for the whole app.',
             before: function () { hideMenus(); closeExport(); closePrefs(); }
         },
         outroQuick: {
@@ -4286,21 +4403,6 @@
             steps: ['introQuick', 'cabinetSize', 'gridSize', 'processing', 'addProcessor',
                     'dropProcessor', 'addDistro', 'dropMulti', 'exportBinder', 'outroQuick']
         },
-        whatsNew: {
-            title: 'What’s New in 1.0',
-            seed: {
-                name: 'Demo Show',
-                wall: { columns: 12, rows: 6, cabinet_width: 200, cabinet_height: 200 },
-                layer: { processorType: 'novastar-coex-1g', panelWatts: 100 }
-            },
-            steps: ['introWhatsNew', 'addProcessor', 'nameProcessor', 'redundancy', 'dropProcessor', 'releasePort',
-                    'attachmentFlag', 'pinPort', 'clearPortByMenu', 'clearCard', 'dropProcessorAgain',
-                    'snakePorts', 'cableSheet', 'snakeHomeRun',
-                    'dataCableTags', 'addBreakoutBox', 'panelWatts', 'addDistro', 'distroRating', 'dropMulti', 'typeChip',
-                    'clearCircuit', 'clearMultiByMenu', 'dropMultiAgain', 'multiCableSheet', 'powerCableTags',
-                    'powerColumns', 'splitters', 'takeOver', 'customPower', 'customDraw', 'sweepShare',
-                    'addBeach', 'addScreen', 'beachByMenu', 'exportBinder', 'wiringTick', 'titleBlock', 'outroWhatsNew']
-        },
         advanced: {
             title: 'Advanced Guide',
             seed: { name: 'New Show', layer: { panelWatts: 100, powerBreakoutType: 'soca-powercon' } },
@@ -4330,8 +4432,12 @@
 
     window.QuickStart = {
         start: function () { return show('quick'); },
-        startWhatsNew: function () { return show('whatsNew'); },
         startAdvanced: function () { return show('advanced'); },
+        // What's New: the Advanced Guide steps whose `since` is newer than
+        // `after` and not newer than `upTo` (keys, guide order), and a run
+        // of just those steps, each from its own entry snapshot.
+        newSteps: newSteps,
+        startSteps: startSteps,
         startTour: function (name) { return TOURS[name] ? show(name) : Promise.resolve(); },
         tours: toursAsLists,
         steps: function () { return STEPS; },
@@ -4346,7 +4452,7 @@
         signature: signature,
         state: function () {
             return { tour: S.name, index: S.idx, running: S.running, visible: S.visible,
-                     jumpedVia: S.jumpedVia };
+                     jumpedVia: S.jumpedVia, steps: S.keys.slice() };
         }
     };
 

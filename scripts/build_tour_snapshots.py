@@ -41,7 +41,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, 'src')
 FIXTURE = os.path.join(SRC, 'static', 'data', 'tour_snapshots.json')
 
-TOURS = ('quick', 'whatsNew', 'advanced')
+TOURS = ('quick', 'advanced')
 VIEWPORT = {'width': 1600, 'height': 950}
 # The pace the steps are driven at while collecting (QuickStart.setSpeed):
 # the shipped gestures, six times faster. Zero-pace application would be

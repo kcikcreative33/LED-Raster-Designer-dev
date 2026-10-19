@@ -15,11 +15,14 @@ not any waiting"). Three things are pinned here:
     server, gives the shipped bytes - the rot guard for a step whose act
     changes what the show looks like;
   - the jump WORKS: from a fresh tour, Go to every Advanced step (and all
-    of Quick, and every fifth What's New step) lands within three seconds
+    of Quick) lands within three seconds
     via the snapshot, with no shade, and the step's act then finishes done
     - a later "add" step minting ids past the restored show, a step past
     the preference-writing ones still leaving the person's preferences
-    alone at Done, and a changed tour falling back to applying the steps.
+    alone at Done, and a changed tour falling back to applying the steps;
+  - What's New, the Advanced steps run on their own, starts each step from
+    the same Advanced entry snapshot, and falls back to applying the
+    Advanced steps before it when the file does not match.
 
 Run locally (each session takes its own free port):
     python3 -m pytest tests/test_tour_snapshots.py -v --browser chromium
@@ -45,7 +48,7 @@ from test_tour_anchors import (_start, _end, _wait_step,    # noqa: E402
 
 FIXTURE = builder.FIXTURE
 REBUILD = 'run: python3 scripts/build_tour_snapshots.py'
-TOURS = ('quick', 'whatsNew', 'advanced')
+TOURS = ('quick', 'advanced')
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -238,7 +241,6 @@ def _indices(tour, n, every=1):
 
 
 ADVANCED_STEPS = 69
-WHATS_NEW_STEPS = 39
 QUICK_STEPS = 10
 
 
@@ -249,17 +251,6 @@ def test_go_to_every_advanced_step_lands_on_the_snapshot(page, i):
     landed, landing, st = _jump(page, 'advanced', i)
     try:
         _assert_landed('advanced', i, landed, landing, st)
-    finally:
-        _end(page)
-
-
-@pytest.mark.parametrize('i', _indices('whatsNew', WHATS_NEW_STEPS, every=5))
-def test_go_to_every_fifth_whats_new_step_lands_on_the_snapshot(page, i):
-    n = page.evaluate("() => window.QuickStart.tours().whatsNew.length")
-    assert n == WHATS_NEW_STEPS, f"the What's New tour has {n} steps; update WHATS_NEW_STEPS"
-    landed, landing, st = _jump(page, 'whatsNew', i)
-    try:
-        _assert_landed('whatsNew', i, landed, landing, st)
     finally:
         _end(page)
 
@@ -369,3 +360,57 @@ def test_a_changed_tour_falls_back_to_applying_the_steps(page):
         _end(page)
         page.evaluate("() => { window.QuickStart.steps().cabinetSize.title = window.__qsTitle; }")
     assert page.evaluate("() => window.QuickStart.signature('quick')") == _fixture()['tours']['quick']['signature']
+
+
+# ── What's New: Advanced steps on their own ──────────────────────────────
+
+def test_whats_new_steps_start_from_the_advanced_snapshots(page):
+    """What's New runs Advanced steps on their own: each one lands on the
+    Advanced Guide's shipped entry snapshot of that step (jumpedVia
+    'snapshot'), so it takes without the steps before it, and Go to
+    inside it does the same."""
+    keys = page.evaluate("() => window.QuickStart.newSteps('1.5.2', '1.5.3')")
+    assert len(keys) >= 2, keys
+    page.evaluate("(s) => window.QuickStart.setSpeed(s)", 3)
+    page.evaluate("(k) => { window.QuickStart.startSteps(k); }", keys)
+    try:
+        st = _wait_step(page, 0)
+        assert st['state'] == 'done' and not st['fail'], st
+        assert page.evaluate("window.QuickStart.state().jumpedVia") == 'snapshot'
+        last = len(keys) - 1
+        page.fill('#qs-jump', str(last + 1))
+        page.press('#qs-jump', 'Enter')
+        st = _wait_step(page, last)
+        assert st['qs']['index'] == last and st['state'] == 'done' and not st['fail'], st
+        assert page.evaluate("window.QuickStart.state().jumpedVia") == 'snapshot'
+    finally:
+        _end(page)
+
+
+def test_whats_new_falls_back_to_applying_the_advanced_steps(page):
+    """With the shipped file stale for the Advanced Guide (one title
+    changed under it), a What's New step is reached by applying the
+    Advanced steps before it behind the shade (jumpedVia 'apply'); the next
+    one carries on from there, and both take."""
+    keys = page.evaluate("() => window.QuickStart.newSteps('1.5.2', '1.5.3')")
+    picked = [keys[0], keys[-1]]
+    page.evaluate("() => { window.__qsTitle = window.QuickStart.steps().cabinetSize.title; "
+                  "window.QuickStart.steps().cabinetSize.title += ' (changed)'; }")
+    try:
+        assert page.evaluate("() => window.QuickStart.signature('advanced')") != \
+            _fixture()['tours']['advanced']['signature']
+        page.evaluate("(s) => window.QuickStart.setSpeed(s)", 3)
+        page.evaluate("(k) => { window.QuickStart.startSteps(k); }", picked)
+        st = _wait_step(page, 0)
+        assert st['state'] == 'done' and not st['fail'], st
+        assert page.evaluate("window.QuickStart.state().jumpedVia") == 'apply'
+        page.locator('#qs-next').click()
+        st = _wait_step(page, 1)
+        assert st['state'] == 'done' and not st['fail'], st
+        assert page.evaluate("window.QuickStart.state().jumpedVia") == 'apply'
+        assert page.evaluate("getComputedStyle(document.getElementById('qs-fast')).display") == 'none'
+    finally:
+        _end(page)
+        page.evaluate("() => { window.QuickStart.steps().cabinetSize.title = window.__qsTitle; }")
+    assert page.evaluate("() => window.QuickStart.signature('advanced')") == \
+        _fixture()['tours']['advanced']['signature']

@@ -1,16 +1,19 @@
 /*
  * whatsnew_content.js: curated highlights for the "What's New" splash.
  *
- * Keyed by MAJOR.MINOR ("0.12", "1.0", ...). One entry per feature release;
- * patch releases (0.12.1 -> 0.12.2) never get their own entry and never
- * re-open the splash. This is NOT the changelog - VERSION.txt is the full
- * record; each entry here is 4-8 short items a person can read in a minute.
+ * Keyed by MAJOR.MINOR ("0.12", "1.0", ...). One entry per feature release.
+ * A patch release (0.12.1 -> 0.12.2) re-opens the window only when it added
+ * Advanced Guide steps (a step's `since`, quickstart.js); it may carry an
+ * entry of its own keyed by the full version ("1.5.3"), and without one the
+ * window lists the new steps' titles. This is NOT the changelog: VERSION.txt
+ * is the full record; each entry here is 4-8 short items a person can read
+ * in a minute.
  *
  * Ships with the app (offline, no network). tests/test_whats_new.py fails
  * when VERSION.txt's top version has no entry here, so a new MAJOR.MINOR
  * cannot ship without its highlights.
  *
- * Shape: { 'MAJOR.MINOR': { title: str, items: [{ h: str, d: str }] } }
+ * Shape: { 'MAJOR.MINOR' | 'X.Y.Z': { title: str, items: [{ h: str, d: str }] } }
  *   h - short heading, d - one or two plain sentences. No markup, no emoji.
  */
 window.WHATS_NEW_CONTENT = {

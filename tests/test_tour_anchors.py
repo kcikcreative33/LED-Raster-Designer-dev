@@ -221,7 +221,10 @@ def test_retired_wording_guard_catches_each_word():
 
 def test_tour_registry_exposes_all_tours(page):
     names = page.evaluate("Object.keys(window.QuickStart.tours())")
-    assert {'quick', 'whatsNew', 'advanced'} <= set(names), names
+    assert {'quick', 'advanced'} <= set(names), names
+    # What's New is built from the Advanced steps on the fly, never a
+    # tour of its own (the What's New in 1.0 guide is gone).
+    assert 'whatsNew' not in names, names
     for name in names:
         count = page.evaluate(
             "(n) => window.QuickStart.tours()[n].length", name)
@@ -612,8 +615,9 @@ def _in_engine(engine, browser_name, pw_browser, body):
 
 @pytest.mark.parametrize('engine', ENGINES)
 def test_whats_new_launches_from_help_menu(e2e_server, pw_browser, browser_name, engine):
-    """The Help menu entry and its handler both reach the What's New tour -
-    in Chromium and in Firefox (skipped where Firefox is not installed)."""
+    """Help has ONE What's New entry: it opens the What's New window, whose
+    Show me runs the Advanced Guide steps the window is about, in
+    Chromium and in Firefox (skipped where Firefox is not installed)."""
     def body(browser):
         context = browser.new_context(viewport={'width': 1700, 'height': 950})
         context.add_init_script(
@@ -622,17 +626,19 @@ def test_whats_new_launches_from_help_menu(e2e_server, pw_browser, browser_name,
         try:
             pg.goto(e2e_server, wait_until='domcontentloaded')
             pg.wait_for_timeout(2000)
-            assert pg.evaluate(
-                "!!document.querySelector('#menu-help [data-action=\\'whats-new-tour\\']')"
-            ), "Help menu has no What's New entry"
-            pg.evaluate("window.app.handleMenuAction('whats-new-tour')")
+            entries = pg.evaluate("""() => [...document.querySelectorAll('#menu-help .menu-option')]
+                .map(e => [e.dataset.action, e.dataset.label]).filter(([a, l]) => /new/i.test(l || ''))""")
+            assert entries == [['whats-new', 'What’s New…']], entries
+            pg.evaluate("window.app.handleMenuAction('whats-new')")
+            pg.wait_for_selector('#whatsnew-show-me')
+            assert not pg.evaluate("window.QuickStart.state().visible")
+            pg.evaluate("window.QuickStart.setSpeed(3)")
+            pg.click('#whatsnew-show-me')
             st = _wait_step(pg, 0)
-            assert 'new in 1.0' in st['title'].lower(), st
-            # The first Next: the callout leaves the middle of the window
-            # for its spot in the right sidebar, in this engine too.
-            pg.locator('#qs-next').click()
-            st = _wait_step(pg, 1)
-            assert st['qs']['index'] == 1 and st['state'] == 'done' and not st['fail'], st
+            qs = pg.evaluate("window.QuickStart.state()")
+            assert qs['tour'] == 'whatsNew' and qs['steps'], qs
+            assert st['state'] == 'done' and not st['fail'], st
+            # The callout sits in the right sidebar, in this engine too.
             box = pg.evaluate(CALLOUT_JS)
             assert box['inSidebar'], f'{engine}: the callout is not in the right sidebar: {box}'
             _end(pg)
