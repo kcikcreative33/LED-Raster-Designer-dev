@@ -327,10 +327,14 @@ class _DockMenus {
         const idx = circuits.findIndex(c => c.num === num);
         if (idx < 0) return none;
         const c = circuits[idx];
+        // A circuit taken over by hand keeps the runs it was drawn with -
+        // it is neither shared on nor un-shared from here
+        // (_shareRunSegments says why).
+        if (this._isTakenOverCircuit(layer, c.num)) return none;
         const label = this.getPowerCircuitLabel(layer, c.num);
         const out = { share: null, unshare: null };
         const next = circuits[idx + 1];
-        if (next) {
+        if (next && !this._isTakenOverCircuit(layer, next.num)) {
             // The splitter the merge would need: every run already ganged
             // on either side, plus the join.
             const joined = (c.runIds || [c.num])
@@ -436,15 +440,13 @@ class _DockMenus {
         if (!layer || !nums || nums.length < 2) return null;
         // The deal is at RUN grain, so existing gangs inside the batch
         // re-deal with everything else - count the runs, not the circuits.
+        // A circuit taken over by hand is not dealt (_shareRunSegments).
+        const runCount = this._shareRunSegments(layer, nums)
+            .reduce((t, seg) => t + seg.length, 0);
         const chosen = new Set(nums);
-        let runCount = 0;
-        let hasGang = false;
-        this.screenCircuits(layer).forEach(c => {
-            if (!chosen.has(c.num)) return;
-            const ids = c.runIds || [c.num];
-            runCount += ids.length;
-            if (ids.length > 1) hasGang = true;
-        });
+        const hasGang = this.screenCircuits(layer).some(c => chosen.has(c.num)
+            && !this._isTakenOverCircuit(layer, c.num)
+            && (c.runIds || []).length > 1);
         if (runCount < 2) return null;
         const sp = this.getPowerSplitters(layer);
         const custom = this.usesCustomCircuits(layer);
@@ -453,40 +455,50 @@ class _DockMenus {
         const entries = [];
         [2, 3, 4].forEach(n => {
             if (runCount < n) return;
-            // A size whose deal produces none of itself is another size's
-            // entry wearing the wrong name - "4fer them" over five runs
-            // deals 3+2, which IS the 3fer entry. Offer only honest sizes.
-            if (!this.batchNferGroups(runCount, n).includes(n)) return;
-            const label = `${n}fer ${verb} `
-                + `(${this.batchNferLabel(runCount, n)})`;
             if (gated) {
                 entries.push({
-                    label, disabled: true,
+                    label: `${n}fer ${verb} (${this.batchNferLabel(runCount, n)})`,
+                    disabled: true,
                     title: `Sharing is off for ${layer.name} - turn on `
                         + '"Share circuits via splitters" in Power Settings '
                         + '(or route its circuits custom) to share runs.',
                 });
                 return;
             }
-            // The amps rule: a deal with ANY group past the amps is
-            // refused as a whole in automatic mode, the first group that
-            // does not fit named in the title. Custom mode honors it.
-            const refusal = this.shareRefusal(
-                layer, this.batchShareGroups(layer, nums, n).groups);
-            if (refusal) {
-                entries.push({ label, disabled: true, title: refusal.text });
+            // The deal as it will land: groups that fit the circuit, the
+            // rest left plain (the owner's ruling, 2026-10-19 - never an
+            // OVER gang, in either mode). A deal that shares nothing stays
+            // on the menu disabled, the first pair that does not fit named
+            // in the title. A size whose deal produces none of itself is
+            // another size's entry wearing the wrong name - "3fer them"
+            // where the load only lets runs pair up deals 2fers, which IS
+            // the 2fer entry - so it is not offered under this name.
+            const deal = this.batchShareGroups(layer, nums, n);
+            const sizes = deal.groups.map(g => g.length);
+            const label = `${n}fer ${verb} (${this._nferSizesLabel(sizes)})`;
+            if (!sizes.some(sz => sz >= 2)) {
+                const load = deal.over
+                    ? this.shareLoad(layer, deal.over) : null;
+                entries.push({
+                    label, disabled: true,
+                    title: load
+                        ? `${this._runListText(deal.over)} together draw `
+                            + `${load.amps.toFixed(1)} A on a `
+                            + `${+load.cap.toFixed(1)} A circuit - no runs `
+                            + 'here fit on one circuit together'
+                        : 'No runs here fit on one circuit together',
+                });
                 return;
             }
+            if (!sizes.includes(n)) return;
+            const leftPlain = deal.over ? ' Runs that do not fit together '
+                + 'stay on circuits of their own.' : '';
             entries.push({
                 label,
                 title: `Deal ${runCount} run${runCount === 1 ? '' : 's'} `
-                    + `left to right as ${this.batchNferLabel(runCount, n)} `
-                    + '- adjacent groups, each its own circuit'
-                    + (this.isCustomPower(layer)
-                        ? '. Custom mode: a group past the amps is honored '
-                            + 'and flags OVER'
-                        : ', every group within the amps')
-                    + '. One undoable step.',
+                    + `left to right as ${this._nferSizesLabel(sizes)} `
+                    + '- adjacent groups, each its own circuit, every group '
+                    + `within the amps.${leftPlain} One undoable step.`,
                 run: () => {
                     sendClientLog('power_batch_nfer',
                                   { layerId: layer.id, n, scope,

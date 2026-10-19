@@ -211,70 +211,79 @@ class _CrossLayerPaths {
     // whole with its override, and its locked screens are reported.
     clearAllCustomRuns(layer, kind) {
         if (!layer) return { touched: [], skipped: [] };
-        const k = this._customRunKeys(kind);
         const pullBefore = this._pullLiveRowKeys();
         const touched = [];
         const skipped = new Map();
         this.getPathScopeLayers(layer).forEach(member => {
-            if (!member) return;
-            const paths = member[k.paths] || {};
-            const drawnNums = Object.keys(paths).filter(n => (paths[n] || []).length > 0);
-            const overrides = (typeof this.getOverrideNums === 'function')
-                ? this.getOverrideNums(member, kind) : [];
-            const drawn = drawnNums.length > 0 || overrides.length > 0;
-            if (member.locked) {
-                // Reported only when there was something to leave alone.
-                if (drawn) skipped.set(member.id, member);
-                return;
-            }
-            // Runs kept because they cross a locked member's cabinets.
-            const kept = {};
-            drawnNums.forEach(n => {
-                const num = Number.isFinite(Number(n)) ? Number(n) : n;
-                const locked = this._runLockedLayers(member, kind, num);
-                if (!locked.length) return;
-                locked.forEach(l => skipped.set(l.id, l));
-                kept[n] = paths[n];
-            });
-            const keptNums = Object.keys(kept);
-            // A cleared circuit's cable goes with it (owner, 2026-10-17);
-            // a run kept for a locked screen keeps its cable.
-            const forget = () => drawnNums
-                .filter(n => !keptNums.includes(n))
-                .forEach(n => this._forgetRunCable(member, kind, n));
-            if (keptNums.length > 0) {
-                if (keptNums.length === Object.keys(paths).length) return;
-                forget();
-                member[k.paths] = kept;
-                member[k.overrides] = overrides.filter(n => keptNums.includes(`${n}`));
-                const s = this._overrideEditing;
-                if (s && s.kind === kind && s.layerId === member.id
-                        && !keptNums.includes(`${s.num}`)) {
-                    this._overrideEditing = null;
-                }
-                touched.push(member);
-                return;
-            }
-            // Anything Clear All would change: a run key (an emptied `[]`
-            // included - one shape, see above), an override entry, or an
-            // index off 1.
-            const index = member[k.index];
-            const held = drawn || Object.keys(paths).length > 0
-                || (Array.isArray(member[k.overrides]) && member[k.overrides].length > 0)
-                || (index !== undefined && index !== null && Number(index) !== 1);
-            if (!held) return;
-            forget();
-            member[k.paths] = {};
-            member[k.index] = 1;
-            member[k.overrides] = [];
-            if (this._overrideEditing && this._overrideEditing.kind === kind
-                    && this._overrideEditing.layerId === member.id) {
-                this._overrideEditing = null;
-            }
-            touched.push(member);
+            if (this._clearMemberCustomRuns(member, kind, skipped)) touched.push(member);
         });
         if (touched.length) this._dropPullEditsGoneWith(pullBefore);
         return { touched, skipped: [...skipped.values()] };
+    }
+
+    // One member's share of Clear All: its runs and overrides go, the index
+    // back to 1 - except a run that touches a locked screen, kept whole with
+    // its override, its locked screens added to `skipped` (a Map by id).
+    // True when the member was written. No history entry, no PUT, no
+    // pull-sheet sweep: the caller owns those (clearAllCustomRuns, and the
+    // custom toggle's way in - toggleCustomPowerMode).
+    _clearMemberCustomRuns(member, kind, skipped) {
+        if (!member) return false;
+        const k = this._customRunKeys(kind);
+        const paths = member[k.paths] || {};
+        const drawnNums = Object.keys(paths).filter(n => (paths[n] || []).length > 0);
+        const overrides = (typeof this.getOverrideNums === 'function')
+            ? this.getOverrideNums(member, kind) : [];
+        const drawn = drawnNums.length > 0 || overrides.length > 0;
+        if (member.locked) {
+            // Reported only when there was something to leave alone.
+            if (drawn) skipped.set(member.id, member);
+            return false;
+        }
+        // Runs kept because they cross a locked member's cabinets.
+        const kept = {};
+        drawnNums.forEach(n => {
+            const num = Number.isFinite(Number(n)) ? Number(n) : n;
+            const locked = this._runLockedLayers(member, kind, num);
+            if (!locked.length) return;
+            locked.forEach(l => skipped.set(l.id, l));
+            kept[n] = paths[n];
+        });
+        const keptNums = Object.keys(kept);
+        // A cleared circuit's cable goes with it (owner, 2026-10-17);
+        // a run kept for a locked screen keeps its cable.
+        const forget = () => drawnNums
+            .filter(n => !keptNums.includes(n))
+            .forEach(n => this._forgetRunCable(member, kind, n));
+        if (keptNums.length > 0) {
+            if (keptNums.length === Object.keys(paths).length) return false;
+            forget();
+            member[k.paths] = kept;
+            member[k.overrides] = overrides.filter(n => keptNums.includes(`${n}`));
+            const s = this._overrideEditing;
+            if (s && s.kind === kind && s.layerId === member.id
+                    && !keptNums.includes(`${s.num}`)) {
+                this._overrideEditing = null;
+            }
+            return true;
+        }
+        // Anything Clear All would change: a run key (an emptied `[]`
+        // included - one shape, see above), an override entry, or an
+        // index off 1.
+        const index = member[k.index];
+        const held = drawn || Object.keys(paths).length > 0
+            || (Array.isArray(member[k.overrides]) && member[k.overrides].length > 0)
+            || (index !== undefined && index !== null && Number(index) !== 1);
+        if (!held) return false;
+        forget();
+        member[k.paths] = {};
+        member[k.index] = 1;
+        member[k.overrides] = [];
+        if (this._overrideEditing && this._overrideEditing.kind === kind
+                && this._overrideEditing.layerId === member.id) {
+            this._overrideEditing = null;
+        }
+        return true;
     }
 
     // The locked screens one run touches: its owner when the owner is

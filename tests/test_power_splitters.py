@@ -1133,13 +1133,16 @@ SPLIT_STATE_JS = """() => {
 }"""
 
 OVER_TEXT = 'share past the amps only in custom mode'
+BATCH_NONE_TEXT = 'no runs here fit on one circuit together'
 
 
 def test_auto_mode_refuses_a_share_past_the_amps(page, panel):
     """Automatic mode, an 8 A circuit, 5 A runs: the Share item is on the
     menu disabled, its title the reason with the figures; the swept "2fer
-    them" refuses the same way naming the group; and the model writes
-    nothing for either - the store stays empty."""
+    them", which never deals a group past the amps (the owner's ruling,
+    2026-10-19), finds no two runs that fit and stays disabled naming the
+    first pair; and the model writes nothing for either - the store stays
+    empty."""
     panel({'powerAmperage': 8,
            'powerSplitters': {'enabled': True, 'maxWays': 3,
                               'manual': {'merge': [], 'split': []}}})
@@ -1157,15 +1160,16 @@ def test_auto_mode_refuses_a_share_past_the_amps(page, panel):
 
     batch = page.evaluate(BATCH_PROBE_JS, [1, 2])
     assert batch and batch[0]['label'].startswith('2fer them'), batch
-    assert batch[0]['disabled'], f"the batch deal must refuse as a whole: {batch}"
+    assert batch[0]['disabled'], f"a deal that shares nothing is refused: {batch}"
     assert batch[0]['title'] == ('Runs 1 and 2 together draw 10.0 A on a 8 A '
-                                 'circuit - ' + OVER_TEXT), batch
+                                 'circuit - ' + BATCH_NONE_TEXT), batch
 
-    # a 3fer over all three runs names the first group that does not fit
+    # a 3fer over all three runs: no two of them fit, so it names the
+    # first pair that does not
     batch3 = page.evaluate(BATCH_PROBE_JS, [1, 2, 3])
     three = [e for e in batch3 if e['label'].startswith('3fer')]
     assert three and three[0]['disabled'], batch3
-    assert three[0]['title'].startswith('Runs 1, 2 and 3 together draw 15.0 A'), three
+    assert three[0]['title'].startswith('Runs 1 and 2 together draw 10.0 A'), three
 
     # the model refuses too, whatever surface asks
     refused = page.evaluate("""() => {
@@ -1205,7 +1209,9 @@ def test_auto_mode_shares_runs_that_fit(page, panel):
 def test_custom_mode_honors_a_share_past_the_amps_and_flags_over(page, panel):
     """Custom mode, a 3 A circuit, drawn 2 A circuits: Share is live and
     says so, the share lands, the wall's registry reads OVER and the chip
-    wears the over fill."""
+    wears the over fill. The swept "2fer them" is the exception: it never
+    deals a group past the amps, custom mode included (the owner's
+    ruling, 2026-10-19), so over these runs it stays disabled."""
     panel(dict(CUSTOM3, powerAmperage=3))
     assert page.evaluate(DOCK_INSTALL_JS) == 3
     share = page.evaluate(SHARE_FULL_PROBE_JS, 1)
@@ -1213,7 +1219,10 @@ def test_custom_mode_honors_a_share_past_the_amps_and_flags_over(page, panel):
         f"custom mode must honor a share past the amps: {share}")
     assert '4.0 A of 3 A' in share['title'] and 'flags OVER' in share['title'], share
     batch = page.evaluate(BATCH_PROBE_JS, [1, 2])
-    assert batch and not batch[0]['disabled'], batch
+    assert batch and batch[0]['disabled'], (
+        f"the batch verb never deals past the amps, even in custom: {batch}")
+    assert batch[0]['title'] == ('Runs 1 and 2 together draw 4.0 A on a 3 A '
+                                 'circuit - ' + BATCH_NONE_TEXT), batch
 
     assert page.evaluate(SHARE_RUN_JS, [1, 'share']) is True
     state = page.evaluate(SPLIT_STATE_JS)

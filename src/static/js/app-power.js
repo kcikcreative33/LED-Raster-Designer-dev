@@ -2779,12 +2779,13 @@ class _Power {
     // one circuit, and in AUTOMATIC mode (the custom toggle off) the model
     // refuses one whose runs together draw more than the screen's Amperage:
     // the menu item stays on the menu disabled with the reason as its hover
-    // title, the batch verb refuses as a whole naming the first group that
-    // does not fit, and the packer never made an over group on its own
+    // title, and the packer never made an over group on its own
     // (_packPowerRuns closes a circuit before the load passes
     // wattsPerCircuit). In CUSTOM mode the user owns the runs, so a share
     // past the amps is honored and the chip and the wall flag OVER - a
-    // warning, not a label. A screen leaving custom mode with such a share
+    // warning, not a label. The batch verb is the exception in both modes:
+    // it never deals a group past the amps at all (the owner's ruling,
+    // 2026-10-19 - see "the batch verb" below). A screen leaving custom mode with such a share
     // in place has it un-shared on the way out (toggleCustomPowerMode).
     //
     // The load is the soca plan's own leg figure: each run's cabinets at
@@ -2878,12 +2879,10 @@ class _Power {
         // A locked screen stays unchanged (owner, 2026-10-16) - the setter
         // refuses and names it, whichever control called it.
         if (this._lockedRefused(layer)) return false;
-        const chosen = new Set(circuitNums);
-        const runIds = [];
-        this.screenCircuits(layer).forEach(c => {
-            if (!chosen.has(c.num)) return;
-            (c.runIds || [c.num]).forEach(id => runIds.push(id));
-        });
+        // A circuit taken over by hand is a drawing, not a packed run - see
+        // _shareRunSegments. It is never dealt into a share.
+        if (circuitNums.some(n => this._isTakenOverCircuit(layer, n))) return false;
+        const runIds = this._shareRunSegments(layer, circuitNums).flat();
         if (runIds.length < 2) return false;
         if (this.shareRefusal(layer, [runIds])) return false;
         this._writeSplitterManual(layer, (manual) => {
@@ -2909,12 +2908,8 @@ class _Power {
         // A locked screen stays unchanged (owner, 2026-10-16) - the setter
         // refuses and names it, whichever control called it.
         if (this._lockedRefused(layer)) return;
-        const chosen = new Set(circuitNums);
-        const runIds = [];
-        this.screenCircuits(layer).forEach(c => {
-            if (!chosen.has(c.num)) return;
-            (c.runIds || [c.num]).forEach(id => runIds.push(id));
-        });
+        // A taken-over circuit's runs are its drawing's, not the store's.
+        const runIds = this._shareRunSegments(layer, circuitNums).flat();
         if (!runIds.length) return;
         const custom = this.usesCustomCircuits(layer);
         this._writeSplitterManual(layer, (manual) => {
@@ -2937,42 +2932,57 @@ class _Power {
     // spelled out. The verb PARTITIONS - consecutive adjacent groups dealt
     // left to right along the wall - so 18 circuits under "3fer them"
     // become six separate 3fers, never one mega-gang. Adjacency is the
-    // splitter doctrine (never skip a run). A deal with any group past the
-    // amps is refused as a whole in automatic mode (the amps rule above);
-    // in custom mode it is honored and the group flags OVER.
+    // splitter doctrine (never skip a run).
+    //
+    // The owner's ruling, 2026-10-19: the batch verb ("3fer Screen" /
+    // "2fer Screen", the selection's "3fer them" alike, in automatic AND
+    // in custom mode) NEVER builds an OVER gang. A group takes the next run
+    // only while their load still fits the circuit - the amps rule's own
+    // figure (shareLoad against the screen's Amperage, the limit the OVER
+    // flag reads) - and closes at n runs, so the deal is the automatic
+    // packer's walk (_packPowerRuns) at maxWays n. Whatever is left over,
+    // and a run too big to share with its neighbour, stays on a circuit of
+    // its own with no tag. Before this the deal cut by COUNT alone: on a
+    // custom wall whose circuits were already three columns each, "3fer
+    // Screen" joined them in threes into 45-cabinet circuits that all read
+    // OVER, and it pulled the lone last column into a gang. This replaces
+    // the 2026-08-30 remainder re-deal (16 @ 3fer as 3,3,3,3,2,2): a
+    // remainder is a leftover, the way the automatic wall leaves it.
 
-    // Group sizes for `count` runs dealt as Nfers. The REMAINDER RE-DEALS
-    // so nothing is orphaned (user-vetoable choice, mock option (i)):
-    // a remainder of 2+ becomes its own smaller fer (8 @ 3fer -> 3,3,2);
-    // a remainder of 1 borrows from the last full group and goes out as
-    // two 2fers (16 @ 3fer -> 3,3,3,3,2,2). Only "2fer them" over an odd
-    // count leaves a single plain run - there is no smaller fer to deal.
+    // The one walk: `ids` in order cut into groups of at most `size`, a
+    // group closing early when `fits` refuses the next run. Pure.
+    _dealRunGroups(ids, size, fits) {
+        const n = Math.max(2, Number(size) || 2);
+        const groups = [];
+        let cur = [];
+        (ids || []).forEach(id => {
+            if (cur.length && (cur.length >= n || (fits && !fits(cur.concat([id]))))) {
+                groups.push(cur);
+                cur = [];
+            }
+            cur.push(id);
+        });
+        if (cur.length) groups.push(cur);
+        return groups;
+    }
+
+    // Group sizes for `count` runs that all fit together, dealt as Nfers:
+    // full groups of n, the remainder a smaller fer, or one plain run.
     batchNferGroups(count, n) {
         const L = Math.max(0, Number(count) || 0);
-        const size = Math.max(2, Number(n) || 2);
-        let full = Math.floor(L / size);
-        const rem = L % size;
-        let tail = [];
-        if (rem === 1 && size > 2 && full >= 1) {
-            // borrow the last full group and re-deal its n+1 runs as two
-            // smaller fers, biggest first: 3fer -> 2+2, 4fer -> 3+2
-            full -= 1;
-            const m = size + 1;
-            tail = [Math.ceil(m / 2), Math.floor(m / 2)];
-        } else if (rem >= 2) {
-            tail = [rem];
-        } else if (rem === 1) {
-            tail = [1];
-        }
-        return Array.from({ length: full }, () => size).concat(tail);
+        return this._dealRunGroups(Array.from({ length: L }, (_, i) => i), n)
+            .map(g => g.length);
     }
 
     // "6 × 3fer", "4 × 4fer + 2fer", "3 × 2fer + 1 plain" - the group math
     // the menu entry carries, so the deal is read before it is taken.
     batchNferLabel(count, n) {
-        const sizes = this.batchNferGroups(count, n);
+        return this._nferSizesLabel(this.batchNferGroups(count, n));
+    }
+
+    _nferSizesLabel(sizes) {
         const tally = new Map();
-        sizes.forEach(s => tally.set(s, (tally.get(s) || 0) + 1));
+        (sizes || []).forEach(s => tally.set(s, (tally.get(s) || 0) + 1));
         return [...tally.entries()].sort((a, b) => b[0] - a[0])
             .map(([sz, k]) => sz === 1
                 ? `${k} plain`
@@ -2980,35 +2990,77 @@ class _Power {
             .join(' + ');
     }
 
+    // Does a group of runs fit one circuit? The amps rule's figure, in
+    // either mode - the batch verb never leans on custom mode's licence.
+    _shareFits(layer, runIds, runAmps) {
+        const load = this.shareLoad(layer, runIds, runAmps);
+        return !(load.cap > 0 && load.amps > load.cap + 1e-9);
+    }
+
+    // A circuit the user took over by hand on an automatic screen (the
+    // Alt take-over, app-run-overrides.js). Never in whole-screen custom,
+    // where isRunOverridden is false for every number.
+    _isTakenOverCircuit(layer, num) {
+        return typeof this.isRunOverridden === 'function'
+            && this.isRunOverridden(layer, 'power', num);
+    }
+
+    // The runs of `circuitNums` a share may deal, in wall order, as
+    // SEGMENTS of neighbours. A taken-over circuit is a drawing, not a
+    // packed run: its runs are its own (a 3fer taken over stays a 3fer -
+    // _mergeOverrideCircuits) and its number is a CIRCUIT number, not a run
+    // ordinal. Dealing that number as a run - which every share verb did
+    // through `c.runIds || [c.num]` - ganged whatever auto run happened to
+    // carry the same ordinal: on a wall with circuit 2 taken over, "2fer
+    // them" over circuits 1-3 wrote run 2 into two groups and left the
+    // runs after it plain. So it is left out, and it breaks the line: the
+    // runs either side of it are not neighbours.
+    _shareRunSegments(layer, circuitNums) {
+        const chosen = new Set(circuitNums || []);
+        const segs = [[]];
+        this.screenCircuits(layer).forEach(c => {
+            if (!chosen.has(c.num)) return;
+            if (this._isTakenOverCircuit(layer, c.num)) {
+                if (segs[segs.length - 1].length) segs.push([]);
+                return;
+            }
+            (c.runIds || [c.num]).forEach(id => segs[segs.length - 1].push(id));
+        });
+        return segs.filter(seg => seg.length);
+    }
+
+    // The deal itself, pure: the run ids of `circuitNums` in wall order cut
+    // into groups that fit (see the ruling above). `over` names the first
+    // group refused for its load - for a deal that shares nothing at all,
+    // the first pair of neighbours - so a menu entry can say why. Read by
+    // the menu (to label the deal before it is taken) and by
+    // batchShareCircuits (to make it).
+    batchShareGroups(layer, circuitNums, n) {
+        const size = Math.max(2, Number(n) || 0);
+        const runAmps = this._splitterRunAmps(layer);
+        const runIds = [];
+        const groups = [];
+        let over = null;
+        const fits = (g) => {
+            if (this._shareFits(layer, g, runAmps)) return true;
+            if (!over) over = g.slice();
+            return false;
+        };
+        this._shareRunSegments(layer, circuitNums).forEach(seg => {
+            runIds.push(...seg);
+            groups.push(...this._dealRunGroups(seg, size, fits));
+        });
+        return { runIds, groups, over };
+    }
+
     // Deal the chosen circuits' RUNS into Nfer groups, one manual-store
     // write, ONE history entry (`action`). Operates at the run level so an
     // existing gang inside the batch re-deals with everything else. A solo
-    // remainder on an auto screen is split-PINNED so re-packing cannot
-    // quietly gang what the deal left plain (custom circuits need no pin -
-    // they never auto-pack). Same id-space rules as every manual edit:
+    // run on an auto screen is split-PINNED so re-packing cannot quietly
+    // gang what the deal left plain (custom circuits need no pin - they
+    // never auto-pack). Same id-space rules as every manual edit:
     // _writeSplitterManual stamps the space the screen currently reads.
-    // Returns false - nothing written - when the amps rule refuses a group.
-
-    // The deal itself, pure: the run ids of `circuitNums` in wall order cut
-    // into Nfer groups. Read by the menu (to refuse a deal before it is
-    // offered) and by batchShareCircuits (to make it).
-    batchShareGroups(layer, circuitNums, n) {
-        const size = Math.max(2, Number(n) || 0);
-        const chosen = new Set(circuitNums || []);
-        const runIds = [];
-        this.screenCircuits(layer).forEach(c => {
-            if (!chosen.has(c.num)) return;
-            (c.runIds || [c.num]).forEach(id => runIds.push(id));
-        });
-        const groups = [];
-        let off = 0;
-        this.batchNferGroups(runIds.length, size).forEach(sz => {
-            groups.push(runIds.slice(off, off + sz));
-            off += sz;
-        });
-        return { runIds, groups };
-    }
-
+    // Returns false - nothing written - when no two runs fit together.
     batchShareCircuits(layer, circuitNums, n, action) {
         if (!layer || !Array.isArray(circuitNums)) return false;
         // A locked screen stays unchanged (owner, 2026-10-16) - the setter
@@ -3016,7 +3068,7 @@ class _Power {
         if (this._lockedRefused(layer)) return false;
         const { runIds, groups } = this.batchShareGroups(layer, circuitNums, n);
         if (runIds.length < 2) return false;
-        if (this.shareRefusal(layer, groups)) return false;
+        if (!groups.some(g => g.length >= 2)) return false;
         const custom = this.usesCustomCircuits(layer);
         this._writeSplitterManual(layer, (manual) => {
             const hit = new Set(runIds);
@@ -3231,6 +3283,34 @@ class _Power {
             merge, split,
             space: cur.manual.space || this._splitterIdSpace(layer),
         } };
+        return true;
+    }
+
+    // The custom toggle's way in (toggleCustomPowerMode): the share groups
+    // stored against CUSTOM circuit numbers go with the circuits the toggle
+    // wiped, keeping only a group whose every member is a run still drawn
+    // (one kept for a locked screen). The caller reads the store's space
+    // BEFORE the wipe - the legacy inference reads the drawn paths - and
+    // calls only for a custom-space store; groups stored against the auto
+    // run ordinals are not circuits and stay, dormant, for the way out.
+    // Unrecorded: the toggle's one entry carries it. True when it wrote.
+    _wipeCustomSplitterGroups(layer) {
+        const raw = layer && layer.powerSplitters;
+        if (!raw || !raw.manual) return false;
+        const cur = this.getPowerSplitters(layer);
+        const paths = layer.powerCustomPaths || {};
+        const drawn = new Set(Object.keys(paths)
+            .filter(n => (paths[n] || []).length > 0).map(n => parseInt(n, 10)));
+        const merge = cur.manual.merge
+            .filter(g => Array.isArray(g) && g.length >= 2
+                && g.every(n => drawn.has(parseInt(n, 10))));
+        const split = cur.manual.split.filter(n => drawn.has(parseInt(n, 10)));
+        if (merge.length === cur.manual.merge.length
+                && split.length === cur.manual.split.length
+                && cur.manual.space === 'custom') {
+            return false;
+        }
+        layer.powerSplitters = { ...cur, manual: { merge, split, space: 'custom' } };
         return true;
     }
 
@@ -3677,14 +3757,26 @@ class _Power {
             });
         });
         const crossing = overrides.some(o => o.hits.some(h => h.layer.id !== layer.id));
+        // A taken-over circuit that was SHARED keeps its runs (the owner's
+        // ruling, 2026-10-19): the take-over seeds a `branch` mark on the
+        // head of every run after the first (overrideRun), so a 3fer of
+        // three columns stays three runs on the one circuit and draws, tags
+        // and counts as a 3fer. Its run ids are its own - "2.1", "2.2" -
+        // never the automatic run ordinals, which are a different space
+        // (and the share verbs leave a taken-over circuit alone anyway,
+        // _shareRunSegments). One run is the plain circuit it always was.
+        let branched = false;
         overrides.forEach(o => {
+            const counts = this._overrideRunCounts(o.hits);
+            const shared = counts.length > 1;
+            if (shared) branched = true;
             rows.push({
                 num: o.num,
                 panels: o.hits.map(h => h.panel),
                 layers: (result.layers || crossing)
                     ? o.hits.map(h => h.layer) : null,
-                runs: result.runs ? [o.hits.length] : null,
-                runIds: null,
+                runs: (result.runs || shared) ? counts : null,
+                runIds: shared ? counts.map((_, k) => `${o.num}.${k + 1}`) : null,
             });
         });
         rows.sort((a, b) => a.num - b.num);
@@ -3695,11 +3787,23 @@ class _Power {
             // back out downstream, so the tinting fast path stays untouched.
             out.layers = rows.map(r => r.layers || (r.panels || []).map(() => layer));
         }
-        if (result.runs) {
-            out.runs = rows.map(r => r.runs);
+        if (result.runs || branched) {
+            out.runs = rows.map(r => r.runs || [(r.panels || []).length]);
             out.runIds = rows.map(r => r.runIds);
         }
         return out;
+    }
+
+    // The run sizes of one taken-over circuit, from its resolved hits: a
+    // new run starts at every hit carrying the `branch` mark. [n] for a
+    // plain circuit.
+    _overrideRunCounts(hits) {
+        const counts = [];
+        (hits || []).forEach((h, i) => {
+            if (i === 0 || h.branch) counts.push(0);
+            counts[counts.length - 1] += 1;
+        });
+        return counts.length ? counts : [0];
     }
 
 }

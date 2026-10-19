@@ -213,18 +213,39 @@ class _PixelSelect {
     // Idempotent like its data twin above: a call that changes nothing only
     // re-syncs the controls; only screens whose mode differs are written,
     // and a locked one stays as it is and is named.
+    //
+    // The way IN starts empty (the owner's ruling, 2026-10-19: "turning
+    // custom ON wipes all circuits on the affected screens, starting
+    // empty - that includes any earlier hand take-overs"). Each screen
+    // turned custom drops every circuit it holds the way Clear All does
+    // (_clearMemberCustomRuns): its drawn paths - a path kept from an
+    // earlier custom spell and every taken-over run alike, since both live
+    // in powerCustomPaths and a kept one would come back as a custom
+    // circuit nobody drew this time - its overrides, its active number and
+    // the cables typed on the circuits that go. The shares drawn against
+    // those custom numbers go with them (_wipeCustomSplitterGroups), so a
+    // fresh drawing under the same numbers is never ganged by an old
+    // merge. A run that crosses a locked screen's cabinets stays, and the
+    // locked screen is named. All of it rides the toggle's one history
+    // entry.
     toggleCustomPowerMode(enabled) {
         if (!this.currentLayer) return;
         enabled = !!enabled;
         const { change, locked } = this._customToggleScope('power', enabled);
-        this._showLockedError(locked);
         if (change.length === 0) {
+            this._showLockedError(locked);
             this.syncCustomModeControls();
             return;
         }
         const undone = [];
+        const keptFor = new Map();
+        const pullBefore = enabled ? this._pullLiveRowKeys() : null;
+        let wiped = false;
         change.forEach(layer => {
             if (enabled) {
+                const customGroups = this._splitterManualSpace(layer) === 'custom';
+                if (this._clearMemberCustomRuns(layer, 'power', keptFor)) wiped = true;
+                if (customGroups && this._wipeCustomSplitterGroups(layer)) wiped = true;
                 if (layer.powerFlowPattern && layer.powerFlowPattern !== 'custom') {
                     layer.lastPowerFlowPattern = layer.powerFlowPattern;
                 }
@@ -242,6 +263,12 @@ class _PixelSelect {
                 }
             }
         });
+        this._showLockedError([...new Map([...locked, ...keptFor.values()]
+            .map(l => [l.id, l])).values()]);
+        if (wiped) {
+            this._dropPullEditsGoneWith(pullBefore);
+            this._circuitTailCache = null;
+        }
         if (!enabled) {
             this.powerCustomSelection.clear();
         }

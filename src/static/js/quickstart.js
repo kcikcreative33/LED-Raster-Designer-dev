@@ -3457,49 +3457,25 @@
         splitters: {
             target: '#power-splitters-enabled', place: 'right', title: 'Share two runs through a 2fer',
             avoid: ['#power-splitters-enabled', '#main-canvas'],
-            body: 'A share past a circuit&rsquo;s amps is refused in automatic mode. In custom mode, where you own the runs, turn sharing on, sweep two runs and 2fer them; the chip flags OVER.',
+            // The single-run Share, not the swept "2fer them": the batch
+            // verb never deals a group past the amps, in either mode (the
+            // owner's ruling, 2026-10-19), so only Share can show custom
+            // mode's OVER on these full circuits.
+            body: 'A share past a circuit&rsquo;s amps is refused in automatic mode. In custom mode, where you own the runs, turn sharing on, right-click a run and share it with the next; the chip flags OVER.',
             before: function () { switchView('power'); },
             act: function (t) {
-                var w = wall();
                 return t.click('#power-splitters-enabled').then(function () {
                     return t.wait(function () { return A().getPowerSplitters(wall()).enabled; });
                 }).then(function () {
-                    w = wall();
-                    var circuits = A().screenCircuits(w);
-                    if (circuits.length < 2) throw new Error('fewer than two circuits to sweep');
-                    var c0 = t.cabinetPoint(w, { circuit: 0 });
-                    var c1 = t.cabinetPoint(w, { circuit: 1 });
-                    t.mem.nums = [circuits[0].num, circuits[1].num];
-                    return t.hover(c0, { badge: 'Alt' }).then(function () {
-                        press(true);
-                        t.canvasDown(c0, { altKey: true });
-                        return t.pause(PACE.dragPress);
-                    }).then(function () {
-                        t.canvasMove({ x: c0.x + 6, y: c0.y + 6 }, { altKey: true });
-                        return t.canvasGlide(c1, { altKey: true }, PACE.sweep);
-                    }).then(function () {
-                        t.canvasMove(c1, { altKey: true });
-                        return t.pause(PACE.hover);
-                    }).then(function () {
-                        t.canvasUp(c1, { altKey: true });
-                        press(false);
-                        if (!A()._sweepSelection) {
-                            // The sweep did not arm; the selection is set by
-                            // hand so the deal can still be shown.
-                            t.mem.fallback = true;
-                            A()._sweepSelection = { layerId: w.id, nums: t.mem.nums.slice() };
-                            R().render();
-                        }
-                        return t.pause(PACE.sweepRest);
-                    }).then(function () {
-                        return t.rightClick(c1);
-                    }).then(function () {
-                        return t.pickMenu('hw-batch-n0');
-                    }).then(function () {
-                        return t.wait(function () {
-                            var l = wall(); var sp = l && l.powerSplitters;
-                            return sp && sp.manual && Array.isArray(sp.manual.merge) && sp.manual.merge.length;
-                        });
+                    var w = wall();
+                    if (A().screenCircuits(w).length < 2) throw new Error('fewer than two circuits to share');
+                    return t.rightClick(t.cabinetPoint(w, { circuit: 0 }));
+                }).then(function () {
+                    return t.pickMenu('hw-share');
+                }).then(function () {
+                    return t.wait(function () {
+                        var l = wall(); var sp = l && l.powerSplitters;
+                        return sp && sp.manual && Array.isArray(sp.manual.merge) && sp.manual.merge.length;
                     });
                 });
             },

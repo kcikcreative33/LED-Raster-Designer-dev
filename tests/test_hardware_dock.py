@@ -4603,10 +4603,12 @@ def alt_sweep(page, sx, sy, ex, ey):
 
 
 def test_batch_partition_math_and_labels(dock_page):
-    """The engine's deal: consecutive groups of n, remainder re-dealt so
-    nothing is orphaned - 16 @ 3fer is 3,3,3,3,2,2 (the last full group
-    re-deals with the orphan as two 2fers); only '2fer them' over an odd
-    count leaves a plain run."""
+    """The engine's deal over runs that all fit: consecutive groups of n,
+    the remainder a smaller fer or a plain leftover - 16 @ 3fer is five
+    3fers and one plain run, the way the automatic packer leaves the lone
+    last run (the owner's ruling, 2026-10-19: "leftovers stay on their own
+    circuit with no tag"; it replaced the 2026-08-30 re-deal that went
+    out as 3,3,3,3,2,2)."""
     page, ids = dock_page
     out = page.evaluate("""() => {
         const app = window.app;
@@ -4619,14 +4621,14 @@ def test_batch_partition_math_and_labels(dock_page):
         };
     }""")
     assert out['g18'] == [3, 3, 3, 3, 3, 3], out
-    assert out['g16'] == [3, 3, 3, 3, 2, 2], out
+    assert out['g16'] == [3, 3, 3, 3, 3, 1], out
     assert out['g8'] == [3, 3, 2], out
     assert out['g7'] == [2, 2, 2, 1], out
-    assert out['g5'] == [3, 2], (
+    assert out['g5'] == [4, 1], (
         f'a 5-run 4fer deal must not drop a run: {out}')
     assert out['g5n3'] == [3, 2], out
     assert out['l18'] == '6 × 3fer', out
-    assert out['l16'] == '4 × 3fer + 2 × 2fer', out
+    assert out['l16'] == '5 × 3fer + 1 plain', out
     assert out['l7'] == '3 × 2fer + 1 plain', out
     assert out['l5'] == '1 × 3fer + 1 × 2fer', out
 

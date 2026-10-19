@@ -107,14 +107,34 @@ class _RunOverrides {
     // assignment: [{num, hits: [{layer, panel}...]}] in ascending number
     // order, empty paths dropped (a number with nothing drawn reserves its
     // number but is not a cable).
+    // A power hit carries `branch: true` where its step starts a new run
+    // of a shared circuit (see overrideRun); a mark on a step that does not
+    // resolve (a hidden cabinet) passes to the next step that does, so the
+    // run still starts where the drawing says.
     _ownOverrideRuns(layer, kind) {
         if (!this.hasRunOverrides(layer, kind)) return [];
         const pathsKey = kind === 'power' ? 'powerCustomPaths' : 'customPortPaths';
         const paths = layer[pathsKey] || {};
         return this.getOverrideNums(layer, kind)
-            .map(num => ({ num, hits: this.getResolvedPathPanels(layer, paths[num] || [])
-                .filter(hit => kind === 'power' || !hit.panel.blank) }))
+            .map(num => ({ num, hits: kind === 'power'
+                ? this._resolvedRunHits(layer, paths[num] || [])
+                : this.getResolvedPathPanels(layer, paths[num] || [])
+                    .filter(hit => !hit.panel.blank) }))
             .filter(o => o.hits.length > 0);
+    }
+
+    // getResolvedPathPanels, carrying each step's run-head mark.
+    _resolvedRunHits(layer, path) {
+        const out = [];
+        let pending = false;
+        (Array.isArray(path) ? path : []).forEach(entry => {
+            if (entry && entry.branch) pending = true;
+            const hit = this.resolvePathEntry(layer, entry);
+            if (!hit || hit.panel.hidden) return;
+            out.push(pending && out.length ? { ...hit, branch: true } : hit);
+            pending = false;
+        });
+        return out;
     }
 
     // The run under a canvas point in the CURRENT view, or null: the port in
@@ -201,6 +221,17 @@ class _RunOverrides {
     // RIGHT NOW, in the order the walk feeds them - so nothing on the canvas
     // moves at the moment of entry - reserve its number, and open it for
     // editing. ONE undo step for the whole transition.
+    //
+    // A SHARED circuit keeps its runs (the owner's ruling, 2026-10-19:
+    // "taking over a circuit that is shared must keep its runs"). The
+    // step that heads every run after the first is marked `branch: true`,
+    // so a 3fer of three 5-cabinet columns is seeded as one path of 15
+    // with two marks and reads back as runs [5, 5, 5] on the one circuit
+    // (_mergeOverrideCircuits) - it still draws and tags as a 3fer. Before
+    // this the seed was one run of 15 and the 3fer stopped drawing. A
+    // cabinet added later joins the run it is added to (the last); the
+    // mark rides its step, so a step removed takes its run's start with
+    // it and that run joins the one before.
     overrideRun(owner, kind, num) {
         if (!owner || !num) return;
         // A locked screen stays unchanged (the owner's ruling, 2026-10-16):
@@ -214,7 +245,11 @@ class _RunOverrides {
         const ovrKey = kind === 'power' ? 'powerCustomOverrides' : 'customPortOverrides';
         if (kind === 'power') this.ensureCustomPowerState(owner);
         else this.ensureCustomFlowState(owner);
-        owner[pathsKey][num] = hits.map(h => this.makePathEntry(owner, h.layer, h.panel));
+        owner[pathsKey][num] = hits.map(h => {
+            const entry = this.makePathEntry(owner, h.layer, h.panel);
+            if (h.branch) entry.branch = true;
+            return entry;
+        });
         const nums = this.getOverrideNums(owner, kind);
         if (!nums.includes(num)) nums.push(num);
         owner[ovrKey] = nums.sort((a, b) => a - b);
@@ -350,10 +385,17 @@ class _RunOverrides {
         const idx = res.nums ? res.nums.indexOf(num) : num - 1;
         if (idx < 0 || !circuits[idx]) return [];
         const owners = res.layers ? res.layers[idx] : null;
-        return circuits[idx].map((panel, i) => ({
-            layer: (owners && owners[i]) ? owners[i] : owner,
-            panel,
-        }));
+        // The heads of a shared circuit's runs after the first - the
+        // packer's per-run cabinet counts (see overrideRun).
+        const heads = new Set();
+        const counts = (res.runs && res.runs[idx]) || [];
+        let at = 0;
+        counts.forEach((n, k) => { if (k > 0) heads.add(at); at += n; });
+        return circuits[idx].map((panel, i) => {
+            const hit = { layer: (owners && owners[i]) ? owners[i] : owner, panel };
+            if (heads.has(i)) hit.branch = true;
+            return hit;
+        });
     }
 
     // The context-menu offers for a right-click on a run: "Redraw ..." on any

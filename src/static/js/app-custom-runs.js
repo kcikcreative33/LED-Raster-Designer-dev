@@ -1058,7 +1058,13 @@ class _CustomRuns {
             return false;
         }
 
-        const cut = this._chunkPicksByCapacity(owner, kind, startNum, lines, frozen);
+        // Splitters on, the screen Organized: the fill shares the way the
+        // automatic wall does (_chunkPicksIntoShares) - one run per line,
+        // neighbouring runs on one circuit through a 2fer / 3fer.
+        const sharing = isPower && this._customFillShares(owner);
+        const cut = sharing
+            ? this._chunkPicksIntoShares(owner, startNum, lines, frozen)
+            : this._chunkPicksByCapacity(owner, kind, startNum, lines, frozen);
         if (cut.skipped && cut.skipped.length) steppedOver(cut.skipped);
         if (cut.error) {
             toast(`Cannot apply: ${cut.error}`, true);
@@ -1123,9 +1129,31 @@ class _CustomRuns {
         // that never leaves its screen is byte-for-byte the shape it has
         // always been written in.
         chunks.forEach(c => {
-            owner[pathsKey][c.num] = c.picks
-                .map(pick => this.makePathEntry(owner, pick.layer, pick.panel));
+            owner[pathsKey][c.num] = c.picks.map((pick, i) => {
+                const entry = this.makePathEntry(owner, pick.layer, pick.panel);
+                // A run head inside one taken-over circuit (see
+                // _chunkPicksIntoShares and overrideRun).
+                if (c.heads && c.heads.has(i)) entry.branch = true;
+                return entry;
+            });
         });
+        // A sharing fill on a custom screen writes its gangs as manual
+        // merges of the numbers it drew, in the custom id space, inside the
+        // fill's own history entry. A gang holding a number the fill
+        // overwrote or cleared dissolves first - whole, since what is left
+        // of it need not be neighbours any more - so a refill never keeps a
+        // gang the new drawing does not have. (A taken-over circuit carries
+        // its runs on its own path instead - `heads` above.)
+        if (sharing && cut.merges) {
+            const redrawn = new Set(chunks.map(c => c.num));
+            clears.forEach(c => { if (c.layer.id === owner.id) redrawn.add(c.num); });
+            this._writeSplitterManual(owner, (manual) => {
+                manual.merge = manual.merge
+                    .filter(g => Array.isArray(g) && g.length >= 2
+                        && !g.some(n => redrawn.has(parseInt(n, 10))));
+                cut.merges.forEach(g => manual.merge.push(g.slice()));
+            }, null, { silent: true });
+        }
         const lastNum = chunks[chunks.length - 1].num;
         owner[idxKey] = lastNum;
         if (this._overrideEditing && this._overrideEditing.kind === kind
@@ -1141,7 +1169,13 @@ class _CustomRuns {
         const persist = this._pathPersistLayers(owner);
         const have = new Set(persist.map(l => l && l.id));
         this.updateLayers(persist.concat([...touched.values()].filter(l => !have.has(l.id))));
-        if (chunks.length > 1) {
+        if (sharing && cut.runs > 1) {
+            const lineNoun = String(pattern).endsWith('-v') ? 'column' : 'row';
+            const circuits = cut.sizes.length;
+            toast(`Filled ${cut.runs} ${lineNoun} runs from the selection onto `
+                + `${circuits} circuit${circuits === 1 ? '' : 's'} `
+                + `(${this._nferSizesLabel(cut.sizes)}, splitters on).`, false);
+        } else if (chunks.length > 1) {
             const cap = this.customRunCapacity(owner, kind);
             // Counted in the cabinets the selection is made of; a selection
             // of two cabinet sizes (data) or wattages (power) has no honest
@@ -1205,6 +1239,132 @@ class _CustomRuns {
         }
         window.canvasRenderer.render();
         return true;
+    }
+
+    // Does a power fill on this screen share circuits? The owner's ruling,
+    // 2026-10-19: "custom fill with splitters on behaves the same as auto"
+    // - so exactly where the automatic walk packs runs onto splitters
+    // (calculatePowerAssignments): sharing switched on and the screen
+    // Organized, not Maximize Power Use.
+    _customFillShares(owner) {
+        if (!owner || owner.powerMaximize || !owner.powerOrganized) return false;
+        return this.getPowerSplitters(owner).enabled;
+    }
+
+    // The sharing fill's cut, the automatic splitter walk over the
+    // selection: every LINE (a column for a vertical pattern, a row for a
+    // horizontal one) is its own run, read in the pattern's direction and
+    // fed at its head - the auto wall's runs - and neighbouring runs share
+    // one circuit while their load fits the circuit and the splitter has a
+    // way left (maxWays): _packPowerRuns' walk. A 3-column selection on a
+    // wall whose circuit carries three columns is one 3fer of three
+    // single-column runs, exactly what auto makes of that block; maxWays 2
+    // makes 2fers. Before this the fill poured the three columns into ONE
+    // custom path of 15 cabinets - one run, no splitter - and a later
+    // "3fer Screen" ganged those 15-cabinet circuits into 45.
+    //
+    // A line too big for a circuit on its own is cut the way the plain
+    // fill cuts it, and its pieces never share. A single cabinet over the
+    // cap is the plain fill's error.
+    //
+    // On a custom screen each run takes its own number (stepping over
+    // `skip` as the plain fill does) and each shared circuit is a merge of
+    // those numbers (`merges`, written by the caller). While one taken-over
+    // circuit is open for redrawing, the numbers are the override list:
+    // each CIRCUIT takes one, its runs concatenated with `heads` marking
+    // where each run after the first starts (the take-over's own shape).
+    //
+    // Returns { chunks, skipped, merges, runs, sizes } or { error, skipped }.
+    _chunkPicksIntoShares(owner, startNum, lines, skip = null) {
+        const kind = 'power';
+        const cap = this.customRunCapacity(owner, kind);
+        const eps = CUSTOM_RUN_EPS;
+        const limit = cap.known ? cap.limit : Infinity;
+        const fmt = (v) => `${Math.round(v).toLocaleString('en-US')} W`;
+        const loadFor = (picks) => this.customRunLoad(owner, kind, picks);
+        const maxWays = this.getPowerSplitters(owner).maxWays;
+        const skipped = [];
+        // The runs, in pattern order.
+        const runs = [];
+        for (const line of lines) {
+            if (line.length === 0) continue;
+            for (const pick of line) {
+                const load = loadFor([pick]);
+                if (load > limit + eps) {
+                    return { skipped, error: `panel ${this._describePathPanel(owner, pick.layer, pick.panel)} `
+                        + `is ${fmt(load)} and a circuit carries ${fmt(limit)}.` };
+                }
+            }
+            if (loadFor(line) <= limit + eps) {
+                runs.push({ picks: line.slice(), solo: false });
+                continue;
+            }
+            let cells = line;
+            while (cells.length > 0) {
+                const piece = [];
+                for (const pick of cells) {
+                    if (piece.length > 0 && loadFor(piece.concat([pick])) > limit + eps) break;
+                    piece.push(pick);
+                }
+                runs.push({ picks: piece, solo: true });
+                cells = cells.slice(piece.length);
+            }
+        }
+        // The circuits: neighbouring runs while they fit and ways remain.
+        const circuits = [];
+        runs.forEach(run => {
+            const cur = circuits[circuits.length - 1];
+            const joins = cur && !run.solo && !cur[0].solo
+                && cur.length < maxWays
+                && loadFor(cur.flatMap(r => r.picks).concat(run.picks)) <= limit + eps;
+            if (joins) cur.push(run);
+            else circuits.push([run]);
+        });
+        // The numbers.
+        let num = startNum;
+        const take = () => {
+            const n = num;
+            let next = this._nextCustomRunNumber(owner, kind, n);
+            while (next !== null && skip && skip.has(next)) {
+                skipped.push(next);
+                next = this._nextCustomRunNumber(owner, kind, next);
+            }
+            num = next;
+            return n;
+        };
+        const outOfNumbers = () => {
+            const taken = this.getOverrideNums(owner, kind)
+                .map(n => this._customRunLabel(owner, kind, n)).join(', ');
+            return `the selection does not fit on the taken-over circuits `
+                + `(${taken}). Take over another run or select a narrower block.`;
+        };
+        const chunks = [];
+        const merges = [];
+        const sizes = circuits.map(c => c.length);
+        if (this._isOverrideEditing(owner, kind)) {
+            for (const c of circuits) {
+                if (num === null) return { skipped, error: outOfNumbers() };
+                const picks = [];
+                const heads = new Set();
+                c.forEach((run, k) => {
+                    if (k > 0) heads.add(picks.length);
+                    picks.push(...run.picks);
+                });
+                chunks.push({ num: take(), picks, load: loadFor(picks), heads });
+            }
+            return { chunks, skipped, merges: null, runs: runs.length, sizes };
+        }
+        for (const c of circuits) {
+            const nums = [];
+            for (const run of c) {
+                if (num === null) return { skipped, error: outOfNumbers() };
+                const n = take();
+                nums.push(n);
+                chunks.push({ num: n, picks: run.picks, load: loadFor(run.picks) });
+            }
+            if (nums.length >= 2) merges.push(nums);
+        }
+        return { chunks, skipped, merges, runs: runs.length, sizes };
     }
 
     // A PARTIAL GROUP FILL (the owner's ruling, 2026-10-16: "Warn and do
