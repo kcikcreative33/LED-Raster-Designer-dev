@@ -137,12 +137,45 @@
     // The first breakout box on the card (the resolved tree's `cvts`).
     function box() { var c = card(); return ((c && c.cvts) || [])[0] || null; }
     // What the distro's tray header prints: the load against the rating
-    // ("0.0/400 A"), the supply ("208V·3φ"), and the OUTPUTS row's plugs.
+    // ("0.0/400 A"), the supply ("208V·3φ").
     function distroUnit(d) { return d ? $('[data-lrd-distro="' + d.id + '"]') : null; }
     function distroUse(d) { var u = distroUnit(d); var e = u && u.querySelector('.hw-dock-unit-use'); return e ? e.textContent.trim() : ''; }
     function distroInfo(d) { var u = distroUnit(d); var e = u && u.querySelector('.hw-dock-unit-info'); return e ? e.textContent.trim() : ''; }
     function distroLegs(d) { var u = distroUnit(d); return !!(u && u.querySelector('.hw-dock-legs')); }
-    function distroPlugs(d) { var u = distroUnit(d); return u ? $$('.hw-dock-outputs .hw-dock-plug', u) : []; }
+    // Where the header says the limit came from ("· 80% of 200 A"), empty
+    // where the limit is the rating itself (app-dock.js _dockDistroGlance).
+    function distroLim(d) { var u = distroUnit(d); var e = u && u.querySelector('.hw-dock-unit-lim'); return e ? e.textContent.trim() : ''; }
+    // The connectors a distro's output rows put on its face (1.5), or 0
+    // for a distro with no rows.
+    function faceCount(d) { var f = d && A().distroFace ? A().distroFace(d) : null; return f ? f.boxes.length : 0; }
+    // The distro's first Socapex output row, or null.
+    function socaRow(d) {
+        return (d && A().distroRows ? A().distroRows(d) : []).find(function (r) { return r.connector === 'soca' && !r.pairedWith; }) || null;
+    }
+    // Open the distro's gear popover and ring it: the opening every gear
+    // step makes before its one change.
+    function openDistroGear(t, d) {
+        return t.click('[data-hwpop="distro-' + d.id + '"]').then(function () {
+            return t.wait(popover);
+        }).then(function (pop) {
+            if (!pop) throw new Error('the distro\'s gear popover did not open');
+            return t.spot(pop).then(function () { return t.pause(900); });
+        });
+    }
+    // The Pixel Map's selected cabinets counted per screen, by layer id
+    // (app-pixel-select.js _pixelMapSelectionHits).
+    function pickedByScreen() {
+        var a = A(), out = {};
+        var hits = a && a._pixelMapSelectionHits ? a._pixelMapSelectionHits() : [];
+        hits.forEach(function (h) { out[h.layer.id] = (out[h.layer.id] || 0) + 1; });
+        return out;
+    }
+    // The index of a wall's cabinet at (row, col), counted from 0.
+    function cabinetIndex(l, row, col) {
+        var ps = (l && l.panels) || [];
+        var i = ps.findIndex(function (p) { return Number(p.row) === row && Number(p.col) === col; });
+        return i >= 0 ? i : row * (Number(l.columns) || 1) + col;
+    }
     // The open gear popover, or null.
     function popover() { var pop = $('#hw-gear-popover'); return pop && pop.style.display === 'block' ? pop : null; }
     function mode() { var t = $('.view-tab.active[data-mode]'); return t ? t.dataset.mode : null; }
@@ -2275,6 +2308,8 @@
     // ONE action per step. `target` is the selector the spotlight rings (a
     // function when it names hardware minted during the tour); `place` the
     // callout's side; `body` one or two sentences in the user's terms.
+    // `since` names the app version that brought the feature a step shows
+    // ('1.5.0', '1.5.2'); steps older than 1.5 carry none.
     var STEPS = {
         introAdvanced: {
             title: 'The full guide', center: true,
@@ -2513,7 +2548,7 @@
                 var socks = ps.map(function (p) { return Number(p.port); }).sort(function (a, b) { return a - b; });
                 var name = proc() && proc().name ? proc().name : '';
                 var odd = proc() && proc().redundancy && socks.every(function (s) { return s % 2 === 1; });
-                return ps.length + ' ports on ' + (odd ? 'the odd sockets ' : 'sockets ') + socks[0] + '–' + socks[socks.length - 1]
+                return ps.length + ' ports on ' + (odd ? 'the odd sockets ' : 'sockets ') + socks[0] + ' to ' + socks[socks.length - 1]
                     + (name ? ', labelled ' + name + '-' + socks[0] + ' …' : '')
                     + (odd ? ' Their returns ride the even sockets.' : '.');
             }
@@ -2680,7 +2715,7 @@
                 var s = snake();
                 if (!s || !s.members || s.members.length !== 4) return null;
                 var tag = A().snakeTagText ? A().snakeTagText(s, false) : (s.name || 'SNAKE A');
-                return tag + ' — one home run for four ports.';
+                return tag + ' carries four ports on one home run.';
             }
         },
         cableSheet: {
@@ -2928,7 +2963,7 @@
                 if (!b) return null;
                 var n = (b.ports || []).length;
                 var locals = (b.ports || []).map(function (q) { return q.localNumber || q.number; });
-                var span = locals.length ? Math.min.apply(null, locals) + '–' + Math.max.apply(null, locals) : '';
+                var span = locals.length ? Math.min.apply(null, locals) + ' to ' + Math.max.apply(null, locals) : '';
                 return (b.displayTitle || b.deviceName) + ' is on ' + (p && p.name ? p.name : 'the unit') + ' with ' + n + ' sockets'
                     + (span ? ', ' + span + ' on its face' : '') + '; the picker offered ' + mem.offered + ' boxes that fit this unit.';
             },
@@ -3105,43 +3140,113 @@
             check: function () { var d = distro(); return d && d.name === 'SL' ? 'Its multis are SL1, SL2 …' : null; }
         },
         // The distro's gear (Matt, 2026-09-15: "setting the capacity of
-        // the distro and different things like that"): rating, voltage and
-        // phase, OUTPUTS - app-power.js _buildDistroGearContent. Each step
-        // opens the gear again: one action per step.
+        // the distro and different things like that") - app-power.js
+        // _buildDistroGearContent, whose supply rows are 1.5's TYPE, SYSTEM,
+        // INPUT and RATING per leg (app-distro-systems.js
+        // _buildDistroSupplySection). Each step opens the gear again: one
+        // action per step.
+        // Input: only the inputs that can feed the distro's system are
+        // listed, and picking one sets the rating per leg to its figure.
         distroRating: {
+            since: '1.5.0',
             target: function () { var d = distro(); return d ? '[data-hwpop="distro-' + d.id + '"]' : '#hardware-dock-body .hw-dock-gear'; },
-            place: 'top', title: 'Set the distro&rsquo;s rating',
-            avoid: [function () { var d = distro(); return d ? '[data-lrd-field="distro-rating-' + d.id + '"]' : null; }],
-            body: 'Behind the distro&rsquo;s &#9881;, Rating is the service in amps. Type 200 and the header&rsquo;s load bar reads against 200 A from now on &mdash; 160 A on a US distro, whose main carries 80% of its rating continuously unless it is 100% rated.',
+            place: 'top', title: 'The distro&rsquo;s input',
+            avoid: [function () { var d = distro(); return d ? '[data-lrd-field="distro-input-' + d.id + '"]' : null; }],
+            body: 'Behind the distro&rsquo;s &#9881;, Input lists only what can feed its System: Cam, CEE or Powerlock. Pick Cam 200 A and Rating fills in 200 A per leg.',
             before: function () { switchView('power'); closePopover(); },
             act: function (t) {
                 var d = distro();
                 t.mem.before = distroUse(d);
-                return t.click('[data-hwpop="distro-' + d.id + '"]').then(function () {
-                    return t.wait(popover);
-                }).then(function (pop) {
-                    if (!pop) throw new Error('the distro\'s gear popover did not open');
-                    return t.spot(pop).then(function () { return t.pause(900); });
+                return openDistroGear(t, d).then(function () {
+                    var sel = $('[data-lrd-field="distro-input-' + d.id + '"]');
+                    if (!sel) throw new Error('the distro has no Input list');
+                    // Cam 200 A on a US distro; on a distro whose system no
+                    // cam can feed, the first input its list offers.
+                    var opts = Array.prototype.slice.call(sel.options).filter(function (o) { return o.value; });
+                    var pick = opts.find(function (o) { return o.value === 'cam200'; }) || opts[0];
+                    if (!pick) throw new Error('the Input list offers nothing');
+                    t.mem.pick = pick.value;
+                    t.mem.name = pick.textContent.trim();
+                    t.mem.rating = Number((/(\d+)\s*A\b/.exec(t.mem.name) || [])[1]) || null;
+                    return t.select(sel, pick.value);
                 }).then(function () {
-                    return t.type('[data-lrd-field="distro-rating-' + d.id + '"]', '200');
-                }).then(function () {
-                    return t.wait(function () { var q = distro(); return q && Number(q.ratingA) === 200 && /\/(?:200|160) A$/.test(distroUse(q)); });
-                }).then(function () { return t.pause(1000); });
+                    return t.wait(function () {
+                        var q = distro();
+                        if (!q || q.input !== t.mem.pick) return false;
+                        if (t.mem.rating && Number(q.ratingA) !== t.mem.rating) return false;
+                        var lim = A().distroMainLimit(q).limitA;
+                        return new RegExp('/' + (+lim.toFixed(1)) + ' A$').test(distroUse(q));
+                    });
+                }).then(function () { return t.pause(PACE.acted); });
             },
             check: function (mem) {
                 var d = distro();
-                if (!d || Number(d.ratingA) !== 200) return null;
+                if (!d || !mem.pick || d.input !== mem.pick) return null;
                 var use = distroUse(d);
-                if (!/\/(?:200|160) A$/.test(use)) return null;
-                return (d.name || 'The distro') + ' is rated 200 A: the header read ' + mem.before + ', now ' + use + '.';
+                var lim = A().distroMainLimit(d).limitA;
+                if (!new RegExp('/' + (+lim.toFixed(1)) + ' A$').test(use)) return null;
+                return (d.name || 'The distro') + ' takes ' + mem.name + ': ' + d.ratingA
+                    + ' A per leg, and the header read ' + mem.before + ', now ' + use + '.';
+            },
+            after: function () { closePopover(); }
+        },
+        // The main's continuous limit (1.5, 2026-10-18): a US distro's
+        // busiest leg is held to 80% of its rating unless Main 100% rated
+        // is ticked. Shown on the setting, not by overloading the demo:
+        // ticked the header reads the full rating, unticked 80% again, so
+        // the steps after find the distro as it was.
+        distroMain: {
+            since: '1.5.0',
+            target: function () { var d = distro(); return d ? '[data-hwpop="distro-' + d.id + '"]' : '#hardware-dock-body .hw-dock-gear'; },
+            place: 'top', title: 'The 80% limit',
+            avoid: [function () { var d = distro(); return d ? '[data-lrd-field="distro-main100-' + d.id + '"]' : null; }],
+            body: 'A US distro is held to 80% of its rating, so 200 A reads as 160 A. Main 100% rated lifts that; over the limit the header shows a red OVER, and Accept overload turns it amber.',
+            before: function () { switchView('power'); closePopover(); },
+            act: function (t) {
+                var d = distro();
+                var box = '[data-lrd-field="distro-main100-' + d.id + '"]';
+                var reads = function (pct) {
+                    var q = distro();
+                    if (!q) return false;
+                    var lim = (Number(q.ratingA) || 0) * pct;
+                    return new RegExp('/' + (+lim.toFixed(1)) + ' A$').test(distroUse(q));
+                };
+                t.mem.start = distroUse(d);
+                t.mem.note = distroLim(d);
+                return openDistroGear(t, d).then(function () {
+                    var cb = $(box);
+                    if (!cb) throw new Error('Main 100% rated is not on this distro');
+                    if (cb.checked) throw new Error('Main 100% rated is already ticked');
+                    return t.click(cb, { rest: PACE.acted });
+                }).then(function () {
+                    return t.wait(function () { var q = distro(); return q && q.main100 && reads(1); });
+                }).then(function (on) {
+                    if (!on) throw new Error('the header did not read the full rating');
+                    t.mem.full = distroUse(distro());
+                    // The popover was rebuilt with the change; the tick is
+                    // found again by its key.
+                    return t.click(box, { rest: PACE.rest });
+                }).then(function () {
+                    return t.wait(function () { var q = distro(); return q && !q.main100 && reads(0.8); });
+                }).then(function () { return t.pause(PACE.rest); });
+            },
+            check: function (mem) {
+                var d = distro();
+                if (!d || d.main100 || !mem.full) return null;
+                var use = distroUse(d);
+                var lim = (Number(d.ratingA) || 0) * 0.8;
+                if (!new RegExp('/' + (+lim.toFixed(1)) + ' A$').test(use)) return null;
+                return 'Main 100% rated read ' + mem.full + '; unticked, ' + (d.name || 'the distro')
+                    + ' is held to ' + use + (distroLim(d) ? ' ' + distroLim(d) : '') + '.';
             },
             after: function () { closePopover(); }
         },
         distroPhase: {
+            since: '1.5.0',
             target: function () { var d = distro(); return d ? '[data-hwpop="distro-' + d.id + '"]' : '#hardware-dock-body .hw-dock-gear'; },
             place: 'top', title: 'The distro\'s system',
             avoid: [function () { var d = distro(); return d ? '[data-lrd-field="distro-system-' + d.id + '"]' : null; }],
-            body: 'System is the service - 120/208V, 120/240V, 120V, 230/400V or 230V - and the header wears it. Pick 120V 1&phi; and the LEGS line and Balance leave; back on 120/208V they return, with the phasing row under it.',
+            body: 'System is the service the distro runs on, US or EU, and the header wears it. Pick 120V 1&phi; and the LEGS line and Balance leave; back on 120/208V 3&phi; they return, with the phasing row under it.',
             before: function () { switchView('power'); closePopover(); },
             act: function (t) {
                 var d = distro();
@@ -3178,41 +3283,6 @@
                 if (!/3φ/.test(now)) return null;
                 return 'At 120V 1φ the header read ' + mem.mid + (mem.midLegs ? '' : ' with no LEGS line') + '; back on 120/208V it reads ' + now
                     + (distroLegs(d) ? ' and the legs are metered again.' : '.');
-            },
-            after: function () { closePopover(); }
-        },
-        distroOutputs: {
-            target: function () { var d = distro(); return d ? '[data-hwpop="distro-' + d.id + '"]' : '#hardware-dock-body .hw-dock-gear'; },
-            place: 'top', title: 'The plugs a distro offers',
-            avoid: [function () { var d = distro(); return d ? '[data-lrd-field="distro-out-l2130-' + d.id + '"]' : null; }],
-            body: 'OUTPUTS ticks the connector types this distro can hand a screen. Untick L21-30 and its plug leaves the OUTPUTS row under the header; nothing else on the distro changes.',
-            before: function () { switchView('power'); closePopover(); },
-            act: function (t) {
-                var d = distro();
-                t.mem.before = distroPlugs(d).length;
-                return t.click('[data-hwpop="distro-' + d.id + '"]').then(function () {
-                    return t.wait(popover);
-                }).then(function (pop) {
-                    if (!pop) throw new Error('the distro\'s gear popover did not open');
-                    return t.spot(pop).then(function () { return t.pause(900); });
-                }).then(function () {
-                    var cb = $('[data-lrd-field="distro-out-l2130-' + d.id + '"]');
-                    if (!cb || !cb.checked) throw new Error('L21-30 is not ticked on this distro');
-                    return t.click(cb, { rest: PACE.acted });
-                }).then(function () {
-                    return t.wait(function () {
-                        var q = distro();
-                        return q && Array.isArray(q.outputs) && q.outputs.indexOf('l2130') < 0 && distroPlugs(q).length < t.mem.before;
-                    });
-                }).then(function () { return t.pause(400); });
-            },
-            check: function (mem) {
-                var d = distro();
-                if (!d || !Array.isArray(d.outputs) || d.outputs.indexOf('l2130') >= 0) return null;
-                var plugs = distroPlugs(d);
-                if (plugs.length !== mem.before - 1) return null;
-                var names = A().distroOutputs(d).map(function (x) { return x.name; });
-                return (d.name || 'The distro') + ' offers ' + names.join(' and ') + '; the L21-30 plug is off its OUTPUTS row.';
             },
             after: function () { closePopover(); }
         },
@@ -3255,9 +3325,11 @@
                 if (!n && mem.onWall && mem.onWall()) return (d.name || 'SL') + ' multi 1 is on the wall.';
                 if (!n) return null;
                 var size = A().socaBoxSize ? A().socaBoxSize(wall()) : 6;
-                return (d.name || 'SL') + ' multi 1 took ' + n + ' of ' + size + ' circuits' + (n < size ? ' — the wall needs no more.' : '.');
+                return (d.name || 'SL') + ' multi 1 took ' + n + ' of ' + size + ' circuits' + (n < size ? ', all the wall needs.' : '.');
             }
         },
+        // What's New in 1.0 only: its distro has no output rows, so the
+        // spare number's chip is still the picker.
         typeChip: {
             target: function () { var d = distro(); return d ? '[data-lrd-field="distro-box-type-' + d.id + '-2"]' : '.hw-dock-typechip'; },
             place: 'top', title: 'The type chip',
@@ -3358,6 +3430,56 @@
             after: function () {
                 var d = distro();
                 if (d && A()._setCableSheetOpen) { A()._setCableSheetOpen(d.id, 1, false); if (mode() === 'power') A().renderHardwareDock(); }
+            }
+        },
+        // Feet or meters (1.5, app-cable-units.js): the Unit select beside
+        // the jumper fields sets the show's one cable unit. Its own change
+        // handler asks first when lengths are typed - a native confirm the
+        // guide's hand cannot answer - so the act sets the unit through
+        // setCableUnit(unit, false), the path an answered Yes takes. It goes
+        // to m and back to ft: the steps after are written in feet.
+        cableUnit: {
+            since: '1.5.0',
+            target: '#power-jump-unit', place: 'right', title: 'Feet or meters',
+            avoid: ['#power-jump-unit'],
+            body: 'Unit, under the jumper fields, switches the whole show between ft and m, and every cable length follows. Here it goes to m and back to ft.',
+            before: function () { switchView('power'); },
+            act: function (t) {
+                var label = function () {
+                    var v = $('#power-jump-v'), s = v && v.nextElementSibling;
+                    return s && s.hasAttribute('data-cable-unit') ? s.textContent.trim() : '';
+                };
+                var pick = function (unit) {
+                    return t.hover('#power-jump-unit').then(function (p) {
+                        press(true);
+                        ripple(p.x, p.y);
+                        return t.pause(90);
+                    }).then(function () {
+                        press(false);
+                        A().setCableUnit(unit, false);
+                        return t.wait(function () {
+                            var sel = $('#power-jump-unit');
+                            return A().cableUnit() === unit && sel && sel.value === unit && label() === unit;
+                        });
+                    });
+                };
+                return pick('m').then(function (ok) {
+                    if (!ok) throw new Error('the show did not switch to meters');
+                    t.mem.mid = label();
+                    return t.pause(PACE.acted);
+                }).then(function () {
+                    return pick('ft');
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the show did not switch back to feet');
+                    return t.pause(PACE.rest);
+                });
+            },
+            check: function (mem) {
+                var w = wall();
+                if (mem.mid !== 'm' || A().cableUnit() !== 'ft' || !w) return null;
+                var v = Number(w.powerJumpV), h = Number(w.powerJumpH);
+                return 'In meters the power jumpers read ' + v + ' m and ' + h + ' m; back in feet they read '
+                    + v + ' ft and ' + h + ' ft again.';
             }
         },
         powerCableTags: {
@@ -3521,6 +3643,84 @@
             },
             after: function () { var m = $('#balance-modal'); if (m) m.remove(); }
         },
+        // Distros built from their outputs (1.5, app-distro-systems.js
+        // _buildDistroOutputRows): a preset lays the system, input, rating,
+        // output rows and Type on the distro in one undo step. They run
+        // before the multi steps: the preset's first row is Socapex at 208V,
+        // the multi every power step after drags onto the wall. A distro
+        // with rows IS its face, so its type chips only read the row; the
+        // Advanced Guide has no type chip step (What's New in 1.0, whose
+        // distro has no rows, keeps it).
+        distroPreset: {
+            since: '1.5.0',
+            target: function () { var d = distro(); return d ? '[data-hwpop="distro-' + d.id + '"]' : '#hardware-dock-body .hw-dock-gear'; },
+            place: 'top', title: 'Start from a preset',
+            avoid: [function () { var d = distro(); return d ? '[data-lrd-field="distro-preset-' + d.id + '"]' : null; }],
+            body: 'Start from a preset&hellip; sets System, Input, Rating and the output rows in one step. It fills in Type too, the name the pull sheet lists the distro by.',
+            before: function () { switchView('power'); closePopover(); },
+            act: function (t) {
+                var d = distro();
+                var value = 'b:us-200-4soca-3dup';
+                return openDistroGear(t, d).then(function () {
+                    var sel = $('[data-lrd-field="distro-preset-' + d.id + '"]');
+                    var opt = sel && Array.prototype.slice.call(sel.options).find(function (o) { return o.value === value; });
+                    if (!opt) throw new Error('the preset is not on the list');
+                    t.mem.name = opt.textContent.trim();
+                    return t.select(sel, value);
+                }).then(function () {
+                    return t.wait(function () {
+                        var q = distro();
+                        return q && faceCount(q) > 0 && q.typeName === t.mem.name
+                            && $('[data-lrd-field="distro-type-' + q.id + '"]');
+                    });
+                }).then(function (type) {
+                    if (!type) throw new Error('the preset did not take');
+                    return t.pause(PACE.acted);
+                });
+            },
+            check: function (mem) {
+                var d = distro(), a = A();
+                if (!d || !faceCount(d) || d.typeName !== mem.name) return null;
+                var rows = a.distroRows(d).map(function (r) { return r.count + ' × ' + a.distroConnector(r.connector).short; });
+                return (d.name || 'The distro') + ' now has ' + rows.join(' and ') + ' on its face, and its Type reads ' + d.typeName + '.';
+            },
+            after: function () { closePopover(); }
+        },
+        distroRows: {
+            since: '1.5.0',
+            target: function () { var d = distro(); return d ? '[data-hwpop="distro-' + d.id + '"]' : '#hardware-dock-body .hw-dock-gear'; },
+            place: 'top', title: 'Output rows',
+            avoid: [function () {
+                var d = distro(), r = d ? socaRow(d) : null;
+                return r ? '[data-lrd-field="distro-row-count-' + d.id + '-' + r.id + '"]' : null;
+            }],
+            body: 'Each output row is a connector and a count, and rows can mix on one distro. Make the Socapex row 6 and two more multis join the distro in the tray.',
+            before: function () { switchView('power'); closePopover(); },
+            act: function (t) {
+                var d = distro();
+                var r = socaRow(d);
+                if (!r) throw new Error('the distro has no Socapex row');
+                t.mem.before = faceCount(d);
+                t.mem.row = r.id;
+                return openDistroGear(t, d).then(function () {
+                    return t.type('[data-lrd-field="distro-row-count-' + d.id + '-' + r.id + '"]', '6');
+                }).then(function () {
+                    return t.wait(function () {
+                        var q = distro(), row = q && A().distroRows(q).find(function (x) { return x.id === t.mem.row; });
+                        return row && Number(row.count) === 6 && faceCount(q) === t.mem.before + (6 - r.count)
+                            && $('[data-hwdock="slot-' + q.id + '-6"]');
+                    });
+                }).then(function () { return t.pause(PACE.acted); });
+            },
+            check: function (mem) {
+                var d = distro();
+                var row = d && A().distroRows(d).find(function (x) { return x.id === mem.row; });
+                if (!row || Number(row.count) !== 6 || !$('[data-hwdock="slot-' + d.id + '-6"]')) return null;
+                return 'The Socapex row reads 6: ' + (d.name || 'the distro') + ' 5 and 6 are new multis in the tray, '
+                    + faceCount(d) + ' outputs on its face in all.';
+            },
+            after: function () { closePopover(); }
+        },
         addBeach: {
             target: '#beaches-panel .beaches-add', place: 'left', title: 'Beaches',
             body: 'A beach is a position the show is pulled to. Add beach asks for a name; here it is filled in as Stage Left.',
@@ -3657,6 +3857,61 @@
             },
             after: function () { var sub = $('#beach-submenu'); if (sub) sub.style.display = ''; }
         },
+        // Cabinets across screens (1.5, app-pixel-select.js): with several
+        // screens selected, a Pixel Map drag that starts on any of them
+        // picks cabinets on every one. The two screens are selected by the
+        // step before; a Go to that lands here (a restore selects one
+        // screen) selects them the same way first.
+        crossScreens: {
+            since: '1.5.0',
+            target: '#main-canvas', place: 'top', title: 'Cabinets across screens',
+            avoid: [function () { var w = wall(); return w ? T.cabinetPoint(w, { index: cabinetIndex(w, 2, w.columns - 2), raw: true }) : null; },
+                    function () { var w2 = wall2(); return w2 ? T.cabinetPoint(w2, { index: cabinetIndex(w2, 3, 1), raw: true }) : null; }],
+            body: 'With both screens selected, drag across them on the Pixel Map and you pick cabinets on each one. Set Blank or Set Half-tile then changes them all at once.',
+            before: function () { switchView('pixel-map'); frameWalls(); },
+            act: function (t) {
+                var a = A(), w = wall(), w2 = wall2();
+                if (!w || !w2) throw new Error('two screens are needed');
+                var both = function () { return a.selectedLayerIds && a.selectedLayerIds.has(w.id) && a.selectedLayerIds.has(w2.id); };
+                var select = both() ? Promise.resolve(true) : t.click(layerRow(w)).then(function () {
+                    return t.click(layerRow(w2), { init: MOD_INIT, badge: MOD_KEY });
+                }).then(function () {
+                    return t.wait(both, 1500);
+                });
+                return select.then(function (ok) {
+                    if (!ok) throw new Error('the two screens are not both selected');
+                    // From the first wall's third row, two cabinets in from
+                    // its right edge, to the second wall's fourth row, second
+                    // cabinet: two rows of two cabinets on each screen.
+                    var p0 = t.cabinetPoint(wall(), { index: cabinetIndex(wall(), 2, w.columns - 2) });
+                    var p1 = t.cabinetPoint(wall2(), { index: cabinetIndex(wall2(), 3, 1) });
+                    return t.hover(p0).then(function () {
+                        press(true);
+                        t.canvasDown(p0);
+                        return t.pause(PACE.dragPress);
+                    }).then(function () {
+                        t.canvasMove({ x: p0.x + 6, y: p0.y + 6 });
+                        return t.canvasGlide(p1, null, PACE.dragTravel);
+                    }).then(function () {
+                        t.canvasMove(p1);
+                        return t.pause(PACE.hover);
+                    }).then(function () {
+                        t.canvasUp(p1);
+                        press(false);
+                        return t.wait(function () { return Object.keys(pickedByScreen()).length === 2; });
+                    });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the drag did not pick cabinets on both screens');
+                    return t.pause(PACE.acted);
+                });
+            },
+            check: function () {
+                var w = wall(), w2 = wall2(), by = pickedByScreen();
+                if (!w || !w2 || !by[w.id] || !by[w2.id]) return null;
+                return 'One drag picked ' + by[w.id] + ' cabinets on ' + w.name + ' and ' + by[w2.id] + ' on ' + w2.name + '.';
+            },
+            after: function () { var a = A(); if (a && a.clearPixelMapSelection) a.clearPixelMapSelection(); }
+        },
         groupScreens: {
             target: '#layers-list', place: 'left', title: 'Group the screens',
             avoid: ['#layers-list'],
@@ -3773,6 +4028,40 @@
             },
             after: closeExportUnless
         },
+        // Every export in the File menu (1.5.2, app-menubar.js): Export
+        // SVG, Export PDF and Export Resolume XML open the Export dialog
+        // with that format picked. Opened and cancelled; nothing is saved.
+        fileExports: {
+            since: '1.5.2',
+            target: '[data-menu="file"]', place: 'bottom', title: 'Exports in the File menu',
+            avoid: ['#menu-file [data-action="export-svg"]', '#export-cancel'],
+            body: 'Export SVG, Export PDF and Export Resolume XML sit in the File menu with the other exports. Each opens the Export dialog with that format picked; Cancel closes it.',
+            before: function () { closeExport(); hideMenus(); },
+            act: function (t) {
+                return t.click('[data-menu="file"]').then(function () {
+                    return t.wait(function () { var m = $('#menu-file'); return m && m.style.display === 'block' ? m : null; });
+                }).then(function (m) {
+                    if (!m) throw new Error('the File menu did not open');
+                    return t.spot(m).then(function () { return t.pause(PACE.opened); });
+                }).then(function () {
+                    return t.click('#menu-file [data-action="export-svg"]');
+                }).then(function () {
+                    return t.wait(function () { var f = $('#export-format'); return exportOpen() && f && f.value === 'svg'; });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the Export dialog did not open on SVG');
+                    t.mem.svg = true;
+                    return t.spot($('#export-modal .modal-content')).then(function () { return t.pause(PACE.opened); });
+                }).then(function () {
+                    return t.click('#export-cancel');
+                }).then(function () {
+                    return t.wait(function () { return !exportOpen(); });
+                });
+            },
+            check: function (mem) {
+                return mem.svg && !exportOpen() ? 'Export SVG opened the Export dialog with SVG picked; Cancel closed it and nothing was saved.' : null;
+            },
+            after: function () { hideMenus(); closeExport(); }
+        },
         preferences: {
             target: '#btn-preferences', place: 'bottom', title: 'Preferences',
             avoid: ['#btn-preferences', '#preferences-modal .pm-tabstrip'],
@@ -3837,7 +4126,7 @@
             var ps = wallPins();
             if (ps.length <= mem.before || ps.length !== portsNeeded()) return null;
             var socks = ps.map(function (p) { return Number(p.port); }).sort(function (a, b) { return a - b; });
-            return 'All ' + ps.length + ' ports are back on sockets ' + socks[0] + '–' + socks[socks.length - 1]
+            return 'All ' + ps.length + ' ports are back on sockets ' + socks[0] + ' to ' + socks[socks.length - 1]
                 + (flagOk() ? '; the flag is green.' : '.');
         }
     });
@@ -3886,11 +4175,12 @@
                     'clearPortByMenu', 'clearCard', 'dropProcessorAgain',
                     'snakePorts', 'cableSheet', 'snakeHomeRun', 'loosePortLength', 'dataJumpers', 'dataCableTags',
                     'overrideRun', 'addBreakoutBox', 'boxFiber', 'fiberStrands', 'panelWatts', 'breakoutType', 'addDistro', 'nameDistro',
-                    'distroRating', 'distroPhase', 'distroOutputs',
-                    'dropMulti', 'typeChip', 'clearCircuit', 'clearMultiByMenu', 'dropMultiAgain',
-                    'multiCableSheet', 'powerJumpers', 'powerCableTags',
-                    'customPower', 'customDraw', 'splitters', 'balance', 'addBeach', 'screenBeach', 'addScreen', 'beachByMenu', 'groupScreens',
-                    'exportBinder', 'screenOrder', 'wiringTick', 'titleBlock', 'preferences',
+                    'distroPhase', 'distroRating', 'distroMain', 'distroPreset', 'distroRows',
+                    'dropMulti', 'clearCircuit', 'clearMultiByMenu', 'dropMultiAgain',
+                    'multiCableSheet', 'powerJumpers', 'cableUnit', 'powerCableTags',
+                    'customPower', 'customDraw', 'splitters', 'balance',
+                    'addBeach', 'screenBeach', 'addScreen', 'beachByMenu', 'crossScreens', 'groupScreens',
+                    'exportBinder', 'screenOrder', 'wiringTick', 'titleBlock', 'fileExports', 'preferences',
                     'helpMenu', 'outroAdvanced']
         }
     };
