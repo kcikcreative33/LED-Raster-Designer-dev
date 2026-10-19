@@ -716,9 +716,11 @@ def test_a_folded_tray_and_a_small_window_do_not_break_the_tour(e2e_server, pw_b
         before = pg.evaluate(TRAY_STATE_JS)
         assert before['collapsed'] and before['height'] == '100px', before
         first = _step_index(pg, 'advanced', 'Add a distro')
-        last = first + 10
         titles = pg.evaluate("(n) => window.QuickStart.tours()[n].map(s => s.title)", 'advanced')
-        assert 'cable sheet' in titles[last], titles[first:last + 1]
+        # Through the multi's cable sheet: the first cable sheet step after
+        # Add a distro, wherever the distro's gear steps leave it.
+        last = next((i for i, t in enumerate(titles) if i > first and 'cable sheet' in t), None)
+        assert last is not None, titles[first:]
         pg.evaluate("window.__qsTrace = []")
         st = _drive_to(pg, 'advanced', first)
         assert st['qs']['index'] == first, st
