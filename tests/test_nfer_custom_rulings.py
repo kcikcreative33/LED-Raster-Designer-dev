@@ -778,5 +778,34 @@ def test_clearing_a_taken_over_circuits_multi_keeps_the_auto_shares(page):
     assert c2['runs'] == [5, 5, 5], c2
 
 
+def test_a_taken_over_circuit_never_lends_its_load_to_an_auto_run(page):
+    """The lone last column, two cabinets blank (3 live, 2.2 A), taken over
+    as plain circuit 4; auto run 4 is a full column (3.6 A). The share
+    figures read run 4 as the auto run: three full runs are 10.8 A, and
+    on a 10 A circuit the batch deal pairs runs rather than building a
+    10.8 A 3fer. The taken-over circuit's number used to overwrite run 4's
+    figure with its own 2.2 A."""
+    (wall,) = make(page, [{'name': 'Wall', 'columns': 10,
+                           'blank': [[3, 9], [4, 9]]}])
+    alt_click(page, pt(page, wall, 0, 9))
+    page.keyboard.press('Escape')
+    landed(page)
+    out = page.evaluate("""(id) => {
+        const app = window.app, l = window.__nf.layer(id);
+        app._circuitTailCache = null;
+        const amps = app.shareLoad(l, [4, 5, 6]).amps;
+        l.powerAmperage = 10;
+        app._circuitTailCache = null;
+        const nums = app.screenCircuits(l).map(c => c.num);
+        const deal = app.batchShareGroups(l, nums, 3).groups;
+        l.powerAmperage = 20;
+        app._circuitTailCache = null;
+        return { amps, nums, deal };
+    }""", wall)
+    assert abs(out['amps'] - 3 * 750 / 208) < 1e-6, out
+    assert out['deal'] == [[1, 2], [3, 4], [5, 6], [7, 8], [9]], (
+        f'no group may pass the 10 A circuit: {out}')
+
+
 def test_no_page_errors(page):
     assert page._nf_errors == [], page._nf_errors

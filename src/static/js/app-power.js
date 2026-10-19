@@ -2795,11 +2795,15 @@ class _Power {
 
     // Amps per run in the id space the screen reads right now - the run
     // ordinals of an auto screen (a packed circuit's branches, in runId
-    // order), the drawn circuit numbers of a custom one.
+    // order), the drawn circuit numbers of a custom one. A taken-over
+    // circuit is left out: its number is a circuit number, and read as a
+    // run ordinal it overwrote the figure of the auto run that shares the
+    // digits (_shareRunSegments, which keeps it out of every deal).
     _splitterRunAmps(layer) {
         const voltage = parseFloat(layer.powerVoltage) || 0;
         const amps = new Map();
         this.screenCircuits(layer).forEach(c => {
+            if (this._isTakenOverCircuit(layer, c.num)) return;
             const ids = c.runIds || [c.num];
             const branches = c.branches || [c.panels];
             let off = 0;
