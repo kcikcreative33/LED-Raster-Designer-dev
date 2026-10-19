@@ -20,6 +20,21 @@ import updater  # noqa: E402
 from updater import _version_key  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _keep_the_update_cache():
+    """check_for_update caches its result for the whole server. A faked
+    "1.5.3 is available" left in it put the update banner over the File
+    menu of every browser module that ran after this one in the worker
+    (full suite, 2026-10-19: the pull sheet editor's ten tests timed out
+    on a click the banner intercepted)."""
+    with updater._cache_lock:
+        saved = dict(updater._cache)
+    yield
+    with updater._cache_lock:
+        updater._cache.clear()
+        updater._cache.update(saved)
+
+
 def test_a_release_sorts_above_its_betas():
     order = ['1.5.1', '1.5.2-beta.1', '1.5.2-beta.2', '1.5.2-beta.10', '1.5.2', '1.5.3-beta.1', '1.6.0']
     assert sorted(order, key=_version_key) == order
