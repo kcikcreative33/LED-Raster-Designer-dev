@@ -145,6 +145,15 @@
     // Where the header says the limit came from ("· 80% of 200 A"), empty
     // where the limit is the rating itself (app-dock.js _dockDistroGlance).
     function distroLim(d) { var u = distroUnit(d); var e = u && u.querySelector('.hw-dock-unit-lim'); return e ? e.textContent.trim() : ''; }
+    // The circuits a screen shares through a 2fer or 3fer, as the wall
+    // draws them (the canvas's own registry, the one the bracket and the
+    // pill read): [{ num, ways, over, runIds }].
+    function sharedCircuits(l) {
+        var r = R();
+        if (!l || !r || !r._nferGangs) return [];
+        A()._circuitTailCache = null;
+        return r._nferGangs(l).filter(function (s) { return (s.runIds || []).length > 1; });
+    }
     // The connectors a distro's output rows put on its face (1.5), or 0
     // for a distro with no rows.
     function faceCount(d) { var f = d && A().distroFace ? A().distroFace(d) : null; return f ? f.boxes.length : 0; }
@@ -3498,35 +3507,140 @@
                 return has ? 'The 25 ft cable prints as a gold tag beside its circuit.' : 'Each circuit’s cable prints as a gold tag beside its label.';
             }
         },
-        // Custom mode first, two steps of its own (2026-09-15): the amps
-        // rule refuses a share past a circuit's amps in automatic mode, and
-        // on the demo wall two full circuits at 200 W are well past 20 A -
-        // so the share the third step makes is only allowed in custom
-        // mode. Custom mode draws nothing until the person draws, so the
-        // toggle (one click) and the drawing (a drag and a pattern press)
-        // are each a gesture the hand makes, not a silent before() the
-        // body would then have to explain away.
-        customPower: {
-            target: '#power-custom-toggle', place: 'right', title: 'Custom mode for power',
-            body: 'Custom mode hands you the runs: nothing is drawn until you draw it, and a share may go past a circuit&rsquo;s amps. Turn it on here.',
+        // 2fers and 3fers, straight through (the owner's rulings,
+        // 2026-10-19). At 200 W a cabinet a row of the demo wall is more
+        // than half a circuit, so no two rows ever share; a column is a
+        // third of one. So the section turns the circuits down the
+        // columns, shares them in automatic mode, takes one 3fer over by
+        // hand (it stays a 3fer), turns custom mode on (it starts empty),
+        // fills the wall as custom runs (the same 3fers as automatic) and
+        // re-deals two of them as 2fers with a sweep.
+        powerColumns: {
+            target: '.power-flow-pattern-btn[data-pattern="tl-v"]', place: 'right', title: 'Circuits down the columns',
+            avoid: ['.power-flow-pattern-btn[data-pattern="tl-v"]'],
+            body: 'Under Flow Pattern, press Top-left, vertical first. Each circuit now runs down whole columns instead of across rows.',
             before: function () { switchView('power'); },
             act: function (t) {
-                return t.click('#power-custom-toggle').then(function () {
-                    return t.wait(function () { var w = wall(); return w && A().isCustomPower(w); });
+                return t.click('.power-flow-pattern-btn[data-pattern="tl-v"]').then(function () {
+                    return t.wait(function () { var w = wall(); return w && w.powerFlowPattern === 'tl-v'; });
                 });
             },
             check: function () {
                 var w = wall();
-                return w && A().isCustomPower(w) ? 'Custom mode is on: the runs are yours to draw, and a share may pass the amps.' : null;
+                if (!w || w.powerFlowPattern !== 'tl-v') return null;
+                var circuits = A().screenCircuits(w);
+                if (!circuits.length) return null;
+                var cols = {};
+                (circuits[0].panels || []).forEach(function (p) { cols[p.col] = true; });
+                return circuits.length + ' circuits now run down the columns, '
+                    + Object.keys(cols).length + ' columns to a circuit.';
+            }
+        },
+        splitters: {
+            target: '#power-splitters-enabled', place: 'right', title: 'Share runs through 3fers',
+            avoid: ['#power-splitters-enabled', '#main-canvas'],
+            body: 'Tick Share circuits via splitters and each column becomes a run of its own, with neighbours sharing one circuit through a 2fer or 3fer while the load fits.',
+            before: function () { switchView('power'); },
+            act: function (t) {
+                return t.click('#power-splitters-enabled').then(function () {
+                    return t.wait(function () { return A().getPowerSplitters(wall()).enabled && sharedCircuits(wall()).length; });
+                });
+            },
+            check: function () {
+                var w = wall();
+                var shared = sharedCircuits(w);
+                if (!w || A().isCustomPower(w) || !shared.length) return null;
+                if (shared.some(function (s) { return s.over; })) return null;
+                var load = A().shareLoad(w, shared[0].runIds);
+                return shared.length + ' circuits, each a ' + shared[0].ways + 'fer of ' + shared[0].ways + ' column runs: '
+                    + load.amps.toFixed(1) + ' A on a ' + (+load.cap.toFixed(1)) + ' A circuit.';
+            }
+        },
+        // A take-over in automatic mode (canvas.js Alt+click): the shared
+        // circuit keeps its runs, each run head after the first marked on
+        // the drawn path, so it still draws, tags and counts as a 3fer.
+        takeOver: {
+            since: '1.5.3',
+            target: '#main-canvas', place: 'top', title: 'Take over a 3fer',
+            avoid: [function () { var w = wall(); return w ? T.cabinetPoint(w, { circuit: 1, mid: true, raw: true }) : null; }],
+            body: 'Hold Alt and click a circuit to take it over and redraw it by hand. A 3fer you take over keeps its three runs, so it stays a 3fer.',
+            before: function () { switchView('power'); },
+            act: function (t) {
+                var w = wall();
+                var c = A().screenCircuits(w)[1];
+                if (!c || (c.runIds || []).length < 2) throw new Error('the second circuit is not shared');
+                t.mem.num = c.num;
+                var pt = t.cabinetPoint(w, { circuit: 1, mid: true });
+                return t.moveTo(pt, { badge: 'Alt' }).then(function () {
+                    A().updateOverrideHover(true, pt.worldX, pt.worldY);
+                    return t.pause(PACE.hover);   // the lit circuit, read
+                }).then(function () {
+                    press(true);
+                    t.canvasDown(pt, { altKey: true });
+                    t.canvasUp(pt, { altKey: true });
+                    press(false);
+                    ripple(pt.x, pt.y);
+                    return t.wait(function () { return A()._overrideEditing && A().isRunOverridden(wall(), 'power', t.mem.num); });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the circuit was not taken over');
+                    badge('');
+                    return t.pause(PACE.acted);
+                }).then(function () {
+                    t.key('Escape', {}, document);
+                    return t.wait(function () { return !A()._overrideEditing; });
+                }).then(function () {
+                    return t.pause(PACE.rest);
+                });
+            },
+            check: function (mem) {
+                var w = wall();
+                if (!w || mem.num == null || !A().isRunOverridden(w, 'power', mem.num)) return null;
+                var c = A().screenCircuits(w).find(function (x) { return x.num === mem.num; });
+                var runs = c ? (c.runIds || []).length : 0;
+                var shared = sharedCircuits(w).find(function (s) { return s.num === mem.num; });
+                if (runs < 2 || !shared || shared.ways !== runs) return null;
+                return 'Circuit ' + mem.num + ' is now drawn by hand and is still a ' + runs + 'fer of ' + runs + ' runs.';
+            },
+            after: function () {
+                var a = A();
+                if (a && a._overrideEditing && a.endOverrideEdit) { try { a.endOverrideEdit(); } catch (e) {} }
+            }
+        },
+        // Custom mode ON starts empty (the owner's ruling, 2026-10-19):
+        // every circuit on the screen, take-overs and typed circuit labels
+        // included, is wiped in the toggle's one history entry.
+        customPower: {
+            since: '1.5.3',
+            target: '#power-custom-toggle', place: 'right', title: 'Custom mode for power',
+            body: 'Custom mode hands you the runs: turn it on and the screen starts empty. Every circuit, take-over and typed circuit label is wiped.',
+            before: function () { switchView('power'); },
+            act: function (t) {
+                var w = wall();
+                t.mem.taken = !!(w && (w.powerCustomOverrides || []).length);
+                return t.click('#power-custom-toggle').then(function () {
+                    return t.wait(function () { var l = wall(); return l && A().isCustomPower(l); });
+                });
+            },
+            check: function (mem) {
+                var w = wall();
+                if (!w || !A().isCustomPower(w)) return null;
+                var paths = w.powerCustomPaths || {};
+                var drawn = Object.keys(paths).filter(function (k) { return (paths[k] || []).length; }).length;
+                if (drawn || (w.powerCustomOverrides || []).length) return null;
+                return mem.taken ? 'Custom mode is on and nothing is drawn: the taken-over 3fer went with the rest.'
+                    : 'Custom mode is on and nothing is drawn yet.';
             }
         },
         // The fill: drag across the wall (custom mode's own drag selects
-        // cabinets), press a pattern button, and _applyPatternFill lays the
-        // selection into circuits each filled to customRunCapacity.
+        // cabinets), press a pattern button. With sharing on the fill cuts
+        // the way automatic mode does (app-custom-runs.js
+        // _chunkPicksIntoShares): a run per column, neighbours on one
+        // circuit while the load fits.
         customDraw: {
-            target: '.power-flow-pattern-btn[data-pattern="tl-h"]', place: 'right', title: 'Draw the circuits',
-            avoid: ['.power-flow-pattern-btn[data-pattern="tl-h"]', '#main-canvas'],
-            body: 'Drag across the cabinets to select them, then press a pattern: the selection is laid into circuits, each filled to its capacity.',
+            since: '1.5.3',
+            target: '.power-flow-pattern-btn[data-pattern="tl-v"]', place: 'right', title: 'Draw the circuits',
+            avoid: ['.power-flow-pattern-btn[data-pattern="tl-v"]', '#main-canvas'],
+            body: 'Drag across the cabinets, then press Top-left, vertical first. With sharing on you get what automatic mode makes: a run per column, neighbours sharing a 3fer while the load fits.',
             before: function () { switchView('power'); },
             act: function (t) {
                 var w = wall();
@@ -3551,17 +3665,19 @@
                     if (!sel) throw new Error('the drag selected no cabinets');
                     return t.pause(PACE.sweepRest);
                 }).then(function () {
-                    return t.click('.power-flow-pattern-btn[data-pattern="tl-h"]');
+                    return t.click('.power-flow-pattern-btn[data-pattern="tl-v"]');
                 }).then(function () {
-                    return t.wait(function () { return A().usesCustomCircuits(wall()); });
+                    return t.wait(function () { return A().usesCustomCircuits(wall()) && sharedCircuits(wall()).length; });
                 });
             },
             check: function () {
                 var w = wall();
                 if (!w || !A().usesCustomCircuits(w)) return null;
-                var circuits = A().screenCircuits(w);
-                var cap = A().customRunCapacity(w, 'power');
-                return circuits.length + ' circuits drawn by hand, ' + (cap.known ? cap.count + ' cabinets a circuit at ' + cap.at : 'each to its capacity') + '.';
+                var shared = sharedCircuits(w);
+                if (!shared.length || shared.some(function (s) { return s.over; })) return null;
+                var runs = A().screenCircuits(w).reduce(function (n, c) { return n + ((c.runIds || []).length || 1); }, 0);
+                return runs + ' column runs drawn by hand, shared as '
+                    + A()._nferSizesLabel(shared.map(function (s) { return s.ways; })) + ', the same as automatic mode.';
             },
             // The fill leaves the selection standing (a person may press
             // another pattern); the app's own Esc drops it. Dropped here on
@@ -3576,44 +3692,62 @@
                 }
             }
         },
-        splitters: {
-            target: '#power-splitters-enabled', place: 'right', title: 'Share two runs through a 2fer',
-            avoid: ['#power-splitters-enabled', '#main-canvas'],
-            // The single-run Share, not the swept "2fer them": the batch
-            // verb never deals a group past the amps, in either mode (the
-            // owner's ruling, 2026-10-19), so only Share can show custom
-            // mode's OVER on these full circuits.
-            body: 'A share past a circuit&rsquo;s amps is refused in automatic mode. In custom mode, where you own the runs, turn sharing on, right-click a run and share it with the next; the chip flags OVER.',
+        // The batch verb on runs picked by hand (canvas.js Alt+drag arms
+        // the sweep, app-dock-menus.js _prepareBatchMenu deals it): it
+        // works in automatic mode, in custom mode and across a group, and
+        // never deals a circuit past its amps; runs that do not fit
+        // together stay on circuits of their own.
+        sweepShare: {
+            since: '1.5.3',
+            target: '#main-canvas', place: 'top', title: '2fer the runs you pick',
+            avoid: [function () { var w = wall(); return w ? T.cabinetPoint(w, { circuit: 0, mid: true, raw: true }) : null; },
+                    function () { var w = wall(); return w ? T.cabinetPoint(w, { circuit: 1, mid: true, raw: true }) : null; }],
+            body: 'Hold Alt and drag across circuits to pick them, then right-click and pick 2fer them. It works in either mode and across a group, and runs that do not fit together stay plain.',
             before: function () { switchView('power'); },
             act: function (t) {
-                return t.click('#power-splitters-enabled').then(function () {
-                    return t.wait(function () { return A().getPowerSplitters(wall()).enabled; });
+                var w = wall();
+                var circuits = A().screenCircuits(w);
+                if (circuits.length < 2) throw new Error('fewer than two circuits to sweep');
+                var c0 = t.cabinetPoint(w, { circuit: 0, mid: true });
+                var c1 = t.cabinetPoint(w, { circuit: 1, mid: true });
+                return t.hover(c0, { badge: 'Alt' }).then(function () {
+                    press(true);
+                    t.canvasDown(c0, { altKey: true });
+                    return t.pause(PACE.dragPress);
                 }).then(function () {
-                    var w = wall();
-                    if (A().screenCircuits(w).length < 2) throw new Error('fewer than two circuits to share');
-                    return t.rightClick(t.cabinetPoint(w, { circuit: 0 }));
+                    t.canvasMove({ x: c0.x + 6, y: c0.y + 6 }, { altKey: true });
+                    return t.canvasGlide(c1, { altKey: true }, PACE.sweep);
                 }).then(function () {
-                    return t.pickMenu('hw-share');
+                    t.canvasMove(c1, { altKey: true });
+                    return t.pause(PACE.hover);
+                }).then(function () {
+                    t.canvasUp(c1, { altKey: true });
+                    press(false);
+                    return t.wait(function () { var s = A()._sweepSelection; return s && (s.nums || []).length >= 2; });
+                }).then(function (sel) {
+                    if (!sel) throw new Error('the sweep picked no circuits');
+                    return t.pause(PACE.sweepRest);
+                }).then(function () {
+                    return t.rightClick(c1);
+                }).then(function () {
+                    var item = $('#context-menu [data-action="hw-batch-n0"]');
+                    t.mem.label = item ? item.textContent.trim() : '';
+                    if (!/^2fer them/.test(t.mem.label)) throw new Error('the menu offers no 2fer them');
+                    return t.pickMenu('hw-batch-n0');
                 }).then(function () {
                     return t.wait(function () {
-                        var l = wall(); var sp = l && l.powerSplitters;
-                        return sp && sp.manual && Array.isArray(sp.manual.merge) && sp.manual.merge.length;
+                        return !A()._sweepSelection && sharedCircuits(wall()).some(function (s) { return s.ways === 2; });
                     });
                 });
             },
             check: function (mem) {
-                var w = wall(); var sp = w && w.powerSplitters;
-                var merge = sp && sp.manual && sp.manual.merge;
-                if (!merge || !merge.length) return null;
-                if (!A().isCustomPower(w)) return null;
-                // The share the wall reads, and its OVER - the canvas's own
-                // registry, the one the bracket and the pill draw from.
-                var shared = (R()._nferGangs ? R()._nferGangs(w) : [])
-                    .find(function (g) { return g.runIds.length > 1; });
-                if (!shared || !shared.over) return null;
-                var load = A().shareLoad(w, shared.runIds);
-                return 'Runs ' + shared.runIds.join(' and ') + ' share one circuit through a 2fer: '
-                    + load.amps.toFixed(1) + ' A on a ' + (+load.cap.toFixed(1)) + ' A circuit, flagged OVER.';
+                var w = wall();
+                var shared = sharedCircuits(w);
+                var pairs = shared.filter(function (s) { return s.ways === 2; });
+                if (!pairs.length || shared.some(function (s) { return s.over; })) return null;
+                var ids = pairs.reduce(function (all, s) { return all.concat(s.runIds); }, []);
+                return (mem.label || '2fer them') + ': runs ' + Math.min.apply(null, ids) + ' to ' + Math.max.apply(null, ids)
+                    + ' now share in pairs, each within its amps.';
             }
         },
         balance: {
@@ -4164,7 +4298,8 @@
                     'snakePorts', 'cableSheet', 'snakeHomeRun',
                     'dataCableTags', 'addBreakoutBox', 'panelWatts', 'addDistro', 'distroRating', 'dropMulti', 'typeChip',
                     'clearCircuit', 'clearMultiByMenu', 'dropMultiAgain', 'multiCableSheet', 'powerCableTags',
-                    'customPower', 'customDraw', 'splitters', 'addBeach', 'addScreen', 'beachByMenu', 'exportBinder', 'wiringTick', 'titleBlock', 'outroWhatsNew']
+                    'powerColumns', 'splitters', 'takeOver', 'customPower', 'customDraw', 'sweepShare',
+                    'addBeach', 'addScreen', 'beachByMenu', 'exportBinder', 'wiringTick', 'titleBlock', 'outroWhatsNew']
         },
         advanced: {
             title: 'Advanced Guide',
@@ -4178,7 +4313,7 @@
                     'distroPhase', 'distroRating', 'distroMain', 'distroPreset', 'distroRows',
                     'dropMulti', 'clearCircuit', 'clearMultiByMenu', 'dropMultiAgain',
                     'multiCableSheet', 'powerJumpers', 'cableUnit', 'powerCableTags',
-                    'customPower', 'customDraw', 'splitters', 'balance',
+                    'powerColumns', 'splitters', 'takeOver', 'customPower', 'customDraw', 'sweepShare', 'balance',
                     'addBeach', 'screenBeach', 'addScreen', 'beachByMenu', 'crossScreens', 'groupScreens',
                     'exportBinder', 'screenOrder', 'wiringTick', 'titleBlock', 'fileExports', 'preferences',
                     'helpMenu', 'outroAdvanced']

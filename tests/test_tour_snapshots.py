@@ -237,8 +237,8 @@ def _indices(tour, n, every=1):
     return [i for i in range(1, n) if (i % every == 0 or i == n - 1)]
 
 
-ADVANCED_STEPS = 66
-WHATS_NEW_STEPS = 36
+ADVANCED_STEPS = 69
+WHATS_NEW_STEPS = 39
 QUICK_STEPS = 10
 
 
