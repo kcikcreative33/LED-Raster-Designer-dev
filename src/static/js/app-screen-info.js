@@ -1311,8 +1311,10 @@ class _ScreenInfo {
         this.saveState(layer.visible ? 'Show Layer' : 'Hide Layer');
     }
 
+    // A lock is the whole group's (app-screen-groups.js, "one lock per
+    // group"): a selected member brings every screen of its group.
     setLockOnSelected(locked) {
-        const layers = this.getSelectedLayers();
+        const layers = this._withWholeGroups(this.getSelectedLayers());
         if (layers.length === 0) return;
         layers.forEach(layer => {
             layer.locked = locked;
@@ -1327,9 +1329,19 @@ class _ScreenInfo {
         this.saveState(locked ? 'Lock Layers' : 'Unlock Layers');
     }
 
-    toggleLockOnSelected() {
-        const layers = this.getSelectedLayers();
+    // A group an old file left half locked asks which way first; Cancel
+    // leaves every screen as it was.
+    async toggleLockOnSelected() {
+        const layers = this._withWholeGroups(this.getSelectedLayers());
         if (layers.length === 0) return;
+        const mixed = layers.filter(l => l.group_id && this.groupMembersOf(l)
+            .some(m => !!m.locked !== !!l.locked));
+        if (mixed.length) {
+            const pick = await this.askGroupLock(layers);
+            if (!pick) return;
+            this.setLockOnSelected(pick === 'lock');
+            return;
+        }
         const anyUnlocked = layers.some(l => !l.locked);
         this.setLockOnSelected(anyUnlocked);
     }

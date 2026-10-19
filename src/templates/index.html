@@ -3086,6 +3086,22 @@
          checked against - the members have to agree on processor, bit depth
          and frame rate. Only the fields that actually differ get a chooser;
          the ones that already match are listed as confirmation. -->
+    <!-- A group is locked or unlocked as one (the owner's ruling,
+         2026-10-19): grouping locked and unlocked screens together, or a
+         lock toggle on a group an old file left half locked, asks which
+         way (app-screen-groups.js askGroupLock). -->
+    <div id="group-lock-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="background: #252525; border-radius: 8px; padding: 24px; max-width: 460px; margin: 80px auto; border: 1px solid #3a3a3a;">
+            <h2 style="margin-top: 0; color: #fff; margin-bottom: 8px; font-size: 18px;">Lock or unlock the group?</h2>
+            <div id="group-lock-text" style="color: #aaa; font-size: 12px; margin-bottom: 16px;"></div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                <button id="group-lock-cancel" class="btn" style="background: #3a3a3a; padding: 8px 16px;">Cancel</button>
+                <button id="group-lock-unlock" class="btn" style="background: #3a3a3a; padding: 8px 16px;">Unlock it</button>
+                <button id="group-lock-lock" class="btn btn-primary" style="padding: 8px 16px;">Lock the whole group</button>
+            </div>
+        </div>
+    </div>
+
     <div id="group-settings-modal" class="modal" style="display: none;">
         <div class="modal-content" style="background: #252525; border-radius: 8px; padding: 24px; max-width: 460px; margin: 80px auto; border: 1px solid #3a3a3a;">
             <h2 style="margin-top: 0; color: #fff; margin-bottom: 4px; font-size: 18px;">Group Settings Don't Match</h2>

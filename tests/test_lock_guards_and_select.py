@@ -1124,7 +1124,13 @@ def test_a_cross_canvas_drag_with_a_locked_current_screen_moves_the_unlocked(pag
 
 def _dress_locked_group(page):
     """A wall of Lock A (locked) and Lock B, with a hand-drawn data path on A
-    that steps onto B - the step a move of B out of the wall would cut."""
+    that steps onto B - the step a move of B out of the wall would cut.
+
+    Since the owner's ruling of 2026-10-19 the app locks a group as ONE
+    ("if a screen is locked and becomes part of a group then ask if want to
+    lock the whole thing or unlock it"), so its lock verb can no longer make
+    this half-locked wall; it is an OLD FILE's shape now, written straight
+    onto A the way such a file loads, and the guard must still hold for it."""
     a, b, c = reset(page, group=[0, 1], selected=[1], current=1)
     page.evaluate("""async ([a, b]) => {
         const app = window.app;
@@ -1133,8 +1139,17 @@ def _dress_locked_group(page):
         A.customPortPaths = { 1: [{ row: 0, col: 0 }, { row: 0, col: 0, layerId: b }] };
         app.updateLayers([A]);
         await app._layerSavesSettled();
+        A.locked = true;
+        app._putLayer(a, { locked: true });
+        await app._layerSavesSettled();
+        app.selectedLayerIds = new Set([b]);
+        app.currentLayer = app.project.layers.find(l => l.id === b);
+        app.lastSelectedLayerId = b;
+        app.loadLayerToInputs();
+        app.resetHistory('Lock guard test lock');
+        app._lastLockedEditReport = null;
+        window.__toasts = [];
     }""", [a, b])
-    lock(page, [a], [b], b)
     cid = page.evaluate(SECOND_CANVAS_JS)
     return a, b, c, cid, server_layer(page, a), server_layer(page, b)
 

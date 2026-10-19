@@ -573,12 +573,14 @@ class _ScreenGroups {
     async groupSelectedLayers() {
         const screens = this.getSelectedScreenLayers();
         if (screens.length < 2) return null;
-        // Grouping rewrites each member's group and its shared settings: a
-        // locked screen stays as it is, so the group is not made and the
-        // error names it (the owner's ruling, 2026-10-16).
-        if (this._lockedRefused(screens)) return null;
+        // A group is locked or unlocked as one: locked and unlocked screens
+        // together ask which way first (_settleGroupLock); screens that are
+        // all locked stay as they are and are named.
+        const lock = await this._settleGroupLock(screens);
+        if (!lock.ok) return null;
         const chosen = await this._resolveGroupSettings(screens, 'create');
         if (!chosen) return null;  // Cancel groups nothing and changes nothing
+        if (lock.locked !== null) screens.forEach(l => { l.locked = lock.locked; });
         this._applyGroupSettings(screens, chosen);
         screens.forEach(layer => this._detachLayerFromGroups(layer));
         const group = {
@@ -605,11 +607,12 @@ class _ScreenGroups {
         // The same check runs here as on create: a screen joining a group
         // still has to agree with the screens already in it.
         const all = this.getGroupMembers(group).concat(incoming);
-        // Joining can rewrite every member's shared settings: a locked
-        // screen on either side keeps the walls as they are.
-        if (this._lockedRefused(all)) return false;
+        // The joined group is locked or unlocked as one (_settleGroupLock).
+        const lock = await this._settleGroupLock(all);
+        if (!lock.ok) return false;
         const chosen = await this._resolveGroupSettings(all, 'add');
         if (!chosen) return false;
+        if (lock.locked !== null) all.forEach(l => { l.locked = lock.locked; });
         this._applyGroupSettings(all, chosen);
         if (!Array.isArray(group.layer_ids)) group.layer_ids = [];
         incoming.forEach(layer => {
@@ -824,17 +827,117 @@ class _ScreenGroups {
         }
     }
 
-    // One lock for the wall, same "any unlocked => lock them all" rule
-    // toggleLockOnSelected uses for a multi-selection.
+    // One lock for the wall. A group an old file left half locked asks
+    // which way (askGroupLock); otherwise the toggle flips the wall.
     async toggleGroupLock(groupId) {
         const group = this.resolveGroup(groupId);
         if (!group) return false;
         const members = this.getGroupMembers(group);
         if (members.length === 0) return false;
-        const locked = members.some(m => !m.locked);
+        let locked = members.some(m => !m.locked);
+        if (members.some(m => m.locked) && members.some(m => !m.locked)) {
+            const pick = await this.askGroupLock(members);
+            if (!pick) return false;
+            locked = pick === 'lock';
+        }
         members.forEach(m => { m.locked = locked; });
         await this._commitGroupChange(locked ? 'Lock Group' : 'Unlock Group');
         return true;
+    }
+
+    // ── one lock per group ───────────────────────────────────────────────
+    //
+    // The owner's ruling, 2026-10-19: "if a screen is locked and becomes part
+    // of a group then ask if want to lock the whole thing or unlock it. since
+    // cant be both." Grouping (or joining a group) over locked AND unlocked
+    // screens asks once - "Lock the whole group" or "Unlock it" - and Cancel
+    // groups nothing; the choice lands on every member inside the
+    // grouping's one history entry. Locking or unlocking any member does the
+    // whole group (setLockOnSelected, toggleGroupLock). A group an old file
+    // left half locked opens as it was saved, every locked member still
+    // refusing its own changes; the first lock toggle on it asks the same
+    // question. Screens that are ALL locked still group nothing: nothing
+    // about a locked screen changes, and they are named.
+
+    // { ok, locked }: ok false - nothing may change (the screens are all
+    // locked, named, or the question was cancelled); locked null - nobody
+    // is locked, nothing to settle; true / false - the lock every member
+    // takes with the grouping.
+    async _settleGroupLock(screens) {
+        const locked = (screens || []).filter(l => l && l.locked);
+        if (!locked.length) return { ok: true, locked: null };
+        if (locked.length === screens.length) {
+            this._showLockedError(locked);
+            return { ok: false, locked: null };
+        }
+        const pick = await this.askGroupLock(screens);
+        if (!pick) return { ok: false, locked: null };
+        return { ok: true, locked: pick === 'lock' };
+    }
+
+    // The question: resolves 'lock', 'unlock' or null (Cancel, Escape, the
+    // backdrop).
+    askGroupLock(screens) {
+        this._wireGroupLockModal();
+        const modal = document.getElementById('group-lock-modal');
+        if (!modal) return Promise.resolve(null);
+        const names = (ls) => {
+            const n = ls.map(l => l.name || `Screen ${l.id}`);
+            return n.length <= 1 ? (n[0] || '')
+                : `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}`;
+        };
+        const locked = screens.filter(l => l.locked);
+        const open = screens.filter(l => !l.locked);
+        const text = document.getElementById('group-lock-text');
+        if (text) {
+            text.textContent = `${names(locked)} ${locked.length === 1 ? 'is' : 'are'} `
+                + `locked and ${names(open)} ${open.length === 1 ? 'is' : 'are'} not. `
+                + 'A group is locked or unlocked as one: lock the whole group, '
+                + 'or unlock it?';
+        }
+        if (this._groupLockResolve) this._groupLockResolve(null);
+        modal.style.display = 'block';
+        return new Promise(resolve => { this._groupLockResolve = resolve; });
+    }
+
+    closeGroupLockDialog(result = null) {
+        const modal = document.getElementById('group-lock-modal');
+        if (modal) modal.style.display = 'none';
+        const resolve = this._groupLockResolve;
+        this._groupLockResolve = null;
+        if (resolve) resolve(result);
+    }
+
+    _wireGroupLockModal() {
+        if (this._groupLockWired) return;
+        const modal = document.getElementById('group-lock-modal');
+        if (!modal) return;
+        const on = (id, result) => {
+            const btn = document.getElementById(id);
+            if (btn) btn.addEventListener('click', () => this.closeGroupLockDialog(result));
+        };
+        on('group-lock-cancel', null);
+        on('group-lock-unlock', 'unlock');
+        on('group-lock-lock', 'lock');
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) this.closeGroupLockDialog(null);
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this._groupLockResolve) this.closeGroupLockDialog(null);
+        });
+        this._groupLockWired = true;
+    }
+
+    // `layers` with every screen of every group they touch: a lock is the
+    // whole group's.
+    _withWholeGroups(layers) {
+        const out = new Map();
+        (layers || []).forEach(l => {
+            if (!l) return;
+            out.set(l.id, l);
+            if (l.group_id) this.groupMembersOf(l).forEach(m => out.set(m.id, m));
+        });
+        return [...out.values()];
     }
 
     // Deletes every member AND the group as ONE undoable action. Goes through
