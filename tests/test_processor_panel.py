@@ -1824,6 +1824,74 @@ MEASURE_ROW_JS = """(args) => {
 }"""
 
 
+# The page counts its own fetches, each one until its reply has been read
+# and handled, so a test waits for an edit's round trip instead of sleeping
+# through it. Installed ahead of the app's own scripts.
+FETCH_COUNT_JS = """(() => {
+    let open = 0;
+    // dropped a task later, so the .then() handling the reply - and any
+    // fetch it starts - has run before the count falls
+    const done = () => setTimeout(() => { open -= 1; }, 0);
+    const track = (p) => { open += 1; p.then(done, done); return p; };
+    const fetch0 = window.fetch;
+    window.fetch = function () { return track(fetch0.apply(this, arguments)); };
+    for (const k of ['json', 'text']) {
+        const read = Response.prototype[k];
+        Response.prototype[k] = function () {
+            return track(read.apply(this, arguments));
+        };
+    }
+    Object.defineProperty(window, '__lrdOpenFetches', { get: () => open });
+})();"""
+
+# Nothing on its way: every fetch back and handled, and no undo/redo
+# restore PUT in flight (_syncRestoredProject).
+QUIET_JS = """() => {
+    const app = window.app;
+    return !!app && window.__lrdOpenFetches === 0
+        && !(app._restorePutsInFlight && app._restorePutsInFlight.size);
+}"""
+
+# Then the layout at rest: two frames running with no dock re-stack
+# pending - the tray's ResizeObserver asks for one on the NEXT frame
+# (app-dock.js _dockMasonryLater). Capped, so the asserts still speak.
+CALM_FRAMES_JS = """async () => {
+    const frame = () => new Promise(r => requestAnimationFrame(r));
+    for (let i = 0, calm = 0; calm < 2 && i < 120; i++) {
+        await frame();
+        calm = window.app._dockMasonryRaf ? 0 : calm + 1;
+    }
+}"""
+
+# Loaded: the project read, the socket's first project_data seen, and the
+# processor catalog in hand (the dock's pickers are built from it).
+APP_READY_JS = """() => !!window.app
+    && window.app._initialLoadComplete === true
+    && window.app._firstProjectDataSeen === true
+    && !!window.app._processorCatalog"""
+
+
+# The tray folds, unfolds and comes up with its view over a CSS transition
+# (style.css .lrd-panel), done when the dock carries no running animation.
+DOCK_STILL_JS = """() => document.getElementById('hardware-dock')
+    .getAnimations().length === 0"""
+
+
+def quiet(page):
+    page.wait_for_function(QUIET_JS)
+    page.evaluate(CALM_FRAMES_JS)
+
+
+def dock_still(page):
+    page.wait_for_function(DOCK_STILL_JS)
+    quiet(page)
+
+
+def app_ready(page):
+    page.wait_for_function(APP_READY_JS)
+    quiet(page)
+
+
 @pytest.fixture(scope="module")
 def panel_page(e2e_server, pw_browser):
     # These tests seed processors into the SHARED live server; the module's
@@ -1833,13 +1901,14 @@ def panel_page(e2e_server, pw_browser):
     context = pw_browser.new_context()
     context.add_init_script(
         "try{localStorage.setItem('lrd_quickstart_disabled','1');}catch(e){}")
+    context.add_init_script(FETCH_COUNT_JS)
     pg = context.new_page()
     pg.goto(e2e_server, wait_until='domcontentloaded')
-    pg.wait_for_timeout(2000)  # socket connect + app init
+    app_ready(pg)
     assert pg.evaluate(RESET_LAYERS_JS), "test project was not created"
-    pg.wait_for_timeout(600)
+    quiet(pg)
     pg.locator('[data-mode="data-flow"]').click()
-    pg.wait_for_timeout(400)
+    dock_still(pg)
     yield pg
     context.close()
 
@@ -1854,13 +1923,16 @@ def test_the_port_row_renders_both_fields(panel_page, width):
     issue strip is measured by its own test further down."""
     pytest.importorskip("playwright.sync_api", reason="playwright not installed")
     ids = panel_page.evaluate(RESET_PROCESSORS_JS)
-    panel_page.wait_for_timeout(600)
+    quiet(panel_page)
     panel_page.set_viewport_size({'width': width, 'height': 720})
+    # a fixed wait on purpose: a tray resize re-deals the dock on a
+    # 120 ms debounce that leaves no flag to wait on
+    # (app-dock.js _wireDockColumnRedeal)
     panel_page.wait_for_timeout(400)
     try:
         assert panel_page.evaluate(OPEN_TILE_JS, f"port-{ids['cardId']}-1"), (
             'port 1 has no chip to open')
-        panel_page.wait_for_timeout(100)
+        quiet(panel_page)
         out = panel_page.evaluate(MEASURE_ROW_JS,
                                   {'cardId': ids['cardId'], 'width': width})
         assert out['nameVisible'] and out['returnVisible'], out
@@ -1877,6 +1949,7 @@ def test_the_port_row_renders_both_fields(panel_page, width):
             }
         }""", f"port-{ids['cardId']}-1")
         panel_page.set_viewport_size({'width': 1280, 'height': 720})
+        # the same debounced re-deal, settled before the next test
         panel_page.wait_for_timeout(300)
 
 
@@ -1886,7 +1959,7 @@ def test_renaming_either_end_round_trips_through_undo(panel_page):
     forward one end at a time - the return undone while the primary stands."""
     pytest.importorskip("playwright.sync_api", reason="playwright not installed")
     ids = panel_page.evaluate(RESET_PROCESSORS_JS)
-    panel_page.wait_for_timeout(600)
+    quiet(panel_page)
 
     def commit(kind, value):
         panel_page.evaluate("""(args) => {
@@ -1895,7 +1968,7 @@ def test_renaming_either_end_round_trips_through_undo(panel_page):
             input.value = args.value;
             input.dispatchEvent(new Event('change', { bubbles: true }));
         }""", {'kind': kind, 'cardId': ids['cardId'], 'value': value})
-        panel_page.wait_for_timeout(800)
+        quiet(panel_page)
 
     def stored():
         state = panel_page.evaluate(
@@ -1913,19 +1986,19 @@ def test_renaming_either_end_round_trips_through_undo(panel_page):
     assert actions == ['Rename Processor Port', 'Rename Processor Port Return']
 
     panel_page.evaluate("() => window.app.undo()")
-    panel_page.wait_for_timeout(1000)
+    quiet(panel_page)
     assert stored() == ('HL', None), 'undo took the primary with the return'
 
     panel_page.evaluate("() => window.app.undo()")
-    panel_page.wait_for_timeout(1000)
+    quiet(panel_page)
     assert stored() == (None, None)
 
     panel_page.evaluate("() => window.app.redo()")
-    panel_page.wait_for_timeout(1000)
+    quiet(panel_page)
     assert stored() == ('HL', None)
 
     panel_page.evaluate("() => window.app.redo()")
-    panel_page.wait_for_timeout(1000)
+    quiet(panel_page)
     assert stored() == ('HL', 'BU-1')
 
     # CLEARING IS AN EDIT LIKE ANY OTHER. Emptying the box is the one way
@@ -1940,11 +2013,11 @@ def test_renaming_either_end_round_trips_through_undo(panel_page):
     assert actions == ['Rename Processor Port']
 
     panel_page.evaluate("() => window.app.undo()")
-    panel_page.wait_for_timeout(1000)
+    quiet(panel_page)
     assert stored() == ('HL', 'BU-1'), 'undo did not bring the name back'
 
     panel_page.evaluate("() => window.app.redo()")
-    panel_page.wait_for_timeout(1000)
+    quiet(panel_page)
     assert stored() == (None, 'BU-1'), 'redo did not re-clear the name'
 
 
@@ -2622,16 +2695,19 @@ def test_dock_scroll_alone_reaches_all_twenty_ports(panel_page):
     its resize floor first so it actually has something to scroll."""
     pytest.importorskip("playwright.sync_api", reason="playwright not installed")
     ids = panel_page.evaluate(PORT_LIST_SEED_JS)
-    panel_page.wait_for_timeout(600)
+    quiet(panel_page)
     # the dock's own height var (theme.js's resize row), floored at 100px
     panel_page.evaluate("""() => document.documentElement.style
         .setProperty('--lrd-dock-h', '100px')""")
+    # a fixed wait on purpose: a tray resize re-deals the dock on a
+    # 120 ms debounce that leaves no flag to wait on
+    # (app-dock.js _wireDockColumnRedeal)
     panel_page.wait_for_timeout(400)
     try:
         # port 20's editor is the far end of the walk, so it is the one opened
         assert panel_page.evaluate(OPEN_TILE_JS, f"port-{ids['cardId']}-20"), (
             'port 20 has no chip to open')
-        panel_page.wait_for_timeout(100)
+        quiet(panel_page)
         out = panel_page.evaluate(MEASURE_PORT_LIST_JS,
                                   {'cardId': ids['cardId']})
         assert out['ports'] == 20, out
@@ -2649,6 +2725,7 @@ def test_dock_scroll_alone_reaches_all_twenty_ports(panel_page):
     finally:
         panel_page.evaluate("""() => document.documentElement.style
             .removeProperty('--lrd-dock-h')""")
+        # the same debounced re-deal, settled before the next test
         panel_page.wait_for_timeout(300)
 
 
@@ -2720,14 +2797,17 @@ def test_the_issue_strip_fits_at_both_widths(panel_page, width):
     now, so the squeeze is the viewport's.)"""
     pytest.importorskip("playwright.sync_api", reason="playwright not installed")
     ids = panel_page.evaluate(RESET_PROCESSORS_JS)
-    panel_page.wait_for_timeout(800)
+    quiet(panel_page)
     panel_page.set_viewport_size({'width': width, 'height': 720})
+    # a fixed wait on purpose: a tray resize re-deals the dock on a
+    # 120 ms debounce that leaves no flag to wait on
+    # (app-dock.js _wireDockColumnRedeal)
     panel_page.wait_for_timeout(400)
     try:
         # a stranded pin is an issue every seeded project can raise, and
         # its row carries an offer button - the strip's full shape.
         raised = panel_page.evaluate(GHOST_PIN_JS, ids['cardId'])
-        panel_page.wait_for_timeout(800)
+        quiet(panel_page)
         assert raised, 'the orphaned pin never came up as an issue'
         m = panel_page.evaluate(ASSIGNMENT_FIT_JS, 'hw-dock-issues')
         assert m, '#hw-dock-issues is not in the document'
@@ -2742,8 +2822,9 @@ def test_the_issue_strip_fits_at_both_widths(panel_page, width):
             f"{m['scrollW']}px in a {m['clientW']}px tray")
     finally:
         panel_page.evaluate(GHOST_RELEASE_JS)
-        panel_page.wait_for_timeout(800)
+        quiet(panel_page)
         panel_page.set_viewport_size({'width': 1280, 'height': 720})
+        # the same debounced re-deal, settled before the next test
         panel_page.wait_for_timeout(300)
 
 
@@ -2761,7 +2842,7 @@ def test_the_dock_strip_reports_and_offers_without_an_auto_toggle(panel_page):
     render."""
     pytest.importorskip("playwright.sync_api", reason="playwright not installed")
     ids = panel_page.evaluate(RESET_PROCESSORS_JS)
-    panel_page.wait_for_timeout(800)
+    quiet(panel_page)
 
     shape = panel_page.evaluate("""(cardId) => {
         const strip = document.getElementById('hw-dock-issues');
@@ -2797,7 +2878,7 @@ def test_the_dock_strip_reports_and_offers_without_an_auto_toggle(panel_page):
 
     # a stranded pin raises a red row whose button is the Release offer
     raised = panel_page.evaluate(GHOST_PIN_JS, ids['cardId'])
-    panel_page.wait_for_timeout(800)
+    quiet(panel_page)
     assert raised == 1, f'the orphaned pin never came up as an issue: {raised}'
     issue = panel_page.evaluate("""() => {
         const strip = document.getElementById('hw-dock-issues');
@@ -2825,7 +2906,7 @@ def test_the_dock_strip_reports_and_offers_without_an_auto_toggle(panel_page):
             .find(r => r.textContent.includes('no longer in the project'))
             .querySelector('button').click();
     }""")
-    panel_page.wait_for_timeout(800)
+    quiet(panel_page)
     after = panel_page.evaluate("""() => ({
         issues: document.getElementById('hw-dock-issues').textContent,
         pins: ((window.app.project.port_assignments || {}).pins || [])
@@ -2872,18 +2953,18 @@ def test_the_return_template_round_trips_through_undo(panel_page):
     returns back to <primary>R and forward to the template again."""
     pytest.importorskip("playwright.sync_api", reason="playwright not installed")
     ids = panel_page.evaluate(RESET_PROCESSORS_JS)
-    panel_page.wait_for_timeout(600)
+    quiet(panel_page)
 
     assert panel_page.evaluate(OPEN_GEAR_JS, f"card-{ids['cardId']}"), (
         'the card gear did not open')
-    panel_page.wait_for_timeout(200)
+    quiet(panel_page)
     panel_page.evaluate("""(args) => {
         const input = document.querySelector(
             `[data-lrd-field="processor-card-return-template-${args.cardId}"]`);
         input.value = 'BU-#';
         input.dispatchEvent(new Event('change', { bubbles: true }));
     }""", {'cardId': ids['cardId']})
-    panel_page.wait_for_timeout(800)
+    quiet(panel_page)
 
     # The rebuild the round trip caused re-rendered the popover in place:
     # still open, the field back under its key with the stored value.
@@ -2915,15 +2996,15 @@ def test_the_return_template_round_trips_through_undo(panel_page):
     assert action == 'Edit Processor Return Label Template'
 
     panel_page.evaluate("() => window.app.undo()")
-    panel_page.wait_for_timeout(1000)
+    quiet(panel_page)
     assert stored() == (None, 'SR-1R'), 'undo did not clear the template'
 
     panel_page.evaluate("() => window.app.redo()")
-    panel_page.wait_for_timeout(1000)
+    quiet(panel_page)
     assert stored() == ('BU-#', 'BU-1'), 'redo did not restore the template'
     # leave the popover closed for the next test - Escape is its teardown
     panel_page.keyboard.press('Escape')
-    panel_page.wait_for_timeout(100)
+    quiet(panel_page)
 
 
 def test_the_reporting_left_the_retired_hosts_for_the_strip():
@@ -3095,7 +3176,7 @@ def card_sec(ids, which):
 
 def seed_fold(panel_page):
     ids = panel_page.evaluate(FOLD_SEED_JS)
-    panel_page.wait_for_timeout(600)
+    quiet(panel_page)
     return ids
 
 
@@ -3127,7 +3208,7 @@ def test_the_arrow_folds_a_card_and_nothing_leaves_the_dom(panel_page):
             'the unit\'s one name field is missing from its strip')
 
     sec_arrow(panel_page, card_sec(ids, 'sxCard')).click()
-    panel_page.wait_for_timeout(200)
+    quiet(panel_page)
     s = fold_state(panel_page, card_sec(ids, 'sxCard'))
     assert s['collapsed'] is True, f'the arrow did not fold the card: {s}'
     assert s['bodyInDom'], 'the folded body left the DOM'
@@ -3146,7 +3227,7 @@ def test_the_arrow_folds_a_card_and_nothing_leaves_the_dom(panel_page):
         ids['sxCard']), 'a folded card\'s port field no longer resolves'
 
     sec_arrow(panel_page, card_sec(ids, 'sxCard')).click()
-    panel_page.wait_for_timeout(200)
+    quiet(panel_page)
     s = fold_state(panel_page, card_sec(ids, 'sxCard'))
     assert s['collapsed'] is False and s['stored'] == '0', s
 
@@ -3245,7 +3326,7 @@ def test_the_glance_follows_the_occupancy_as_screens_arrive(panel_page):
                 '/api/port-assignments/place-overflow', 'POST',
                 { layerId: String(wallB.id), cardId: ids.sxCard });
         }""", ids)
-        panel_page.wait_for_timeout(500)
+        quiet(panel_page)
         after = panel_page.evaluate(
             """(ids) => (window.app._assignment.cards || [])
                    .find(c => c.cardId === ids.sxCard)""", ids)
@@ -3266,7 +3347,7 @@ def test_the_glance_follows_the_occupancy_as_screens_arrive(panel_page):
             window.app.project = await (await fetch('/api/project')).json();
             await window.app.refreshPortAssignment();
         }""", snapshot)
-        panel_page.wait_for_timeout(400)
+        quiet(panel_page)
 
 
 @pytest.mark.parametrize('width', [1280, 860])
@@ -3280,8 +3361,11 @@ def test_the_folded_header_fits_both_widths(panel_page, width):
     ids = seed_fold(panel_page)
     sec_arrow(panel_page, card_sec(ids, 'sxCard')).click()
     sec_arrow(panel_page, card_sec(ids, 'mxCard')).click()
-    panel_page.wait_for_timeout(200)
+    quiet(panel_page)
     panel_page.set_viewport_size({'width': width, 'height': 720})
+    # a fixed wait on purpose: a tray resize re-deals the dock on a
+    # 120 ms debounce that leaves no flag to wait on
+    # (app-dock.js _wireDockColumnRedeal)
     panel_page.wait_for_timeout(400)
     try:
         for which in ('sxCard', 'mxCard'):
@@ -3296,6 +3380,7 @@ def test_the_folded_header_fits_both_widths(panel_page, width):
                 f'{sec} folded is not a glance row at {width}px: {s}')
     finally:
         panel_page.set_viewport_size({'width': 1280, 'height': 720})
+        # the same debounced re-deal, settled before the next test
         panel_page.wait_for_timeout(300)
 
 
@@ -3312,7 +3397,7 @@ def test_a_single_click_is_inert_and_the_names_edit_inline(panel_page):
     # the static model span is head surface that is neither arrow nor input
     panel_page.locator(
         f'[data-lrd-sec="{sec}"] .hw-dock-unit-name').first.click()
-    panel_page.wait_for_timeout(100)
+    quiet(panel_page)
     assert fold_state(panel_page, sec)['collapsed'] is False, (
         'a single click on the header folded the card')
 
@@ -3322,7 +3407,7 @@ def test_a_single_click_is_inert_and_the_names_edit_inline(panel_page):
     field.fill('')
     panel_page.keyboard.type('SL WALL')
     panel_page.keyboard.press('Tab')
-    panel_page.wait_for_timeout(800)
+    quiet(panel_page)
     stored = panel_page.evaluate(
         "async () => (await (await fetch('/api/processors')).json())"
         ".processors[0].name")
@@ -3356,12 +3441,12 @@ def test_double_click_toggles_except_on_the_name_field(panel_page):
     head = panel_page.locator(f'[data-lrd-sec="{sec}"]')
 
     head.locator('.hw-dock-unit-name').first.dblclick()
-    panel_page.wait_for_timeout(200)
+    quiet(panel_page)
     assert fold_state(panel_page, sec)['collapsed'] is True, (
         'double-click on the header did not fold the card')
 
     head.locator('.hw-dock-unit-name').first.dblclick()
-    panel_page.wait_for_timeout(200)
+    quiet(panel_page)
     assert fold_state(panel_page, sec)['collapsed'] is False, (
         'double-click on the folded header did not unfold the card')
 
@@ -3369,7 +3454,7 @@ def test_double_click_toggles_except_on_the_name_field(panel_page):
         'a one-box unit\'s card head offered a name field')
     panel_page.locator(
         f'[data-lrd-field="processor-name-{ids["sx"]}"]').dblclick()
-    panel_page.wait_for_timeout(200)
+    quiet(panel_page)
     assert fold_state(panel_page, sec)['collapsed'] is False, (
         'double-click inside the name field folded the card under the caret')
 
@@ -3381,12 +3466,12 @@ def test_fold_state_survives_reload_and_new_cards_arrive_open(panel_page):
     pytest.importorskip("playwright.sync_api", reason="playwright not installed")
     ids = seed_fold(panel_page)
     sec_arrow(panel_page, card_sec(ids, 'sxCard')).click()
-    panel_page.wait_for_timeout(200)
+    quiet(panel_page)
 
     panel_page.reload(wait_until='domcontentloaded')
-    panel_page.wait_for_timeout(2000)
+    app_ready(panel_page)
     panel_page.locator('[data-mode="data-flow"]').click()
-    panel_page.wait_for_timeout(600)
+    dock_still(panel_page)
     assert fold_state(panel_page,
                       card_sec(ids, 'sxCard'))['collapsed'] is True, (
         'the folded card came back expanded after a reload')
@@ -3410,7 +3495,7 @@ def test_fold_state_survives_reload_and_new_cards_arrive_open(panel_page):
         await window.app.refreshProcessors();
         return card.id;
     }""")
-    panel_page.wait_for_timeout(400)
+    quiet(panel_page)
     assert fold_state(panel_page,
                       f'hwdock-card-{new_card}')['collapsed'] is False, (
         'a brand-new card arrived folded')
@@ -3428,10 +3513,10 @@ def test_a_rebuild_keeps_each_sections_own_state(panel_page):
     pytest.importorskip("playwright.sync_api", reason="playwright not installed")
     ids = seed_fold(panel_page)
     sec_arrow(panel_page, card_sec(ids, 'sxCard')).click()
-    panel_page.wait_for_timeout(200)
+    quiet(panel_page)
 
     panel_page.evaluate("() => window.app.renderProcessorPanel()")
-    panel_page.wait_for_timeout(200)
+    quiet(panel_page)
     assert fold_state(panel_page,
                       card_sec(ids, 'sxCard'))['collapsed'] is True, (
         'a bare re-render dropped the fold')
@@ -3445,7 +3530,7 @@ def test_a_rebuild_keeps_each_sections_own_state(panel_page):
         });
         await window.app.refreshProcessors();
     }""", {'sx': ids['sx'], 'sxCard': ids['sxCard']})
-    panel_page.wait_for_timeout(400)
+    quiet(panel_page)
     assert fold_state(panel_page,
                       card_sec(ids, 'sxCard'))['collapsed'] is True, (
         'a server round-trip re-expanded the folded card')
@@ -3464,7 +3549,7 @@ def test_focus_restore_into_a_folded_section_unfolds_it(panel_page):
     ids = seed_fold(panel_page)
     assert panel_page.evaluate(OPEN_TILE_JS, f"port-{ids['mxCard']}-1"), (
         'port 1 has no chip to open')
-    panel_page.wait_for_timeout(100)
+    quiet(panel_page)
     out = panel_page.evaluate("""async (args) => {
         const app = window.app;
         const el = document.querySelector(
@@ -3525,7 +3610,7 @@ def test_the_chips_are_the_assignment_surface_and_no_chooser_survives(
         f'the open card\'s chip is not a drawn drag handle: {out}')
 
     sec_arrow(panel_page, card_sec(ids, 'sxCard')).click()
-    panel_page.wait_for_timeout(200)
+    quiet(panel_page)
     out = panel_page.evaluate("""(args) => {
         const tile = document.querySelector(
             `#hardware-dock [data-hwdock="port-${args.sxCard}-1"]`);
@@ -3553,11 +3638,11 @@ def test_the_dock_fold_hides_all_and_gives_each_section_back_its_state(
     pytest.importorskip("playwright.sync_api", reason="playwright not installed")
     ids = seed_fold(panel_page)
     sec_arrow(panel_page, card_sec(ids, 'sxCard')).click()
-    panel_page.wait_for_timeout(200)
+    quiet(panel_page)
 
     try:
         panel_page.locator('#hw-dock-fold').click()
-        panel_page.wait_for_timeout(300)
+        dock_still(panel_page)
         dock = panel_page.evaluate("""() => {
             const el = document.getElementById('hardware-dock');
             return {
@@ -3576,7 +3661,7 @@ def test_the_dock_fold_hides_all_and_gives_each_section_back_its_state(
                 document.getElementById('hardware-dock-toggle').click();
             }
         }""")
-        panel_page.wait_for_timeout(300)
+        dock_still(panel_page)
 
     assert not panel_page.evaluate(
         """() => document.getElementById('hardware-dock')
@@ -3600,13 +3685,13 @@ def test_deleting_a_processor_takes_its_fold_keys_with_it(panel_page):
     sec = card_sec(ids, 'mxCard')
     sec_arrow(panel_page, sec).click()
     sec_arrow(panel_page, sec).click()   # key now exists, card open
-    panel_page.wait_for_timeout(200)
+    quiet(panel_page)
     assert fold_state(panel_page, sec)['stored'] == '0'
 
     assert panel_page.evaluate(OPEN_GEAR_JS, f"proc-{ids['mx']}"), (
         'the processor gear did not open')
     panel_page.locator('#hw-gear-popover .hw-pop-remove').click()
-    panel_page.wait_for_timeout(800)
+    quiet(panel_page)
     assert fold_state(panel_page, sec) is None, (
         'the deleted processor\'s card is still drawn')
     left = panel_page.evaluate(
@@ -4129,7 +4214,7 @@ def test_the_bar_draws_the_partner_row_only_where_the_vendor_does_not_fix(
                         reason="playwright is not installed")
     page = panel_page
     ids = page.evaluate(REDUNDANCY_SEED_JS)
-    page.wait_for_timeout(800)
+    quiet(page)
     assert page.evaluate(OPEN_GEAR_JS, f"proc-{ids['mxId']}"), (
         'the MX20 processor gear did not open')
     bar = page.evaluate(BAR_JS, ids['mxId'])
@@ -4222,7 +4307,7 @@ def test_the_bar_draws_the_partner_row_only_where_the_vendor_does_not_fix(
     assert not out['control'], f'the fixed pairing grew a control: {out}'
     assert out['rows'] == 0, f'the fixed pairing grew rows: {out}'
     page.keyboard.press('Escape')
-    page.wait_for_timeout(100)
+    quiet(page)
 
 
 CAPTION_JS = """(pid) => {
@@ -4272,7 +4357,7 @@ def test_the_bar_says_it_is_for_redundancy_on_every_device(panel_page):
         await window.app.refreshProcessors();
         return h2.id;
     }""")
-    page.wait_for_timeout(800)
+    quiet(page)
     for key, levels in (('h2Id', ['off', 'card', 'port']),
                         ('mxId', ['off', 'unit', 'port']),
                         ('sxId', ['A', 'C'])):
@@ -4288,7 +4373,7 @@ def test_the_bar_says_it_is_for_redundancy_on_every_device(panel_page):
         assert out['upper'] == 'uppercase', (key, out)
         assert not out['field'], f'{key}: the caption grew a field key'
         page.keyboard.press('Escape')
-        page.wait_for_timeout(100)
+        quiet(page)
     # the SX40 still states its fixed pairing under the captioned bar
     assert page.evaluate(OPEN_GEAR_JS, f"proc-{ids['sxId']}")
     out = page.evaluate("""() => {
@@ -4303,7 +4388,7 @@ def test_the_bar_says_it_is_for_redundancy_on_every_device(panel_page):
     }""")
     assert out == {'statement': True, 'factAfter': True}, out
     page.keyboard.press('Escape')
-    page.wait_for_timeout(100)
+    quiet(page)
 
 
 def test_the_bar_is_raised_and_the_lit_segment_wears_the_accent(panel_page):
@@ -4318,7 +4403,7 @@ def test_the_bar_is_raised_and_the_lit_segment_wears_the_accent(panel_page):
                         reason="playwright is not installed")
     page = panel_page
     ids = page.evaluate(REDUNDANCY_SEED_JS)
-    page.wait_for_timeout(800)
+    quiet(page)
     assert page.evaluate(OPEN_GEAR_JS, f"proc-{ids['mxId']}"), (
         'the processor gear did not open')
     out = page.evaluate("""(ids) => {
@@ -4369,7 +4454,7 @@ def test_the_bar_is_raised_and_the_lit_segment_wears_the_accent(panel_page):
                             'css', 'theme.css'), encoding='utf-8').read()
     assert 'hw-pop-switch' not in css, 'the switch CSS block is still there'
     page.keyboard.press('Escape')
-    page.wait_for_timeout(100)
+    quiet(page)
 
 
 CHASSIS_SEED_JS = """
@@ -4488,7 +4573,7 @@ def test_a_chassis_chooses_its_level_and_switches_its_backup_processor_on(
                         reason="playwright is not installed")
     page = panel_page
     ids = page.evaluate(CHASSIS_SEED_JS)
-    page.wait_for_timeout(800)
+    quiet(page)
     assert page.evaluate(OPEN_GEAR_JS, f"proc-{ids['mainId']}"), (
         'the chassis gear did not open')
     bar = page.evaluate(BAR_JS, ids['mainId'])
@@ -4507,7 +4592,7 @@ def test_a_chassis_chooses_its_level_and_switches_its_backup_processor_on(
 
     page.locator(f'#hw-gear-popover [data-lrd-field="processor-backup-{ids["mainId"]}"] '
                  '[data-level="on"]').click()
-    page.wait_for_timeout(900)
+    quiet(page)
     assert page.evaluate(LAST_ACTION_JS) == ['Add Backup Processor']
     assert page.evaluate(HISTORY_LEN_JS) == hist_before + 1
     assert page.evaluate(OPEN_GEAR_JS, f"proc-{ids['mainId']}")
@@ -4523,7 +4608,7 @@ def test_a_chassis_chooses_its_level_and_switches_its_backup_processor_on(
     field = page.locator(f'[data-lrd-field="processor-backup-name-{ids["mainId"]}"]')
     field.fill('SR BACKUP')
     field.press('Enter')
-    page.wait_for_timeout(900)
+    quiet(page)
     assert page.evaluate(LAST_ACTION_JS) == ['Rename Backup Processor']
     assert page.evaluate(OPEN_GEAR_JS, f"proc-{ids['mainId']}")
     out = page.evaluate(BACKUP_JS, ids['mainId'])
@@ -4532,20 +4617,20 @@ def test_a_chassis_chooses_its_level_and_switches_its_backup_processor_on(
     # Off, then one undo brings it back
     page.locator(f'#hw-gear-popover [data-lrd-field="processor-backup-{ids["mainId"]}"] '
                  '[data-level="off"]').click()
-    page.wait_for_timeout(900)
+    quiet(page)
     assert page.evaluate(LAST_ACTION_JS) == ['Remove Backup Processor']
     assert page.evaluate(OPEN_GEAR_JS, f"proc-{ids['mainId']}")
     assert page.evaluate(BACKUP_JS, ids['mainId'])['pill'] is None
     page.keyboard.press('Escape')
     page.evaluate("() => window.app.undo()")
-    page.wait_for_timeout(1000)
+    quiet(page)
     assert page.evaluate(OPEN_GEAR_JS, f"proc-{ids['mainId']}")
     out = page.evaluate(BACKUP_JS, ids['mainId'])
     assert out['pill'] == 'Backup: SR BACKUP' and out['lit'] == 'on', out
     page.keyboard.press('Escape')
-    page.wait_for_timeout(100)
+    quiet(page)
     page.evaluate(CHASSIS_CLEAN_JS, ids)
-    page.wait_for_timeout(600)
+    quiet(page)
 
 
 def test_the_bar_lights_the_derived_segment_for_each_state(panel_page):
@@ -4558,13 +4643,13 @@ def test_the_bar_lights_the_derived_segment_for_each_state(panel_page):
                         reason="playwright is not installed")
     page = panel_page
     ids = page.evaluate(CHASSIS_SEED_JS)
-    page.wait_for_timeout(800)
+    quiet(page)
     assert page.evaluate(OPEN_GEAR_JS, f"proc-{ids['mainId']}"), (
         'the chassis gear did not open')
 
     def lit_after(spec):
         page.evaluate(CHASSIS_SET_JS, [ids, spec])
-        page.wait_for_timeout(500)
+        quiet(page)
         assert page.evaluate(OPEN_GEAR_JS, f"proc-{ids['mainId']}")
         bar = page.evaluate(BAR_JS, ids['mainId'])
         assert bar, 'the bar left the gear'
@@ -4582,9 +4667,9 @@ def test_the_bar_lights_the_derived_segment_for_each_state(panel_page):
     assert lit_after({'backupUnit': {}})[0] == 'port'
     assert lit_after({'backupUnit': None, 'redundancy': False}) == ('off', [])
     page.keyboard.press('Escape')
-    page.wait_for_timeout(100)
+    quiet(page)
     page.evaluate(CHASSIS_CLEAN_JS, ids)
-    page.wait_for_timeout(600)
+    quiet(page)
 
 
 def test_off_per_card_and_per_port_are_each_one_history_entry(panel_page):
@@ -4597,7 +4682,7 @@ def test_off_per_card_and_per_port_are_each_one_history_entry(panel_page):
                         reason="playwright is not installed")
     page = panel_page
     ids = page.evaluate(CHASSIS_SEED_JS)
-    page.wait_for_timeout(800)
+    quiet(page)
     assert page.evaluate(OPEN_GEAR_JS, f"proc-{ids['mainId']}"), (
         'the chassis gear did not open')
     modes_js = """(ids) => {
@@ -4629,7 +4714,7 @@ def test_off_per_card_and_per_port_are_each_one_history_entry(panel_page):
     base = page.evaluate(HISTORY_LEN_JS)
 
     assert page.evaluate(CLICK_SEG_JS, [ids['mainId'], 'port'])
-    page.wait_for_timeout(800)
+    quiet(page)
     assert page.evaluate(HISTORY_LEN_JS) == base + 1
     assert page.evaluate(LAST_ACTION_JS) == ['Set Redundancy Per Port']
     assert page.evaluate(modes_js, ids) == {
@@ -4649,7 +4734,7 @@ def test_off_per_card_and_per_port_are_each_one_history_entry(panel_page):
     assert all(c['raised'] for c in chips), chips
 
     assert page.evaluate(CLICK_CHIP_JS, [ids['mainCards'][0], 'halves'])
-    page.wait_for_timeout(800)
+    quiet(page)
     assert page.evaluate(HISTORY_LEN_JS) == base + 2
     assert page.evaluate(LAST_ACTION_JS) == ['Change Redundancy Mode']
     assert page.evaluate(modes_js, ids)['modes'] == ['halves', 'sequential']
@@ -4658,11 +4743,11 @@ def test_off_per_card_and_per_port_are_each_one_history_entry(panel_page):
     assert page.evaluate(BAR_JS, ids['mainId'])['lit'] == 'port'
     # A press on the lit chip is a no-op: no request, no entry.
     assert page.evaluate(CLICK_CHIP_JS, [ids['mainCards'][0], 'halves'])
-    page.wait_for_timeout(400)
+    quiet(page)
     assert page.evaluate(HISTORY_LEN_JS) == base + 2
 
     assert page.evaluate(CLICK_SEG_JS, [ids['mainId'], 'card'])
-    page.wait_for_timeout(800)
+    quiet(page)
     assert page.evaluate(HISTORY_LEN_JS) == base + 3
     assert page.evaluate(LAST_ACTION_JS) == ['Set Redundancy Per Card']
     assert page.evaluate(modes_js, ids) == {
@@ -4672,7 +4757,7 @@ def test_off_per_card_and_per_port_are_each_one_history_entry(panel_page):
     assert page.evaluate(chips_js, ids) == [None, None]
 
     assert page.evaluate(CLICK_SEG_JS, [ids['mainId'], 'off'])
-    page.wait_for_timeout(800)
+    quiet(page)
     assert page.evaluate(HISTORY_LEN_JS) == base + 4
     assert page.evaluate(LAST_ACTION_JS) == ['Toggle Redundancy']
     assert page.evaluate(modes_js, ids)['redundancy'] is False
@@ -4680,7 +4765,7 @@ def test_off_per_card_and_per_port_are_each_one_history_entry(panel_page):
     assert bar['lit'] == 'off' and bar['rows'] == [], bar
     # A press on the lit segment is a no-op too.
     assert page.evaluate(CLICK_SEG_JS, [ids['mainId'], 'off'])
-    page.wait_for_timeout(400)
+    quiet(page)
     assert page.evaluate(HISTORY_LEN_JS) == base + 4
 
     for expect_modes, expect_lit in (([None, None], 'card'),
@@ -4688,14 +4773,14 @@ def test_off_per_card_and_per_port_are_each_one_history_entry(panel_page):
                                      (['sequential', 'sequential'], 'port'),
                                      ([None, None], 'card')):
         page.evaluate("() => window.app.undo()")
-        page.wait_for_timeout(900)
+        quiet(page)
         assert page.evaluate(OPEN_GEAR_JS, f"proc-{ids['mainId']}")
         assert page.evaluate(modes_js, ids)['modes'] == expect_modes
         assert page.evaluate(BAR_JS, ids['mainId'])['lit'] == expect_lit
     page.keyboard.press('Escape')
-    page.wait_for_timeout(100)
+    quiet(page)
     page.evaluate(CHASSIS_CLEAN_JS, ids)
-    page.wait_for_timeout(600)
+    quiet(page)
 
 
 def test_the_mode_change_round_trips_through_undo(panel_page):
@@ -4706,23 +4791,23 @@ def test_the_mode_change_round_trips_through_undo(panel_page):
                         reason="playwright is not installed")
     page = panel_page
     ids = page.evaluate(REDUNDANCY_SEED_JS)
-    page.wait_for_timeout(800)
+    quiet(page)
     assert page.evaluate(OPEN_GEAR_JS, f"proc-{ids['mxId']}"), (
         'the processor gear did not open')
     assert page.evaluate(CLICK_SEG_JS, [ids['mxId'], 'port'])
-    page.wait_for_timeout(800)
+    quiet(page)
     assert page.evaluate(LAST_ACTION_JS) == ['Set Redundancy Per Port']
     assert page.evaluate(STORED_CARD_JS, ids['mxId']).get(
         'redundancyMode') == 'sequential'
     page.evaluate("() => window.app.undo()")
-    page.wait_for_timeout(1000)
+    quiet(page)
     assert 'redundancyMode' not in page.evaluate(STORED_CARD_JS, ids['mxId'])
     page.evaluate("() => window.app.redo()")
-    page.wait_for_timeout(1000)
+    quiet(page)
     assert page.evaluate(STORED_CARD_JS, ids['mxId']).get(
         'redundancyMode') == 'sequential'
     page.keyboard.press('Escape')
-    page.wait_for_timeout(100)
+    quiet(page)
 
 
 def test_the_halves_mode_commits_from_the_chip_and_states_its_split(
@@ -4738,13 +4823,13 @@ def test_the_halves_mode_commits_from_the_chip_and_states_its_split(
                         reason="playwright is not installed")
     page = panel_page
     ids = page.evaluate(REDUNDANCY_SEED_JS)
-    page.wait_for_timeout(800)
+    quiet(page)
     assert page.evaluate(OPEN_GEAR_JS, f"proc-{ids['mxId']}"), (
         'the processor gear did not open')
     assert page.evaluate(CLICK_SEG_JS, [ids['mxId'], 'port'])
-    page.wait_for_timeout(800)
+    quiet(page)
     assert page.evaluate(CLICK_CHIP_JS, [ids['mxCardId'], 'halves'])
-    page.wait_for_timeout(800)
+    quiet(page)
     assert page.evaluate(STORED_CARD_JS, ids['mxId']).get(
         'redundancyMode') == 'halves'
     assert page.evaluate(LAST_ACTION_JS) == ['Change Redundancy Mode']
@@ -4772,7 +4857,7 @@ def test_the_halves_mode_commits_from_the_chip_and_states_its_split(
     assert out['lit'] == 'halves', out
     assert 'Ports 4-6 carry the returns of 1-3' in out['tip'], out
     page.keyboard.press('Escape')
-    page.wait_for_timeout(100)
+    quiet(page)
     # Leave the module's shared server the way this test found it: the
     # later pair-presentation test folds a nested unit under live refresh
     # traffic, and every extra machine in the list stretches that window.
@@ -4782,7 +4867,7 @@ def test_the_halves_mode_commits_from_the_chip_and_states_its_split(
         }
         await window.app.refreshProcessors();
     }""", ids)
-    page.wait_for_timeout(600)
+    quiet(page)
 
 
 def test_the_partner_pick_and_the_manual_picker_commit(panel_page):
@@ -4795,7 +4880,7 @@ def test_the_partner_pick_and_the_manual_picker_commit(panel_page):
                         reason="playwright is not installed")
     page = panel_page
     ids = page.evaluate(REDUNDANCY_SEED_JS)
-    page.wait_for_timeout(800)
+    quiet(page)
     assert page.evaluate(OPEN_GEAR_JS, f"proc-{ids['mxId']}"), (
         'the processor gear did not open')
     page.evaluate("""(ids) => {
@@ -4804,7 +4889,7 @@ def test_the_partner_pick_and_the_manual_picker_commit(panel_page):
         sel.value = ids.bkCardId;
         sel.dispatchEvent(new Event('change', { bubbles: true }));
     }""", ids)
-    page.wait_for_timeout(800)
+    quiet(page)
     assert page.evaluate(STORED_CARD_JS, ids['mxId']).get(
         'backupCardId') == ids['bkCardId']
     assert page.evaluate(LAST_ACTION_JS) == ['Change Backup Unit']
@@ -4820,23 +4905,23 @@ def test_the_partner_pick_and_the_manual_picker_commit(panel_page):
     # Manual: Per port on the still-open gear's bar, then the chip; the
     # pick itself lives in the port's dock chip editor.
     assert page.evaluate(CLICK_SEG_JS, [ids['mxId'], 'port'])
-    page.wait_for_timeout(800)
+    quiet(page)
     assert page.evaluate(CLICK_CHIP_JS, [ids['mxCardId'], 'manual'])
-    page.wait_for_timeout(800)
+    quiet(page)
     assert page.evaluate(STORED_CARD_JS, ids['mxId']).get(
         'redundancyMode') == 'manual'
     page.evaluate(
         "(tid) => document.querySelector(`[data-lrd-tile=\"${tid}\"]`)"
         + ".querySelector('.lrd-tile-face').click()",
         f"port-{ids['mxCardId']}-1")
-    page.wait_for_timeout(400)
+    quiet(page)
     box = page.locator(
         f'[data-lrd-field="processor-port-backup-port-{ids["mxCardId"]}-1"]')
     assert box.count() == 1, 'manual mode drew no per-port picker'
     box.click()
     box.fill('5')
     page.keyboard.press('Tab')
-    page.wait_for_timeout(800)
+    quiet(page)
     stored = page.evaluate(STORED_CARD_JS, ids['mxId'])
     assert stored.get('backupPorts', {}).get('1') == \
         {'cardId': ids['mxCardId'], 'port': 5}
@@ -4855,7 +4940,7 @@ def test_a_redundant_pair_presents_as_one_group_on_the_dock(panel_page):
                         reason="playwright is not installed")
     page = panel_page
     ids = page.evaluate(REDUNDANCY_SEED_JS)
-    page.wait_for_timeout(800)
+    quiet(page)
     # Designate BK as SR's 1:1 backup through the real partner select,
     # opened in the processor's gear the way a user reaches it.
     assert page.evaluate(OPEN_GEAR_JS, f"proc-{ids['mxId']}"), (
@@ -4866,9 +4951,9 @@ def test_a_redundant_pair_presents_as_one_group_on_the_dock(panel_page):
         sel.value = ids.bkCardId;
         sel.dispatchEvent(new Event('change', { bubbles: true }));
     }""", ids)
-    page.wait_for_timeout(1000)
+    quiet(page)
     page.keyboard.press('Escape')
-    page.wait_for_timeout(100)
+    quiet(page)
     out = page.evaluate("""(ids) => {
         const sxCvts = window.app._processorsResolved
             .find(p => p.id === ids.sxId).slots[0].card.cvts.map(c => c.id);
@@ -4913,7 +4998,7 @@ def test_a_redundant_pair_presents_as_one_group_on_the_dock(panel_page):
     # state.
     page.locator(f'[data-lrd-sec="hwdock-card-{ids["bkCardId"]}"] '
                  '.lrd-sec-arrow').click()
-    page.wait_for_timeout(200)
+    quiet(page)
     folded = page.evaluate("""(ids) => {
         const head = document.querySelector(
             `[data-lrd-sec="hwdock-card-${ids.bkCardId}"]`);
@@ -5120,7 +5205,7 @@ def test_the_split_chip_names_the_trunk_only_where_the_card_does(panel_page):
                         reason="playwright is not installed")
     page = panel_page
     ids = page.evaluate(SHAPE_SEED_JS)
-    page.wait_for_timeout(900)
+    quiet(page)
     assert page.evaluate(OPEN_GEAR_JS, f"proc-{ids['id']}"), (
         'the chassis gear did not open')
     opt = page.evaluate(READ_CHIPS_JS, ids['opt'])
@@ -5138,7 +5223,7 @@ def test_the_split_chip_names_the_trunk_only_where_the_card_does(panel_page):
     assert 'OPT' not in copper['tip'], (
         'a copper card was told about an OPT it has not got')
     page.keyboard.press('Escape')
-    page.wait_for_timeout(100)
+    quiet(page)
     assert page.evaluate(OPEN_GEAR_JS, f"proc-{ids['heliosId']}"), (
         'the HELIOS gear did not open')
     helios = page.evaluate(READ_CHIPS_JS, ids['helios'])
@@ -5147,7 +5232,7 @@ def test_the_split_chip_names_the_trunk_only_where_the_card_does(panel_page):
     assert 'OPT' not in helios['tip'], (
         "a Megapixel trunk was handed NovaStar's word for it")
     page.keyboard.press('Escape')
-    page.wait_for_timeout(100)
+    quiet(page)
     # The label moved; the STORED value did not.
     stored = page.evaluate("""async (ids) => {
         const state = await (await fetch('/api/processors')).json();
@@ -5168,7 +5253,7 @@ def test_the_split_chip_names_the_trunk_only_where_the_card_does(panel_page):
         }
         await window.app.refreshProcessors();
     }""", ids)
-    page.wait_for_timeout(600)
+    quiet(page)
 
 
 PICKER_SEED_JS = """
@@ -5263,7 +5348,7 @@ def test_the_box_picker_offers_only_the_cards_own_vendor(panel_page):
                         reason="playwright is not installed")
     page = panel_page
     ids = page.evaluate(PICKER_SEED_JS)
-    page.wait_for_timeout(900)
+    quiet(page)
     for card, vendor in ((ids['novaCard'], 'NovaStar'),
                          (ids['heliosCard'], 'Megapixel'),
                          (ids['sxCard'], 'Brompton')):
@@ -5275,7 +5360,7 @@ def test_the_box_picker_offers_only_the_cards_own_vendor(panel_page):
         assert out['ids'], out
         assert all(i.startswith(vendor.lower()) for i in out['ids']), out
         page.keyboard.press('Escape')
-        page.wait_for_timeout(150)
+        quiet(page)
 
 
 def test_the_picker_keeps_its_pick_until_the_pick_stops_fitting(panel_page):
@@ -5289,28 +5374,28 @@ def test_the_picker_keeps_its_pick_until_the_pick_stops_fitting(panel_page):
                         reason="playwright is not installed")
     page = panel_page
     ids = page.evaluate(PICKER_SEED_JS)
-    page.wait_for_timeout(900)
+    quiet(page)
     card = ids['novaCard']
     assert page.evaluate(OPEN_GEAR_JS, f"card-{card}"), 'the gear stayed shut'
     assert page.evaluate(READ_PICKER_JS, card)['value'] == '', (
         'the picker opened on something nobody chose')
     assert page.evaluate(PICK_BOX_JS, [card, 'novastar-cvt10'])
     assert page.evaluate(ADD_BOX_JS, card)
-    page.wait_for_timeout(900)
+    quiet(page)
     out = page.evaluate(READ_PICKER_JS, card)
     assert out, 'the picker went away with three trunks free'
     assert out['value'] == 'novastar-cvt10', out
     assert out['addDisabled'] is False, out
     # A second identical box is now one click - no re-pick in between.
     assert page.evaluate(ADD_BOX_JS, card)
-    page.wait_for_timeout(900)
+    quiet(page)
     assert page.evaluate(READ_PICKER_JS, card)['value'] == 'novastar-cvt10'
     boxes = page.evaluate("""(ids) => window.app._processorsResolved
         .find(p => p.id === ids.h9).slots[0].card.cvts
         .map(c => c.deviceId)""", ids)
     assert boxes == ['novastar-cvt10'] * 2, boxes
     page.keyboard.press('Escape')
-    page.wait_for_timeout(150)
+    quiet(page)
 
     # The other card, for the pick that stops fitting: one CVT10 leaves
     # three trunks, a CVT4K-S takes two of them, and the CVT4K-S no longer
@@ -5320,10 +5405,10 @@ def test_the_picker_keeps_its_pick_until_the_pick_stops_fitting(panel_page):
     assert page.evaluate(OPEN_GEAR_JS, f"card-{other}"), 'the gear stayed shut'
     assert page.evaluate(PICK_BOX_JS, [other, 'novastar-cvt10'])
     assert page.evaluate(ADD_BOX_JS, other)
-    page.wait_for_timeout(900)
+    quiet(page)
     assert page.evaluate(PICK_BOX_JS, [other, 'novastar-cvt4k-s'])
     assert page.evaluate(ADD_BOX_JS, other)
-    page.wait_for_timeout(900)
+    quiet(page)
     out = page.evaluate(READ_PICKER_JS, other)
     assert out, 'the picker went away with a trunk still free'
     assert out['value'] == '', out
@@ -5335,11 +5420,11 @@ def test_the_picker_keeps_its_pick_until_the_pick_stops_fitting(panel_page):
     assert 'novastar-cvt10' in out['ids'], out
     assert out['addDisabled'] is False, out
     page.keyboard.press('Escape')
-    page.wait_for_timeout(100)
+    quiet(page)
     page.evaluate("""async (ids) => {
         for (const id of [ids.h9, ids.heliosId, ids.sxId]) {
             await fetch(`/api/processors/${id}`, { method: 'DELETE' });
         }
         await window.app.refreshProcessors();
     }""", ids)
-    page.wait_for_timeout(600)
+    quiet(page)
