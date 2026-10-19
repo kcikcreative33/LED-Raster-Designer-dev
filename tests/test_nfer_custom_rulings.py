@@ -840,5 +840,221 @@ def test_a_taken_over_circuit_never_lends_its_load_to_an_auto_run(page):
         f'no group may pass the 10 A circuit: {out}')
 
 
+# ── custom mode: a group is ONE wall ───────────────────────────────────────
+#
+# The owner's ruling, 2026-10-19: "3 fers etc can fill across screens just
+# like in auto when in a group. remember it's treated as one screen in this
+# way." In custom mode the group's first member owns and numbers every
+# circuit, whichever member is selected, so labels and multis run as one
+# sequence for the wall. A run an old file left on another member is
+# ADOPTED when a wall action shares it: it moves into the first member's
+# numbering at the next number, its typed label, cable and distro slot
+# forgotten the way a clear forgets them - one undoable entry. Mixed
+# panel / wattage groups are one wall too. Locked members never change.
+
+def _wall(page, right_props=None):
+    left, right = make(page, [{'name': 'Left', 'columns': 4},
+                              {'name': 'Right', 'columns': 3, 'x': 800,
+                               'props': right_props or {}}],
+                       group=True)
+    page.evaluate("(ids) => { window.app.selectedLayerIds = new Set(ids); }",
+                  [left, right])
+    custom_on(page)
+    return left, right
+
+
+def _select(page, layer_id):
+    page.evaluate("""(id) => {
+        const app = window.app, l = window.__nf.layer(id);
+        app.currentLayer = l;
+        app.selectedLayerIds = new Set([id]);
+        app.updateCustomPowerUI();
+    }""", layer_id)
+
+
+# Old-file shape: each member owns single-column runs of its own.
+LEGACY_JS = """([a, b, extra]) => {
+    const app = window.app;
+    const L = window.__nf.layer(a), R = window.__nf.layer(b);
+    const col = (c) => [0, 1, 2, 3, 4].map(r => ({ row: r, col: c }));
+    L.powerCustomPaths = { 1: col(0), 2: col(1) };
+    R.powerCustomPaths = { 1: col(0), 2: col(1) };
+    Object.assign(R, extra || {});
+    app.updateLayers([L, R]);
+    app._circuitTailCache = null;
+    app.resetHistory('Old file');
+}"""
+
+
+def _paths(page, layer_id):
+    return page.evaluate("""(id) => {
+        const p = window.__nf.layer(id).powerCustomPaths || {};
+        const out = {};
+        Object.keys(p).forEach(n => { if ((p[n] || []).length) out[n] =
+            [...new Set(p[n].map(e => (e.layerId || id) + ':' + e.col))]; });
+        return out;
+    }""", layer_id)
+
+
+def test_custom_group_fill_from_any_member_numbers_on_the_wall(page):
+    """Custom on a group, the first member's columns filled, then the
+    second member SELECTED and its columns filled after Next: the circuits
+    land on the first member, numbering on from the wall's own - not a
+    second numbering starting at 1 on the member."""
+    left, right = _wall(page)
+    _select(page, left)
+    assert fill(page, [(left, 0, 2)])
+    _select(page, right)
+    page.evaluate("() => window.app.stepCustomPort(1)")
+    landed(page)
+    assert fill(page, [(right, 0, 2)])
+    assert _paths(page, right) == {}, _paths(page, right)
+    out = circuits(page, left)
+    assert [(c['num'], c['runs']) for c in out] == [(1, [5, 5, 5]),
+                                                    (4, [5, 5, 5])], out
+    assert out[1]['on'] == [right], out
+    assert circuits(page, right) == [], 'the wall owner reports the circuits'
+    assert manual(page, left)['merge'] == [[1, 2, 3], [4, 5, 6]]
+
+
+def test_custom_group_sweep_shares_runs_of_two_members(page):
+    """An old file: each member owns two column runs. A sweep from the
+    first member's circuit 2 onto the second member's circuit 1 and "2fer
+    them": the member's run is adopted as the wall's circuit 3 and shared
+    with circuit 2 - ONE history entry, and one undo puts the old file
+    back."""
+    left, right = _wall(page)
+    page.evaluate(LEGACY_JS, [left, right, None])
+    landed(page)
+    h0 = len(history(page))
+    alt_sweep(page, pt(page, left, 2, 1), pt(page, right, 2, 0))
+    items = menu_at(page, pt(page, right, 2, 0))
+    assert items['n0'] and items['n0']['label'] == '2fer them (1 × 2fer)', items
+    take(page, 'hw-batch-n0')
+    assert manual(page, left)['merge'] == [[2, 3]], manual(page, left)
+    assert _paths(page, left)['3'] == [f'{right}:0'], _paths(page, left)
+    assert _paths(page, right) == {'2': [f'{right}:1']}, _paths(page, right)
+    assert history(page)[h0:] == ['2fer Selection'], history(page)
+    page.evaluate("() => window.app.undo()")
+    landed(page)
+    assert sorted(_paths(page, right)) == ['1', '2'], _paths(page, right)
+    assert sorted(_paths(page, left)) == ['1', '2'], _paths(page, left)
+
+
+def test_custom_group_batch_button_deals_the_whole_wall(page):
+    """The same old file, "2fer this screen" from the second member: the
+    whole wall's runs deal - the member's runs adopted as circuits 3 and 4
+    - into two 2fers."""
+    left, right = _wall(page)
+    page.evaluate(LEGACY_JS, [left, right, None])
+    landed(page)
+    items = menu_at(page, pt(page, right, 2, 1))
+    assert items['n0'] and items['n0']['label'] == (
+        '2fer this screen (2 × 2fer)'), items
+    take(page, 'hw-batch-n0')
+    assert manual(page, left)['merge'] == [[1, 2], [3, 4]], manual(page, left)
+    assert _paths(page, right) == {}, _paths(page, right)
+    assert [g['ways'] for g in gangs(page, left)] == [2, 2]
+
+
+def test_custom_group_share_with_next_crosses_the_seam(page):
+    """Right-click the first member's last circuit: "Share with next run"
+    reaches the second member's first run, adopting it."""
+    left, right = _wall(page)
+    page.evaluate(LEGACY_JS, [left, right, None])
+    landed(page)
+    page.mouse.click(*pt(page, left, 2, 1).values(), button='right')
+    landed(page)
+    page.locator('#context-menu [data-action="hw-share"]').click()
+    landed(page)
+    assert manual(page, left)['merge'] == [[2, 3]], manual(page, left)
+    assert _paths(page, left)['3'] == [f'{right}:0']
+
+
+def test_adoption_forgets_the_runs_label_cable_and_distro_slot(page):
+    """The adopted run's paperwork stays behind and goes, as a clear
+    forgets it: its typed label, its cable and its place on the distro.
+    The member's other circuit keeps its multi on the distro."""
+    left, right = _wall(page)
+    distro = page.evaluate(
+        "() => window.app.addDistro({ name: 'PD' }).id")
+    page.evaluate(LEGACY_JS, [left, right, {
+        'powerLabelOverrides': {'1': 'RIGHT ONE'},
+        'powerCircuitCables': {'1': {'ft': 25}},
+        'powerSocaDistro': {'1': distro}, 'powerSocaNumber': {'1': 2}}])
+    landed(page)
+    alt_sweep(page, pt(page, left, 2, 1), pt(page, right, 2, 0))
+    menu_at(page, pt(page, right, 2, 0))
+    take(page, 'hw-batch-n0')
+    out = page.evaluate("""([a, b, d]) => {
+        const app = window.app, R = window.__nf.layer(b), L = window.__nf.layer(a);
+        app._circuitTailCache = null;
+        return { labels: R.powerLabelOverrides, cables: R.powerCircuitCables,
+                 distros: Object.values(R.powerSocaDistro || {}),
+                 adoptedLabel: app.getPowerCircuitLabel(L, 3) };
+    }""", [left, right, distro])
+    assert '1' not in (out['labels'] or {}), out
+    assert '1' not in (out['cables'] or {}), out
+    assert out['distros'] == [distro], (
+        f"the member's remaining circuit keeps its multi on the box: {out}")
+    assert out['adoptedLabel'] != 'RIGHT ONE', out
+
+
+def test_custom_mixed_group_is_one_wall(page):
+    """A group of two cabinet wattages (auto routes them apart): in custom
+    it is one wall all the same - a fill from the second member numbers on
+    the first, and a sweep shares across the seam."""
+    left, right = _wall(page, right_props={'panelWatts': 100})
+    _select(page, left)
+    assert fill(page, [(left, 3, 3)])
+    _select(page, right)
+    page.evaluate("() => window.app.stepCustomPort(1)")
+    landed(page)
+    assert fill(page, [(right, 0, 1)])
+    assert _paths(page, right) == {}
+    assert [(c['num'], c['runs']) for c in circuits(page, left)] == [
+        (1, [5]), (2, [5, 5])], circuits(page, left)
+    alt_sweep(page, pt(page, left, 2, 3), pt(page, right, 2, 0))
+    items = menu_at(page, pt(page, right, 2, 0))
+    assert items['n1'] and items['n1']['label'] == '3fer them (1 × 3fer)', items
+    take(page, 'hw-batch-n1')
+    assert manual(page, left)['merge'] == [[1, 2, 3]], manual(page, left)
+
+
+def test_alt_click_on_a_members_old_run_adopts_it(page):
+    """Alt+click in custom on a run an old file left on the second member:
+    it is adopted as the wall's next circuit and opened there, in one
+    history entry."""
+    left, right = _wall(page)
+    page.evaluate(LEGACY_JS, [left, right, None])
+    landed(page)
+    h0 = len(history(page))
+    alt_click(page, pt(page, right, 2, 0))
+    out = page.evaluate("""(a) => ({ cur: window.app.currentLayer.id,
+        idx: window.__nf.layer(a).powerCustomIndex })""", left)
+    assert out == {'cur': left, 'idx': 3}, out
+    assert _paths(page, left)['3'] == [f'{right}:0'], _paths(page, left)
+    assert _paths(page, right) == {'2': [f'{right}:1']}, _paths(page, right)
+    assert history(page)[h0:] == ['Adopt Circuit'], history(page)
+
+
+def test_adopting_from_a_locked_member_is_refused(page):
+    """A wall action that would adopt a locked member's run changes
+    nothing - neither screen - and names the locked screen."""
+    left, right = _wall(page)
+    page.evaluate(LEGACY_JS, [left, right, {'locked': True}])
+    page.evaluate("""() => { window.__nf.errors = [];
+        window.app._showLockedError = (ls) => { if (ls && ls.length)
+            window.__nf.errors.push(ls.map(l => l.name)); }; }""")
+    landed(page)
+    h0 = len(history(page))
+    items = menu_at(page, pt(page, left, 2, 0))
+    take(page, 'hw-batch-n0')
+    assert manual(page, left)['merge'] == [], manual(page, left)
+    assert sorted(_paths(page, right)) == ['1', '2']
+    assert len(history(page)) == h0
+    assert ['Right'] in page.evaluate("() => window.__nf.errors"), items
+
+
 def test_no_page_errors(page):
     assert page._nf_errors == [], page._nf_errors

@@ -1952,10 +1952,13 @@ class _Wiring {
                 this._dropPatternTileFocus(powerCustomClearCircuit, e);
                 if (!this.currentLayer) return;
                 // No ensure* here - see the data Clear Port.
-                const circuitNum = this.currentLayer.powerCustomIndex || 1;
+                // A custom group's circuits are the wall owner's
+                // (powerPathOwner) - the active one is cleared there.
+                const owner = this.powerPathOwner(this.currentLayer);
+                const circuitNum = owner.powerCustomIndex || 1;
                 // This screen's circuit, and - whole - any peer's circuit of
                 // the same number that lands here - see clearCustomRun.
-                const { touched, skipped } = this.clearCustomRun(this.currentLayer, 'power', circuitNum);
+                const { touched, skipped } = this.clearCustomRun(owner, 'power', circuitNum);
                 if (touched.length) {
                     this.saveState('Power Custom Clear Circuit');
                     this.saveClientSideProperties();
@@ -1994,32 +1997,35 @@ class _Wiring {
         if (powerCustomActive) {
             powerCustomActive.addEventListener('change', () => {
                 if (!this.currentLayer) return;
+                // The active circuit of a custom group is the wall owner's
+                // (powerPathOwner).
+                const owner = this.powerPathOwner(this.currentLayer);
                 // The number already active is no change, so no error.
                 const typedCircuit = parseInt(powerCustomActive.value, 10);
-                if (this.currentLayer.locked
-                        && typedCircuit === (this.currentLayer.powerCustomIndex || 1)) return;
-                if (this._lockedStepRefused(this.currentLayer)) {
-                    powerCustomActive.value = `${this.currentLayer.powerCustomIndex || 1}`;
+                if (owner.locked
+                        && typedCircuit === (owner.powerCustomIndex || 1)) return;
+                if (this._lockedStepRefused(owner)) {
+                    powerCustomActive.value = `${owner.powerCustomIndex || 1}`;
                     return;
                 }
-                this.ensureCustomPowerState(this.currentLayer);
+                this.ensureCustomPowerState(owner);
                 const nextVal = parseInt(powerCustomActive.value, 10);
                 // Pinned to the override list while one is open - see the
                 // data-flow input above.
-                if (this._isOverrideEditing(this.currentLayer, 'power')
-                        && !this.getOverrideNums(this.currentLayer, 'power').includes(nextVal)) {
-                    powerCustomActive.value = `${this.currentLayer.powerCustomIndex || 1}`;
+                if (this._isOverrideEditing(owner, 'power')
+                        && !this.getOverrideNums(owner, 'power').includes(nextVal)) {
+                    powerCustomActive.value = `${owner.powerCustomIndex || 1}`;
                     return;
                 }
                 if (Number.isFinite(nextVal) && nextVal >= 1) {
-                    this.currentLayer.powerCustomIndex = nextVal;
+                    owner.powerCustomIndex = nextVal;
                     if (this._overrideEditing && this._overrideEditing.kind === 'power'
-                            && this._overrideEditing.layerId === this.currentLayer.id) {
+                            && this._overrideEditing.layerId === owner.id) {
                         this._overrideEditing.num = nextVal;
                     }
                     this.saveState('Power Custom Circuit Change');
                     this.saveClientSideProperties();
-                    this.updateLayers(this.getSelectedLayers());
+                    this.updateLayers(this._pathPersistLayers(owner));
                     this.updateCustomPowerUI();
                     window.canvasRenderer.render();
                 }

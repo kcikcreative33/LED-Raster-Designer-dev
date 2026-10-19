@@ -355,7 +355,8 @@ Object.assign(CanvasRenderer.prototype, {
 
     renderPowerActiveCircuitBadge() {
         if (!window.app || !window.app.currentLayer) return;
-        const layer = window.app.currentLayer;
+        // A custom group's circuits are the wall owner's (powerPathOwner).
+        const layer = window.app.powerPathOwner(window.app.currentLayer);
         if (!window.app.isCustomPowerEditing(layer)) return;
         const circuitNum = layer.powerCustomIndex || 1;
         const label = window.app.getPowerCircuitLabel(layer, circuitNum);

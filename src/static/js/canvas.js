@@ -1993,40 +1993,48 @@ class CanvasRenderer {
     // CONTIGUOUS range of the owner's plan between the anchor run and the
     // hovered run - adjacency by construction, the reason the gesture needs
     // no refusal. A cursor over another screen (or over nothing) keeps the
-    // last range; the sweep never jumps walls.
+    // last range; the sweep never jumps walls. A custom group is ONE wall
+    // (app-power.js, "custom mode: a group is ONE wall"): the range runs
+    // along the wall's circuits whichever member owns them, and `refs`
+    // names each one ({layerId, num}); `layerId` / `nums` keep the wall
+    // owner's own share of it, the shape every other reader knows.
     _sweepExtend(worldX, worldY, clientX, clientY) {
         const p = this._sweepPending;
         const app = window.app;
         if (!p || !p.anchor || !app) return;
-        const owner = (app.project.layers || [])
+        const anchorLayer = (app.project.layers || [])
             .find(l => l.id === p.anchor.ownerId);
-        if (!owner) return;
-        const circuits = app.screenCircuits(owner);
-        const ai = circuits.findIndex(c => c.num === p.anchor.num);
+        if (!anchorLayer) return;
+        const owner = app.powerPathOwner(anchorLayer);
+        const circuits = app._wallCircuits(anchorLayer);
+        const at = (layerId, num) => circuits.findIndex(x => x.layer.id === layerId
+            && x.c.num === num);
+        const ai = at(p.anchor.ownerId, p.anchor.num);
         if (ai < 0) return;
         let ci = ai;
         const run = typeof app.runAtPoint === 'function'
             ? app.runAtPoint(worldX, worldY) : null;
-        if (run && run.kind === 'power' && run.layer.id === owner.id) {
-            const k = circuits.findIndex(c => c.num === run.num);
+        if (run && run.kind === 'power') {
+            const k = at(run.layer.id, run.num);
             if (k >= 0) ci = k;
         }
         const lo = Math.min(ai, ci);
         const hi = Math.max(ai, ci);
-        const nums = circuits.slice(lo, hi + 1).map(c => c.num);
+        const refs = circuits.slice(lo, hi + 1)
+            .map(x => ({ layerId: x.layer.id, num: x.c.num }));
+        const nums = refs.filter(r => r.layerId === owner.id).map(r => r.num);
+        const key = refs.map(r => `${r.layerId}:${r.num}`).join(',');
         const prev = app._sweepSelection;
-        const same = prev && prev.layerId === owner.id
-            && Array.isArray(prev.nums) && prev.nums.length === nums.length
-            && prev.nums.every((n, i) => n === nums[i]);
-        app._sweepSelection = { layerId: owner.id, nums };
-        this._sweepHud(clientX, clientY, owner, nums);
+        const same = prev && prev.layerId === owner.id && prev._key === key;
+        app._sweepSelection = { layerId: owner.id, nums, refs, _key: key };
+        this._sweepHud(clientX, clientY, owner, nums, refs);
         if (!same) this.render();
     }
 
     // The counter pill riding the cursor mid-sweep: "3 circuits · 24.5 A".
     // Plain facts only - the OVER story belongs to the menu's deal and the
     // committed brackets, where a GROUP has a load to answer for.
-    _sweepHud(clientX, clientY, owner, nums) {
+    _sweepHud(clientX, clientY, owner, nums, refs) {
         let hud = document.getElementById('power-sweep-hud');
         if (!hud) {
             hud = document.createElement('div');
@@ -2039,13 +2047,20 @@ class CanvasRenderer {
             document.body.appendChild(hud);
         }
         const app = window.app;
-        const byNum = new Map();
+        // Each circuit's amps off its own screen's plan - on a custom wall
+        // the swept circuits can belong to several members.
+        const picked = refs || nums.map(num => ({ layerId: owner.id, num }));
+        const byKey = new Map();
         if (app && typeof app.getSocaPlan === 'function') {
-            (app.getSocaPlan(owner) || []).forEach(s =>
-                (s.legs || []).forEach(l => byNum.set(l.circuit, l.amps)));
+            new Set(picked.map(r => r.layerId)).forEach(id => {
+                const l = (app.project.layers || []).find(x => x.id === id);
+                (l ? app.getSocaPlan(l) || [] : []).forEach(s =>
+                    (s.legs || []).forEach(g => byKey.set(`${id}:${g.circuit}`, g.amps)));
+            });
         }
-        const amps = nums.reduce((t, n) => t + (byNum.get(n) || 0), 0);
-        hud.textContent = `${nums.length} circuit${nums.length === 1 ? '' : 's'}`
+        const amps = picked.reduce((t, r) => t + (byKey.get(`${r.layerId}:${r.num}`) || 0), 0);
+        const count = picked.length;
+        hud.textContent = `${count} circuit${count === 1 ? '' : 's'}`
             + ` · ${amps.toFixed(1)} A`;
         hud.style.left = (clientX + 14) + 'px';
         hud.style.top = (clientY - 26) + 'px';
@@ -2062,8 +2077,10 @@ class CanvasRenderer {
         // target", drawn from inside the run's own pass so every transform
         // rides along.
         const sw = window.app && window.app._sweepSelection;
-        if (sw && this.viewMode === 'power' && sw.layerId === layer.id
-                && Array.isArray(sw.nums) && sw.nums.includes(num)) {
+        if (sw && this.viewMode === 'power' && (Array.isArray(sw.refs)
+            ? sw.refs.some(r => r.layerId === layer.id && r.num === num)
+            : (sw.layerId === layer.id && Array.isArray(sw.nums)
+                && sw.nums.includes(num)))) {
             return true;
         }
         const hov = window.app && window.app._overrideHover;

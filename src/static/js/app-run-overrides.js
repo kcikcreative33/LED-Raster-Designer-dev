@@ -206,6 +206,20 @@ class _RunOverrides {
         const wholeCustom = kind === 'power'
             ? this.isCustomPower(owner) : this.isCustomFlow(owner);
         if (wholeCustom) {
+            // A custom group's circuits are the wall owner's (app-power.js,
+            // "custom mode: a group is ONE wall"): a run an old file left on
+            // another member is adopted into the wall before it is opened -
+            // one history entry for both.
+            const wallOwner = kind === 'power' ? this.powerPathOwner(owner) : owner;
+            if (wallOwner !== owner) {
+                const adopted = this._adoptWallCircuits(wallOwner,
+                    [{ layerId: owner.id, num }]);
+                if (!adopted) return true;
+                const first = adopted.ids.values().next().value;
+                this.updateLayers(adopted.touched);
+                this._activateRunForEdit(wallOwner, kind, first, 'Adopt Circuit');
+                return true;
+            }
             this._activateRunForEdit(owner, kind, num, null);
             return true;
         }

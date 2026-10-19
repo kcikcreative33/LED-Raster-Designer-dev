@@ -337,7 +337,7 @@ class _PixelSelect {
             container.style.display = isCustom ? 'block' : 'none';
         }
         if (portInput && this.currentLayer) {
-            portInput.value = `${this.currentLayer.powerCustomIndex || 1}`;
+            portInput.value = `${this.powerPathOwner(this.currentLayer).powerCustomIndex || 1}`;
         }
         // Power view only - see the note on the same line in
         // updateCustomFlowUI. Unguarded, this one always won.

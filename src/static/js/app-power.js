@@ -73,18 +73,22 @@ class _Power {
             this.updatePortLabelEditor();
             window.canvasRenderer.render();
         } else if (view === 'power' && this.isCustomPowerEditing(this.currentLayer)) {
-            if (layer.locked && !moves('power')) return;
-            if (this._lockedStepRefused(this.currentLayer)) return;
-            this.ensureCustomPowerState(this.currentLayer);
-            this.currentLayer.powerCustomIndex =
-                this._steppedCustomIndex(this.currentLayer, 'power', delta);
+            // The active circuit of a custom group is the wall owner's
+            // (powerPathOwner).
+            const owner = this.powerPathOwner(layer);
+            const ownerMoves = this._steppedCustomIndex(owner, 'power', delta)
+                !== (owner.powerCustomIndex || 1);
+            if (owner.locked && !ownerMoves) return;
+            if (this._lockedStepRefused(owner)) return;
+            this.ensureCustomPowerState(owner);
+            owner.powerCustomIndex = this._steppedCustomIndex(owner, 'power', delta);
             if (this._overrideEditing && this._overrideEditing.kind === 'power'
-                    && this._overrideEditing.layerId === this.currentLayer.id) {
-                this._overrideEditing.num = this.currentLayer.powerCustomIndex;
+                    && this._overrideEditing.layerId === owner.id) {
+                this._overrideEditing.num = owner.powerCustomIndex;
             }
             this.saveState('Power Custom Circuit Change');
             this.saveClientSideProperties();
-            this.updateLayers(this.getSelectedLayers());
+            this.updateLayers(this._pathPersistLayers(owner));
             this.updateCustomPowerUI();
             window.canvasRenderer.render();
         }
@@ -3039,9 +3043,12 @@ class _Power {
     // the first pair of neighbours - so a menu entry can say why. Read by
     // the menu (to label the deal before it is taken) and by
     // batchShareCircuits (to make it).
-    batchShareGroups(layer, circuitNums, n) {
+    // `refs` (optional, wall circuits {layerId, num} in wall order) deal a
+    // custom group's wall across its members - `layer` is then the wall's
+    // owner and another member's runs read as tokens (_wallRunSegments).
+    batchShareGroups(layer, circuitNums, n, refs) {
         const size = Math.max(2, Number(n) || 0);
-        const runAmps = this._splitterRunAmps(layer);
+        const runAmps = refs ? this._wallRunAmps(layer) : this._splitterRunAmps(layer);
         const runIds = [];
         const groups = [];
         let over = null;
@@ -3050,7 +3057,8 @@ class _Power {
             if (!over) over = g.slice();
             return false;
         };
-        this._shareRunSegments(layer, circuitNums).forEach(seg => {
+        (refs ? this._wallRunSegments(layer, refs)
+            : this._shareRunSegments(layer, circuitNums)).forEach(seg => {
             runIds.push(...seg);
             groups.push(...this._dealRunGroups(seg, size, fits));
         });
@@ -3065,14 +3073,27 @@ class _Power {
     // never auto-pack). Same id-space rules as every manual edit:
     // _writeSplitterManual stamps the space the screen currently reads.
     // Returns false - nothing written - when no two runs fit together.
-    batchShareCircuits(layer, circuitNums, n, action) {
-        if (!layer || !Array.isArray(circuitNums)) return false;
+    // `refs`: a custom group's wall circuits (batchShareGroups); runs of
+    // another member are adopted first (_adoptWallCircuits), in the same
+    // history entry.
+    batchShareCircuits(layer, circuitNums, n, action, refs) {
+        if (!layer || !(Array.isArray(circuitNums) || Array.isArray(refs))) return false;
         // A locked screen stays unchanged (owner, 2026-10-16) - the setter
         // refuses and names it, whichever control called it.
         if (this._lockedRefused(layer)) return false;
-        const { runIds, groups } = this.batchShareGroups(layer, circuitNums, n);
+        const deal = this.batchShareGroups(layer, circuitNums, n, refs);
+        let { runIds, groups } = deal;
         if (runIds.length < 2) return false;
         if (!groups.some(g => g.length >= 2)) return false;
+        let adopted = null;
+        if (refs && this._refsAdopt(layer, refs)) {
+            adopted = this._adoptWallCircuits(layer, refs);
+            if (!adopted) return false;
+            const num = id => (typeof id === 'string' ? adopted.ids.get(id) : id);
+            runIds = runIds.map(num).filter(id => id !== undefined);
+            groups = groups.map(g => g.map(num).filter(id => id !== undefined))
+                .filter(g => g.length);
+        }
         const custom = this.usesCustomCircuits(layer);
         this._writeSplitterManual(layer, (manual) => {
             const hit = new Set(runIds);
@@ -3088,8 +3109,281 @@ class _Power {
                 }
             });
             manual.split = [...new Set(manual.split)].sort((a, b) => a - b);
-        }, action);
+        }, action, adopted ? { silent: true } : undefined);
+        if (adopted) this._commitWallShare(adopted.touched, action);
         return true;
+    }
+
+    // ---- custom mode: a group is ONE wall -----------------------------------
+    //
+    // The owner's ruling, 2026-10-19: "3 fers etc can fill across screens
+    // just like in auto when in a group. remember it's treated as one screen
+    // in this way." Auto already packs a matching group as one wall whose
+    // first member reports every circuit (getAutoRoutePlan). Custom mode now
+    // does the same for EVERY group, mixed panels and wattages included (so
+    // a share can cross the seam - auto is unchanged): the group's first
+    // custom member owns and numbers every circuit drawn on the wall,
+    // whichever member is selected (powerPathOwner - the fill, a click, an
+    // arrow key, Tab and the active-circuit controls all draw there), so
+    // labels and multis run as one sequence, like auto. The drawing itself
+    // is the cross-layer path it always was: steps on a peer carry the
+    // peer's layerId (app-cross-layer-paths.js).
+    //
+    // An old file can still hold runs owned by other members. They open
+    // and draw unchanged. A wall action that needs one - a sweep, the batch
+    // verb or Share reaching it - ADOPTS it first (_adoptWallCircuits): its
+    // runs move into the owner's numbering after the owner's last number,
+    // and the label typed on it, its cable and its place on the distro are
+    // forgotten the way the dock's Clear circuit forgets them. The adoption
+    // and the share are ONE history entry. A locked member is never
+    // adopted from - the action is refused whole and the screen named.
+
+    // The custom-power members of `layer`'s wall in the group's own order,
+    // the owner first - or null off a group, off custom mode, or when no
+    // other member draws custom (a locked member left in auto). Members on
+    // another canvas are not on the wall (getPathScopeLayers).
+    _customPowerWall(layer) {
+        if (!layer || !this.isCustomPower(layer)) return null;
+        const group = (typeof this.getGroupOfLayer === 'function')
+            ? this.getGroupOfLayer(layer) : null;
+        if (!group) return null;
+        const rank = new Map();
+        (this.getGroupMembers(group) || []).forEach((m, i) => {
+            if (m) rank.set(m.id, i);
+        });
+        const at = m => (rank.has(m.id) ? rank.get(m.id) : Number.MAX_SAFE_INTEGER);
+        const members = this.getPathScopeLayers(layer)
+            .filter(m => m && this.isCustomPower(m))
+            .sort((a, b) => at(a) - at(b) || (a.id - b.id));
+        return members.length > 1 ? members : null;
+    }
+
+    // The layer a custom power drawing on `layer` is written to: the wall's
+    // owner on a custom group, the layer itself everywhere else.
+    powerPathOwner(layer) {
+        const wall = this._customPowerWall(layer);
+        return wall ? wall[0] : layer;
+    }
+
+    // The wall's circuits in wall order, [{ layer, c }]: the owner's, then
+    // each other member's own (an old file's) in group order - the order
+    // they take when adopted. Only DRAWN circuits: a member with nothing
+    // drawn reports its auto fallback from screenCircuits, which is no
+    // circuit at all here. One screen's circuits off a wall.
+    _wallCircuits(layer) {
+        const wall = this._customPowerWall(layer);
+        if (!wall) return this.screenCircuits(layer).map(c => ({ layer, c }));
+        const out = [];
+        wall.forEach(m => {
+            if (!this.usesCustomCircuits(m)) return;
+            this.screenCircuits(m).forEach(c => out.push({ layer: m, c }));
+        });
+        return out;
+    }
+
+    // Every wall circuit as a ref, the shape a share across the wall reads.
+    _wallRefs(layer) {
+        return this._wallCircuits(layer)
+            .map(x => ({ layerId: x.layer.id, num: x.c.num }));
+    }
+
+    // The run ids of `refs` (wall circuits, in wall order) as segments of
+    // neighbours, the _shareRunSegments of a wall: the owner's runs by their
+    // own ids, another member's by a `${layerId}:${run}` token until
+    // adoption numbers them.
+    _wallRunSegments(owner, refs) {
+        const byKey = new Map(this._wallCircuits(owner)
+            .map(x => [`${x.layer.id}:${x.c.num}`, x]));
+        const segs = [[]];
+        (refs || []).forEach(r => {
+            const x = byKey.get(`${r.layerId}:${r.num}`);
+            if (!x) return;
+            const mine = x.layer.id === owner.id;
+            if (mine && this._isTakenOverCircuit(owner, x.c.num)) {
+                if (segs[segs.length - 1].length) segs.push([]);
+                return;
+            }
+            (x.c.runIds || [x.c.num]).forEach(id => segs[segs.length - 1]
+                .push(mine ? id : `${x.layer.id}:${id}`));
+        });
+        return segs.filter(seg => seg.length);
+    }
+
+    // _splitterRunAmps across the wall, keyed the way _wallRunSegments
+    // names the runs.
+    _wallRunAmps(owner) {
+        const amps = this._splitterRunAmps(owner);
+        (this._customPowerWall(owner) || []).forEach(m => {
+            if (m.id === owner.id || !this.usesCustomCircuits(m)) return;
+            this._splitterRunAmps(m).forEach((v, id) => amps.set(`${m.id}:${id}`, v));
+        });
+        return amps;
+    }
+
+    // Do `refs` reach past the owner's own circuits?
+    _refsAdopt(owner, refs) {
+        return (refs || []).some(r => r.layerId !== owner.id);
+    }
+
+    // Adopt other members' circuits into the wall's owner. `refs` are
+    // circuits of those members, in wall order. Each moves whole: its feed
+    // is let go first (_takeCircuitOffMember), then every run's path goes
+    // to the owner under the next number after the owner's last, its steps
+    // re-pointed (a step on the member names it; a step on the owner drops
+    // the pointer, the plain form). Unrecorded - the caller's one entry
+    // carries it. Returns { ids: Map(token -> new number), touched } or
+    // null - nothing written, the locked screens named - when a member
+    // adopted from, or a screen one of its runs crosses, is locked.
+    _adoptWallCircuits(owner, refs) {
+        const jobs = [];
+        const locked = new Map();
+        if (owner.locked) locked.set(owner.id, owner);
+        (refs || []).forEach(r => {
+            if (r.layerId === owner.id) return;
+            const m = (this.project.layers || []).find(l => l.id === r.layerId);
+            const c = m && this.screenCircuits(m).find(x => x.num === r.num);
+            if (!c) return;
+            const runs = c.runIds || [c.num];
+            if (m.locked) locked.set(m.id, m);
+            runs.forEach(n => this._runLockedLayers(m, 'power', n)
+                .forEach(l => locked.set(l.id, l)));
+            jobs.push({ m, num: c.num, runs });
+        });
+        if (locked.size) {
+            this._showLockedError([...locked.values()]);
+            return null;
+        }
+        const pullBefore = this._pullLiveRowKeys();
+        this.ensureCustomPowerState(owner);
+        const paths = owner.powerCustomPaths;
+        let next = Object.keys(paths)
+            .filter(n => (paths[n] || []).length > 0)
+            .reduce((mx, n) => Math.max(mx, parseInt(n, 10) || 0), 0) + 1;
+        const ids = new Map();
+        const touched = new Set([owner]);
+        jobs.forEach(({ m, num, runs }) => {
+            const taken = this._takeCircuitOffMember(m, num, runs);
+            taken.touched.forEach(l => touched.add(l));
+            runs.forEach(n => {
+                paths[next] = (taken.steps[n] || []).map(e => {
+                    const entry = { ...e };
+                    const lid = e.layerId === undefined || e.layerId === null
+                        ? m.id : e.layerId;
+                    if (lid === owner.id) delete entry.layerId;
+                    else entry.layerId = lid;
+                    return entry;
+                });
+                ids.set(`${m.id}:${n}`, next);
+                next += 1;
+            });
+        });
+        this._dropPullEditsGoneWith(pullBefore);
+        this._circuitTailCache = null;
+        return { ids, touched: [...touched] };
+    }
+
+    // Take circuit `num` (its runs `runs`) off member `m` for good, ahead of
+    // its adoption. Its place on the distro goes the way the dock's Clear
+    // circuit lets it go (_clearCircuitChip): cut out of a multi of several
+    // (_socaReleaseCircuit), then the one-circuit multi it is left as
+    // forgets its box, number, tails and home run and its cuts. Its typed
+    // labels and cables go, and any share the member stored over its runs
+    // dissolves. Then its paths come off, and the multi bookkeeping closes
+    // the hole: every stored cut past it steps back one ordinal, and the
+    // multi it stood alone in leaves the per-multi stores
+    // (_spliceSocaStores). Returns { steps: {run: path}, touched }.
+    _takeCircuitOffMember(m, num, runs) {
+        const touched = new Set([m]);
+        this._circuitTailCache = null;
+        let slot = this._powerNaming(m).slots.get(num);
+        if (slot) {
+            const rec = this._powerNaming(m).socas.get(slot.multi);
+            if (rec && rec.circuits.length > 1) {
+                const r = this._socaReleaseCircuit(m, slot.multi, num);
+                if (r) r.touched.forEach(l => touched.add(l));
+                this._circuitTailCache = null;
+                slot = this._powerNaming(m).slots.get(num);
+            }
+        }
+        if (slot) {
+            const idx = slot.multi;
+            for (const field of ['powerSocaNumber', 'powerSocaDistro',
+                                 'powerSocaPhasePos', 'powerSocaPhaseOffset',
+                                 'powerSocaNames']) {
+                if (m[field]) delete m[field][idx];
+            }
+            this._forgetFeedLengths(m, idx, [num]);
+            this._resegmentSocaStores(m, this._socaClearSplitPoints(m, [idx]));
+        }
+        const list = this.screenCircuits(m);
+        const count = list.length;
+        const o = list.findIndex(x => x.num === num) + 1;
+        const own = o > 0 ? this._socaSegments(m, count)
+            .find(seg => seg.start === o && seg.end === o) : null;
+        const points = this._socaSplitPoints(m, count);
+        if (this._splitterManualSpace(m) === 'custom') {
+            const cur = this.getPowerSplitters(m);
+            const hit = new Set(runs);
+            m.powerSplitters = { ...cur, manual: {
+                merge: cur.manual.merge.filter(g => Array.isArray(g)
+                    && !g.some(n => hit.has(parseInt(n, 10)))),
+                split: cur.manual.split.filter(n => !hit.has(parseInt(n, 10))),
+                space: 'custom',
+            } };
+        }
+        const steps = {};
+        runs.forEach(n => {
+            steps[n] = (m.powerCustomPaths && m.powerCustomPaths[n]) || [];
+            if (m.powerCustomPaths) delete m.powerCustomPaths[n];
+            if (m.powerLabelOverrides) delete m.powerLabelOverrides[n];
+            this._forgetRunCable(m, 'power', n);
+        });
+        if (o > 0) {
+            if (own) this._spliceSocaStores(m, own.index, -1);
+            m.powerSocaSplits = [...new Set(points.filter(p => p !== o)
+                .map(p => (p > o ? p - 1 : p)))]
+                .filter(p => p >= 1).sort((a, b) => a - b);
+        }
+        this._circuitTailCache = null;
+        return { steps, touched };
+    }
+
+    // Share wall circuits `refs` as ONE circuit through a splitter - the
+    // single-run Share across the seam: adoption first, then the merge the
+    // way mergeSplitterCircuits writes it (custom mode honors a share past
+    // the amps and flags it OVER). One history entry.
+    mergeWallCircuits(owner, refs) {
+        if (!owner || !Array.isArray(refs) || refs.length < 2) return false;
+        if (this._lockedRefused(owner)) return false;
+        const tokens = this._wallRunSegments(owner, refs).flat();
+        if (tokens.length < 2) return false;
+        const adopted = this._adoptWallCircuits(owner, refs);
+        if (!adopted) return false;
+        const runIds = tokens.map(id => (typeof id === 'string'
+            ? adopted.ids.get(id) : id)).filter(id => id !== undefined);
+        this._writeSplitterManual(owner, (manual) => {
+            const inNew = new Set(runIds);
+            manual.merge = manual.merge
+                .map(g => (Array.isArray(g) ? g.filter(n => !inNew.has(n)) : []))
+                .filter(g => g.length >= 2);
+            manual.split = manual.split.filter(n => !inNew.has(n));
+            manual.merge.push([...runIds].sort((a, b) => a - b));
+        }, null, { silent: true });
+        this._commitWallShare(adopted.touched, 'Edit Splitter Groups');
+        return true;
+    }
+
+    // The one PUT and history entry of a share that adopted runs, and the
+    // rebuild _writeSplitterManual would have run.
+    _commitWallShare(layers, action) {
+        this.updateLayers(layers, true, action);
+        this._rebuildAfterGesture(() => {
+            this.refreshSplitterPanel();
+            this.refreshSocaRuns();
+            this.refreshDistroPanel();
+            this.updatePowerLabelEditor && this.updatePowerLabelEditor();
+            if (window.canvasRenderer) window.canvasRenderer.render();
+        });
     }
 
     // ---- what a CLEAR forgets ------------------------------------------------

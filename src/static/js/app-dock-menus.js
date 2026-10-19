@@ -322,42 +322,53 @@ class _DockMenus {
         const { layer, num } = at;
         const sp = this.getPowerSplitters(layer);
         const custom = this.usesCustomCircuits(layer);
-        if (!sp.enabled && !custom) return none;
-        const circuits = this.screenCircuits(layer);
-        const idx = circuits.findIndex(c => c.num === num);
+        // On a custom group the wall is ONE screen (app-power.js): the run
+        // after the last one a member holds is the next member's first, and
+        // a share reaching it adopts it into the wall's owner.
+        const wallOwner = this.powerPathOwner(layer);
+        const onWall = !!this._customPowerWall(layer);
+        if (!sp.enabled && !custom && !onWall) return none;
+        const circuits = this._wallCircuits(layer);
+        const idx = circuits.findIndex(w => w.layer.id === layer.id && w.c.num === num);
         if (idx < 0) return none;
-        const c = circuits[idx];
+        const c = circuits[idx].c;
         // A circuit taken over by hand keeps the runs it was drawn with -
         // it is neither shared on nor un-shared from here
         // (_shareRunSegments says why).
         if (this._isTakenOverCircuit(layer, c.num)) return none;
         const label = this.getPowerCircuitLabel(layer, c.num);
         const out = { share: null, unshare: null };
-        const next = circuits[idx + 1];
-        if (next && !this._isTakenOverCircuit(layer, next.num)) {
+        const nextAt = circuits[idx + 1];
+        const crosses = !!nextAt && nextAt.layer.id !== layer.id;
+        const next = nextAt ? nextAt.c : null;
+        if (next && !this._isTakenOverCircuit(nextAt.layer, next.num)) {
+            const pair = [{ layerId: layer.id, num: c.num },
+                          { layerId: nextAt.layer.id, num: next.num }];
             // The splitter the merge would need: every run already ganged
             // on either side, plus the join.
-            const joined = (c.runIds || [c.num])
-                .concat(next.runIds || [next.num]);
+            const joined = crosses ? this._wallRunSegments(wallOwner, pair).flat()
+                : (c.runIds || [c.num]).concat(next.runIds || [next.num]);
             const ways = joined.length;
             const shareLabel = `Share with next run via ${ways}fer`;
             // The amps rule (app-power.js): in automatic mode a share whose
             // runs together draw past the screen's amps stays on the menu
             // DISABLED, the reason as its title - the gesture is found, the
             // rule is read. Custom mode honors it and flags OVER.
-            const refusal = this.shareRefusal(layer, [joined]);
+            const refusal = crosses ? null : this.shareRefusal(layer, [joined]);
             if (refusal) {
                 out.share = { label: shareLabel, disabled: true,
                               title: refusal.text };
             } else {
-                const load = this.shareLoad(layer, joined);
+                const load = crosses
+                    ? this.shareLoad(wallOwner, joined, this._wallRunAmps(wallOwner))
+                    : this.shareLoad(layer, joined);
                 const figure = load.cap > 0
                     ? ` - ${load.amps.toFixed(1)} A of ${+load.cap.toFixed(1)} A`
                     : '';
                 out.share = {
                     label: shareLabel,
                     title: `Share ${label} and `
-                        + `${this.getPowerCircuitLabel(layer, next.num)} on `
+                        + `${this.getPowerCircuitLabel(nextAt.layer, next.num)} on `
                         + `one circuit through a splitter${figure}. `
                         + (this.isCustomPower(layer)
                             ? 'Custom mode: a share past the amps is '
@@ -367,7 +378,11 @@ class _DockMenus {
                     run: () => {
                         sendClientLog('dock_share',
                                       { layerId: layer.id, num: c.num });
-                        this.mergeSplitterCircuits(layer, [c.num, next.num]);
+                        if (crosses || layer.id !== wallOwner.id) {
+                            this.mergeWallCircuits(wallOwner, pair);
+                        } else {
+                            this.mergeSplitterCircuits(layer, [c.num, next.num]);
+                        }
                     },
                 };
             }
@@ -410,14 +425,26 @@ class _DockMenus {
         let layer = null;
         let nums = null;
         let scope = null;
-        if (sel && Array.isArray(sel.nums) && sel.nums.length) {
+        // A custom group deals as ONE wall (app-power.js, "custom mode: a
+        // group is ONE wall"): `refs` then names every circuit dealt,
+        // whichever member holds it, and `layer` is the wall's owner.
+        let refs = null;
+        if (sel && ((Array.isArray(sel.nums) && sel.nums.length)
+                || (Array.isArray(sel.refs) && sel.refs.length))) {
             layer = (this.project.layers || [])
                 .find(l => l.id === sel.layerId);
             if (!layer) return null;
             // Degrade-on-read: circuits the plan no longer produces fall
             // out of the selection instead of poisoning the deal.
-            const have = new Set(this.screenCircuits(layer).map(c => c.num));
-            nums = sel.nums.filter(n => have.has(n));
+            if (Array.isArray(sel.refs) && this._customPowerWall(layer)) {
+                const have = new Set(this._wallCircuits(layer)
+                    .map(x => `${x.layer.id}:${x.c.num}`));
+                refs = sel.refs.filter(r => have.has(`${r.layerId}:${r.num}`));
+                nums = refs.filter(r => r.layerId === layer.id).map(r => r.num);
+            } else {
+                const have = new Set(this.screenCircuits(layer).map(c => c.num));
+                nums = (sel.nums || []).filter(n => have.has(n));
+            }
             scope = 'selection';
         } else {
             const rect = renderer.canvas.getBoundingClientRect();
@@ -433,20 +460,25 @@ class _DockMenus {
             const circuit = under
                 ? renderer._powerCircuitForPanel(under, hit.panel) : null;
             if (!circuit) return null;
-            layer = circuit.owner;
-            nums = this.screenCircuits(layer).map(c => c.num);
+            layer = this.powerPathOwner(circuit.owner);
+            if (this._customPowerWall(layer)) refs = this._wallRefs(layer);
+            nums = refs ? refs.filter(r => r.layerId === layer.id).map(r => r.num)
+                : this.screenCircuits(layer).map(c => c.num);
             scope = 'screen';
         }
-        if (!layer || !nums || nums.length < 2) return null;
+        if (!layer || !nums || (refs ? refs.length : nums.length) < 2) return null;
         // The deal is at RUN grain, so existing gangs inside the batch
         // re-deal with everything else - count the runs, not the circuits.
         // A circuit taken over by hand is not dealt (_shareRunSegments).
-        const runCount = this._shareRunSegments(layer, nums)
+        const runCount = (refs ? this._wallRunSegments(layer, refs)
+            : this._shareRunSegments(layer, nums))
             .reduce((t, seg) => t + seg.length, 0);
-        const chosen = new Set(nums);
-        const hasGang = this.screenCircuits(layer).some(c => chosen.has(c.num)
-            && !this._isTakenOverCircuit(layer, c.num)
-            && (c.runIds || []).length > 1);
+        const picked = refs ? new Set(refs.map(r => `${r.layerId}:${r.num}`))
+            : new Set(nums.map(n => `${layer.id}:${n}`));
+        const hasGang = this._wallCircuits(layer).some(x =>
+            picked.has(`${x.layer.id}:${x.c.num}`)
+            && !this._isTakenOverCircuit(x.layer, x.c.num)
+            && (x.c.runIds || []).length > 1);
         if (runCount < 2) return null;
         const sp = this.getPowerSplitters(layer);
         const custom = this.usesCustomCircuits(layer);
@@ -473,7 +505,7 @@ class _DockMenus {
             // another size's entry wearing the wrong name - "3fer them"
             // where the load only lets runs pair up deals 2fers, which IS
             // the 2fer entry - so it is not offered under this name.
-            const deal = this.batchShareGroups(layer, nums, n);
+            const deal = this.batchShareGroups(layer, nums, n, refs);
             const sizes = deal.groups.map(g => g.length);
             const label = `${n}fer ${verb} (${this._nferSizesLabel(sizes)})`;
             if (!sizes.some(sz => sz >= 2)) {
@@ -505,7 +537,7 @@ class _DockMenus {
                                     runs: runCount });
                     this.batchShareCircuits(layer, nums, n,
                         `${n}fer ${scope === 'screen'
-                            ? 'Screen' : 'Selection'}`);
+                            ? 'Screen' : 'Selection'}`, refs);
                     this._sweepSelection = null;
                 },
             });
@@ -523,9 +555,25 @@ class _DockMenus {
                 run: () => {
                     sendClientLog('power_batch_unshare',
                                   { layerId: layer.id, scope });
-                    this.splitSplitterCircuits(layer, nums,
-                        scope === 'screen'
-                            ? 'Un-share Screen' : 'Un-share Selection');
+                    const action = scope === 'screen'
+                        ? 'Un-share Screen' : 'Un-share Selection';
+                    if (refs) {
+                        // Across the wall each member un-shares in its own
+                        // store - one PUT, one history entry.
+                        const by = new Map();
+                        refs.forEach(r => by.set(r.layerId,
+                            (by.get(r.layerId) || []).concat([r.num])));
+                        const written = [];
+                        by.forEach((ns, id) => {
+                            const m = (this.project.layers || []).find(l => l.id === id);
+                            if (!m || m.locked) return;
+                            this.splitSplitterCircuits(m, ns, null, { silent: true });
+                            written.push(m);
+                        });
+                        if (written.length) this._commitWallShare(written, action);
+                    } else {
+                        this.splitSplitterCircuits(layer, nums, action);
+                    }
                     this._sweepSelection = null;
                 },
             };

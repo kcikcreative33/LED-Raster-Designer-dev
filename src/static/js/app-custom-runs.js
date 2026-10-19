@@ -161,8 +161,12 @@ class _CustomRuns {
             const layers = hits.map(h => h.layer);
             // The pending marquee is drawn onto this run next, so it counts
             // toward what the readout has to describe.
+            // On a custom group the shown screen draws onto the wall
+            // owner's circuits (powerPathOwner), so its marquee counts there.
             const sel = isPower ? this.powerCustomSelection : this.customSelection;
-            if (owner && owner === this.currentLayer && sel && sel.size > 0) {
+            const drawsHere = owner && (owner === this.currentLayer
+                || (isPower && owner === this.powerPathOwner(this.currentLayer)));
+            if (drawsHere && sel && sel.size > 0) {
                 this._selectedPathPanels(owner, sel).forEach(p => layers.push(p.layer));
             }
             sized = Object.assign({}, cap, this._customRunSizing(owner, kind, layers, cap));
@@ -347,7 +351,8 @@ class _CustomRuns {
         const el = document.getElementById(kind === 'power'
             ? 'power-custom-fill-readout' : 'custom-fill-readout');
         if (!el) return;
-        const layer = this.currentLayer;
+        const layer = kind === 'power'
+            ? this.powerPathOwner(this.currentLayer) : this.currentLayer;
         const editing = layer && (layer.type || 'screen') === 'screen' && (kind === 'power'
             ? this.isCustomPowerEditing(layer) : this.isCustomFlowEditing(layer));
         if (!editing) {
@@ -459,7 +464,9 @@ class _CustomRuns {
         if (!this.currentLayer || !panel || panel.hidden) return;
         if (!this.isCustomPowerEditing(this.currentLayer)) return;
         if (this.powerCustomSelection.size > 0) return;
-        const owner = this.currentLayer;
+        // On a custom group the wall's owner holds every circuit
+        // (powerPathOwner), whichever member is selected.
+        const owner = this.powerPathOwner(this.currentLayer);
         const source = this._resolvePathPanelLayer(owner, panel, panelLayer);
         if (!source) return;
         // Locked screens stay unchanged - see addPanelToCustomPath.
@@ -642,9 +649,10 @@ class _CustomRuns {
             // Read, never ensure*: the step itself (addPanelToCustomPowerPath)
             // makes the state after its lock check, so a locked screen is
             // not written by the key.
-            const circuitNum = this.currentLayer.powerCustomIndex || 1;
-            const path = (this.currentLayer.powerCustomPaths || {})[circuitNum] || [];
-            const next = this._stepPathFromLastEntry(this.currentLayer, path, dir);
+            const owner = this.powerPathOwner(this.currentLayer);
+            const circuitNum = owner.powerCustomIndex || 1;
+            const path = (owner.powerCustomPaths || {})[circuitNum] || [];
+            const next = this._stepPathFromLastEntry(owner, path, dir);
             if (next === false) return false;
             if (next) this.addPanelToCustomPowerPath(next.panel, next.layer);
             return true;
@@ -960,7 +968,9 @@ class _CustomRuns {
         // The PORT / CIRCUIT stays on currentLayer even when the selection
         // spans peers - a port is one physical output on one processor. Only
         // the individual step records which screen the cable ran onto.
-        const owner = this.currentLayer;
+        // A power circuit on a custom group is the WALL's: its owner holds
+        // it whichever member is shown (powerPathOwner).
+        const owner = isPower ? this.powerPathOwner(this.currentLayer) : this.currentLayer;
         if (isPower ? !this.isCustomPowerEditing(owner) : !this.isCustomFlowEditing(owner)) return false;
         const selection = isPower ? this.powerCustomSelection : this.customSelection;
         if (!selection || selection.size === 0) return false;
