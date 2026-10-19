@@ -25,6 +25,10 @@ each ONE run covering three columns):
    is the circuit's own Nfer - ways = its columns, never a smaller size,
    whatever the splitter size - offered only while its load fits the
    amps; refused with the reason otherwise.
+   2b. The batch ("3fer this screen") and the Alt-sweep share verbs apply
+   the same model to custom circuits: a wide circuit splits into its own
+   legs and is never joined with a neighbour; single-column circuits
+   still join into Nfers.
 
 Run locally:
     python -m pytest tests/test_nfer_wall_setting.py -v --browser chromium
@@ -543,3 +547,75 @@ def test_3fer_it_on_a_locked_screen_is_refused(page):
     assert [c['runs'] for c in circuits(page, wall)] == [[15]] * 3 + [[5]]
     assert ['Wall'] in page.evaluate("() => window.__nf.errors")
 
+
+# ── 2b. the batch and the sweep split wide circuits into their legs ───────
+#
+# The owner's clarification, 2026-10-19: "3fer Screen" and the Alt-sweep
+# share verbs apply the same model to custom circuits. A circuit that
+# already spans several columns as one run is split into its own legs
+# (ways = its columns, capped at the size picked, while the load fits) -
+# never joined with its neighbours. Single-column circuits still join into
+# Nfers the way auto packs columns.
+
+def _batch_items(page, p):
+    return menu_at(page, p)
+
+
+def test_3fer_screen_on_the_old_group_makes_every_3_column_circuit_a_3fer(page):
+    """The owner's three-screen shape: old single-run circuits of three
+    columns (the top row half height) and one single column. "3fer this
+    screen": every three-column circuit becomes a 3fer of its own three
+    columns, none OVER, the single column stays plain - one history entry,
+    adopted onto the wall's owner. (It used to pair the lone column with a
+    neighbour - "only 2fers".) "2fer this screen" is disabled: no circuit
+    here fits a 2fer and none is joined to another."""
+    a, b, c = old_wall(page)
+    items = _batch_items(page, pt(page, b, 2, 1))
+    assert items['n0'] and items['n0']['disabled'], items
+    assert 'columns' in items['n0']['title'], items
+    assert items['n1'] and items['n1']['label'] == (
+        '3fer this screen (5 × 3fer + 1 plain)'), items
+    assert not items['n1']['disabled'], items
+    h0 = len(history(page))
+    take(page, 'hw-batch-n1')
+    out = circuits(page, a)
+    assert [x['runs'] for x in out] == [[5, 5, 5]] * 3 + [[5]] + [[5, 5, 5]] * 2, out
+    cols = cols_of(page, a)
+    assert all(len(v) == 1 for v in cols.values()), (
+        f'every run is one column: {cols}')
+    assert len(cols) == 16, cols
+    assert [g['ways'] for g in gangs(page, a)] == [3] * 5, gangs(page, a)
+    assert not any(g['over'] for g in gangs(page, a)), gangs(page, a)
+    assert cols_of(page, b) == {} and cols_of(page, c) == {}
+    assert history(page)[h0:] == ['3fer Screen'], history(page)
+    page.evaluate("() => window.app.undo()")
+    landed(page)
+    assert sorted(cols_of(page, b), key=int) == ['2', '3', '4', '5', '6']
+
+
+def test_a_sweep_over_wide_circuits_makes_each_its_own_3fer(page):
+    """The same shape, a sweep from A's circuit 1 onto B's circuit 3:
+    "3fer them" makes each of the three its own 3fer."""
+    a, b, c = old_wall(page)
+    alt_sweep(page, pt(page, a, 2, 1), pt(page, b, 2, 1))
+    items = _batch_items(page, pt(page, b, 2, 1))
+    assert items['n1'] and items['n1']['label'] == '3fer them (3 × 3fer)', items
+    take(page, 'hw-batch-n1')
+    out = circuits(page, a)
+    assert [x['runs'] for x in out[:3]] == [[5, 5, 5]] * 3, out
+    assert not any(g['over'] for g in gangs(page, a))
+
+
+def test_3fer_screen_splits_wide_circuits_and_joins_single_columns(page):
+    """One custom screen: columns 0 and 1 single, columns 2-4 one run,
+    then three single columns. "3fer this screen": the two singles before
+    the wide run pair up (the wide run breaks the line), the wide run is
+    its own 3fer, the three singles after it join one 3fer."""
+    wall = wide(page, columns=8, runs={1: [0], 2: [1], 3: [2, 3, 4], 4: [5],
+                                       5: [6], 6: [7]})
+    items = _batch_items(page, pt(page, wall, 2, 0))
+    assert items['n1'] and items['n1']['label'] == (
+        '3fer this screen (2 × 3fer + 1 × 2fer)'), items
+    take(page, 'hw-batch-n1')
+    assert [c['runs'] for c in circuits(page, wall)] == [[5, 5], [5, 5, 5], [5, 5, 5]]
+    assert not any(g['over'] for g in gangs(page, wall))

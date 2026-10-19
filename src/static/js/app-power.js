@@ -3075,18 +3075,73 @@ class _Power {
         const runAmps = refs ? this._wallRunAmps(layer) : this._splitterRunAmps(layer);
         const runIds = [];
         const groups = [];
+        const splits = [];
+        const sizes = [];
+        const tooWide = [];
         let over = null;
         const fits = (g) => {
             if (this._shareFits(layer, g, runAmps)) return true;
             if (!over) over = g.slice();
             return false;
         };
+        // Custom circuits follow the leg model (the owner's ruling,
+        // 2026-10-19, "a wide circuit splits into its own legs"): a run
+        // drawn across several columns is split into a run per column on
+        // its own circuit when its columns fit the size dealt and its load
+        // fits the amps, else left a circuit of its own - and it is never
+        // joined with a neighbour, so it breaks the line the single-column
+        // runs deal along. Automatic runs are always one column (the
+        // packer's), so an automatic deal is the walk it always was.
+        const custom = this.isCustomPower(layer);
+        const deal = (ids) => {
+            if (!ids.length) return;
+            const gs = this._dealRunGroups(ids, size, fits);
+            groups.push(...gs);
+            sizes.push(...gs.map(g => g.length));
+        };
         (refs ? this._wallRunSegments(layer, refs)
             : this._shareRunSegments(layer, circuitNums)).forEach(seg => {
             runIds.push(...seg);
-            groups.push(...this._dealRunGroups(seg, size, fits));
+            if (!custom) {
+                deal(seg);
+                return;
+            }
+            let line = [];
+            seg.forEach(id => {
+                const legs = this._runLegs(layer, id);
+                if (!legs || legs.legs.length < 2) {
+                    line.push(id);
+                    return;
+                }
+                deal(line);
+                line = [];
+                const ways = legs.legs.length;
+                if (ways <= size && this._shareFits(layer, [id], runAmps)) {
+                    splits.push({ id, ways });
+                    sizes.push(ways);
+                } else {
+                    if (ways > size) tooWide.push({ id, ways, noun: legs.noun });
+                    sizes.push(1);
+                }
+            });
+            deal(line);
         });
-        return { runIds, groups, over };
+        return { runIds, groups, over, splits, sizes, tooWide };
+    }
+
+    // The legs of custom run `id` in a wall deal (_pathLegs): the wall's
+    // owner's run by its number, another member's by its
+    // `${layerId}:${run}` token. Null when the run has no drawing.
+    _runLegs(owner, id) {
+        let layer = owner;
+        let num = id;
+        if (typeof id === 'string') {
+            const [lid, n] = id.split(':').map(v => parseInt(v, 10));
+            layer = (this.project.layers || []).find(l => l.id === lid);
+            num = n;
+        }
+        const path = layer && (layer.powerCustomPaths || {})[num];
+        return (path && path.length) ? this._pathLegs(layer, path) : null;
     }
 
     // Deal the chosen circuits' RUNS into Nfer groups, one manual-store
@@ -3106,9 +3161,22 @@ class _Power {
         // refuses and names it, whichever control called it.
         if (this._lockedRefused(layer)) return false;
         const deal = this.batchShareGroups(layer, circuitNums, n, refs);
-        let { runIds, groups } = deal;
-        if (runIds.length < 2) return false;
-        if (!groups.some(g => g.length >= 2)) return false;
+        let { runIds, groups, splits } = deal;
+        if (!runIds.length) return false;
+        if (!groups.some(g => g.length >= 2) && !splits.length) return false;
+        // A split rewrites its run's path: a run drawn across a locked
+        // screen's cabinets is not rewritten (another member's run is
+        // checked by its adoption).
+        const lockedRuns = new Map();
+        splits.forEach(sp => {
+            if (typeof sp.id === 'string') return;
+            this._runLockedLayers(layer, 'power', sp.id)
+                .forEach(l => lockedRuns.set(l.id, l));
+        });
+        if (lockedRuns.size) {
+            this._showLockedError([...lockedRuns.values()]);
+            return false;
+        }
         let adopted = null;
         if (refs && this._refsAdopt(layer, refs)) {
             adopted = this._adoptWallCircuits(layer, refs);
@@ -3117,6 +3185,8 @@ class _Power {
             runIds = runIds.map(num).filter(id => id !== undefined);
             groups = groups.map(g => g.map(num).filter(id => id !== undefined))
                 .filter(g => g.length);
+            splits = splits.map(sp => ({ ...sp, id: num(sp.id) }))
+                .filter(sp => sp.id !== undefined);
         }
         const custom = this.usesCustomCircuits(layer);
         this._writeSplitterManual(layer, (manual) => {
@@ -3133,8 +3203,16 @@ class _Power {
                 }
             });
             manual.split = [...new Set(manual.split)].sort((a, b) => a - b);
-        }, action, adopted ? { silent: true } : undefined);
-        if (adopted) this._commitWallShare(adopted.touched, action);
+        }, action, { silent: true });
+        // The wide runs, highest number first so a split's renumbering
+        // never moves a run still waiting for its own.
+        splits.slice().sort((a, b) => b.id - a.id).forEach(sp => {
+            const path = (layer.powerCustomPaths || {})[sp.id];
+            if (path && path.length) {
+                this._splitCustomRun(layer, sp.id, this._pathLegs(layer, path).legs);
+            }
+        });
+        this._commitWallShare(adopted ? adopted.touched : [layer], action);
         return true;
     }
 

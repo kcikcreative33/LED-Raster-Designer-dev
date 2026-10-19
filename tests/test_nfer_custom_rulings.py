@@ -588,9 +588,14 @@ def test_batch_3fer_screen_leaves_the_lone_column_plain(page):
 
 def test_batch_never_gangs_circuits_too_big_to_share(page):
     """Custom, circuits already three columns each (15 cabinets, 2250 W)
-    and a lone column: no two 15-cabinet circuits fit one 4160 W circuit,
-    so "3fer this screen" leaves them plain and joins only the pair that
-    fits - never a 45-cabinet OVER gang."""
+    and a lone column. The owner's clarification, 2026-10-19 ("i am taking
+    3 columns and 1 port and making it 3fer the single port"): a circuit
+    that spans three columns as one run is split into its own three legs
+    - "3fer this screen" makes three 3fers and leaves the lone column
+    plain - and is never joined with a neighbour: "2fer this screen" has
+    no circuit that fits a 2fer and joins nothing (it used to gang the
+    last 3-column circuit with the lone column), so it stays on the menu
+    disabled. Never a 45-cabinet OVER gang either way."""
     (wall,) = make(page, [{'name': 'Wall', 'columns': 10}])
     custom_on(page)
     page.evaluate("""(id) => {
@@ -606,19 +611,25 @@ def test_batch_never_gangs_circuits_too_big_to_share(page):
     items = menu_at(page, pt(page, wall, 0, 0))
     entries = [e for e in (items['n0'], items['n1']) if e]
     assert entries and all('OVER' not in e['title'] for e in entries), items
-    assert any(e['label'].startswith('2fer this screen (1 × 2fer + 2 plain)')
-               for e in entries), items
-    assert not any(e['label'].startswith('3fer') for e in entries), (
-        f'no group of three fits, so no 3fer entry: {items}')
-    take(page, 'hw-batch-n0')
-    assert manual(page, wall)['merge'] == [[3, 4]], manual(page, wall)
+    assert items['n0'] and items['n0']['disabled'], items
+    assert items['n0']['label'] == '2fer this screen (4 plain)', items
+    assert items['n1'] and items['n1']['label'] == (
+        '3fer this screen (3 × 3fer + 1 plain)'), items
+    assert not items['n1']['disabled'], items
+    take(page, 'hw-batch-n1')
+    out = circuits(page, wall)
+    assert [c['runs'] for c in out] == [[5, 5, 5]] * 3 + [[5]], out
+    assert [g['ways'] for g in gangs(page, wall)] == [3, 3, 3], gangs(page, wall)
     assert not any(g['over'] for g in gangs(page, wall)), gangs(page, wall)
 
 
 def test_batch_with_nothing_that_fits_is_disabled_with_the_reason(page):
-    """Custom, every circuit 15 cabinets: no two fit together, so the deal
-    shares nothing - the entry stays on the menu disabled, naming the
-    first pair and its load, and a click writes nothing."""
+    """Custom, every circuit 15 cabinets across three columns: none fits a
+    2fer and none is joined to another (the owner's clarification,
+    2026-10-19), so "2fer this screen" shares nothing - it stays on the
+    menu disabled, naming the circuits and why, and a click writes
+    nothing. Single-column circuits too heavy to pair are refused by
+    their load: the first pair and its amps are named."""
     (wall,) = make(page, [{'name': 'Wall', 'columns': 9}])
     custom_on(page)
     page.evaluate("""(id) => {
@@ -634,8 +645,29 @@ def test_batch_with_nothing_that_fits_is_disabled_with_the_reason(page):
     h0 = len(history(page))
     items = menu_at(page, pt(page, wall, 0, 0))
     assert items['n0'] and items['n0']['disabled'], items
-    assert items['n0']['title'] == ('Runs 1 and 2 together draw 21.6 A on a '
-                                    '20 A circuit - no runs here fit on one '
+    assert items['n0']['title'] == (
+        'S1-1, S1-2 and S1-3 span more columns than a 2fer has ways - a '
+        'circuit across several columns splits into its own legs and never '
+        'joins another'), items
+    take(page, 'hw-batch-n0')
+    assert manual(page, wall)['merge'] == [] and len(history(page)) == h0
+
+    page.evaluate("window.app.hideContextMenu()")
+    page.evaluate("""(id) => {
+        const app = window.app, l = window.__nf.layer(id);
+        const col = (c) => [0, 1, 2, 3, 4].map(r => ({ row: r, col: c }));
+        l.powerAmperage = 6;
+        l.powerCustomPaths = { 1: col(0), 2: col(1), 3: col(2) };
+        app._circuitTailCache = null;
+        app.updateLayers([l]);
+        app.resetHistory('Seeded');
+    }""", wall)
+    landed(page)
+    h0 = len(history(page))
+    items = menu_at(page, pt(page, wall, 0, 0))
+    assert items['n0'] and items['n0']['disabled'], items
+    assert items['n0']['title'] == ('Runs 1 and 2 together draw 7.2 A on a '
+                                    '6 A circuit - no runs here fit on one '
                                     'circuit together'), items
     take(page, 'hw-batch-n0')
     assert manual(page, wall)['merge'] == [] and len(history(page)) == h0

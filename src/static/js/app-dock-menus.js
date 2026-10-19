@@ -542,8 +542,8 @@ class _DockMenus {
         const verb = scope === 'screen' ? 'this screen' : 'them';
         const entries = [];
         [2, 3, 4].forEach(n => {
-            if (runCount < n) return;
             if (gated) {
+                if (runCount < n) return;
                 entries.push({
                     label: `${n}fer ${verb} (${this.batchNferLabel(runCount, n)})`,
                     disabled: true,
@@ -561,12 +561,17 @@ class _DockMenus {
             // another size's entry wearing the wrong name - "3fer them"
             // where the load only lets runs pair up deals 2fers, which IS
             // the 2fer entry - so it is not offered under this name.
+            // A custom circuit drawn across several columns is split into
+            // its own legs, never joined (app-power.js batchShareGroups), so
+            // the deal's sizes count each split at its ways.
             const deal = this.batchShareGroups(layer, nums, n, refs);
-            const sizes = deal.groups.map(g => g.length);
+            const sizes = deal.sizes;
+            if (runCount < n && !sizes.includes(n)) return;
             const label = `${n}fer ${verb} (${this._nferSizesLabel(sizes)})`;
             if (!sizes.some(sz => sz >= 2)) {
                 const load = deal.over
-                    ? this.shareLoad(layer, deal.over) : null;
+                    ? this.shareLoad(layer, deal.over,
+                        refs ? this._wallRunAmps(layer) : undefined) : null;
                 entries.push({
                     label, disabled: true,
                     title: load
@@ -574,19 +579,23 @@ class _DockMenus {
                             + `${load.amps.toFixed(1)} A on a `
                             + `${+load.cap.toFixed(1)} A circuit - no runs `
                             + 'here fit on one circuit together'
-                        : 'No runs here fit on one circuit together',
+                        : (deal.tooWide.length
+                            ? this._tooWideText(layer, deal.tooWide, n)
+                            : 'No runs here fit on one circuit together'),
                 });
                 return;
             }
             if (!sizes.includes(n)) return;
             const leftPlain = deal.over ? ' Runs that do not fit together '
                 + 'stay on circuits of their own.' : '';
+            const legs = deal.splits.length ? ' A circuit drawn across several '
+                + 'columns splits into a run per column on its own circuit.' : '';
             entries.push({
                 label,
                 title: `Deal ${runCount} run${runCount === 1 ? '' : 's'} `
                     + `left to right as ${this._nferSizesLabel(sizes)} `
                     + '- adjacent groups, each its own circuit, every group '
-                    + `within the amps.${leftPlain} One undoable step.`,
+                    + `within the amps.${leftPlain}${legs} One undoable step.`,
                 run: () => {
                     sendClientLog('power_batch_nfer',
                                   { layerId: layer.id, n, scope,
@@ -635,6 +644,26 @@ class _DockMenus {
             };
         }
         return out;
+    }
+
+    // Why a deal of size `n` shares nothing when its runs span more columns
+    // than an `n`fer has ways: "S1-1, S1-2 and S1-3 span more columns than a
+    // 2fer has ways - ...". `wide` is batchShareGroups' tooWide.
+    _tooWideText(owner, wide, n) {
+        const names = wide.map(w => {
+            if (typeof w.id === 'string') {
+                const [lid, num] = w.id.split(':').map(v => parseInt(v, 10));
+                const m = (this.project.layers || []).find(l => l.id === lid);
+                return m ? this.getPowerCircuitLabel(m, num) : w.id;
+            }
+            return this.getPowerCircuitLabel(owner, w.id);
+        });
+        const list = names.length === 1 ? names[0]
+            : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+        const noun = wide[0].noun || 'column';
+        return `${list} ${names.length === 1 ? 'spans' : 'span'} more ${noun}s `
+            + `than a ${n}fer has ways - a circuit across several ${noun}s `
+            + 'splits into its own legs and never joins another';
     }
 
     // A dock chip: the same clears, from the hardware end of the cable.
