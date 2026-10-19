@@ -225,9 +225,11 @@ class _PixelSelect {
     // the cables typed on the circuits that go. The shares drawn against
     // those custom numbers go with them (_wipeCustomSplitterGroups), so a
     // fresh drawing under the same numbers is never ganged by an old
-    // merge. A run that crosses a locked screen's cabinets stays, and the
-    // locked screen is named. All of it rides the toggle's one history
-    // entry.
+    // merge. The circuit labels typed by hand go too (the owner, same
+    // day): a fresh drawing under an old number must not print the old
+    // circuit's name. A run that crosses a locked screen's cabinets stays
+    // with its label, and the locked screen is named. All of it rides the
+    // toggle's one history entry.
     toggleCustomPowerMode(enabled) {
         if (!this.currentLayer) return;
         enabled = !!enabled;
@@ -246,6 +248,7 @@ class _PixelSelect {
                 const customGroups = this._splitterManualSpace(layer) === 'custom';
                 if (this._clearMemberCustomRuns(layer, 'power', keptFor)) wiped = true;
                 if (customGroups && this._wipeCustomSplitterGroups(layer)) wiped = true;
+                if (this._wipeTypedCircuitLabels(layer)) wiped = true;
                 if (layer.powerFlowPattern && layer.powerFlowPattern !== 'custom') {
                     layer.lastPowerFlowPattern = layer.powerFlowPattern;
                 }
@@ -299,6 +302,24 @@ class _PixelSelect {
                 false, 6000);
         }
         window.canvasRenderer.render();
+    }
+
+    // The custom toggle's way in: forget the labels typed on the circuits
+    // it wiped - every one but a run still drawn (kept for a locked
+    // screen). The store object is left behind, never the key deleted (an
+    // absent key is missing from the PUT and the server keeps the old
+    // labels). True when it wrote.
+    _wipeTypedCircuitLabels(layer) {
+        const labels = layer && layer.powerLabelOverrides;
+        if (!labels || typeof labels !== 'object') return false;
+        const paths = layer.powerCustomPaths || {};
+        let changed = false;
+        Object.keys(labels).forEach(n => {
+            if ((paths[n] || []).length > 0) return;
+            delete labels[n];
+            changed = true;
+        });
+        return changed;
     }
 
     updateCustomPowerUI() {

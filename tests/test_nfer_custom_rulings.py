@@ -445,6 +445,39 @@ def test_custom_on_wipes_every_circuit_and_take_over(page):
     assert history(page)[h0:] == ['Power Custom Mode Toggle'], history(page)
 
 
+def test_custom_on_wipes_the_labels_typed_by_hand(page):
+    """The owner's ruling, 2026-10-19: custom ON also forgets the circuit
+    labels typed by hand on the screens it turns, in the toggle's one
+    history entry; a locked screen keeps its labels."""
+    left, right = make(page, [{'name': 'Left', 'columns': 4},
+                              {'name': 'Right', 'columns': 3, 'x': 800}])
+    page.evaluate("""([a, b]) => {
+        const app = window.app;
+        const L = window.__nf.layer(a), R = window.__nf.layer(b);
+        L.powerLabelOverrides = { 1: 'HOUSE L', 2: 'HOUSE L2' };
+        R.powerLabelOverrides = { 1: 'KEEP ME' };
+        R.locked = true;
+        app._showLockedError = () => {};
+        app.selectedLayerIds = new Set([a, b]);
+        app.updateLayers([L, R]);
+        app.resetHistory('Seeded');
+    }""", [left, right])
+    landed(page)
+    h0 = len(history(page))
+    custom_on(page)
+    out = page.evaluate("""async ([a, b]) => {
+        await window.app._layerSavesSettled();
+        const p = await (await fetch('/api/project')).json();
+        const saved = (id) => p.layers.find(x => x.id === id).powerLabelOverrides;
+        return { left: window.__nf.layer(a).powerLabelOverrides,
+                 right: window.__nf.layer(b).powerLabelOverrides,
+                 savedLeft: saved(a) };
+    }""", [left, right])
+    assert out['left'] == {} and out['savedLeft'] == {}, out
+    assert out['right'] == {'1': 'KEEP ME'}, out
+    assert history(page)[h0:] == ['Power Custom Mode Toggle'], history(page)
+
+
 def test_custom_on_keeps_a_run_across_a_locked_member(page):
     """A locked screen is never changed: a path the open screen drew onto
     its locked neighbour's cabinets stays when custom goes on, and the
