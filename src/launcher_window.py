@@ -261,6 +261,13 @@ def _show_windows_error(title, message):
 
 
 def _read_version():
+    # A beta build names its tag ("v1.5.3-beta.1"), the same version the app
+    # and its update check use; VERSION.txt below is the fallback.
+    try:
+        from updater import get_current_version
+        return 'v' + get_current_version()
+    except Exception:
+        pass
     # encoding matters: VERSION.txt is UTF-8, but Windows' default open()
     # encoding is cp1252 — the resulting UnicodeDecodeError (which is NOT an
     # OSError!) escaped, made get_state raise over the JS bridge, and left

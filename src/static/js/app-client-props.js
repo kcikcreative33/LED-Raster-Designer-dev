@@ -346,7 +346,7 @@ class _ClientProps {
             // mirrored on this copy so the 'Initial State' undo snapshot,
             // taken right after this pass, carries it (see appVersion).
             this.project.app_version = this.appVersion();
-            fetch('/api/project', {
+            this._trackProjectSync(fetch('/api/project', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -358,7 +358,7 @@ class _ClientProps {
                     cableUnit: this.project.cableUnit,
                     keep_pristine: true
                 })
-            });
+            }));
             sendClientLog('startup_preferences_enforced', {
                 processorType: layer.processorType,
                 lowLatency: layer.lowLatency,

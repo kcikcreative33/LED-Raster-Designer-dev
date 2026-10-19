@@ -35,7 +35,8 @@ a = Analysis(
         (os.path.join('..', 'THIRD-PARTY-NOTICES'), '.'),  # served by /api/third-party-notices (Help > License)
         ('launcher_window.html', '.'),  # splash/control window UI
         (certifi.where(), 'certifi'),
-    ] + collect_data_files('webview'),  # pywebview bridge/runtime data files
+    ] + ([('BUILD_TAG.txt', '.')] if os.path.exists(os.path.join(BASE_DIR, 'BUILD_TAG.txt')) else [])  # beta builds only (release.yml)
+      + collect_data_files('webview'),  # pywebview bridge/runtime data files
     hiddenimports=[
         'flask',
         'flask_socketio',

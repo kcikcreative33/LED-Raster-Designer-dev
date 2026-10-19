@@ -80,6 +80,9 @@ export class LEDRasterApp {
                 console.error('WebSocket init failed; continuing without live updates:', e);
             }
             this.loadProject();
+            // Reads /api/version once: a beta build names itself in the
+            // title and header (app-project-io.js _showBuildVersion).
+            if (typeof this.appVersion === 'function') this.appVersion();
             this.setupEventListeners();
             // The Processors panel is project state, not layer state, so it
             // loads its own catalog and its own tree rather than waiting on a
@@ -1223,7 +1226,7 @@ export class LEDRasterApp {
                 // along and is mirrored here so the first undo snapshot
                 // carries it (see appVersion).
                 this.project.app_version = this.appVersion();
-                fetch('/api/project', {
+                this._trackProjectSync(fetch('/api/project', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1234,7 +1237,7 @@ export class LEDRasterApp {
                         app_version: this.project.app_version,
                         keep_pristine: true
                     })
-                });
+                }));
 
                 // Fit to view
                 setTimeout(() => {
@@ -1360,6 +1363,18 @@ export class LEDRasterApp {
     // that REPLACES the project - New, file open, a recent file - waits on
     // it first, as undo and redo do, so a save still on its way cannot land
     // on the new project's screen with the same id (2026-09-24).
+    // A write the page sends on its own (the raster sync after New Project
+    // and on load) joins the saves _layerSavesSettled waits on, so File >
+    // Open's PUT and an undo's restore cannot be overtaken by it: landing
+    // late, it put the new show's default raster on the opened show.
+    _trackProjectSync(promise) {
+        if (!this._inflightLayerPuts) this._inflightLayerPuts = new Set();
+        const tracked = Promise.resolve(promise).catch(() => {});
+        this._inflightLayerPuts.add(tracked);
+        tracked.then(() => this._inflightLayerPuts.delete(tracked));
+        return tracked;
+    }
+
     _layerSavesSettled() {
         const pending = [...(this._inflightLayerPuts || [])]
             .concat([...((this._layerPutChains && this._layerPutChains.values()) || [])]);

@@ -21,11 +21,27 @@ class _ProjectIo {
         if (!this._appVersionFetch) {
             this._appVersionFetch = fetch('/api/version')
                 .then(r => r.json())
-                .then(d => { if (d && d.version) this._appVersion = String(d.version); })
+                .then(d => {
+                    if (d && d.version) {
+                        this._appVersion = String(d.version);
+                        this._showBuildVersion(this._appVersion);
+                    }
+                })
                 .catch(() => {});
         }
-        const m = /v(\d+\.\d+\.\d+)/.exec(document.title || '');
+        const m = /v(\d+\.\d+\.\d+(?:-[\w.]+)?)/.exec(document.title || '');
         return m ? m[1] : '';
+    }
+
+    // The page ships with the release number baked into its title and
+    // header. A beta build's server answers "1.5.3-beta.1", and both say so,
+    // so nobody mistakes a beta for the release.
+    _showBuildVersion(version) {
+        if (!version || typeof document === 'undefined') return;
+        const label = 'v' + version;
+        document.title = document.title.replace(/v\d+\.\d+\.\d+(?:-[\w.]+)?/, label);
+        const el = document.getElementById('app-version-label');
+        if (el) el.textContent = label;
     }
 
     // The project as the file on disk holds it: this build's version

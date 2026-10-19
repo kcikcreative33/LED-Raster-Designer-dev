@@ -59,3 +59,6 @@ tests/fixtures-local/
 
 # Design mocks / prototypes (local only, never shipped: PyInstaller copies src/static wholesale)
 mocks/
+
+# Written by release.yml for beta builds only
+src/BUILD_TAG.txt
