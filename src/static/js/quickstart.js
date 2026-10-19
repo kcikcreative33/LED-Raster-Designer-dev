@@ -399,6 +399,19 @@
         if (app) app.classList.remove('lrd-resizing');
         if (a && a.remeasureCanvas) a.remeasureCanvas();
     }
+    // The node a gesture aims at, alive: the app restates a panel whenever
+    // its model moves - the tray rebuilds on the page's own late
+    // layer_updated echo, between any two of a step's moves - and the node
+    // found before is then a detached copy. Its successor is found by the
+    // stable key the app itself restores focus by: a chip's data-hwdock, a
+    // field's data-lrd-field, else its id.
+    function live(el) {
+        if (!el || el.isConnected || !el.dataset) return el;
+        var key = el.dataset.hwdock ? '[data-hwdock="' + CSS.escape(el.dataset.hwdock) + '"]'
+            : (el.dataset.lrdField ? '[data-lrd-field="' + CSS.escape(el.dataset.lrdField) + '"]'
+                : (el.id ? '#' + CSS.escape(el.id) : null));
+        return (key && $(key)) || el;
+    }
     function trayName(el) {
         if (!el) return 'nothing';
         if (el.dataset && el.dataset.hwdock) return el.dataset.hwdock;
@@ -417,14 +430,13 @@
         var a = A(), d = dock();
         if (!a || !d || !el || !d.contains(el)) return Promise.resolve(el);
         var name = trayName(el);
-        var key = el.dataset && el.dataset.hwdock;
         if (dockCollapsed()) setDockCollapsed(false);
         if (dockHeightNow() < TOUR_DOCK_H) setDockHeight(TOUR_DOCK_H);
         return sleep(0).then(function () {
             // A rebuild between the query and now (the flip settles the
-            // layout) replaces every node in the tray; the chip's stable
-            // key finds its successor.
-            if (!el.isConnected && key) el = $('[data-hwdock="' + key + '"]');
+            // layout, or a late echo restates the tray) replaces every node
+            // in the tray; the element's stable key finds its successor.
+            el = live(el);
             if (!el || !el.isConnected) throw new Error(name + ' is not in the tray');
             if (typeof a._dockRevealSections === 'function') a._dockRevealSections(el);
             var r = el.getBoundingClientRect();
@@ -1344,7 +1356,7 @@
         click: function (target, o) {
             o = o || {};
             return T.hover(target, o).then(function (p) {
-                var el = p.el || document.elementFromPoint(p.x, p.y);
+                var el = live(p.el) || document.elementFromPoint(p.x, p.y);
                 if (!el) throw new Error('click: nothing at ' + describe(target));
                 press(true);
                 mouse('mousedown', el, p.x, p.y, o.init);
@@ -1370,7 +1382,7 @@
         type: function (target, text, o) {
             o = o || {};
             return T.hover(target).then(function (p) {
-                var el = p.el;
+                var el = live(p.el);
                 if (!el) throw new Error('type: nothing at ' + describe(target));
                 ripple(p.x, p.y);
                 el.focus();
@@ -1378,15 +1390,23 @@
                 setValue(el, '');
                 var chars = String(text).split('');
                 var i = 0;
+                var typed = '';
+                // Each key lands in the live field, carrying everything typed
+                // so far: a rebuild between keys hands the field to its
+                // successor (app-naming.js _preserveEditorFocus carries the
+                // draft and the focus across), and the hand follows it.
                 return new Promise(function (res) {
                     (function next() {
                         if (i >= chars.length) return res();
-                        setValue(el, el.value + chars[i++]);
+                        el = live(el);
+                        typed += chars[i++];
+                        setValue(el, typed);
                         setTimeout(next, ms(PACE.key));
                     })();
                 }).then(function () {
                     return T.pause(PACE.typed);
                 }).then(function () {
+                    el = live(el);
                     if (o.enter) {
                         keyEvent('keydown', el, 'Enter');
                         keyEvent('keyup', el, 'Enter');
@@ -1398,7 +1418,7 @@
         },
         select: function (target, value) {
             return T.hover(target).then(function (p) {
-                var el = p.el;
+                var el = live(p.el);
                 if (!el) throw new Error('select: nothing at ' + describe(target));
                 ripple(p.x, p.y);
                 el.focus();
@@ -1416,7 +1436,7 @@
             if (!to) return Promise.reject(new Error('drag: no destination'));
             var dest = null;
             return T.hover(from, o).then(function (p) {
-                var el = p.el;
+                var el = live(p.el);
                 if (!el) throw new Error('drag: nothing at ' + describe(from));
                 // The destination is measured AFTER the source is revealed:
                 // opening the tray for the chip moves the canvas (and the
@@ -1427,7 +1447,7 @@
                     return p;
                 });
             }).then(function (p) {
-                var el = p.el;
+                var el = live(p.el);
                 press(true);
                 mouse('mousedown', el, p.x, p.y, { buttons: 1 });
                 return T.pause(PACE.dragPress).then(function () {

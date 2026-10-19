@@ -414,3 +414,33 @@ def test_whats_new_falls_back_to_applying_the_advanced_steps(page):
         page.evaluate("() => { window.QuickStart.steps().cabinetSize.title = window.__qsTitle; }")
     assert page.evaluate("() => window.QuickStart.signature('advanced')") == \
         _fixture()['tours']['advanced']['signature']
+
+
+def test_a_guide_step_survives_the_tray_rebuilding_under_it(page):
+    """The tray rebuilds whenever the app restates it - the page's own late
+    layer_updated echo is enough (updateUI -> refreshDistroPanel) - and a
+    step must aim at the rebuilt field, not the one it found before. Here
+    the tray is rebuilt before every timer of "Name the distro" fires (the
+    reveal's settle, the hover's beat, each typed key): the step still
+    types SL into the live field and takes. It used to fail with
+    "distro-name-... is not in the tray", or type into the detached copy -
+    the What's New fallback's flake."""
+    page.evaluate("""() => {
+        const qs = window.QuickStart, app = window.app;
+        const step = qs.steps().nameDistro, act = step.act, orig = window.setTimeout;
+        step.act = function (t) {
+            window.setTimeout = function (fn, ms, ...rest) {
+                return orig(() => { app.renderHardwareDock(); fn(...rest); }, ms);
+            };
+            const done = () => { window.setTimeout = orig; step.act = act; };
+            return Promise.resolve().then(() => act.call(this, t))
+                .then(v => { done(); return v; }, e => { done(); throw e; });
+        };
+    }""")
+    page.evaluate("(s) => window.QuickStart.setSpeed(s)", 3)
+    page.evaluate("() => { window.QuickStart.startSteps(['nameDistro']); }")
+    try:
+        st = _wait_step(page, 0)
+        assert st['state'] == 'done' and not st['fail'], st
+    finally:
+        _end(page)

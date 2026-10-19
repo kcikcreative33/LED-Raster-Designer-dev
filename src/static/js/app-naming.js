@@ -1170,10 +1170,39 @@ class _Naming {
     // a microtask: that runs after the synchronous rebuild whichever return
     // path the builder takes, and does not care which of the two triggers
     // fired.
+    // The text being typed into a keyed field and not yet committed: input
+    // events record it, the field's change (its commit) drops it. Captured
+    // on the document ahead of the field's own handlers, so a commit that
+    // restates its panel synchronously is never mistaken for a draft.
+    _trackEditorDrafts() {
+        if (this._editorDraftsTracked || typeof document === 'undefined') return;
+        this._editorDraftsTracked = true;
+        const keyOf = (t) => (t && t.dataset ? t.dataset.lrdField : null);
+        document.addEventListener('input', (e) => {
+            const t = e.target;
+            const key = keyOf(t);
+            if (!key || t.tagName === 'SELECT' || t.type === 'checkbox'
+                    || t.type === 'radio' || typeof t.value !== 'string') return;
+            this._editorDraft = { key, value: t.value };
+        }, true);
+        document.addEventListener('change', (e) => {
+            if (this._editorDraft && keyOf(e.target) === this._editorDraft.key) {
+                this._editorDraft = null;
+            }
+        }, true);
+    }
+
     _preserveEditorFocus() {
         const active = document.activeElement;
         const key = active && active.dataset ? active.dataset.lrdField : null;
         if (!key) return;
+        // Text typed and not committed rides the wipe with the focus: a
+        // rebuild nobody asked for (the page's own late layer_updated echo
+        // restating the tray, a peer's edit) must not snap a half-typed
+        // name back to the stored one under the person typing it.
+        const draftRec = this._editorDraft;
+        const draft = (draftRec && draftRec.key === key
+            && draftRec.value === active.value) ? active.value : null;
         let start = null;
         let end = null;
         try {
@@ -1194,6 +1223,11 @@ class _Naming {
             // stated rule for any programmatic focus into a folded section.
             if (typeof this._expandSectionsFor === 'function') {
                 this._expandSectionsFor(el);
+            }
+            // Unless the field took newer typing since (its own input event
+            // replaced the draft) - that is the text now.
+            if (draft !== null && this._editorDraft === draftRec && el.value !== draft) {
+                el.value = draft;
             }
             try {
                 el.focus();

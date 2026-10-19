@@ -64,6 +64,9 @@ export class LEDRasterApp {
         // Same doctrine one level down: per-section collapse, restored
         // before first paint.
         this.initSectionCollapse();
+        // Half-typed field text rides a panel rebuild (app-naming.js
+        // _preserveEditorFocus).
+        this._trackEditorDrafts();
         // The Signal and Power panels' markup ships hidden, which is right for
         // the pixel-map view the app opens on. Reconcile anyway so neither can
         // be left behind if the renderer ever boots on another view.

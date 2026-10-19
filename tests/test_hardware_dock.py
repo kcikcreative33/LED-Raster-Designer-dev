@@ -4812,3 +4812,44 @@ def test_batch_entries_gated_off_with_reason(dock_page):
     close_menu(page)
     page.evaluate(RESET_POWER_JS, ids)
     landed(page)
+
+
+def test_a_tray_rebuild_keeps_the_text_being_typed_in_a_field(dock_page):
+    """A tray field mid-typing (input events, no change yet) keeps the
+    typed text, its focus and its caret when the tray rebuilds behind it -
+    the page's own late layer_updated echo rebuilds it (updateUI ->
+    refreshDistroPanel). It used to come back focused but holding the
+    stored name, the typing gone. A committed edit is the model's again."""
+    page, ids = dock_page
+    open_view(page, 'power')
+    out = page.evaluate("""async (d) => {
+        const app = window.app;
+        app.renderHardwareDock();
+        const sel = `[data-lrd-field="distro-name-${d}"]`;
+        const el = document.querySelector(sel);
+        if (!el) return null;
+        app._dockRevealSections && app._dockRevealSections(el);
+        const stored = el.value;
+        el.focus();
+        el.value = stored + 'XY';
+        el.setSelectionRange(1, 1);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        app.renderHardwareDock();
+        await new Promise(r => setTimeout(r, 0));
+        const now = document.querySelector(sel);
+        const res = { replaced: now !== el, value: now.value, stored,
+                      focused: document.activeElement === now,
+                      caret: now.selectionStart,
+                      model: app.getDistros().find(x => x.id === d).name };
+        // Leave nothing behind: the typing undone, focus away, no commit.
+        now.value = stored;
+        now.dispatchEvent(new Event('input', { bubbles: true }));
+        now.blur();
+        return res;
+    }""", ids['distroId'])
+    assert out, 'the dock built no distro name field'
+    assert out['replaced'], out
+    assert out['value'] == out['stored'] + 'XY', (
+        f'the typing must ride the rebuild: {out}')
+    assert out['focused'] and out['caret'] == 1, out
+    assert out['model'] == out['stored'], out
