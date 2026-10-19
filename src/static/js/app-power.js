@@ -2702,23 +2702,46 @@ class _Power {
         const writeAll = (patch) => {
             const layer = this.currentLayer;
             if (!layer) return;
-            const all = this._socaPanelTargets(layer);
-            // A locked screen keeps its packing, named when the patch would
-            // have changed it; with nothing writable the knobs snap back.
-            this._showLockedError(all.filter(l => {
-                if (!l.locked) return false;
-                const cur = this.getPowerSplitters(l);
-                return Object.keys(patch).some(k => cur[k] !== patch[k]);
-            }));
-            const list = all.filter(l => !l.locked);
+            // One setting per wall (the owner's ruling, 2026-10-19 - see
+            // _splitterWallHost): every selected screen's WALL takes the
+            // patch, each member written with the wall's knobs plus the
+            // patch so the members agree from here on. A wall is changed
+            // whole or not at all: a locked member that the patch would
+            // change blocks its whole wall and is named (a locked screen is
+            // never changed, and a wall half-changed would read as the
+            // first member's setting anyway). With nothing writable the
+            // knobs snap back.
+            const walls = new Map();
+            this._socaPanelTargets(layer).forEach(l => {
+                const host = this._splitterWallHost(l) || l;
+                if (!walls.has(host.id)) walls.set(host.id, this._splitterWallMembers(l));
+            });
+            const changes = (l, next) => {
+                const cur = this._ownPowerSplitters(l);
+                return cur.enabled !== next.enabled || cur.maxWays !== next.maxWays;
+            };
+            const blocked = [];
+            const list = [];
+            walls.forEach(members => {
+                const wall = this.getPowerSplitters(members[0]);
+                const next = { enabled: wall.enabled, maxWays: wall.maxWays, ...patch };
+                const locked = members.filter(l => l.locked && changes(l, next));
+                if (locked.length) {
+                    blocked.push(...locked);
+                    return;
+                }
+                members.forEach(l => {
+                    if (!changes(l, next)) return;
+                    const cur = this._ownPowerSplitters(l);
+                    l.powerSplitters = { ...cur, ...next, manual: cur.manual };
+                    list.push(l);
+                });
+            });
+            this._showLockedError(blocked);
             if (!list.length) {
                 this.refreshSplitterPanel();
                 return;
             }
-            list.forEach(l => {
-                const cur = this.getPowerSplitters(l);
-                l.powerSplitters = { ...cur, ...patch, manual: cur.manual };
-            });
             this.updateLayers(list, true, 'Change Splitter Packing');
             this._rebuildAfterGesture(() => {
                 this.refreshSplitterPanel();
@@ -2757,9 +2780,10 @@ class _Power {
         const screen = layer && (layer.type || 'screen') === 'screen';
         const sp = screen ? this.getPowerSplitters(layer)
             : { enabled: false, maxWays: 3 };
-        if (en !== document.activeElement) {
-            en.checked = !!(screen && sp.enabled);
-        }
+        // A checkbox has no half-typed state to protect, so it always
+        // shows the wall's value - focus left on it by the last click must
+        // not keep the previous screen's tick when another one is selected.
+        en.checked = !!(screen && sp.enabled);
         const row = document.getElementById('power-splitters-maxways-row');
         if (row) row.style.display = (screen && sp.enabled) ? 'flex' : 'none';
         const mw = document.getElementById('power-splitters-maxways');
@@ -3322,7 +3346,7 @@ class _Power {
             .find(seg => seg.start === o && seg.end === o) : null;
         const points = this._socaSplitPoints(m, count);
         if (this._splitterManualSpace(m) === 'custom') {
-            const cur = this.getPowerSplitters(m);
+            const cur = this._ownPowerSplitters(m);
             const hit = new Set(runs);
             m.powerSplitters = { ...cur, manual: {
                 merge: cur.manual.merge.filter(g => Array.isArray(g)
@@ -3564,7 +3588,7 @@ class _Power {
         if (!raw || !raw.manual) return false;
         const space = this._splitterManualSpace(layer);
         if (space && space !== this._splitterIdSpace(layer)) return false;
-        const cur = this.getPowerSplitters(layer);
+        const cur = this._ownPowerSplitters(layer);
         const hit = new Set(runIds);
         const merge = cur.manual.merge
             .map(g => (Array.isArray(g) ? g.filter(n => !hit.has(n)) : []))
@@ -3592,7 +3616,7 @@ class _Power {
     _wipeCustomSplitterGroups(layer) {
         const raw = layer && layer.powerSplitters;
         if (!raw || !raw.manual) return false;
-        const cur = this.getPowerSplitters(layer);
+        const cur = this._ownPowerSplitters(layer);
         const paths = layer.powerCustomPaths || {};
         const drawn = new Set(Object.keys(paths)
             .filter(n => (paths[n] || []).length > 0).map(n => parseInt(n, 10)));
@@ -3616,7 +3640,7 @@ class _Power {
     // nor refresh - for a caller folding the edit into its own history
     // entry and its own rebuild (the custom toggle's way out).
     _writeSplitterManual(layer, fn, action, opts) {
-        const cur = this.getPowerSplitters(layer);
+        const cur = this._ownPowerSplitters(layer);
         // An edit is made in the CURRENT id space. Groups stored from the
         // other space cannot be edited alongside it - one store, one space -
         // so the edit starts clean and the write stamps the space it was
@@ -3676,8 +3700,64 @@ class _Power {
     // auto pattern and silently re-ganged auto run ordinals 7-9 into an
     // over-capacity 3fer the user never asked for.
 
-    // Normalized read - the raw field may be absent or partial.
+    // Normalized read - the raw field may be absent or partial. The
+    // packing knobs (`enabled`, `maxWays`) are the WALL's: on a grouped
+    // screen they are read off the group's first member, whichever member
+    // asks (the owner's ruling, 2026-10-19 - see _splitterWallHost); the
+    // manual store is always the layer's own. Writers that keep a layer's
+    // own knobs read _ownPowerSplitters instead, so a manual edit never
+    // stamps the wall's knobs onto a member that disagreed in an old file.
     getPowerSplitters(layer) {
+        const own = this._ownPowerSplitters(layer);
+        const host = this._splitterWallHost(layer);
+        if (!host || host === layer) return own;
+        const wall = this._ownPowerSplitters(host);
+        return { ...own, enabled: wall.enabled, maxWays: wall.maxWays };
+    }
+
+    // ---- one splitter setting per wall ---------------------------------------
+    //
+    // The owner's ruling, 2026-10-19: in a group, "Share circuits via
+    // splitters" - the enabled flag AND the splitter size - is ONE setting
+    // for the whole wall, in auto and in custom: "when grouped they should
+    // be sharing that setting". The box writes every member at once
+    // (_wireScreenPowerKnobs) and the sidebar shows the wall's value
+    // whichever member is selected. Members that disagree - files saved
+    // before this, where each member carried its own flag - read the
+    // group's FIRST member's setting (the member an automatic wall's walk
+    // already packs by, and the custom wall's owner on any ordinary group);
+    // nothing is rewritten until the setting is touched. Before this the
+    // box showed and wrote the selected member's own flag while the custom
+    // fill read the wall owner's, so a member showing "on" filled one wide
+    // run per circuit.
+
+    // The screen whose knobs a grouped layer reads: its group's first screen
+    // member, or the layer itself off a group.
+    _splitterWallHost(layer) {
+        if (!layer || !layer.group_id || typeof this.getGroupOfLayer !== 'function') {
+            return layer;
+        }
+        const group = this.getGroupOfLayer(layer);
+        if (!group) return layer;
+        const first = (this.getGroupMembers(group) || [])
+            .find(m => m && (m.type || 'screen') === 'screen');
+        return first || layer;
+    }
+
+    // Every screen that shares `layer`'s splitter setting: its group's
+    // screen members, or the layer alone.
+    _splitterWallMembers(layer) {
+        if (!layer) return [];
+        const group = (layer.group_id && typeof this.getGroupOfLayer === 'function')
+            ? this.getGroupOfLayer(layer) : null;
+        if (!group) return [layer];
+        const members = (this.getGroupMembers(group) || [])
+            .filter(m => m && (m.type || 'screen') === 'screen');
+        return members.length ? members : [layer];
+    }
+
+    // The layer's OWN stored knobs and manual store, normalized.
+    _ownPowerSplitters(layer) {
         const raw = (layer && layer.powerSplitters) || {};
         const mw = parseInt(raw.maxWays, 10);
         const manual = raw.manual || {};
