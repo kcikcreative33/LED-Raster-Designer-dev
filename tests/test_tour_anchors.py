@@ -739,7 +739,9 @@ def test_a_folded_tray_and_a_small_window_do_not_break_the_tour(e2e_server, pw_b
             if st['state'] != 'done' or st['fail'] or not st['note'].strip():
                 problems.append(f"{where}: {st['state']} - {st['note']!r}")
             notes[st['title']] = st['note']
-            if 'plugs a distro' in st['title']:
+            # The last gear step before the drop: fold SL 1 and the
+            # distro by hand, so the drop must undo both folds.
+            if st['title'] == 'Output rows':
                 folded = pg.evaluate(FOLD_SL1_JS)
                 assert len(folded) == 2, folded
             if i < last:

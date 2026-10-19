@@ -137,12 +137,11 @@
     // The first breakout box on the card (the resolved tree's `cvts`).
     function box() { var c = card(); return ((c && c.cvts) || [])[0] || null; }
     // What the distro's tray header prints: the load against the rating
-    // ("0.0/400 A"), the supply ("208V·3φ"), and the OUTPUTS row's plugs.
+    // ("0.0/400 A"), the supply ("208V·3φ").
     function distroUnit(d) { return d ? $('[data-lrd-distro="' + d.id + '"]') : null; }
     function distroUse(d) { var u = distroUnit(d); var e = u && u.querySelector('.hw-dock-unit-use'); return e ? e.textContent.trim() : ''; }
     function distroInfo(d) { var u = distroUnit(d); var e = u && u.querySelector('.hw-dock-unit-info'); return e ? e.textContent.trim() : ''; }
     function distroLegs(d) { var u = distroUnit(d); return !!(u && u.querySelector('.hw-dock-legs')); }
-    function distroPlugs(d) { var u = distroUnit(d); return u ? $$('.hw-dock-outputs .hw-dock-plug', u) : []; }
     // Where the header says the limit came from ("· 80% of 200 A"), empty
     // where the limit is the rating itself (app-dock.js _dockDistroGlance).
     function distroLim(d) { var u = distroUnit(d); var e = u && u.querySelector('.hw-dock-unit-lim'); return e ? e.textContent.trim() : ''; }
@@ -2549,7 +2548,7 @@
                 var socks = ps.map(function (p) { return Number(p.port); }).sort(function (a, b) { return a - b; });
                 var name = proc() && proc().name ? proc().name : '';
                 var odd = proc() && proc().redundancy && socks.every(function (s) { return s % 2 === 1; });
-                return ps.length + ' ports on ' + (odd ? 'the odd sockets ' : 'sockets ') + socks[0] + '–' + socks[socks.length - 1]
+                return ps.length + ' ports on ' + (odd ? 'the odd sockets ' : 'sockets ') + socks[0] + ' to ' + socks[socks.length - 1]
                     + (name ? ', labelled ' + name + '-' + socks[0] + ' …' : '')
                     + (odd ? ' Their returns ride the even sockets.' : '.');
             }
@@ -2716,7 +2715,7 @@
                 var s = snake();
                 if (!s || !s.members || s.members.length !== 4) return null;
                 var tag = A().snakeTagText ? A().snakeTagText(s, false) : (s.name || 'SNAKE A');
-                return tag + ' — one home run for four ports.';
+                return tag + ' carries four ports on one home run.';
             }
         },
         cableSheet: {
@@ -2964,7 +2963,7 @@
                 if (!b) return null;
                 var n = (b.ports || []).length;
                 var locals = (b.ports || []).map(function (q) { return q.localNumber || q.number; });
-                var span = locals.length ? Math.min.apply(null, locals) + '–' + Math.max.apply(null, locals) : '';
+                var span = locals.length ? Math.min.apply(null, locals) + ' to ' + Math.max.apply(null, locals) : '';
                 return (b.displayTitle || b.deviceName) + ' is on ' + (p && p.name ? p.name : 'the unit') + ' with ' + n + ' sockets'
                     + (span ? ', ' + span + ' on its face' : '') + '; the picker offered ' + mem.offered + ' boxes that fit this unit.';
             },
@@ -3287,41 +3286,6 @@
             },
             after: function () { closePopover(); }
         },
-        distroOutputs: {
-            target: function () { var d = distro(); return d ? '[data-hwpop="distro-' + d.id + '"]' : '#hardware-dock-body .hw-dock-gear'; },
-            place: 'top', title: 'The plugs a distro offers',
-            avoid: [function () { var d = distro(); return d ? '[data-lrd-field="distro-out-l2130-' + d.id + '"]' : null; }],
-            body: 'OUTPUTS ticks the connector types this distro can hand a screen. Untick L21-30 and its plug leaves the OUTPUTS row under the header; nothing else on the distro changes.',
-            before: function () { switchView('power'); closePopover(); },
-            act: function (t) {
-                var d = distro();
-                t.mem.before = distroPlugs(d).length;
-                return t.click('[data-hwpop="distro-' + d.id + '"]').then(function () {
-                    return t.wait(popover);
-                }).then(function (pop) {
-                    if (!pop) throw new Error('the distro\'s gear popover did not open');
-                    return t.spot(pop).then(function () { return t.pause(900); });
-                }).then(function () {
-                    var cb = $('[data-lrd-field="distro-out-l2130-' + d.id + '"]');
-                    if (!cb || !cb.checked) throw new Error('L21-30 is not ticked on this distro');
-                    return t.click(cb, { rest: PACE.acted });
-                }).then(function () {
-                    return t.wait(function () {
-                        var q = distro();
-                        return q && Array.isArray(q.outputs) && q.outputs.indexOf('l2130') < 0 && distroPlugs(q).length < t.mem.before;
-                    });
-                }).then(function () { return t.pause(400); });
-            },
-            check: function (mem) {
-                var d = distro();
-                if (!d || !Array.isArray(d.outputs) || d.outputs.indexOf('l2130') >= 0) return null;
-                var plugs = distroPlugs(d);
-                if (plugs.length !== mem.before - 1) return null;
-                var names = A().distroOutputs(d).map(function (x) { return x.name; });
-                return (d.name || 'The distro') + ' offers ' + names.join(' and ') + '; the L21-30 plug is off its OUTPUTS row.';
-            },
-            after: function () { closePopover(); }
-        },
         dropMulti: {
             target: function () { var d = distro(); return d ? '[data-hwdock="slot-' + d.id + '-1"]' : '[data-hwdock^="slot-"]'; },
             place: 'top', title: 'Drag a multi onto the wall',
@@ -3361,9 +3325,11 @@
                 if (!n && mem.onWall && mem.onWall()) return (d.name || 'SL') + ' multi 1 is on the wall.';
                 if (!n) return null;
                 var size = A().socaBoxSize ? A().socaBoxSize(wall()) : 6;
-                return (d.name || 'SL') + ' multi 1 took ' + n + ' of ' + size + ' circuits' + (n < size ? ' — the wall needs no more.' : '.');
+                return (d.name || 'SL') + ' multi 1 took ' + n + ' of ' + size + ' circuits' + (n < size ? ', all the wall needs.' : '.');
             }
         },
+        // What's New in 1.0 only: its distro has no output rows, so the
+        // spare number's chip is still the picker.
         typeChip: {
             target: function () { var d = distro(); return d ? '[data-lrd-field="distro-box-type-' + d.id + '-2"]' : '.hw-dock-typechip'; },
             place: 'top', title: 'The type chip',
@@ -3703,11 +3669,12 @@
         },
         // Distros built from their outputs (1.5, app-distro-systems.js
         // _buildDistroOutputRows): a preset lays the system, input, rating,
-        // output rows and Type on the distro in one undo step. These come
-        // after the multi steps on purpose: a distro with rows IS its face,
-        // so its spare number's type chip is no longer a picker (the type
-        // chip step needs a distro without rows). The preset's first row is
-        // Socapex at 208V, so the multi already on the wall stays put.
+        // output rows and Type on the distro in one undo step. They run
+        // before the multi steps: the preset's first row is Socapex at 208V,
+        // the multi every power step after drags onto the wall. A distro
+        // with rows IS its face, so its type chips only read the row; the
+        // Advanced Guide has no type chip step (What's New in 1.0, whose
+        // distro has no rows, keeps it).
         distroPreset: {
             since: '1.5.0',
             target: function () { var d = distro(); return d ? '[data-hwpop="distro-' + d.id + '"]' : '#hardware-dock-body .hw-dock-gear'; },
@@ -4183,7 +4150,7 @@
             var ps = wallPins();
             if (ps.length <= mem.before || ps.length !== portsNeeded()) return null;
             var socks = ps.map(function (p) { return Number(p.port); }).sort(function (a, b) { return a - b; });
-            return 'All ' + ps.length + ' ports are back on sockets ' + socks[0] + '–' + socks[socks.length - 1]
+            return 'All ' + ps.length + ' ports are back on sockets ' + socks[0] + ' to ' + socks[socks.length - 1]
                 + (flagOk() ? '; the flag is green.' : '.');
         }
     });
@@ -4232,10 +4199,10 @@
                     'clearPortByMenu', 'clearCard', 'dropProcessorAgain',
                     'snakePorts', 'cableSheet', 'snakeHomeRun', 'loosePortLength', 'dataJumpers', 'dataCableTags',
                     'overrideRun', 'addBreakoutBox', 'boxFiber', 'fiberStrands', 'panelWatts', 'breakoutType', 'addDistro', 'nameDistro',
-                    'distroPhase', 'distroRating', 'distroMain', 'distroOutputs',
-                    'dropMulti', 'typeChip', 'clearCircuit', 'clearMultiByMenu', 'dropMultiAgain',
+                    'distroPhase', 'distroRating', 'distroMain', 'distroPreset', 'distroRows',
+                    'dropMulti', 'clearCircuit', 'clearMultiByMenu', 'dropMultiAgain',
                     'multiCableSheet', 'powerJumpers', 'cableUnit', 'powerCableTags',
-                    'customPower', 'customDraw', 'splitters', 'balance', 'distroPreset', 'distroRows',
+                    'customPower', 'customDraw', 'splitters', 'balance',
                     'addBeach', 'screenBeach', 'addScreen', 'beachByMenu', 'crossScreens', 'groupScreens',
                     'exportBinder', 'screenOrder', 'wiringTick', 'titleBlock', 'fileExports', 'preferences',
                     'helpMenu', 'outroAdvanced']
