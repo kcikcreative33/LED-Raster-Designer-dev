@@ -3641,7 +3641,7 @@
         powerColumns: {
             target: '.power-flow-pattern-btn[data-pattern="tl-v"]', place: 'right', title: 'Circuits down the columns',
             avoid: ['.power-flow-pattern-btn[data-pattern="tl-v"]'],
-            body: 'Under Flow Pattern, press Top-left, vertical first. Each circuit now runs down whole columns instead of across rows.',
+            body: 'Under Flow Pattern, press Top-left, vertical first, so each circuit runs down whole columns. A wall cabled across shares rows the same way; on this wall a row is too much load to share.',
             before: function () { switchView('power'); },
             act: function (t) {
                 return t.click('.power-flow-pattern-btn[data-pattern="tl-v"]').then(function () {
@@ -3662,7 +3662,7 @@
         splitters: {
             target: '#power-splitters-enabled', place: 'right', title: 'Share runs through 3fers',
             avoid: ['#power-splitters-enabled', '#main-canvas'],
-            body: 'Tick Share circuits via splitters and each column becomes a run of its own, with neighbours sharing one circuit through a 2fer or 3fer while the load fits.',
+            body: 'Tick Share circuits via splitters and each column, or each row on a wall cabled across, becomes a run of its own, with neighbours sharing one circuit through a 2fer or 3fer while the load fits.',
             before: function () { switchView('power'); },
             act: function (t) {
                 return t.click('#power-splitters-enabled').then(function () {
@@ -3763,7 +3763,7 @@
             since: '1.5.3',
             target: '.power-flow-pattern-btn[data-pattern="tl-v"]', place: 'right', title: 'Draw the circuits',
             avoid: ['.power-flow-pattern-btn[data-pattern="tl-v"]', '#main-canvas'],
-            body: 'Drag across the cabinets, then press Top-left, vertical first. With sharing on you get what automatic mode makes: a run per column, neighbours sharing a 3fer while the load fits.',
+            body: 'Drag across the cabinets, then press Top-left, vertical first. With sharing on you get what automatic mode makes: a run per column (or per row on a wall cabled across), neighbours sharing a 3fer while the load fits.',
             before: function () { switchView('power'); },
             act: function (t) {
                 var w = wall();

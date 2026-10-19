@@ -1058,3 +1058,33 @@ def test_adopting_from_a_locked_member_is_refused(page):
 
 def test_no_page_errors(page):
     assert page._nf_errors == [], page._nf_errors
+
+
+# ── rows share too, on a wall cabled across ───────────────────────────────
+# Owner, 2026-10-19: sharing "can [work] in rows if cabled horizontally".
+# A row of 4 cabinets is 2.9 A, so rows fit three to a 20 A circuit.
+
+def test_auto_shares_rows_on_a_wall_cabled_across(page):
+    (wall,) = make(page, [{'name': 'Wall', 'columns': 4, 'props': {
+        'powerFlowPattern': 'tl-h', 'lastPowerFlowPattern': 'tl-h'}}])
+    out = circuits(page, wall)
+    runs = [r for c in out for r in c['runs']]
+    assert runs == [4] * 5, f'each row must be a run of its own: {out}'
+    assert out[0]['runs'] == [4, 4, 4], out
+    assert all(not g['over'] for g in gangs(page, wall))
+    assert gangs(page, wall)[0]['ways'] == 3
+
+
+def test_custom_fill_across_makes_row_runs_that_share(page):
+    (wall,) = make(page, [{'name': 'Wall', 'columns': 4}])
+    custom_on(page)
+    n = page.evaluate("(spans) => window.__nf.select(spans)", [[wall, 0, 3]])
+    assert n > 0
+    assert page.evaluate(
+        "() => window.app._applyPatternFill('power', 'tl-h')")
+    landed(page)
+    out = circuits(page, wall)
+    runs = [r for c in out for r in c['runs']]
+    assert runs == [4] * 5, f'a fill across must make a run per row: {out}'
+    assert out[0]['runs'] == [4, 4, 4], out
+    assert all(not g['over'] for g in gangs(page, wall))
