@@ -3819,11 +3819,9 @@ class _HardwareDock {
         sendClientLog('dock_clear', { kind: 'circuit', layerId: layer.id,
                                       soca: socaIndex, circuit: circuitNum });
         const idx = Number(socaIndex);
-        const runIds = [];
-        this.screenCircuits(layer).forEach(c => {
-            if (c.num !== circuitNum) return;
-            (c.runIds || [c.num]).forEach(id => runIds.push(id));
-        });
+        // Never a taken-over circuit's number read as a run ordinal
+        // (_shareRunSegments, as _socaClearTargets).
+        const runIds = this._shareRunSegments(layer, [circuitNum]).flat();
         const rec = this._powerNaming(layer).socas.get(idx);
         const pullBefore = this._pullLiveRowKeys();
         if (rec && rec.circuits.length > 1) {

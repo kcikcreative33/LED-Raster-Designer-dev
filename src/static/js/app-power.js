@@ -3185,14 +3185,11 @@ class _Power {
     _socaClearTargets(layer, socaIndex) {
         const rec = this._powerNaming(layer).socas.get(Number(socaIndex));
         const circuits = rec ? rec.circuits.slice() : [];
-        const runIds = [];
-        if (circuits.length) {
-            const inMulti = new Set(circuits);
-            this.screenCircuits(layer).forEach(c => {
-                if (!inMulti.has(c.num)) return;
-                (c.runIds || [c.num]).forEach(id => runIds.push(id));
-            });
-        }
+        // A taken-over circuit has no runs in the share store - its number
+        // is a circuit number, not a run ordinal (_shareRunSegments), and
+        // read as one it wiped the auto run of the same ordinal's share.
+        const runIds = circuits.length
+            ? this._shareRunSegments(layer, circuits).flat() : [];
         return { circuits, runIds };
     }
 

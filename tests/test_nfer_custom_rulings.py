@@ -722,5 +722,61 @@ def test_sweep_across_group_members_in_auto(page):
     assert manual(page, left)['merge'] == [[4, 5], [6, 7]], manual(page, left)
 
 
+# ── a clear on a taken-over circuit leaves the auto runs' shares alone ────
+
+TAKEN_OVER_MULTI_JS = """(id) => {
+    const app = window.app, l = window.__nf.layer(id);
+    l.powerSocaSplits = [3];
+    l.powerSplitters = { enabled: true, maxWays: 3,
+        manual: { merge: [[4, 5, 6]], split: [], space: 'auto' } };
+    app._circuitTailCache = null;
+    app.updateLayers([l]);
+    app.resetHistory('Seeded');
+    const rec = app._powerNaming(l).socas.get(2);
+    return rec ? rec.circuits : null;
+}"""
+
+
+def _taken_over_lone_column(page):
+    """Ten columns, the lone last column (circuit 4) taken over, the wall
+    split so that circuit is a multi of its own (multi 2), and a share
+    stored against auto runs 4-6 - run 4 shares its ORDINAL with the
+    taken-over circuit's number."""
+    (wall,) = make(page, [{'name': 'Wall', 'columns': 10}])
+    alt_click(page, pt(page, wall, 2, 9))
+    page.keyboard.press('Escape')
+    landed(page)
+    assert page.evaluate(TAKEN_OVER_MULTI_JS, wall) == [4]
+    landed(page)
+    assert manual(page, wall)['merge'] == [[4, 5, 6]]
+    return wall
+
+
+def test_clearing_a_taken_over_circuit_chip_keeps_the_auto_shares(page):
+    """The dock's "Clear circuit" on the taken-over circuit: its number is
+    a circuit number, not a run ordinal, so the auto 3fer of runs 4-6
+    keeps its share. It used to be read as run 4 and wiped out of it."""
+    wall = _taken_over_lone_column(page)
+    page.evaluate("(id) => window.app._clearCircuitChip("
+                  "window.__nf.layer(id), 2, 4)", wall)
+    landed(page)
+    assert history(page)[-1] == 'Clear Circuit', history(page)
+    assert manual(page, wall)['merge'] == [[4, 5, 6]], manual(page, wall)
+    c2 = next(c for c in circuits(page, wall) if c['num'] == 2)
+    assert c2['runs'] == [5, 5, 5], c2
+
+
+def test_clearing_a_taken_over_circuits_multi_keeps_the_auto_shares(page):
+    """The same through the multi clear (_clearMultis reads its run ids
+    from _socaClearTargets)."""
+    wall = _taken_over_lone_column(page)
+    page.evaluate("(id) => window.app._clearMultis("
+                  "[{ layerId: id, soca: 2 }], 'Clear Multi')", wall)
+    landed(page)
+    assert manual(page, wall)['merge'] == [[4, 5, 6]], manual(page, wall)
+    c2 = next(c for c in circuits(page, wall) if c['num'] == 2)
+    assert c2['runs'] == [5, 5, 5], c2
+
+
 def test_no_page_errors(page):
     assert page._nf_errors == [], page._nf_errors
