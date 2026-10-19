@@ -906,8 +906,10 @@ class _Naming {
             }
             return `${slot.name}${tpl.sep}${slot.tail}${tpl.suffix}`;
         }
-        // A template with no multi number in it has no multi to name.
-        if (!tpl.ok) return tpl.raw.replace('#', circuitNum);
+        // A template with no multi number in it has no multi to name: it
+        // prints the circuit's number - a shared custom circuit counted once
+        // (powerCircuitDisplayNum), the number auto prints for the same wall.
+        if (!tpl.ok) return tpl.raw.replace('#', this.powerCircuitDisplayNum(layer, circuitNum));
         // A circuit the plan does not hold: the number the custom badge is
         // drawing under before its first cabinet lands, an editor row past
         // the drawn circuits. It is named by WHERE IT WILL LAND - the multi
@@ -1118,9 +1120,36 @@ class _Naming {
         return out;
     }
 
+    // The number the user reads for circuit `circuitNum`. An automatic
+    // circuit's number already counts each circuit once. A custom screen
+    // numbers RUNS - a shared circuit is several drawn numbers, one per leg,
+    // under its first leg's - so each leg past the first, of every share
+    // before this circuit, comes off: a custom wall of 3fers reads 1, 2, 3
+    // like auto, not 1, 4, 7. With no shares this is the drawn number
+    // itself, gaps a clear left included, exactly as before. Cached for the
+    // render burst (every frame asks for every circuit's colour).
+    powerCircuitDisplayNum(layer, circuitNum) {
+        const num = parseInt(circuitNum, 10);
+        if (!layer || !Number.isFinite(num) || !this.usesCustomCircuits(layer)) return circuitNum;
+        if (!this._displayNumCache) {
+            this._displayNumCache = new Map();
+            Promise.resolve().then(() => { this._displayNumCache = null; });
+        }
+        let folded = this._displayNumCache.get(layer);
+        if (!folded) {
+            const paths = layer.powerCustomPaths || {};
+            const drawn = Object.keys(paths).map(n => parseInt(n, 10))
+                .filter(n => Number.isFinite(n) && (paths[n] || []).length > 0);
+            folded = this.appliedSplitterGroups(layer, drawn).merge
+                .flatMap(g => g.slice(1)).sort((x, y) => x - y);
+            this._displayNumCache.set(layer, folded);
+        }
+        return num - folded.filter(n => n < num).length;
+    }
+
     getPowerCircuitColor(layer, circuitNum) {
         const colors = this.normalizePowerCircuitColors(layer && layer.powerCircuitColors);
-        const n = Math.max(1, parseInt(circuitNum, 10) || 1);
+        const n = Math.max(1, parseInt(this.powerCircuitDisplayNum(layer, circuitNum), 10) || 1);
         const slots = ['A', 'B', 'C', 'D', 'E', 'F'];
         const slotKey = slots[(n - 1) % slots.length];
         return colors[slotKey] || '#BC382F';

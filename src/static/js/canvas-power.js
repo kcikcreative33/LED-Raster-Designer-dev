@@ -226,6 +226,12 @@ Object.assign(CanvasRenderer.prototype, {
         this.ctx.lineCap = 'round';
         this.ctx.lineJoin = 'round';
 
+        // A circuit's colour and dash go by the number the user reads - a
+        // shared custom circuit counted once (app-naming.js
+        // powerCircuitDisplayNum), so a custom wall of 3fers colours like
+        // the same wall in auto.
+        const shownNum = (n) => ((window.app && typeof window.app.powerCircuitDisplayNum === 'function')
+            ? window.app.powerCircuitDisplayNum(layer, n) : n);
         const randomColors = [
             '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4',
             '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F',
@@ -526,7 +532,7 @@ Object.assign(CanvasRenderer.prototype, {
             this.ctx.lineWidth = lineWidth;
             // Printer page: this circuit's own dash, butt-capped so a fine
             // pattern stays a pattern instead of fusing into a solid line.
-            const dash = this._runDash(circuitNum, lineWidth);
+            const dash = this._runDash(shownNum(circuitNum), lineWidth);
             this.ctx.save();
             this.ctx.setLineDash(dash);
             if (dash.length) this.ctx.lineCap = 'butt';
@@ -580,7 +586,7 @@ Object.assign(CanvasRenderer.prototype, {
             if (circuitPanels.length === 0) return;
             // dock drag: the circuit under the cursor lights up first
             this._dockRunUnderlay(circuitPanels, layer, circuitNum);
-            const currentLineColor = useRandomColors ? randomColors[(circuitNum - 1) % randomColors.length] : lineColor;
+            const currentLineColor = useRandomColors ? randomColors[(shownNum(circuitNum) - 1) % randomColors.length] : lineColor;
             drawDaisyLines(circuitPanels, currentLineColor, circuitNum);
             drawCircuitLabel(circuitPanels[0], circuitPanels[1], circuitNum);
         };
@@ -598,7 +604,7 @@ Object.assign(CanvasRenderer.prototype, {
             if (!live.length) return;
             // dock drag: every branch of the circuit lights together
             live.forEach(b => this._dockRunUnderlay(b, layer, circuitNum));
-            const currentLineColor = useRandomColors ? randomColors[(circuitNum - 1) % randomColors.length] : lineColor;
+            const currentLineColor = useRandomColors ? randomColors[(shownNum(circuitNum) - 1) % randomColors.length] : lineColor;
             live.forEach(b => drawDaisyLines(b, currentLineColor, circuitNum));
             if (live.length === 1) {
                 drawCircuitLabel(live[0][0], live[0][1], circuitNum);

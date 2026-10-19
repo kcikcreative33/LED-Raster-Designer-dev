@@ -3550,10 +3550,10 @@ class _Power {
             let pending = [];
             let last = null;
             items.forEach(it => {
-                if (!it.hit) { pending.push(it.entry); return; }
+                if (!it.hit) { pending.push(it); return; }
                 const k = key(it.hit, axis);
                 if (!legs.length || k !== last) legs.push([]);
-                legs[legs.length - 1].push(...pending, it.entry);
+                legs[legs.length - 1].push(...pending, it);
                 pending = [];
                 last = k;
             });
@@ -3568,7 +3568,24 @@ class _Power {
         const vertical = byCol.length < byRow.length
             || (byCol.length === byRow.length
                 && String(this.autoPowerPattern(layer)).endsWith('-v'));
-        return { noun: vertical ? 'column' : 'row', legs: vertical ? byCol : byRow };
+        // Every leg is fed from the same end as the first, the way the
+        // automatic wall feeds each column run at its head: a run that
+        // snaked down one column and up the next becomes legs that all run
+        // down. (A leg ran the other way would put its head - where the
+        // splitter's tail lands - at the far end of the wall.)
+        const along = vertical ? 'row' : 'col';
+        const at = (h) => (lattice ? key(h, along) : (vertical ? h.panel.row : h.panel.col));
+        const ends = (leg) => {
+            const hits = leg.filter(it => it.hit);
+            return hits.length > 1 ? at(hits[hits.length - 1].hit) - at(hits[0].hit) : 0;
+        };
+        const legs = vertical ? byCol : byRow;
+        const lead = Math.sign(legs.length ? ends(legs[0]) : 0);
+        const out = legs.map(leg => {
+            const turn = lead !== 0 && Math.sign(ends(leg)) === -lead;
+            return (turn ? leg.slice().reverse() : leg).map(it => it.entry);
+        });
+        return { noun: vertical ? 'column' : 'row', legs: out };
     }
 
     // What "Nfer it" would make of circuit `num` of `layer` (the layer whose

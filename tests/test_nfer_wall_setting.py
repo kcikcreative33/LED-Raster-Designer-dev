@@ -619,3 +619,98 @@ def test_3fer_screen_splits_wide_circuits_and_joins_single_columns(page):
     take(page, 'hw-batch-n1')
     assert [c['runs'] for c in circuits(page, wall)] == [[5, 5], [5, 5, 5], [5, 5, 5]]
     assert not any(g['over'] for g in gangs(page, wall))
+
+
+# ── what the user reads: a custom Nfer wall numbers like auto ─────────────
+#
+# A shared custom circuit is several drawn run numbers (one per leg) under
+# the first leg's number. Whatever the user reads - the circuit labels on
+# the wall (a multi template like S1-# and a plain one like C#), the
+# colour-coded view, the multis and tails in the tray and the binder, the
+# pull sheet - must count the shared circuit ONCE, exactly as auto prints
+# the same wall.
+
+HALF_JS = """async (ids) => {
+    const app = window.app;
+    await app._layerSavesSettled();
+    const p = await window.__nf.j('GET', '/api/project');
+    p.layers.forEach(l => { if (ids.includes(l.id)) l.panels.forEach(q => {
+        if (q.row === 0) q.halfTile = 'height'; }); });
+    await window.__nf.j('PUT', '/api/project', p);
+    const fresh = await window.__nf.j('GET', '/api/project');
+    fresh.layers.forEach(fl => { const l = window.__nf.layer(fl.id);
+        if (l) l.panels = fl.panels; });
+    app._circuitTailCache = null;
+    app.renderLayers();
+}"""
+
+SNAP_JS = """([id, tpl]) => {
+    const app = window.app;
+    app.project.layers.forEach(l => { if (l.group_id) l.powerLabelTemplate = tpl; });
+    app._circuitTailCache = null;
+    const l = window.__nf.layer(id);
+    const cs = app.screenCircuits(l);
+    const scr = app.buildPullList().byScreen[id] || {};
+    return {
+        labels: cs.map(c => app.getPowerCircuitLabel(l, c.num)),
+        colors: cs.map(c => app.getPowerCircuitColor(l, c.num)),
+        ways: cs.map(c => (c.runIds || [c.num]).length),
+        boxes: (scr.boxes || []).map(b => (b.circuits || []).map(c => [c.label, c.tail, c.tiles])),
+        gangRows: (scr.rows || []).filter(r => /fer$/.test(r.type)).map(r => [r.type, r.label]),
+        gangs: scr.gangs,
+    };
+}"""
+
+# The automatic wall's own layout, drawn as old single runs on the wall's
+# owner A: columns 0-2, 3-5 (A), 6-8 (B 0-2), 9-11 (B 3, C 0-1), 12-14
+# (C 2-4) and the lone 15 (C 5), each run snaking top-down.
+AUTO_LAYOUT_JS = """([a, b, c]) => {
+    const app = window.app;
+    const A = window.__nf.layer(a), B = window.__nf.layer(b), C = window.__nf.layer(c);
+    const at = (w) => (w < 6 ? [null, w] : (w < 10 ? [b, w - 6] : [c, w - 10]));
+    const snake = (cols) => cols.flatMap((w, i) => {
+        const rows = i % 2 ? [4, 3, 2, 1, 0] : [0, 1, 2, 3, 4];
+        const [lid, col] = at(w);
+        return rows.map(r => Object.assign({ row: r, col }, lid ? { layerId: lid } : {}));
+    });
+    [A, B, C].forEach(l => { l.powerFlowPattern = 'custom'; l.powerCustomPaths = {}; });
+    A.powerCustomPaths = { 1: snake([0, 1, 2]), 2: snake([3, 4, 5]), 3: snake([6, 7, 8]),
+                           4: snake([9, 10, 11]), 5: snake([12, 13, 14]), 6: snake([15]) };
+    A.powerCustomIndex = 6;
+    app._circuitTailCache = null;
+    app.updateLayers([A, B, C]);
+    app.renderLayers();
+    app.resetHistory('Old file');
+}"""
+
+
+def test_a_custom_nfer_wall_reads_like_the_same_wall_in_auto(page):
+    close_menu(page)
+    a, b, c = make(page, [{'name': 'A', 'columns': 6},
+                          {'name': 'B', 'columns': 4, 'x': 1200},
+                          {'name': 'C', 'columns': 6, 'x': 2000}], group=True)
+    page.evaluate(HALF_JS, [a, b, c])
+    landed(page)
+    auto = {t: page.evaluate(SNAP_JS, [a, t]) for t in ('S1-#', 'C#')}
+    assert auto['S1-#']['ways'] == [3, 3, 3, 3, 3, 1], auto
+    page.evaluate(AUTO_LAYOUT_JS, [a, b, c])
+    landed(page)
+    menu_at(page, pt(page, a, 2, 0))
+    take(page, 'hw-batch-n1')
+    for t in ('S1-#', 'C#'):
+        custom = page.evaluate(SNAP_JS, [a, t])
+        assert custom == auto[t], (t, custom, auto[t])
+
+
+def test_a_split_feeds_every_leg_from_the_same_end_like_auto(page):
+    """A snaking run of three columns split into a 3fer: every leg starts
+    at the top, where the automatic wall feeds its column runs - not up the
+    middle column the way the snake ran."""
+    wall = wide(page)
+    nfer_item(page, pt(page, wall, 2, 4))
+    take(page, 'hw-nfer-it')
+    heads = page.evaluate("""(id) => {
+        const p = window.__nf.layer(id).powerCustomPaths;
+        return [2, 3, 4].map(n => [p[n][0].row, p[n][p[n].length - 1].row]);
+    }""", wall)
+    assert heads == [[0, 4]] * 3, heads
