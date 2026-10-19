@@ -36,6 +36,8 @@ FIXES
   typed included.
 - FIX: Clearing a circuit you took over no longer clears the 2fer or 3fer
   of another circuit with the same number.
+- FIX: Two quick changes to the same screen on a busy computer could
+  briefly show the older one again, and a save at that moment kept it.
 
 v1.5.2 - October 19, 2026
 ----------------------------

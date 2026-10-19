@@ -550,7 +550,18 @@ def update_layer(layer_id):
 
     if edited:
         app.current_project['is_pristine'] = False
-    socketio.emit('layer_updated', layer)
+    # The echo names the PUT it answers (?seq=&client=, query only, never
+    # stored): a page drops the echo of its own older PUT, which on a laggy
+    # socket could land after a newer edit and put the older copy back
+    # (app-core.js _layerHasNewerPut). Other windows apply it as before.
+    seq, client = request.args.get('seq'), request.args.get('client')
+    if seq and client:
+        try:
+            socketio.emit('layer_updated', dict(layer, _echo={'seq': int(seq), 'client': str(client)}))
+        except ValueError:
+            socketio.emit('layer_updated', layer)
+    else:
+        socketio.emit('layer_updated', layer)
     return jsonify(layer)
 
 @layers_bp.route('/api/layer/<int:layer_id>', methods=['DELETE'])

@@ -1431,6 +1431,7 @@ class _ScreenInfo {
         .then(res => res.json())
         .then(layer => {
             if (this.project !== sentProject) return;  // stale echo
+            if (this._layerHasNewerPut(layer.id)) return;  // a newer edit is on its way
             const index = this.project.layers.findIndex(l => l.id === layer.id);
             if (index >= 0) {
                 // Preserve client-side only properties that server might not return
@@ -1709,6 +1710,9 @@ class _ScreenInfo {
                 // moved offsets over the state Ctrl+Z just restored. Same
                 // identity guard updateLayer() takes.
                 if (this.project !== sentProject) return;
+                // A newer edit of this screen is still on its way; its own
+                // reply carries the screen as it now is (_layerHasNewerPut).
+                if (this._layerHasNewerPut(updated.id)) return;
                 const index = this.project.layers.findIndex(l => l.id === updated.id);
                 // Deleted while this request was in flight - there is nothing
                 // to merge into, and stamping a copy we then drop would just

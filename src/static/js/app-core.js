@@ -783,6 +783,15 @@ export class LEDRasterApp {
                               { id: layer.id });
                 return;
             }
+            // The echo of this page's own older PUT: a newer edit of the
+            // screen was already sent, and its reply or echo is the truth.
+            const echo = layer && layer._echo;
+            if (layer) delete layer._echo;
+            if (echo && echo.client === this._echoClientId
+                    && echo.seq < ((this._layerPutSeq && this._layerPutSeq.get(layer.id)) || 0)) {
+                sendClientLog('socket_layer_updated_suppressed_older_put', { id: layer.id });
+                return;
+            }
             sendClientLog('socket_layer_updated', { id: layer.id });
             this.applyServerLayer(layer, 'socket_layer_updated');
             this.updateUI();
@@ -1394,7 +1403,14 @@ export class LEDRasterApp {
         // number, length) came back without the length (binder test under
         // a parallel run, 2026-09-24). The body and the edit marker are
         // taken now; only the send waits for the one before it.
-        const marker = this._layerPutIsAnEdit() ? '?edited=1' : '';
+        // Numbered per screen so its echo can be told from an older one's
+        // (the socket handler; routes_layers update_layer stamps `_echo`).
+        if (!this._layerPutSeq) this._layerPutSeq = new Map();
+        if (!this._echoClientId) this._echoClientId = Math.random().toString(36).slice(2);
+        const seq = (this._layerPutSeq.get(id) || 0) + 1;
+        this._layerPutSeq.set(id, seq);
+        const marker = (this._layerPutIsAnEdit() ? '?edited=1&' : '?')
+            + `seq=${seq}&client=${this._echoClientId}`;
         const payload = JSON.stringify(body);
         // A PUT still waiting its turn when the whole project is replaced
         // (file open, New, undo, redo) describes a screen that no longer
@@ -1417,7 +1433,29 @@ export class LEDRasterApp {
             if (this._layerPutChains.get(id) === sent) this._layerPutChains.delete(id);
         };
         sent.then(clear, clear);
+        // How many of this screen's PUTs are still out. Settled before any
+        // caller's own .then runs, so a reply's handler sees only the PUTs
+        // queued after it (see _layerHasNewerPut).
+        if (!this._layerPutsPending) this._layerPutsPending = new Map();
+        this._layerPutsPending.set(id, (this._layerPutsPending.get(id) || 0) + 1);
+        const settle = () => {
+            const n = (this._layerPutsPending.get(id) || 1) - 1;
+            if (n > 0) this._layerPutsPending.set(id, n);
+            else this._layerPutsPending.delete(id);
+        };
+        sent.then(settle, settle);
         return sent;
+    }
+
+    // True while a later PUT of this screen is still on its way. The server
+    // echoes (layer_updated) and answers every PUT with the screen as THAT
+    // PUT left it; one landing while a newer edit is still queued put the
+    // older copy back on the page until the next echo (a renamed screen
+    // flicked back to its old name; the guide read a 3fer as unshared on a
+    // slow CI run, 2026-10-19). The newest PUT's own reply brings the
+    // screen up to date, so the older ones are let go.
+    _layerHasNewerPut(id) {
+        return !!(this._layerPutsPending && (this._layerPutsPending.get(id) || 0) > 0);
     }
 
     // The breakout the pristine startup screen is re-made with, from a
