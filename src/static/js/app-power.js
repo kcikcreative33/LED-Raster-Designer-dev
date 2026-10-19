@@ -3410,6 +3410,266 @@ class _Power {
         });
     }
 
+    // ---- a wide circuit splits into its own legs ------------------------------
+    //
+    // The owner's ruling, 2026-10-19: "i am taking 3 columns and 1 port and
+    // making it 3fer the single port. across 3 columns. which is how auto
+    // has worked this whole time" (a port, to him, is a power circuit). A
+    // 2fer or 3fer is ONE circuit split into legs, one run per column - or
+    // per row, on a wall cabled across - exactly what the automatic packer
+    // builds. So a circuit drawn as ONE run across several columns (a fill
+    // made with sharing off, a file from before 1.5.3) can be split, on the
+    // same circuit, into a run per column: right-click > "3fer it", or Alt
+    // pick it and right-click (app-dock-menus.js _prepareNferItMenu). The
+    // ways are the circuit's columns and nothing else: "three columns on
+    // one port, the only option available should be a three fer. if 2 then
+    // only a 2 fer. if 4 then 4 fer etc." (the owner, 2026-10-19). So the
+    // one entry offered is the circuit's own Nfer, never a smaller one, and
+    // the splitter size in Power Settings (maxWays) does not cap it - that
+    // setting caps what the automatic packer and the batch verb gang. The
+    // split is offered only while the circuit's own load fits the amps the
+    // OVER flag reads, else it stays on the menu disabled with the reason.
+    //
+    // How the legs are written depends on what the circuit is:
+    //   custom     each leg takes its own drawn number, the circuit's number
+    //              for the first and the next ones after it (every circuit
+    //              after it steps up, its typed label and cable with it), and
+    //              the legs are one manual merge - the shape a sharing custom
+    //              fill draws, so it numbers, labels, tags and deals the same.
+    //              On a custom group the wall's owner holds it: a circuit an
+    //              old file left on another member is adopted first.
+    //   taken over the take-over's own shape: the step that heads every leg
+    //              after the first is marked `branch: true` (overrideRun).
+    //   automatic  taken over already split - the natural path for one
+    //              circuit, since the automatic share store only gangs whole
+    //              runs and cannot cut one packed with sharing off.
+    // Each is ONE history entry ("3fer Circuit") and undoes whole.
+
+    // A path's legs: its steps cut wherever the next step leaves the column
+    // (or row) the last one sat in, on the wall's position lattice so a
+    // column of one member is never a column of another. The cut is taken
+    // both ways and the one that makes FEWER legs is the drawing's
+    // direction - a run snaking down three columns is three column legs,
+    // not fifteen row legs; a tie goes to the screen's pattern. A step that
+    // does not resolve (a hidden cabinet) rides with the leg after it.
+    // Returns { noun: 'column' | 'row', legs: [[entry, ...], ...] }.
+    _pathLegs(layer, path) {
+        const lattice = typeof this._pathLattice === 'function'
+            ? this._pathLattice(layer) : null;
+        const items = (Array.isArray(path) ? path : []).map(entry => {
+            const hit = this.resolvePathEntry(layer, entry);
+            return { entry, hit: (hit && !hit.panel.hidden) ? hit : null };
+        });
+        const key = (h, axis) => {
+            if (lattice) {
+                return axis === 'col' ? lattice.colOf(h.layer, h.panel)
+                    : lattice.rowOf(h.layer, h.panel);
+            }
+            return `${h.layer.id}:${axis === 'col' ? h.panel.col : h.panel.row}`;
+        };
+        const cut = (axis) => {
+            const legs = [];
+            let pending = [];
+            let last = null;
+            items.forEach(it => {
+                if (!it.hit) { pending.push(it.entry); return; }
+                const k = key(it.hit, axis);
+                if (!legs.length || k !== last) legs.push([]);
+                legs[legs.length - 1].push(...pending, it.entry);
+                pending = [];
+                last = k;
+            });
+            if (pending.length) {
+                if (legs.length) legs[legs.length - 1].push(...pending);
+                else legs.push(pending);
+            }
+            return legs;
+        };
+        const byCol = cut('col');
+        const byRow = cut('row');
+        const vertical = byCol.length < byRow.length
+            || (byCol.length === byRow.length
+                && String(this.autoPowerPattern(layer)).endsWith('-v'));
+        return { noun: vertical ? 'column' : 'row', legs: vertical ? byCol : byRow };
+    }
+
+    // What "Nfer it" would make of circuit `num` of `layer` (the layer whose
+    // numbering holds it): { mode, layer, num, path, noun, legs, ways,
+    // amps, cap, label, reason } - `reason` set when it cannot be
+    // done - or null when the circuit is not there or is already shared
+    // (its runs are its legs already; Un-share is that circuit's verb).
+    nferCircuitPlan(layer, num) {
+        if (!layer || !num) return null;
+        const c = this.screenCircuits(layer).find(x => x.num === num);
+        if (!c) return null;
+        let mode;
+        let path;
+        if (this.isCustomPower(layer)) {
+            if ((c.runIds || []).length > 1) return null;
+            mode = 'custom';
+            path = (layer.powerCustomPaths || {})[num] || [];
+        } else if (this._isTakenOverCircuit(layer, num)) {
+            if ((c.runIds || []).length > 1) return null;
+            mode = 'override';
+            path = (layer.powerCustomPaths || {})[num] || [];
+        } else {
+            if ((c.runIds || []).length > 1 || (c.branches || []).length > 1) return null;
+            mode = 'auto';
+            path = this._runSeedHits(layer, 'power', num)
+                .map(h => this.makePathEntry(layer, h.layer, h.panel));
+        }
+        if (!path.length) return null;
+        const { noun, legs } = this._pathLegs(layer, path);
+        const ways = legs.length;
+        const voltage = parseFloat(layer.powerVoltage) || 0;
+        const watts = this._circuitWatts(layer, c.panels, c.layers);
+        const amps = voltage > 0 ? watts / voltage : 0;
+        const cap = parseFloat(layer.powerAmperage) || 0;
+        const name = this.getPowerCircuitLabel(layer, num);
+        const label = ways >= 2 ? `${ways}fer it (${ways} ${noun} runs)` : '2fer / 3fer it';
+        let reason = null;
+        if (ways < 2) {
+            reason = `${name} feeds one ${noun} - a 2fer or 3fer needs a run `
+                + `per ${noun} on the circuit`;
+        } else if (cap > 0 && amps > cap + 1e-9) {
+            reason = `${name} draws ${amps.toFixed(1)} A on a ${+cap.toFixed(1)} A `
+                + 'circuit - over the amps, so it cannot be one splitter circuit';
+        }
+        return { mode, layer, num, path, noun, legs, ways, amps, cap,
+                 label, reason };
+    }
+
+    // Split circuit `num` of `layer` into its legs - ONE history entry,
+    // `${ways}fer Circuit`. False, nothing written, when the plan refuses or
+    // a screen it would change is locked (named).
+    nferCircuit(layer, num) {
+        const plan = this.nferCircuitPlan(layer, num);
+        if (!plan || plan.reason) return false;
+        const action = `${plan.ways}fer Circuit`;
+        if (plan.mode === 'custom') {
+            const owner = this.powerPathOwner(layer);
+            const locked = new Map();
+            [owner, ...this._runLockedLayers(layer, 'power', num)]
+                .forEach(l => { if (l && l.locked) locked.set(l.id, l); });
+            if (locked.size) {
+                this._showLockedError([...locked.values()]);
+                return false;
+            }
+            let at = num;
+            let touched = [owner];
+            if (owner !== layer) {
+                const adopted = this._adoptWallCircuits(owner, [{ layerId: layer.id, num }]);
+                if (!adopted) return false;
+                at = adopted.ids.get(`${layer.id}:${num}`);
+                touched = adopted.touched;
+            }
+            const legs = this._pathLegs(owner, owner.powerCustomPaths[at]).legs;
+            this._splitCustomRun(owner, at, legs);
+            this._sweepSelection = null;
+            this._commitWallShare(touched, action);
+            return true;
+        }
+        const owner = layer;
+        const locked = this._runLockedLayers(owner, 'power', num);
+        if (owner.locked && !locked.includes(owner)) locked.unshift(owner);
+        if (locked.length) {
+            this._showLockedError(locked);
+            return false;
+        }
+        this.ensureCustomPowerState(owner);
+        owner.powerCustomPaths[num] = plan.legs.flatMap((leg, k) => leg.map((e, i) => {
+            const entry = { ...e };
+            delete entry.branch;
+            if (k > 0 && i === 0) entry.branch = true;
+            return entry;
+        }));
+        if (plan.mode === 'auto') {
+            const nums = this.getOverrideNums(owner, 'power');
+            if (!nums.includes(num)) nums.push(num);
+            owner.powerCustomOverrides = nums.sort((a, b) => a - b);
+        }
+        this._sweepSelection = null;
+        this._circuitTailCache = null;
+        this.saveState(action);
+        this.saveClientSideProperties();
+        this.updateLayers(this._pathPersistLayers(owner));
+        this._rebuildAfterGesture(() => {
+            this.updatePowerCapacityDisplay();
+            this.refreshSocaRuns();
+            this.refreshDistroPanel();
+            this.updatePowerLabelEditor && this.updatePowerLabelEditor();
+            if (window.canvasRenderer) window.canvasRenderer.render();
+        });
+        return true;
+    }
+
+    // Write custom run `num`'s legs on `owner` (unrecorded - the caller's
+    // one entry carries it): the first leg keeps `num`, the rest take the
+    // numbers after it, every drawn number past `num` stepping up to make
+    // room (_shiftCustomRuns), and the legs become one manual merge in the
+    // custom id space, out of any group `num` sat in.
+    _splitCustomRun(owner, num, legs) {
+        const by = legs.length - 1;
+        if (by < 1) return;
+        this.ensureCustomPowerState(owner);
+        this._shiftCustomRuns(owner, num, by);
+        legs.forEach((leg, k) => {
+            owner.powerCustomPaths[num + k] = leg.map(e => {
+                const entry = { ...e };
+                delete entry.branch;
+                return entry;
+            });
+        });
+        const ids = legs.map((_, k) => num + k);
+        this._writeSplitterManual(owner, (manual) => {
+            const hit = new Set(ids);
+            manual.merge = manual.merge
+                .map(g => (Array.isArray(g) ? g.filter(n => !hit.has(parseInt(n, 10))) : []))
+                .filter(g => g.length >= 2);
+            manual.split = manual.split.filter(n => !hit.has(parseInt(n, 10)));
+            manual.merge.push(ids);
+        }, null, { silent: true });
+        this._circuitTailCache = null;
+    }
+
+    // Step every drawn custom number past `after` up by `by`, with what is
+    // keyed by it: the typed label, the cable, the manual groups (custom id
+    // space) and the active index. A circuit's place on the distro is keyed
+    // by its multi, not its number, so it stays put. Unrecorded.
+    _shiftCustomRuns(owner, after, by) {
+        if (!by) return;
+        const move = (store) => {
+            if (!store) return;
+            Object.keys(store).map(n => parseInt(n, 10))
+                .filter(n => Number.isFinite(n) && n > after)
+                .sort((a, b) => b - a)
+                .forEach(n => {
+                    store[n + by] = store[n];
+                    delete store[n];
+                });
+        };
+        move(owner.powerCustomPaths);
+        move(owner.powerLabelOverrides);
+        move(owner.powerCircuitCables);
+        const step = n => {
+            const v = parseInt(n, 10);
+            return Number.isFinite(v) && v > after ? v + by : v;
+        };
+        const raw = owner.powerSplitters;
+        if (raw && raw.manual && this._splitterManualSpace(owner) === 'custom') {
+            const cur = this._ownPowerSplitters(owner);
+            owner.powerSplitters = { ...cur, manual: {
+                merge: cur.manual.merge.map(g => (Array.isArray(g) ? g.map(step) : g)),
+                split: cur.manual.split.map(step),
+                space: 'custom',
+            } };
+        }
+        if ((owner.powerCustomIndex || 1) > after) {
+            owner.powerCustomIndex = step(owner.powerCustomIndex);
+        }
+        this._circuitTailCache = null;
+    }
+
     // ---- what a CLEAR forgets ------------------------------------------------
     //
     // User ruling (2026-08-30): "when i clear a circuit, soca or a distro

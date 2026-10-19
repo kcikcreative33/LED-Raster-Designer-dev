@@ -191,6 +191,14 @@
                  currently shared. -->
             <div class="menu-option hw-share-only" data-action="hw-share" style="display: none;"></div>
             <div class="menu-option hw-unshare-only" data-action="hw-unshare" style="display: none;"></div>
+            <!-- "3fer it": a circuit drawn as ONE run across several columns
+                 (rows, on a wall cabled across) split into a run per column
+                 on the same circuit - on the circuit right-clicked or the one
+                 an Alt pick swept: the circuit's own Nfer, one leg per
+                 column. Disabled with the reason when it cannot be one
+                 splitter (one column, over the amps). Armed by _prepareNferItMenu
+                 (app-dock-menus.js). -->
+            <div class="menu-option hw-nfer-it-only" data-action="hw-nfer-it" style="display: none;"></div>
             <!-- Distro outputs, the click path: on a screen in the power
                  view (its cabinets, or its circuit chips in the tray),
                  "Add <type> from…" opens a submenu of every distro - the

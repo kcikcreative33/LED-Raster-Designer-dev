@@ -53,6 +53,13 @@ class _ContextMenu {
             ? this._prepareShareMenus(x, y) : { share: null, unshare: null };
         this._shareMenuAction = sharing.share;
         this._unshareMenuAction = sharing.unshare;
+        // "3fer it": a circuit drawn as one run across several columns,
+        // split into a run per column on the same circuit (app-dock-menus.js
+        // _prepareNferItMenu) - on the canvas circuit under the cursor or
+        // the one an Alt pick swept; never on the tray.
+        const nferIt = (typeof this._prepareNferItMenu === 'function')
+            ? this._prepareNferItMenu(x, y) : null;
+        this._nferItMenuAction = nferIt;
         // The batch verb (2026-08-30, "B and then right click"): with a
         // sweep selection armed the menu deals it as Nfers; with none, the
         // same entries act on the whole screen under the cursor. Canvas
@@ -114,7 +121,7 @@ class _ContextMenu {
         // dock they all leave, whatever their group logic below would say.
         menu.querySelectorAll(
             '.menu-option:not(.hw-clear-only):not(.hw-merge-only)'
-            + ':not(.hw-share-only):not(.hw-unshare-only)'
+            + ':not(.hw-share-only):not(.hw-unshare-only):not(.hw-nfer-it-only)'
             + ':not(.hw-batch-only):not(.hw-out-only):not(.hw-snake-only), '
             + '.menu-divider:not(.hw-clear-only):not(.hw-batch-only)'
             + ':not(.hw-out-only):not(.hw-snake-only)')
@@ -278,6 +285,7 @@ class _ContextMenu {
         }
         [['hw-share-only', 'hw-share', sharing.share],
          ['hw-unshare-only', 'hw-unshare', sharing.unshare],
+         ['hw-nfer-it-only', 'hw-nfer-it', nferIt],
          ['ovr-redraw-only', 'ovr-redraw', ovr && ovr.redraw],
          ['ovr-auto-only', 'ovr-auto', ovr && ovr.backToAuto],
         ].forEach(([cls, action, armed]) => {

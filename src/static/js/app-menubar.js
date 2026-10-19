@@ -392,6 +392,15 @@ class _MenuBar {
                     this._unshareMenuAction.run();
                 }
                 break;
+            // "3fer it": armed at open time on the circuit the cursor (or a
+            // one-circuit Alt pick) named; a refused split stays on the menu
+            // to be read, never to run.
+            case 'hw-nfer-it':
+                if (this._nferItMenuAction && !this._nferItMenuAction.disabled
+                        && typeof this._nferItMenuAction.run === 'function') {
+                    this._nferItMenuAction.run();
+                }
+                break;
             // The batch verb's entries, armed at open time on the sweep
             // selection (or the whole screen) the cursor named - re-checked
             // here like every hw item, disabled included: a gated entry

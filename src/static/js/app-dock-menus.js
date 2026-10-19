@@ -312,12 +312,14 @@ class _DockMenus {
         const none = { share: null, unshare: null };
         if (!window.canvasRenderer
                 || window.canvasRenderer.viewMode !== 'power') return none;
-        // With a sweep selection armed, the batch entries ARE the sharing
-        // story for this opening - a single-run "Share with next" beside
-        // "3fer them" would be two grammars for one gesture.
-        if (this._sweepSelection && this._sweepSelection.nums
-                && this._sweepSelection.nums.length) return none;
-        const at = this._dockCircuitAt(x, y);
+        // With a sweep selection of two or more circuits armed, the batch
+        // entries ARE the sharing story for this opening - a single-run
+        // "Share with next" beside "3fer them" would be two grammars for one
+        // gesture. A sweep that picked ONE circuit is that circuit's pick:
+        // its single-circuit items answer for it (_sweptCircuit).
+        const swept = this._sweptCircuit();
+        if (swept === false) return none;
+        const at = swept || this._dockCircuitAt(x, y);
         if (!at) return none;
         const { layer, num } = at;
         const sp = this.getPowerSplitters(layer);
@@ -401,6 +403,60 @@ class _DockMenus {
             };
         }
         return out;
+    }
+
+    // The circuit an armed canvas sweep picked: { layer, num } when it holds
+    // exactly ONE circuit, false when it holds several (the batch entries'
+    // turn), null with no sweep armed.
+    _sweptCircuit() {
+        const sel = this._sweepSelection;
+        if (!sel) return null;
+        const refs = Array.isArray(sel.refs) && sel.refs.length ? sel.refs
+            : (sel.nums || []).map(num => ({ layerId: sel.layerId, num }));
+        if (!refs.length) return null;
+        if (refs.length > 1) return false;
+        const layer = (this.project.layers || []).find(l => l.id === refs[0].layerId);
+        return layer ? { layer, num: refs[0].num } : null;
+    }
+
+    // "3fer it" (app-power.js, "a wide circuit splits into its own legs"):
+    // on the circuit right-clicked - or the one circuit an Alt pick swept -
+    // the entry that splits a circuit drawn as ONE run across several
+    // columns into a run per column on the same circuit. Its label says
+    // what it will make - the circuit's own Nfer, one per column, and no
+    // other size; a circuit that cannot be split (one column, over the
+    // amps) keeps the entry,
+    // disabled, the reason as its title. Absent on a circuit already shared
+    // and off a circuit. Canvas only: a tray chip is hardware, and its menu
+    // carries the chip's own actions.
+    _prepareNferItMenu(x, y) {
+        const renderer = window.canvasRenderer;
+        if (!renderer || renderer.viewMode !== 'power') return null;
+        const el = document.elementFromPoint(x, y);
+        if (el && el.closest && el.closest('#hardware-dock')) return null;
+        const swept = this._sweptCircuit();
+        if (swept === false) return null;
+        const at = swept || this._dockCircuitAt(x, y);
+        if (!at) return null;
+        const plan = this.nferCircuitPlan(at.layer, at.num);
+        if (!plan) return null;
+        if (plan.reason) {
+            return { label: plan.label, disabled: true, title: plan.reason };
+        }
+        const name = this.getPowerCircuitLabel(at.layer, at.num);
+        const figure = plan.cap > 0
+            ? ` - ${plan.amps.toFixed(1)} A of ${+plan.cap.toFixed(1)} A` : '';
+        return {
+            label: plan.label,
+            title: `Split ${name} into ${plan.ways} ${plan.noun} runs on the `
+                + `same circuit through a ${plan.ways}fer${figure}. `
+                + 'One undoable step.',
+            run: () => {
+                sendClientLog('power_nfer_circuit', { layerId: at.layer.id,
+                    num: at.num, ways: plan.ways, mode: plan.mode });
+                this.nferCircuit(at.layer, at.num);
+            },
+        };
     }
 
     // ── the batch verb: sweep → right-click → "3fer them" ────────────────

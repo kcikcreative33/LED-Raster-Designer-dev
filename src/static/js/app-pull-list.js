@@ -696,7 +696,8 @@ class _PullList {
     // The one authority. Shape:
     //   { positions: [{ name, key, groupId, location, memberIds, layerIds, rows }],
     //     totals: [rows],
-    //     byScreen: { [layerId]: { name, rows, boxes, gangs: {twofer, threefer},
+    //     byScreen: { [layerId]: { name, rows, boxes, gangs: {twofer, threefer,
+    //                 wider?: {ways: count} for 4fers and up},
     //                              ports, snakes, jumpers: {data, power},
     //                              jumperLengths: {data: {ft: n}, power: {ft: n}} } },
     //     hardware: [{ kind: 'distro'|'processor', id, name, rows }],
@@ -1157,16 +1158,26 @@ class _PullList {
             const hrec = hw('distro', box.distroId, distroName);
             hrec.rows.push({ ...r }, { ...b });
         }
-        // Gangs: a circuit made of two runs is a 2fer, three a 3fer. Both
-        // the gang and the circuit's jumpers go with the circuit's distro.
+        // Gangs: a circuit made of two runs is a 2fer, three a 3fer, four a
+        // 4fer and so on - one splitter of its own ways each (a circuit split
+        // into its columns can be any width, app-power.js nferCircuit), the
+        // 4fer and wider counted under `wider` by their ways. Both the gang
+        // and the circuit's jumpers go with the circuit's distro.
         const powerJumps = new Map();   // location + length -> { at, ft, n }
         for (const c of this.screenCircuits(layer)) {
             const ways = Array.isArray(c.runIds) ? c.runIds.length : 1;
             const label = this.getPowerCircuitLabel(layer, c.num);
             const at = locationOf(circuitDistro.get(c.num));
             on = circuitOn.get(c.num) || [layer.id];
-            if (ways === 2) { out.gangs.twofer++; row(`${screenConn} 2fer`, 'EA', 1, label, '', at); }
-            else if (ways >= 3) { out.gangs.threefer++; row(`${screenConn} 3fer`, 'EA', 1, label, '', at); }
+            if (ways >= 2) {
+                if (ways === 2) out.gangs.twofer++;
+                else if (ways === 3) out.gangs.threefer++;
+                else {
+                    out.gangs.wider = out.gangs.wider || {};
+                    out.gangs.wider[ways] = (out.gangs.wider[ways] || 0) + 1;
+                }
+                row(`${screenConn} ${ways}fer`, 'EA', 1, label, '', at);
+            }
             // Jumpers: every link of each run (branch) of the circuit.
             const runs = Array.isArray(c.branches) && c.branches.length ? c.branches : [c.panels];
             let off = 0;

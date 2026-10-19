@@ -4590,7 +4590,8 @@ class _Binder {
         if (typeof this.screenCircuits === 'function') {
             for (const carrier of [...new Set(units.map(u => u.carrier))]) {
                 const gangs = (book.list.byScreen[carrier.id] || {}).gangs || { twofer: 0, threefer: 0 };
-                if ((gangs.twofer || 0) + (gangs.threefer || 0) <= 0) continue;
+                const wider = Object.values(gangs.wider || {}).reduce((a, n) => a + n, 0);
+                if ((gangs.twofer || 0) + (gangs.threefer || 0) + wider <= 0) continue;
                 const mine = new Map(units.filter(u => u.carrier === carrier)
                     .flatMap(u => (u.box.circuits || []).map(c => [c.num, c.amps])));
                 for (const c of this.screenCircuits(carrier)) {
@@ -5641,8 +5642,16 @@ class _Binder {
         // group's line leaves SIZE and PANELS to the member lines where
         // there are any, so no cabinet is counted twice.
         // A side not routed as one reads each member's own.
-        const gangText = (g) => [g.twofer ? `${g.twofer}× 2fer` : '', g.threefer ? `${g.threefer}× 3fer` : '']
+        // 4fers and wider (a circuit split into its own columns) ride in
+        // `wider`, keyed by their ways (app-pull-list.js).
+        const gangText = (g) => [g.twofer ? `${g.twofer}× 2fer` : '', g.threefer ? `${g.threefer}× 3fer` : '',
+            ...Object.keys(g.wider || {}).map(Number).sort((a, b) => a - b)
+                .map(w => (g.wider[w] ? `${g.wider[w]}× ${w}fer` : ''))]
             .filter(Boolean).join(', ') || '—';
+        const addWider = (into, from) => Object.keys((from && from.wider) || {}).forEach(w => {
+            into.wider = into.wider || {};
+            into.wider[w] = (into.wider[w] || 0) + from.wider[w];
+        });
         const own = (layer) => {
             const scr = list.byScreen[layer.id] || { boxes: [], ports: [], gangs: {} };
             return { circuits: (scr.boxes || []).reduce((a, b) => a + (b.circuits || []).length, 0),
@@ -5659,7 +5668,9 @@ class _Binder {
                     .map(c => [c.num, c]));
                 for (const c of u.box.circuits || []) {
                     const ways = ((byNum.get(c.num) || {}).runIds || []).length;
-                    if (ways === 2) gangs.twofer++; else if (ways >= 3) gangs.threefer++;
+                    if (ways === 2) gangs.twofer++;
+                    else if (ways === 3) gangs.threefer++;
+                    else if (ways > 3) addWider(gangs, { wider: { [ways]: 1 } });
                 }
             }
             return { circuits: units.reduce((a, u) => a + (u.box.circuits || []).length, 0),
@@ -5682,6 +5693,7 @@ class _Binder {
             const sum = (k) => fs.reduce((a, f) => a + f[k], 0);
             const groupGangs = { twofer: fs.reduce((a, f) => a + (f.gangs.twofer || 0), 0),
                                  threefer: fs.reduce((a, f) => a + (f.gangs.threefer || 0), 0) };
+            fs.forEach(f => addWider(groupGangs, f.gangs));
             const pGroup = gp.mode.power === 'group', dGroup = gp.mode.data === 'group';
             const size = gp.members.map(m => `${m.columns} × ${m.rows}`).join(' + ');
             if (pGroup && dGroup) {

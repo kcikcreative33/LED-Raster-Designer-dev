@@ -1,4 +1,5 @@
-"""A grouped wall shares ONE splitter setting.
+"""A grouped wall shares ONE splitter setting, and a wide circuit splits
+into its own legs.
 
 The owner's rulings, 2026-10-19, from a three-screen group show built on
 1.5.3-beta.1 (the shape is rebuilt here in generic form: three members,
@@ -17,6 +18,13 @@ each ONE run covering three columns):
    (Before: the box wrote only the selected screens and showed the
    selected screen's own flag, while the custom fill read the wall
    owner's - so a member showing "on" filled one 15-cabinet run.)
+2. A circuit drawn as ONE run across several columns (rows, on a wall
+   cabled across) becomes a 2fer / 3fer of a run per column on the SAME
+   circuit: right-click > "3fer it", or Alt pick it and right-click, in
+   custom, on a taken-over circuit and on an automatic one. The one entry
+   is the circuit's own Nfer - ways = its columns, never a smaller size,
+   whatever the splitter size - offered only while its load fits the
+   amps; refused with the reason otherwise.
 
 Run locally:
     python -m pytest tests/test_nfer_wall_setting.py -v --browser chromium
@@ -254,4 +262,284 @@ def test_an_auto_group_packs_every_member_by_the_wall_setting(page):
     landed(page)
     assert any(len(c_['runs']) > 1 for c_ in circuits(page, a)), circuits(page, a)
     assert any(len(c_['runs']) > 1 for c_ in circuits(page, b)), circuits(page, b)
+
+
+# ── 2. a wide circuit becomes a 2fer / 3fer of its own legs ───────────────
+#
+# The owner's ruling, 2026-10-19: "i am taking 3 columns and 1 port and
+# making it 3fer the single port. across 3 columns. which is how auto has
+# worked this whole time". A circuit that is ONE run across several columns
+# (rows, on a wall cabled across) becomes one circuit split into legs, one
+# run per column, on the SAME circuit: right-click > "3fer it", or Alt pick
+# the circuit and right-click. Ways = its columns, capped at the splitter
+# size, and only while the circuit's load fits the amps OVER reads.
+
+NFER_IT_JS = """() => {
+    const menu = document.getElementById('context-menu');
+    const el = menu && menu.querySelector('[data-action="hw-nfer-it"]');
+    if (!el || menu.style.display !== 'block' || el.style.display === 'none') return null;
+    return { label: (el.textContent || '').trim(), title: el.title,
+             disabled: el.classList.contains('menu-disabled') };
+}"""
+
+# A single custom screen whose circuits are drawn by hand: {num: [cols]},
+# each run snaking top-down through its columns.
+WIDE_JS = """([id, runs, props]) => {
+    const app = window.app, l = window.__nf.layer(id);
+    const snake = (cols) => cols.flatMap((col, i) => {
+        const rows = i % 2 ? [4, 3, 2, 1, 0] : [0, 1, 2, 3, 4];
+        return rows.map(r => ({ row: r, col }));
+    });
+    l.powerFlowPattern = 'custom';
+    l.powerCustomPaths = {};
+    Object.keys(runs).forEach(n => { l.powerCustomPaths[n] = snake(runs[n]); });
+    l.powerCustomIndex = Math.max(...Object.keys(runs).map(Number));
+    Object.assign(l, props || {});
+    app._circuitTailCache = null;
+    app.updateLayers([l]);
+    app.loadLayerToInputs();
+    app.resetHistory('Drawn');
+}"""
+
+TEN = {1: [0, 1, 2], 2: [3, 4, 5], 3: [6, 7, 8], 4: [9]}
+
+
+def wide(page, runs=None, columns=10, props=None, **kw):
+    close_menu(page)
+    (wall,) = make(page, [{'name': 'Wall', 'columns': columns}], **kw)
+    page.evaluate(WIDE_JS, [wall, {str(k): v for k, v in (runs or TEN).items()},
+                            props or {}])
+    landed(page)
+    return wall
+
+
+def nfer_item(page, p):
+    page.mouse.click(p['x'], p['y'], button='right')
+    landed(page)
+    return page.evaluate(NFER_IT_JS)
+
+
+def cols_of(page, layer_id):
+    """Each drawn run's columns: {num: [[layerId, col], ...]}."""
+    return page.evaluate("""(id) => {
+        const p = window.__nf.layer(id).powerCustomPaths || {};
+        const out = {};
+        Object.keys(p).forEach(n => { if ((p[n] || []).length) out[n] =
+            [...new Set(p[n].map(e => (e.layerId || id) + ':' + e.col))]; });
+        return out;
+    }""", layer_id)
+
+
+def labels(page, layer_id, nums):
+    return page.evaluate("([id, ns]) => { window.app._circuitTailCache = null;"
+                         " return ns.map(n => window.app.getPowerCircuitLabel("
+                         "window.__nf.layer(id), n)); }", [layer_id, nums])
+
+
+def test_3fer_it_splits_one_wide_custom_circuit_into_its_columns(page):
+    """Custom, circuit 2 one run of columns 3-5: right-click > "3fer it"
+    makes it ONE circuit of three single-column runs, still circuit 2 and
+    still the same label; the circuits after it keep their labels and
+    their typed labels. One history entry; one undo puts it back."""
+    wall = wide(page, props={'powerLabelOverrides': {'3': 'KEEP'}})
+    before = circuits(page, wall)
+    names = labels(page, wall, [1, 2, 4])
+    h0 = len(history(page))
+    item = nfer_item(page, pt(page, wall, 2, 4))
+    assert item == {'label': '3fer it (3 column runs)', 'disabled': False,
+                    'title': item and item['title']}, item
+    take(page, 'hw-nfer-it')
+    out = circuits(page, wall)
+    assert [(c['num'], c['runs']) for c in out] == [
+        (1, [15]), (2, [5, 5, 5]), (5, [15]), (6, [5])], out
+    assert out[1]['runIds'] == [2, 3, 4], out
+    assert cols_of(page, wall) == {
+        '1': [f'{wall}:0', f'{wall}:1', f'{wall}:2'], '2': [f'{wall}:3'],
+        '3': [f'{wall}:4'], '4': [f'{wall}:5'],
+        '5': [f'{wall}:6', f'{wall}:7', f'{wall}:8'], '6': [f'{wall}:9']}
+    assert gangs(page, wall) == [{'num': 2, 'ways': 3, 'over': False}]
+    assert labels(page, wall, [1, 2, 6]) == names, 'every circuit keeps its name'
+    assert labels(page, wall, [5]) == ['KEEP']
+    assert history(page)[h0:] == ['3fer Circuit'], history(page)
+    page.evaluate("() => window.app.undo()")
+    landed(page)
+    assert circuits(page, wall) == before
+
+
+def test_nfer_it_is_refused_with_the_reason(page):
+    """A single column, or a circuit over the amps: the entry stays on the
+    menu disabled with the reason, and a click writes nothing."""
+    wall = wide(page, runs={1: [0, 1, 2, 3], 2: [4, 5, 6], 3: [7]})
+    one = nfer_item(page, pt(page, wall, 2, 7))
+    assert one and one['disabled'] and 'one column' in one['title'], one
+    h0 = len(history(page))
+    take(page, 'hw-nfer-it')
+    assert len(history(page)) == h0 and manual(page, wall)['merge'] == []
+
+    wall = wide(page, props={'powerAmperage': 10})
+    over = nfer_item(page, pt(page, wall, 2, 4))
+    assert over and over['disabled'], over
+    assert over['label'] == '3fer it (3 column runs)', over
+    assert '10.8 A on a 10 A circuit' in over['title'], over
+    take(page, 'hw-nfer-it')
+    assert [c['runs'] for c in circuits(page, wall)] == [[15]] * 3 + [[5]]
+
+
+def test_each_circuit_offers_only_the_nfer_its_columns_make(page):
+    """The owner's ruling, 2026-10-19: "three columns on one port, the
+    only option available should be a three fer. if 2 then only a 2 fer.
+    if 4 then 4 fer etc." Two, three and four columns each offer exactly
+    their own Nfer - four columns at the 3fer splitter size too: one
+    circuit's split follows its columns, the splitter size caps auto
+    packing and the batch. The 4fer tags "4fer" and the pull sheet counts
+    a 4fer."""
+    wall = wide(page, columns=9, runs={1: [0, 1], 2: [2, 3, 4], 3: [5, 6, 7, 8]})
+    for col, n in ((1, 2), (3, 3), (6, 4)):
+        item = nfer_item(page, pt(page, wall, 2, col))
+        assert item == {'label': f'{n}fer it ({n} column runs)', 'disabled': False,
+                        'title': item and item['title']}, (n, item)
+        texts = page.evaluate("""() => [...document.querySelectorAll(
+            '#context-menu .menu-option')].filter(el => el.style.display !== 'none')
+            .map(el => (el.textContent || '').trim()).filter(t => / it [(]/.test(t))""")
+        assert texts == [f'{n}fer it ({n} column runs)'], texts
+    take(page, 'hw-nfer-it')
+    four = [c for c in circuits(page, wall) if len(c['runs']) == 4]
+    assert len(four) == 1 and four[0]['runs'] == [5, 5, 5, 5], circuits(page, wall)
+    assert gangs(page, wall) == [{'num': four[0]['num'], 'ways': 4, 'over': False}]
+    assert page.evaluate("() => window.__nf.tags()").count('4fer') == 1
+    pull = page.evaluate("""(id) => {
+        window.app._circuitTailCache = null;
+        const scr = window.app.buildPullList().byScreen[id];
+        return { gangs: scr.gangs, rows: scr.rows.map(r => r.type) };
+    }""", wall)
+    assert pull['gangs'] == {'twofer': 0, 'threefer': 0, 'wider': {'4': 1}}, pull
+    assert any(t.endswith(' 4fer') for t in pull['rows']), pull
+    assert not any(t.endswith(' 3fer') for t in pull['rows']), pull
+
+
+def test_2fer_it_on_a_wall_cabled_across_makes_row_runs(page):
+    """A custom circuit snaking across rows 0-1 of a four-column wall is a
+    2fer of two row runs; maxWays 2 caps nothing here."""
+    close_menu(page)
+    (wall,) = make(page, [{'name': 'Wall', 'columns': 4}], maxWays=2)
+    page.evaluate("""(id) => {
+        const app = window.app, l = window.__nf.layer(id);
+        l.powerFlowPattern = 'custom'; l.lastPowerFlowPattern = 'tl-h';
+        l.powerCustomPaths = { 1: [0, 1, 2, 3].map(c => ({ row: 0, col: c }))
+            .concat([3, 2, 1, 0].map(c => ({ row: 1, col: c }))) };
+        app.updateLayers([l]);
+        app.resetHistory('Drawn');
+    }""", wall)
+    landed(page)
+    item = nfer_item(page, pt(page, wall, 0, 1))
+    assert item and item['label'] == '2fer it (2 row runs)' and not item['disabled'], item
+    take(page, 'hw-nfer-it')
+    assert [c['runs'] for c in circuits(page, wall)] == [[4, 4]]
+
+
+def test_alt_click_then_right_click_makes_that_circuit_a_3fer(page):
+    """Custom: Alt+click picks circuit 2 (the active circuit), and the
+    right-click on it offers "3fer it"."""
+    wall = wide(page)
+    alt_click(page, pt(page, wall, 0, 4))
+    assert page.evaluate("() => window.app.currentLayer.powerCustomIndex") == 2
+    item = nfer_item(page, pt(page, wall, 0, 4))
+    assert item and item['label'] == '3fer it (3 column runs)', item
+    take(page, 'hw-nfer-it')
+    assert circuits(page, wall)[1]['runs'] == [5, 5, 5]
+
+
+def test_a_one_circuit_alt_sweep_offers_3fer_it(page):
+    """An Alt sweep that stays on one circuit picks just that circuit; the
+    right-click offers "3fer it" for it (the menu used to show neither the
+    share items nor a batch entry for a one-circuit pick)."""
+    wall = wide(page)
+    alt_sweep(page, pt(page, wall, 0, 3), pt(page, wall, 4, 3))
+    sel = page.evaluate("() => window.app._sweepSelection")
+    assert sel and sel['nums'] == [2], sel
+    item = nfer_item(page, pt(page, wall, 4, 3))
+    assert item and item['label'] == '3fer it (3 column runs)', item
+    take(page, 'hw-nfer-it')
+    assert circuits(page, wall)[1]['runs'] == [5, 5, 5]
+
+
+def _auto_wide(page):
+    """Auto, sharing off, 12 A: whole columns packed three to a circuit -
+    circuits 1-3 are wide runs of three columns, circuit 4 the last one."""
+    close_menu(page)
+    (wall,) = make(page, [{'name': 'Wall', 'columns': 10, 'props': dict(
+        SHARING_OFF, powerAmperage=12)}])
+    assert [c['runs'] for c in circuits(page, wall)] == [[15]] * 3 + [[5]]
+    return wall
+
+
+def test_3fer_it_on_a_taken_over_auto_circuit(page):
+    """Auto: Alt+click takes circuit 2 over (one run of 15); right-click >
+    "3fer it" marks its column heads - three runs on the one circuit,
+    tagged 3fer, the marks saved - in its own history entry."""
+    wall = _auto_wide(page)
+    alt_click(page, pt(page, wall, 0, 4))
+    page.keyboard.press('Escape')
+    landed(page)
+    h0 = len(history(page))
+    item = nfer_item(page, pt(page, wall, 0, 4))
+    assert item and item['label'] == '3fer it (3 column runs)' and not item['disabled'], item
+    take(page, 'hw-nfer-it')
+    c2 = next(c for c in circuits(page, wall) if c['num'] == 2)
+    assert c2['runs'] == [5, 5, 5] and len(c2['runIds']) == 3, c2
+    assert gangs(page, wall) == [{'num': 2, 'ways': 3, 'over': False}]
+    assert history(page)[h0:] == ['3fer Circuit'], history(page)
+    saved = page.evaluate("""async (id) => {
+        await window.app._layerSavesSettled();
+        const p = await (await fetch('/api/project')).json();
+        const l = p.layers.find(x => x.id === id);
+        return (l.powerCustomPaths[2] || []).map(e => !!e.branch);
+    }""", wall)
+    assert [i for i, b in enumerate(saved) if b] == [5, 10], saved
+    page.evaluate("() => window.app.undo()")
+    landed(page)
+    c2 = next(c for c in circuits(page, wall) if c['num'] == 2)
+    assert c2['runs'] == [15], c2
+
+
+def test_3fer_it_on_an_untaken_auto_circuit_takes_it_over_split(page):
+    """Auto, no Alt: right-click > "3fer it" on a packed wide circuit takes
+    it over already split into its column runs - ONE history entry."""
+    wall = _auto_wide(page)
+    h0 = len(history(page))
+    item = nfer_item(page, pt(page, wall, 0, 4))
+    assert item and item['label'] == '3fer it (3 column runs)', item
+    take(page, 'hw-nfer-it')
+    assert page.evaluate("(id) => window.app.isRunOverridden("
+                         "window.__nf.layer(id), 'power', 2)", wall)
+    c2 = next(c for c in circuits(page, wall) if c['num'] == 2)
+    assert c2['runs'] == [5, 5, 5], c2
+    assert history(page)[h0:] == ['3fer Circuit'], history(page)
+
+
+def test_3fer_it_on_a_group_acts_on_the_walls_circuit(page):
+    """The old three-screen file: B's circuit 3 (B's columns 0-2) is
+    adopted into the wall's owner A and split there - one history entry."""
+    a, b, c = old_wall(page)
+    h0 = len(history(page))
+    item = nfer_item(page, pt(page, b, 2, 1))
+    assert item and item['label'] == '3fer it (3 column runs)', item
+    take(page, 'hw-nfer-it')
+    assert history(page)[h0:] == ['3fer Circuit'], history(page)
+    assert '3' not in cols_of(page, b), cols_of(page, b)
+    out = circuits(page, a)
+    shared = [x for x in out if len(x['runs']) == 3]
+    assert len(shared) == 1 and shared[0]['on'] == [b], out
+    assert not any(g['over'] for g in gangs(page, a))
+
+
+def test_3fer_it_on_a_locked_screen_is_refused(page):
+    wall = wide(page, props={'locked': True})
+    catch_locked(page)
+    h0 = len(history(page))
+    nfer_item(page, pt(page, wall, 2, 4))
+    take(page, 'hw-nfer-it')
+    assert len(history(page)) == h0
+    assert [c['runs'] for c in circuits(page, wall)] == [[15]] * 3 + [[5]]
+    assert ['Wall'] in page.evaluate("() => window.__nf.errors")
 
