@@ -4,6 +4,18 @@ import sys
 import os
 import pytest
 
+# The suite runs on the Python CI and the release builds use (3.11). The
+# macOS system python3 (3.9, an older Playwright) gave false results: two
+# tray failures it produced cost hours (2026-10-19), and an old click pulled
+# colorama into the notices check (2026-10-16). Any other interpreter stops
+# here rather than producing a result that does not count.
+MIN_PYTHON = (3, 11)
+if sys.version_info[:2] < MIN_PYTHON:
+    raise SystemExit(
+        f"Tests need Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]}+, this is "
+        f"{sys.version.split()[0]} at {sys.executable}. Run them with "
+        f"~/.venvs/led-raster-designer/bin/python -m pytest ...")
+
 # Add src/ to path so we can import app
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 

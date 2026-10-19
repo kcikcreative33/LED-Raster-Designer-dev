@@ -45,6 +45,9 @@ FIXES
   the whole group, and locking one screen of a group locks them all.
 - FIX: A distro name you're halfway through typing keeps what you typed
   when the tray redraws.
+- FIX: Saving a screen no longer redraws the whole hardware tray a moment
+  later for nothing, which on a busy computer could interrupt a drag from
+  the tray.
 - FIX: In custom mode a group is one wall. Its circuits are numbered as
   one, and runs on different screens can share a circuit. A run drawn
   earlier on another screen joins the wall when you share it.
