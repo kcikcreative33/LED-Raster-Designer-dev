@@ -791,6 +791,24 @@ class _CrossLayerPaths {
                 }
             }
         }
+        // On an automatic screen every cabinet the walk feeds is wired to
+        // its automatic circuit, and a redraw may not take it: the owner,
+        // 2026-10-20, "it allowed me to put wiring on a panel that already
+        // had cabling so this is an error". The rendered map is the answer
+        // the wall shows (automatic and taken-over circuits alike); the run
+        // being redrawn is the one exempt.
+        if (kind === 'power' && !this.isCustomPower(ownerLayer) && window.canvasRenderer
+                && typeof window.canvasRenderer._powerCircuitForPanel === 'function') {
+            const at = window.canvasRenderer._powerCircuitForPanel(source, panel);
+            if (at && at.owner && !(at.owner.id === ownerLayer.id && at.circuitNum === excludeNum)) {
+                return {
+                    number: at.circuitNum,
+                    layer: at.owner,
+                    layerId: at.owner.id,
+                    foreign: at.owner.id !== ownerLayer.id,
+                };
+            }
+        }
         return null;
     }
 

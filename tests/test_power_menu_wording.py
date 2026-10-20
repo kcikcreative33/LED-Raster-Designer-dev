@@ -89,17 +89,47 @@ def _back_from_custom(page):
     return wall
 
 
-def test_a_redraw_after_custom_off_adds_the_clicked_cabinet(page):
+def test_a_redraw_after_custom_off_refills_its_own_cabinets(page):
+    """The old custom drawing no longer blocks the redraw: a fill over the
+    taken-over circuit's own cabinets lands, with no error."""
     wall = _back_from_custom(page)
     alt_click(page, pt(page, wall, 0, 4))
     num = page.evaluate("(id) => window.__nf.layer(id).powerCustomIndex", wall)
-    before = page.evaluate("([id, n]) => window.__nf.layer(id).powerCustomPaths[n].length", [wall, num])
+    cols = page.evaluate("""([id, n]) => [...new Set(window.__nf.layer(id).powerCustomPaths[n]
+        .map(e => e.col))].sort((a, b) => a - b)""", [wall, num])
+    errors = page.evaluate("""() => { window.__errs = [];
+        const real = window.app._toast.bind(window.app);
+        window.app._toast = (m, err, ms) => { if (err) window.__errs.push(m); return real(m, err, ms); };
+        return true; }""")
+    n = page.evaluate("(spans) => window.__nf.select(spans)", [[wall, cols[0], cols[-1]]])
+    assert n == 5 * len(cols), n
+    ok = page.evaluate("() => window.app._applyPatternFill('power', 'tl-v')")
+    landed(page)
+    assert ok, page.evaluate("() => window.__errs")
+    assert page.evaluate("() => window.__errs") == [], 'no error for a redraw that worked'
+    page.keyboard.press('Escape')
+    landed(page)
+
+
+def test_a_redraw_in_auto_refuses_a_cabinet_already_on_another_circuit(page):
+    """The owner, 2026-10-20: "it allowed me to put wiring on a panel that
+    already had cabling so this is an error". Clicking a cabinet the next
+    automatic circuit feeds is refused, named, and changes nothing."""
+    (wall,) = make(page, [{'name': 'Wall', 'columns': 10}])
+    page.evaluate("() => window.app.hideContextMenu()")
+    alt_click(page, pt(page, wall, 0, 4))
+    num = page.evaluate("(id) => window.__nf.layer(id).powerCustomIndex", wall)
+    before = page.evaluate("([id, n]) => JSON.stringify(window.__nf.layer(id).powerCustomPaths[n])", [wall, num])
+    page.evaluate("""() => { window.__errs = [];
+        const real = window.app._toast.bind(window.app);
+        window.app._toast = (m, err, ms) => { if (err) window.__errs.push(m); return real(m, err, ms); }; }""")
     q = pt(page, wall, 0, 9)
     page.mouse.click(q['x'], q['y'])
     landed(page)
-    after = page.evaluate("([id, n]) => window.__nf.layer(id).powerCustomPaths[n].map(e => [e.row, e.col])",
-                          [wall, num])
-    assert len(after) == before + 1 and after[-1] == [0, 9], after
+    after = page.evaluate("([id, n]) => JSON.stringify(window.__nf.layer(id).powerCustomPaths[n])", [wall, num])
+    assert after == before, 'the other circuit\'s cabinet must not be taken'
+    errs = page.evaluate("() => window.__errs")
+    assert errs and 'already wired' in errs[0], errs
     page.keyboard.press('Escape')
     landed(page)
 

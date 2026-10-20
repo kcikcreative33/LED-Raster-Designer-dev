@@ -1217,7 +1217,12 @@ class _CustomRuns {
             }
             toast(`${msg}.`, false);
         }
-        if (unwiredOn.length > 0) {
+        // Only whole-screen custom leaves a peer's cabinets unwired: on an
+        // automatic screen the cabinets a redraw lets go of go straight
+        // back to the automatic walk, and the warning was a false alarm
+        // (the owner, 2026-10-20: "i got an error message even though
+        // everything worked").
+        if (unwiredOn.length > 0 && (isPower ? this.isCustomPower(owner) : this.isCustomFlow(owner))) {
             toast(this._customFillUnwiredMessage(kind, unwiredOn), true, 6000);
         }
         sayLocked();

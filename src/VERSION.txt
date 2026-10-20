@@ -76,6 +76,9 @@ FIXES
 - FIX: After turning custom mode off, redrawing a circuit works again.
   Clicks and fills were refused as "already wired to other circuits"
   because the old custom drawing was still being counted.
+- FIX: Redrawing a circuit on an automatic screen can't take a cabinet
+  another circuit already feeds; it says which circuit has it. A redraw
+  that works no longer shows a warning about unwired cabinets.
 - FIX: A circuit that isn't on a distro no longer shows a cable tag on
   the map. Lengths left over from an earlier setup stayed on screen after
   the multis came off the distro.
