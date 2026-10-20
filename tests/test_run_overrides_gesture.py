@@ -172,6 +172,19 @@ def data_map(page, layer_id):
     return page.evaluate("(id) => window.__ovrg.dataMap(id)", layer_id)
 
 
+def _refill(page, layer_id, port, pattern):
+    """Select the port's own cabinets and apply `pattern` - the redraw a
+    taken-over run may make on an automatic screen."""
+    n = page.evaluate("""([id, port]) => { const app = window.app, l = window.__ovrg.layer(id);
+        app.customSelection.clear();
+        (app.calculatePortAssignments(l) || []).filter(it => it.port === port)
+            .forEach(it => app.customSelection.add(app.getScopedPanelKey(l.id, it.panel)));
+        return app.customSelection.size; }""", [layer_id, port])
+    assert n > 0
+    assert page.evaluate("(p) => window.app._applyPatternFill('data', p)", pattern)
+    page.wait_for_timeout(300)
+
+
 def port_of_cabinet(base, row, col):
     return next(r['port'] for r in base if r['row'] == row and r['col'] == col)
 
@@ -246,27 +259,32 @@ def test_alt_click_overrides_the_run_and_opens_editing(page):
     assert seeded == walked
 
 
-def test_a_plain_click_then_extends_the_open_path(page):
+def test_a_plain_click_on_another_ports_cabinet_is_refused(page):
+    """The owner, 2026-10-20: a redraw may not put wiring on a cabinet that
+    already has cabling - "this is an error" - and "we need the same
+    redraws for data too". A cabinet the next automatic port carries is
+    refused, named, and nothing moves. (It used to be pulled onto the
+    override while the walk re-flowed around it.)"""
     lid = reset(page)
     base = data_map(page, lid)
-    target = port_of_cabinet(base, 2, 1)
     x, y = world_to_client(page, *cabinet_center(2, 1))
     page.keyboard.down('Alt')
     page.mouse.click(x, y)
     page.keyboard.up('Alt')
     page.wait_for_timeout(300)
-    before = app_state(page, lid)['path']
-    # a cabinet of a DIFFERENT (automatic) run: taking it pulls it onto the
-    # override and the walk re-flows around the theft
+    before = app_state(page, lid)
+    page.evaluate("""() => { window.__errs = [];
+        const real = window.app._toast.bind(window.app);
+        window.app._toast = (m, err, ms) => { if (err) window.__errs.push(m); return real(m, err, ms); }; }""")
     tx, ty = world_to_client(page, *cabinet_center(4, 0))
     page.mouse.click(tx, ty)
     page.wait_for_timeout(300)
     st = app_state(page, lid)
-    assert st['path'] == before + [[4, 0]]
-    assert st['historyAction'] == 'Custom Path Edit'
-    after = data_map(page, lid)
-    stolen = [r for r in after if r['row'] == 4 and r['col'] == 0]
-    assert [r['port'] for r in stolen] == [target]
+    assert st['path'] == before['path'], st
+    assert st['historyAction'] == before['historyAction'], st
+    assert data_map(page, lid) == base
+    errs = page.evaluate("() => window.__errs")
+    assert errs and 'already wired' in errs[0], errs
 
 
 def test_esc_closes_editing_and_keeps_the_override(page):
@@ -341,10 +359,9 @@ def test_back_to_auto_reflows_to_the_baseline(page):
     page.mouse.click(x, y)
     page.keyboard.up('Alt')
     page.wait_for_timeout(300)
-    # redraw it so back-to-auto has something real to undo
-    tx, ty = world_to_client(page, *cabinet_center(4, 0))
-    page.mouse.click(tx, ty)
-    page.wait_for_timeout(300)
+    # redraw it so back-to-auto has something real to undo: its own
+    # cabinets walked the other way (a redraw may not take another port's)
+    _refill(page, lid, target, 'tl-v')
     assert data_map(page, lid) != base
     page.evaluate("""([x, y]) => {
         const m = window.app._prepareOverrideMenu(x, y);
@@ -368,11 +385,10 @@ def test_undo_walks_the_transitions_back_one_named_step_at_a_time(page):
     page.mouse.click(x, y)
     page.keyboard.up('Alt')
     page.wait_for_timeout(300)
-    tx, ty = world_to_client(page, *cabinet_center(4, 0))
-    page.mouse.click(tx, ty)
-    page.wait_for_timeout(300)
-    assert app_state(page, lid)['historyAction'] == 'Custom Path Edit'
-    # one undo: the extension comes off, the override stays
+    _refill(page, lid, target, 'tl-v')
+    assert data_map(page, lid) != base
+    assert app_state(page, lid)['historyAction'] == 'Custom Pattern Apply'
+    # one undo: the redraw comes off, the override stays
     page.evaluate("() => window.app.undo()")
     page.wait_for_timeout(300)
     st = app_state(page, lid)
@@ -404,3 +420,34 @@ def test_alt_click_in_power_view_overrides_the_circuit(page):
     assert st['editing'] == {'layerId': lid, 'kind': 'power',
                              'num': hover['num']}
     assert st['historyAction'] == 'Override Circuit'
+
+
+def test_an_old_custom_drawing_does_not_block_a_data_redraw(page):
+    """A screen switched back from custom keeps its old port drawing,
+    unused: a redraw's fill over the taken-over port's own cabinets lands
+    with no "already wired" refusal (2026-10-20, the data twin of the power
+    fix)."""
+    lid = reset(page)
+    base = data_map(page, lid)
+    target = port_of_cabinet(base, 2, 1)
+    # the dormant drawing: every cabinet on some other port number
+    page.evaluate("""(id) => { const l = window.__ovrg.layer(id);
+        l.customPortPaths = { 9: l.panels.map(p => ({ row: p.row, col: p.col })) }; }""", lid)
+    x, y = world_to_client(page, *cabinet_center(2, 1))
+    page.keyboard.down('Alt')
+    page.mouse.click(x, y)
+    page.keyboard.up('Alt')
+    page.wait_for_timeout(300)
+    page.evaluate("""() => { window.__errs = [];
+        const real = window.app._toast.bind(window.app);
+        window.app._toast = (m, err, ms) => { if (err) window.__errs.push(m); return real(m, err, ms); }; }""")
+    picked = page.evaluate("""([id, port]) => { const app = window.app, l = window.__ovrg.layer(id);
+        app.customSelection.clear();
+        (app.calculatePortAssignments(l) || []).filter(it => it.port === port)
+            .forEach(it => app.customSelection.add(app.getScopedPanelKey(l.id, it.panel)));
+        return app.customSelection.size; }""", [lid, target])
+    assert picked > 0
+    ok = page.evaluate("() => window.app._applyPatternFill('data', 'tl-h')")
+    page.wait_for_timeout(300)
+    assert ok, page.evaluate("() => window.__errs")
+    assert page.evaluate("() => window.__errs") == []

@@ -792,11 +792,30 @@ class _CrossLayerPaths {
             }
         }
         // On an automatic screen every cabinet the walk feeds is wired to
-        // its automatic circuit, and a redraw may not take it: the owner,
+        // its automatic run, and a redraw may not take it: the owner,
         // 2026-10-20, "it allowed me to put wiring on a panel that already
-        // had cabling so this is an error". The rendered map is the answer
-        // the wall shows (automatic and taken-over circuits alike); the run
-        // being redrawn is the one exempt.
+        // had cabling so this is an error" - and "we need the same redraws
+        // for data too". The wall's own run maps are the answer (automatic
+        // and taken-over runs alike); the run being redrawn is the one
+        // exempt. Data reads the dock's panel -> port map, cached for the
+        // burst a fill makes (one lookup per picked cabinet).
+        if (kind === 'data' && !this.isCustomFlow(ownerLayer)
+                && typeof this._dockBuildDataMap === 'function') {
+            if (!this._wiredDataMapCache) {
+                this._wiredDataMapCache = this._dockBuildDataMap();
+                Promise.resolve().then(() => { this._wiredDataMapCache = null; });
+            }
+            const run = this._wiredDataMapCache.get(panel);
+            if (run && !(run.ownerId === ownerLayer.id && run.portNum === excludeNum)) {
+                const runOwner = (this.project.layers || []).find(l => l.id === run.ownerId) || ownerLayer;
+                return {
+                    number: run.portNum,
+                    layer: runOwner,
+                    layerId: runOwner.id,
+                    foreign: runOwner.id !== ownerLayer.id,
+                };
+            }
+        }
         if (kind === 'power' && !this.isCustomPower(ownerLayer) && window.canvasRenderer
                 && typeof window.canvasRenderer._powerCircuitForPanel === 'function') {
             const at = window.canvasRenderer._powerCircuitForPanel(source, panel);
