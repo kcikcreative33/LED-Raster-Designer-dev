@@ -682,7 +682,7 @@ def test_the_binder_prints_the_face_once_with_paired_rows_together(seeded):
         const d = app.getDistros()[0];
         return { rating: app._bDistroRatingText(d), lines: app._bDistroFaceLines(d),
                  legacy: app._bDistroRatingText({ ratingA: 400, voltage: 208, phase: 3 }) };""")
-    assert out['rating'] == '63 A per leg · 230/400V 3φ · CEE 63 A red', out
+    assert out['rating'] == '63 A service · 230/400V 3φ · CEE 63 A red', out
     assert out['lines'] == [
         '2 × Socapex 230V / 2 × Harting 16E 230V (paired) · 12 circuits · 16 A',
         '9 × Schuko · 9 direct circuits · 16 A'], out
@@ -716,6 +716,6 @@ def test_every_binder_sheet_draws_a_face_distro_and_its_direct_output(seeded):
             app.buildPullSheet().byScreen[B.id]);
         return { texts, devices: facts.devices.map(d => [d.title, d.n]) };""")
     t = out['texts']
-    assert '63 A per leg · 230/400V 3φ · CEE 63 A red' in t, [x for x in t if 'per leg' in x]
+    assert '63 A service · 230/400V 3φ · CEE 63 A red' in t, [x for x in t if 'service' in x]
     assert '4 × Schuko · 4 direct circuits · 16 A' in t, [x for x in t if 'Schuko' in x]
     assert ['SL4 · Schuko · 8 m', 1] in out['devices'], out['devices']

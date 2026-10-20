@@ -5943,16 +5943,23 @@ class _Binder {
 
     // A distro's rating as the papers print it: an old-style distro (no
     // face) exactly as it always read - "400 A 208 V 3φ"; a distro with a
-    // face (1.5) by its system, per leg, its input and its breakers -
-    // "200 A per leg · 120/208V 3φ · Cam 200 A".
+    // face (1.5) by its service size first, then its system, its input and
+    // its breakers (owner, 2026-10-20: "it should read the service size
+    // first") - "200 A service · 120/208V 3φ · 100% rated breakers". A cam
+    // input is named only where it differs from the service, by its amps -
+    // "600 A service · 120/208V 3φ · 400 A input"; an L21-30, CEE or
+    // Powerlock input always by its name.
     _bDistroRatingText(d) {
         if (!d) return '';
         if (!this.distroFace(d)) {
             return `${d.ratingA} A ${d.voltage} V ${Number(d.phase) === 3 ? '3φ' : '1φ'}`;
         }
         const input = this.distroInputs().find(i => i.id === d.input);
-        return [`${d.ratingA} A per leg`, this.distroSystemName(d),
-                input ? input.name : null,
+        const cam = !!(input && /^cam\d+$/.test(input.id));
+        const inputText = !input ? null
+            : !cam ? input.name
+                : Number(input.ratingA) !== Number(d.ratingA) ? `${input.ratingA} A input` : null;
+        return [`${d.ratingA} A service`, this.distroSystemName(d), inputText,
                 d.breakers100 && this.distroRegion(d) === 'us' ? '100% rated breakers' : null]
             .filter(Boolean).join(' · ');
     }

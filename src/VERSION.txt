@@ -68,6 +68,9 @@ FIXES
   3fers from this screen, and the tray's Clear multi and Clear circuit
   are Unplug multi and Unplug circuit. Previous and Next say Circuit
   instead of Port.
+- FIX: A distro's rating reads its service size first, like 200 A
+  service · 120/208V 3φ. Cam inputs are named by their amps (200 A), and
+  the binder only names the input when it differs from the service.
 - FIX: In the binder's fiber tables (Fiber Connections and the Strand
   Map) the color squares and strand numbers line up down each column,
   with the column still centered.

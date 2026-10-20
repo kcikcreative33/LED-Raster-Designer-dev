@@ -25,7 +25,7 @@ pytest.importorskip("playwright.sync_api", reason="playwright not installed")
 DISTRO = {'id': 'd1', 'name': 'IN', 'system': '120/208', 'voltage': 208, 'phase': 3,
           'ratingA': 400}
 
-CAMS = ['Cam 100 A', 'Cam 200 A', 'Cam 400 A', 'Cam 600 A', 'Cam 800 A']
+CAMS = ['100 A', '200 A', '400 A', '600 A', '800 A']
 POWERLOCKS = ['Powerlock 400 A', 'Powerlock 630 A']
 EXPECTED = {
     '120/208': CAMS + ['L21-30'],
@@ -132,7 +132,7 @@ def test_an_input_that_no_longer_fits_stays_shown_and_nothing_changes_by_itself(
     _set(pg, {'system': '230'})
     shown = _shown(pg)
     assert shown['value'] == 'cam400', shown
-    assert 'Cam 400 A' in shown['options'] and 'Cam 200 A' not in shown['options'], shown
+    assert '400 A' in shown['options'] and '200 A' not in shown['options'], shown
     pg.evaluate("() => window.app._hwPopoverClose()")
     assert not errors, errors
 

@@ -3324,7 +3324,7 @@
             target: function () { var d = distro(); return d ? '[data-hwpop="distro-' + d.id + '"]' : '#hardware-dock-body .hw-dock-gear'; },
             place: 'top', title: 'The distro&rsquo;s input',
             avoid: [function () { var d = distro(); return d ? '[data-lrd-field="distro-input-' + d.id + '"]' : null; }],
-            body: 'Behind the distro&rsquo;s &#9881;, Input lists only what can feed its System: Cam, CEE or Powerlock. Pick Cam 200 A and Rating fills in 200 A per leg.',
+            body: 'Behind the distro&rsquo;s &#9881;, Input lists only what can feed its System: cams by their amps, L21-30, CEE or Powerlock. Pick 200 A and Rating fills in 200 A per leg.',
             before: function () { switchView('power'); closePopover(); },
             act: function (t) {
                 var d = distro();
@@ -3332,7 +3332,7 @@
                 return openDistroGear(t, d).then(function () {
                     var sel = $('[data-lrd-field="distro-input-' + d.id + '"]');
                     if (!sel) throw new Error('the distro has no Input list');
-                    // Cam 200 A on a US distro; on a distro whose system no
+                    // 200 A cams on a US distro; on a distro whose system no
                     // cam can feed, the first input its list offers.
                     var opts = Array.prototype.slice.call(sel.options).filter(function (o) { return o.value; });
                     var pick = opts.find(function (o) { return o.value === 'cam200'; }) || opts[0];

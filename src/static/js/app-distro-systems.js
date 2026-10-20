@@ -118,12 +118,15 @@ const US_SYSTEMS = ['120/208', '120/240', '120'];
 // The US nominal voltages an old record with no system can carry: one of
 // them puts the record on the US continuous rule (distroMainLimit).
 const US_NOMINAL_VOLTS = [110, 115, 120, 208, 240, 277, 480];
+// A US distro takes cams or an L21-30 and nothing else, so a cam input is
+// named by its amps alone (owner, 2026-10-20: "just make it 200A instead
+// of Cam 200A"); the ids stay cam*.
 export const DISTRO_INPUTS = [
-    { id: 'cam100', name: 'Cam 100 A', ratingA: 100, systems: US_SYSTEMS },
-    { id: 'cam200', name: 'Cam 200 A', ratingA: 200, systems: US_SYSTEMS },
-    { id: 'cam400', name: 'Cam 400 A', ratingA: 400, systems: US_SYSTEMS },
-    { id: 'cam600', name: 'Cam 600 A', ratingA: 600, systems: US_SYSTEMS },
-    { id: 'cam800', name: 'Cam 800 A', ratingA: 800, systems: US_SYSTEMS },
+    { id: 'cam100', name: '100 A', ratingA: 100, systems: US_SYSTEMS },
+    { id: 'cam200', name: '200 A', ratingA: 200, systems: US_SYSTEMS },
+    { id: 'cam400', name: '400 A', ratingA: 400, systems: US_SYSTEMS },
+    { id: 'cam600', name: '600 A', ratingA: 600, systems: US_SYSTEMS },
+    { id: 'cam800', name: '800 A', ratingA: 800, systems: US_SYSTEMS },
     { id: 'l2130', name: 'L21-30', ratingA: 30, systems: ['120/208'] },
     { id: 'cee16r', name: 'CEE 16 A red', ratingA: 16, systems: ['230/400'] },
     { id: 'cee32r', name: 'CEE 32 A red', ratingA: 32, systems: ['230/400'] },
