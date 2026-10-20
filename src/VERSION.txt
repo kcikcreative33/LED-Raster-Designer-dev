@@ -68,6 +68,9 @@ FIXES
   3fers from this screen, and the tray's Clear multi and Clear circuit
   are Unplug multi and Unplug circuit. Previous and Next say Circuit
   instead of Port.
+- FIX: In the binder's fiber tables (Fiber Connections and the Strand
+  Map) the color squares and strand numbers line up down each column,
+  with the column still centered.
 - FIX: A distro's OUTPUTS row shows one chip per connector type, like
   Socapex 208V x 3, instead of a card per output that wrapped under the
   label. Dragging the chip hands out the next free output of that type.

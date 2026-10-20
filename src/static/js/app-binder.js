@@ -2696,6 +2696,38 @@ class _Binder {
         };
         // where a column's text stands: its middle
         const anchor = (c, x) => x + c.x + c.w / 2;
+        // A STRAND COLUMN'S ONE LEFT EDGE (owner, 2026-10-20: "i would like
+        // it all to be centered but the color/number to all match in the X
+        // coordinate"): the strand map's STRAND and FIBER CONNECTIONS' AT
+        // THE PROCESSOR / AT THE BREAKOUT stand as one block on the column's
+        // middle, as wide as the column's widest strand, and every line
+        // starts at the block's left edge - the swatches (or the numbers,
+        // on a cable labelled by number) in one line down the column. Each
+        // line centred on its own used to set every swatch at a different x.
+        const strandBlock = new Map();
+        const strandBlockW = (i) => {
+            if (strandBlock.has(i)) return strandBlock.get(i);
+            const ctxM = book.measureCtx;
+            let w = 0;
+            for (const r of spec.rows || []) {
+                if (r.band !== undefined) continue;
+                const weight = r.bold ? 700 : 400;
+                const parts = cols[i].parts && r.parts && r.parts[i];
+                if (parts && parts.length) {
+                    ctxM.font = this._bFont(SZ.cell, weight);
+                    for (const piece of this._bPartPieces(parts)) {
+                        w = Math.max(w, (piece.swatch ? SWATCH_W : 0) + ctxM.measureText(piece.text).width);
+                    }
+                } else if (cols[i].swatch) {
+                    const cell = (r.cells || [])[i];
+                    if (cell == null || cell === '') continue;
+                    w = Math.max(w, (r.swatch ? SWATCH_W : 0) + this._bTextWidth(book, cell,
+                        { size: SZ.cell, weight: r.swatch ? 700 : weight }));
+                }
+            }
+            strandBlock.set(i, w);
+            return w;
+        };
         const lines = [];
         if (spec.title) {
             lines.push({ h: H4_H, head: true, draw: (ctx, x, y, cw) => {
@@ -2875,7 +2907,7 @@ class _Binder {
                     const maxWidth = L[i].w - padX * 2;
                     if (partsOf(i)) {
                         this._bPartsCell(book, ctx, this._bPartLines(book, partsOf(i), weight, maxWidth),
-                                         x + L[i].x + padX, y, maxWidth, weight, true);
+                                         x + L[i].x + padX, y, maxWidth, weight, true, strandBlockW(i));
                         return;
                     }
                     if (wrapped[i]) {
@@ -2901,20 +2933,24 @@ class _Binder {
                     // little before it is cut, the way a heading does; a
                     // cell saying two things ("A / B" - HOME RUN with a
                     // backup end) goes to two lines rather than being cut.
-                    if (cols[i].swatch && r.swatch) {
+                    if (cols[i].swatch && (r.swatch || cell != null && cell !== '')) {
                         // the strand's cell tinted its own colour and its
                         // name bold; the name stays, so a black-and-white
                         // print still says which strand it is
-                        ctx.fillStyle = this._bTint(r.swatch.base, 0.24);
-                        ctx.fillRect(x + L[i].x + 3, y + 3, L[i].w - 6, h - 7);
-                        // the swatch and its name stand together on the
-                        // column's middle, the name never past the cell
-                        const o = { size: SZ.cell, weight: 700, align: 'left',
-                                    maxWidth: maxWidth - SWATCH_W, shrink: !!spec.shrink };
-                        const tw = Math.min(o.maxWidth, this._bTextWidth(book, cell, o));
-                        const sx = ax - (SWATCH_W + tw) / 2;
-                        this._bSwatch(ctx, r.swatch, sx, y + 27);
-                        this._bText(book, cell, sx + SWATCH_W, y + 27, o);
+                        if (r.swatch) {
+                            ctx.fillStyle = this._bTint(r.swatch.base, 0.24);
+                            ctx.fillRect(x + L[i].x + 3, y + 3, L[i].w - 6, h - 7);
+                        }
+                        // the column's strands stand as one block on its
+                        // middle (strandBlockW), every swatch - or number -
+                        // at the block's left edge, the name never past the
+                        // cell
+                        const lead = r.swatch ? SWATCH_W : 0;
+                        const o = { size: SZ.cell, weight: r.swatch ? 700 : weight, align: 'left',
+                                    maxWidth: maxWidth - lead, shrink: !!spec.shrink };
+                        const sx = Math.max(x + L[i].x + padX, ax - Math.min(maxWidth, strandBlockW(i)) / 2);
+                        if (r.swatch) this._bSwatch(ctx, r.swatch, sx, y + 27);
+                        this._bText(book, cell, sx + lead, y + 27, o);
                         return;
                     }
                     const o = { size: SZ.cell, weight, align: L[i].align,
@@ -3229,20 +3265,25 @@ class _Binder {
     }
 
     // A `parts` cell drawn: line by line, each strand its swatch then its
-    // name, from the cell's left edge `ax` - or, `center`, each line on
-    // the cell's middle. Logged as ONE text, the whole cell, as a list
-    // cell is.
-    _bPartsCell(book, ctx, lines, ax, y, maxWidth, weight, center = false) {
+    // name, from the cell's left edge `ax` - or, `center`, as one block on
+    // the cell's middle with every line starting at the block's left edge,
+    // so the swatches stand in one line (2026-10-20). `blockW` is the
+    // block's width - the column's widest line, so the whole column lines
+    // up (_bTableLines' strandBlockW) - else this cell's widest. Logged as
+    // ONE text, the whole cell, as a list cell is.
+    _bPartsCell(book, ctx, lines, ax, y, maxWidth, weight, center = false, blockW = null) {
         const drawn = [];
+        let left = ax;
+        if (center) {
+            ctx.font = this._bFont(SZ.cell, weight);
+            const gap = ctx.measureText(' ').width;
+            const widest = lines.reduce((m, line) => Math.max(m, line.reduce((s, p, j) => s + (j ? gap : 0)
+                + (p.swatch ? SWATCH_W : 0) + ctx.measureText(p.text).width, 0)), 0);
+            const bw = Math.max(widest, blockW || 0);
+            left = ax + Math.max(0, (maxWidth - bw) / 2);
+        }
         lines.forEach((line, k) => {
-            let cx = ax;
-            if (center) {
-                ctx.font = this._bFont(SZ.cell, weight);
-                const gap = ctx.measureText(' ').width;
-                const lw = line.reduce((s, p, j) => s + (j ? gap : 0) + (p.swatch ? SWATCH_W : 0)
-                    + ctx.measureText(p.text).width, 0);
-                cx = ax + Math.max(0, (maxWidth - lw) / 2);
-            }
+            let cx = left;
             line.forEach((p, j) => {
                 if (j) {
                     ctx.font = this._bFont(SZ.cell, weight);
