@@ -35,6 +35,31 @@
 //     a meters set; a show takes the set in its own unit. The meters set
 //     ships as the feet figures to the nearest whole meter (6' -> 2 m,
 //     10' -> 3 m, 100' -> 30 m).
+//
+// CABLE STOCK (owner rulings, 2026-10-20: "if i have 25, 50 and 100 but on
+// cable length on the show file i chose 125 then it will need to change to
+// 100+25 on the pull sheet or anywhere it is written out"):
+//
+//   * The lengths a show has on hand live IN THE SHOW (project.cableStock),
+//     saved, loaded and undone with it. A show without one - every file
+//     saved before the setting - writes every length as typed, as before.
+//     Preferences keep named presets of it (app-cable-stock.js).
+//   * Three kinds take it: 'multi' (a multi's home run, distro to screen:
+//     powerSocaLengths), 'data' (a snake's home run, a loose port cable, a
+//     snaked port's extension) and 'circuit' (a circuit's own cable,
+//     powerCircuitCables, and a direct output's one cable). Fiber, the
+//     copper links and the jumpers do not: the jumpers keep their own
+//     ladder above.
+//   * ONE list for all three, or a list PER KIND (cableStock.perKind),
+//     each kept in feet and in meters like the preferences: a show reads
+//     the list in its own unit. An empty list is no breakdown for that
+//     kind.
+//   * A length the stock cannot make exactly takes the LEAST EXTRA
+//     length, then the FEWEST pieces (breakCableLength): with 25, 50, 100,
+//     125 is 100+25, 60 is 50+25, 130 is 100+50.
+//   * The typed length stays as typed; it is WRITTEN as its pieces,
+//     "100'+25'" ("30 m+10 m"), by cableStockText - the one formatter every
+//     tag, sheet and paper reads - and the pull sheet counts the pieces.
 import { LEDRasterApp } from './app-core.js';
 
 export const CABLE_UNITS = ['ft', 'm'];
@@ -74,6 +99,61 @@ const LENGTH_SUFFIXES = {
 // Preferences (app-jumpers.js screenJumperLengths).
 const TYPED_LENGTH_KEYS = new Set(['ft', 'ext', 'homeRun', 'fiberFt',
     'dataJumpV', 'dataJumpH', 'powerJumpV', 'powerJumpH']);
+
+// The cable kinds the show's stock covers, and the key of the one shared
+// list in each unit.
+export const CABLE_STOCK_KINDS = ['multi', 'data', 'circuit'];
+export const CABLE_STOCK_ALL = 'all';
+// The breakdown works on a grid of whole steps; past this many steps a
+// length is written as typed rather than searched (a figure no show cable
+// comes near).
+const CABLE_STOCK_MAX_STEPS = 1000000;
+
+// The pieces that make `length` from `stock` (lengths, unlimited of
+// each): the least extra length first, then the fewest pieces, then the
+// longer pieces. Returned longest first; null when there is nothing to
+// break (no length, no stock, or a length past the grid).
+export function breakCableLength(length, stock) {
+    const n = Number(length);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    const sizes = [...new Set((Array.isArray(stock) ? stock : []).map(Number)
+        .filter(v => Number.isFinite(v) && v > 0))].sort((a, b) => b - a);
+    if (!sizes.length) return null;
+    // Whole numbers: the stock to the 1/10000 at most (a typed 7.62 m).
+    let scale = 1;
+    while (scale < 10000 && sizes.some(v => Math.abs(v * scale - Math.round(v * scale)) > 1e-6)) {
+        scale *= 10;
+    }
+    const whole = sizes.map(v => Math.round(v * scale));
+    const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+    const step = whole.reduce((g, v) => gcd(g, v), 0);
+    const units = whole.map(v => v / step);
+    // Every sum is a whole number of steps, so the target rounds up to one.
+    const target = Math.ceil(n * scale / step - 1e-6);
+    // An answer past target + the longest piece always has a piece to
+    // spare, so the search stops short of it.
+    const top = target + units[0];
+    if (top > CABLE_STOCK_MAX_STEPS) return null;
+    const count = new Array(top).fill(Infinity);
+    count[0] = 0;
+    for (let s = 1; s < top; s++) {
+        for (const u of units) {
+            if (u <= s && count[s - u] + 1 < count[s]) count[s] = count[s - u] + 1;
+        }
+    }
+    let sum = -1;
+    for (let s = Math.max(target, 1); s < top; s++) {
+        if (count[s] !== Infinity) { sum = s; break; }
+    }
+    if (sum < 0) return null;
+    const pieces = [];
+    while (sum > 0) {
+        const i = units.findIndex(u => u <= sum && count[sum - u] === count[sum] - 1);
+        pieces.push(sizes[i]);
+        sum -= units[i];
+    }
+    return pieces.sort((a, b) => b - a);
+}
 
 class _CableUnits {
 
@@ -158,6 +238,69 @@ class _CableUnits {
         const u = this.cableUnitAbbr(unit);
         const figure = this.cableFigure(n, u);
         return figure ? `${figure} ${u}` : '';
+    }
+
+    // ---- the show's cable stock ------------------------------------------
+
+    // A stock as stored: { perKind, ft: { all, multi, data, circuit },
+    // m: { ... } }, every list positive lengths, ascending, once each
+    // (empty where nothing in it is a length). null for anything that is
+    // not a stock at all - a show without one.
+    normalizeCableStock(stock) {
+        if (!stock || typeof stock !== 'object' || Array.isArray(stock)) return null;
+        const out = { perKind: stock.perKind === true };
+        for (const u of CABLE_UNITS) {
+            const lists = stock[u] && typeof stock[u] === 'object' ? stock[u] : {};
+            out[u] = {};
+            for (const k of [CABLE_STOCK_ALL, ...CABLE_STOCK_KINDS]) {
+                out[u][k] = this.normalizeJumperStock(lists[k]) || [];
+            }
+        }
+        return out;
+    }
+
+    // The show's stock, cleaned; null when it has none.
+    cableStock() {
+        return this.normalizeCableStock(this.project && this.project.cableStock);
+    }
+
+    // The lengths one kind of cable comes in, in a unit (the show's by
+    // default): the shared list, or the kind's own when the show keeps a
+    // list per kind. Empty for no stock, an empty list, or a cable the
+    // stock does not cover (no kind: a jumper, a fiber).
+    cableStockList(kind, unit) {
+        if (!CABLE_STOCK_KINDS.includes(kind)) return [];
+        const stock = this.cableStock();
+        if (!stock) return [];
+        return stock[this.cableUnitAbbr(unit)][stock.perKind ? kind : CABLE_STOCK_ALL].slice();
+    }
+
+    // The stock pieces one typed length is pulled as, longest first
+    // (breakCableLength), or null where the length is written as typed.
+    cableStockPieces(n, kind, unit) {
+        const v = this.parseCableLength(n, unit);
+        if (v === null) return null;
+        return breakCableLength(v, this.cableStockList(kind, unit));
+    }
+
+    // THE one way a covered cable's length is written out, everywhere:
+    // its stock pieces joined by + ("100'+25'", "30 m+10 m"), else the
+    // length as typed (cableLengthText). Map tags, the tray's chips, the
+    // pull sheet, the binder and the wiring sheets all come through here,
+    // so they cannot disagree.
+    cableStockText(n, kind, unit) {
+        const pieces = this.cableStockPieces(n, kind, unit);
+        if (!pieces) return this.cableLengthText(n, unit);
+        return pieces.map(p => this.cableLengthText(p, unit)).join('+');
+    }
+
+    // What a length field's tooltip adds when the stock changes how the
+    // length is written: " Pulled as 100'+25' from this show's cable
+    // stock." - '' when it is written as typed.
+    cableStockHint(n, kind, unit) {
+        const text = this.cableStockText(n, kind, unit);
+        if (!text || text === this.cableLengthText(n, unit)) return '';
+        return ` Pulled as ${text} from this show's cable stock.`;
     }
 
     // Millimeters in one unit of the show's (a measured distance divides

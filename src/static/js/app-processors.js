@@ -1891,7 +1891,7 @@ class _Processors {
             return {
                 kind: 'snake', snake, owner, ext,
                 extConnector: (rec && rec.connector) || null,
-                text: ext != null ? `${name} +${this.cableText(ext, '')}` : name,
+                text: ext != null ? `${name} +${this.cableText(ext, '', 'data')}` : name,
             };
         }
         if (!hasFt) return null;
@@ -1899,7 +1899,7 @@ class _Processors {
         const name = this.dataCableConnectorName(id) || '';
         return {
             kind: 'cable', owner, ft, connector: rec.connector || null,
-            id, name, text: this.cableText(ft, name),
+            id, name, text: this.cableText(ft, name, 'data'),
         };
     }
 
@@ -1915,8 +1915,8 @@ class _Processors {
         const ft = this.parseCableLength(s.ft);
         let text = (s.name || 'snake')
             + (Number.isFinite(ft) && ft > 0
-                ? ` ${this.cableText(ft, '')}` : ' · no length');
-        if (cable.ext != null) text += ` +${this.cableText(cable.ext, '')}`;
+                ? ` ${this.cableText(ft, '', 'data')}` : ' · no length');
+        if (cable.ext != null) text += ` +${this.cableText(cable.ext, '', 'data')}`;
         return text;
     }
 
@@ -1971,7 +1971,7 @@ class _Processors {
         let text = `${name} · ${this.snakeSizeText(name, ways)}`;
         const ft = this.parseCableLength(snake.ft);
         if (withFt && Number.isFinite(ft) && ft > 0) {
-            text += ` · ${this.cableText(ft, '')}`;
+            text += ` · ${this.cableText(ft, '', 'data')}`;
         }
         return text;
     }

@@ -1978,8 +1978,8 @@ class _HardwareDock {
         // keeps the plain line.
         const own = owner ? this._dataPortCableOn(owner, port.number) : null;
         const cornerText = !own ? null
-            : own.kind === 'cable' ? this.cableText(own.ft, '')
-            : own.ext != null ? `+${this.cableText(own.ext, '')}` : null;
+            : own.kind === 'cable' ? this.cableText(own.ft, '', 'data')
+            : own.ext != null ? `+${this.cableText(own.ext, '', 'data')}` : null;
         if (cornerText) {
             const text = document.createElement('span');
             text.className = 'lrd-tile-text';
@@ -2615,7 +2615,7 @@ class _HardwareDock {
             top.classList.add('lrd-tile-line-cable');
             const corner = document.createElement('span');
             corner.className = 'hw-dock-chip-cable';
-            corner.textContent = lengths.map(v => this.cableText(v, type.cable)).join(' / ');
+            corner.textContent = lengths.map(v => this.cableText(v, type.cable, 'circuit')).join(' / ');
             top.appendChild(corner);
         }
         if (face) {
@@ -2628,7 +2628,8 @@ class _HardwareDock {
                 const l = (this.project.layers || []).find(x => x.id === h.layerId);
                 if (!l) return;
                 const tip = `The cable from ${d.name || d.id} ${box.number} to ${l.name}, in `
-                    + `${this.cableUnitWord()} - it goes on the pull sheet as a ${type.name} run.`;
+                    + `${this.cableUnitWord()} - it goes on the pull sheet as a ${type.name} run.`
+                    + this.cableStockHint((l.powerSocaLengths || {})[h.soca], 'circuit');
                 const cell = this._buildPortNameField(
                     `Cable (${this.cableUnitAbbr()})`, `direct-length-${l.id}-${h.soca}`,
                     (l.powerSocaLengths || {})[h.soca] || '',
@@ -3044,7 +3045,9 @@ class _HardwareDock {
                 key: `power-soca-length-${first.layer.id}-${first.m.soca}`,
                 title: `The home-run length of this ${boxType.name} - one run `
                     + 'for every screen sharing it. It flows into the gear checklist '
-                    + 'and report.',
+                    + 'and report.'
+                    + this.cableStockHint((first.layer.powerSocaLengths || {})[first.m.soca]
+                        || (first.s && first.s.length), 'multi'),
                 onCommit: (val) => {
                     writeThrough(this.setSocaLength,
                                  'Set Multi Home Run', val);

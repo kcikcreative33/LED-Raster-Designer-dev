@@ -121,6 +121,13 @@
 //     distro's name, at the distro's location, else the position of the
 //     first screen it feeds.
 //
+//   * CABLE STOCK (2026-10-20, app-cable-units.js): in a show that keeps
+//     one, a multi's home run, a data cable and a circuit's cable are
+//     written as the stock pieces that make them, and a row is ONE ROW PER
+//     PIECE LENGTH - a 125' multi on 25 / 50 / 100 stock is `Multi 100'`
+//     and `Multi 25'`, both under its label (_pullExpandPieces) - so the
+//     sheet, its totals and the hardware rows count the cables pulled.
+//
 // Lengths print as `100'`, each-items as `EA`; quantities are integers;
 // Label is the short names covered ("SR 1-4", "SNAKE A", "SR1-1, SR1-6");
 // Notes are blank unless a rule above says otherwise. Sorting follows the
@@ -239,6 +246,8 @@ class _PullList {
             // edits.
             pullSheetEdits: () => p.pullSheetEdits || { positions: {} },
             pullSheet: () => p.pullSheet || {},
+            // the show's cable stock (app-cable-stock.js); null clears it
+            cableStock: () => (p.cableStock === undefined ? null : p.cableStock),
         };
         const body = {};
         q.keys.forEach(k => { if (value[k]) body[k] = value[k](); });
@@ -271,14 +280,66 @@ class _PullList {
 
     // A length in the show's unit as the sheet prints it - "100'" in a
     // feet show, "30 m" in a meters one (app-cable-units.js) - "EA" for
-    // each-items, "" for a length nobody typed.
-    pullLengthText(ft) {
+    // each-items, "" for a length nobody typed. A cable of a `kind` the
+    // show's stock covers ('multi' / 'data' / 'circuit') is written as its
+    // pieces, "100'+25'" (cableStockText).
+    pullLengthText(ft, kind = null) {
         if (ft === 'EA') return 'EA';
         if (this._pullLengthProbe) {
             const n = this.parseCableLength(ft);
-            if (n !== null) this._pullLengthProbe.push(n);
+            const pieces = kind ? this.cableStockPieces(ft, kind) : null;
+            if (pieces) this._pullLengthProbe.push(...pieces);
+            else if (n !== null) this._pullLengthProbe.push(n);
         }
-        return this.cableLengthText(ft);
+        return kind ? this.cableStockText(ft, kind) : this.cableLengthText(ft);
+    }
+
+    // A row's length cell for a covered cable: { text, pieces } - the text
+    // as pullLengthText writes it, and the pieces' own texts when the
+    // stock makes it of more than one length or more than one cable, so
+    // the sheet counts each (_pullExpandPieces). A row built from it
+    // carries the pieces until it is merged.
+    pullCableLength(ft, kind) {
+        const text = this.pullLengthText(ft, kind);
+        const pieces = this.cableStockPieces(ft, kind);
+        return { text, pieces: pieces && pieces.length > 1
+            ? pieces.map(p => this.cableLengthText(p)) : null };
+    }
+
+    // Which stock a box's home run is pulled from: a DIRECT output's one
+    // cable is a circuit's cable (True1, powerCON), every other box's a
+    // multi's.
+    pullHomeRunKind(box) {
+        return box && box.kind === 'direct' ? 'circuit' : 'multi';
+    }
+
+    // The same for a multi's soca-plan record (getSocaPlan): the face box
+    // its distro and number name.
+    socaHomeRunKind(s) {
+        const d = s && s.distroId && typeof this.getDistros === 'function'
+            ? this.getDistros().find(x => x.id === s.distroId) : null;
+        const fbox = d && typeof this.faceBox === 'function' ? this.faceBox(d, s.number) : null;
+        return this.pullHomeRunKind(fbox);
+    }
+
+    // Rows whose length is several stock pieces (pullCableLength), one row
+    // per piece length: "Multi | 100'+25' | 1" pulls as "Multi | 100' | 1"
+    // and "Multi | 25' | 1", each with the row's label and notes, so the
+    // sheet and its totals count the cables a crew pulls. Every other row
+    // passes through as it is.
+    _pullExpandPieces(rows) {
+        const out = [];
+        for (const r of rows) {
+            if (!r || !Array.isArray(r._pieces) || !r._pieces.length) { out.push(r); continue; }
+            const counts = new Map();
+            for (const p of r._pieces) counts.set(p, (counts.get(p) || 0) + 1);
+            for (const [length, n] of counts) {
+                const piece = { ...r, length, qty: (Number(r.qty) || 0) * n };
+                delete piece._pieces;
+                out.push(piece);
+            }
+        }
+        return out;
     }
 
     // Every number the engine prints as a length, as the number itself
@@ -452,7 +513,7 @@ class _PullList {
     // totals, and a screen's own reading.
     _pullMergeRows(rows, keepSplit = false) {
         const byKey = new Map();
-        for (const r of rows) {
+        for (const r of this._pullExpandPieces(rows)) {
             if (!r || !r.type) continue;
             const split = keepSplit && r.split ? r.split : '';
             const key = `${r.type}\u0000${r.length}\u0000${split}`;
@@ -951,7 +1012,7 @@ class _PullList {
         // or power splits then mention it on both"). The merged `rows` and
         // every total are untouched: each cable is still counted once.
         Object.values(byScreen).forEach(s => {
-            s.rowsOn = s.rows.map(r => ({ ...strip(r), on: (r._on || []).slice() }));
+            s.rowsOn = this._pullExpandPieces(s.rows).map(r => ({ ...strip(r), on: (r._on || []).slice() }));
             s.rows = this._pullMergeRows(s.rows).map(strip);
         });
         return {
@@ -999,9 +1060,14 @@ class _PullList {
         // `at` is the location of the device that produced the row (the
         // distro's, the box's) - buildPullList pulls the row there; null
         // leaves it with the screen.
+        // `length` is the cell's text, or a covered cable's
+        // { text, pieces } (pullCableLength): its pieces ride the row until
+        // the merge counts them.
         const row = (type, length, qty, label, notes, at) => {
-            const r = { type, length, qty, label: label || '', notes: notes || '', side,
-                        _at: at || null, _on: on.slice() };
+            const cell = length && typeof length === 'object' ? length : null;
+            const r = { type, length: cell ? cell.text : length, qty, label: label || '',
+                        notes: notes || '', side, _at: at || null, _on: on.slice() };
+            if (cell && cell.pieces) r._pieces = cell.pieces.slice();
             rows.push(r);
             return r;
         };
@@ -1112,7 +1178,7 @@ class _PullList {
                     if (one.name) box.cable = one.name;
                 } else if (cable) {
                     row(cable.name ? this.pullPowerConnectorName(cable.name) : 'Power Cable',
-                        this.pullLengthText(cable.ft), 1, leg.label, '', locationOf(d));
+                        this.pullCableLength(cable.ft, 'circuit'), 1, leg.label, '', locationOf(d));
                 }
             }
         }
@@ -1140,8 +1206,8 @@ class _PullList {
                 const notes = [box.homeRun ? '' : 'no length',
                                box.crowded ? `${box.crowded} circuits on a one-circuit output` : '']
                     .filter(Boolean).join(' · ');
-                const r = row(this.pullPowerConnectorName(box.cable), this.pullLengthText(box.homeRun),
-                              1, boxLabel, notes, at);
+                const r = row(this.pullPowerConnectorName(box.cable),
+                              this.pullCableLength(box.homeRun, 'circuit'), 1, boxLabel, notes, at);
                 hw('distro', box.distroId, distroName).rows.push({ ...r });
                 continue;
             }
@@ -1149,7 +1215,7 @@ class _PullList {
                 || box.connectorId === 'l2130';
             const isHarting = box.connectorId === 'harting';
             const homeType = isL2130 ? 'L21-30' : (isHarting ? 'Harting 16E' : 'Multi');
-            const r = row(homeType, this.pullLengthText(box.homeRun), 1, boxLabel,
+            const r = row(homeType, this.pullCableLength(box.homeRun, 'multi'), 1, boxLabel,
                           box.homeRun ? '' : 'no length', at);
             const breakoutType = isL2130
                 ? `L21-30 ${box.connector} Breakout`
@@ -1275,7 +1341,7 @@ class _PullList {
                     into.ext = cable.ext;
                     const extWord = this.pullDataConnectorWord(
                         this.dataPortConnectorId(owner, cable.extConnector));
-                    push(row(extWord || 'Data Cable', this.pullLengthText(cable.ext), 1, label,
+                    push(row(extWord || 'Data Cable', this.pullCableLength(cable.ext, 'data'), 1, label,
                              `ext · ${s.name || 'snake'}`, at));
                     // One barrel per extension (2026-09-07): the coupler
                     // between the fan-out and the extension, in the
@@ -1300,7 +1366,7 @@ class _PullList {
                                   ownerId: owner.id, id: s.id });
                 const type = word ? `${word} Snake` : 'Snake';
                 const ft = this.parseCableLength(s.ft);
-                const snakeRow = { type, length: this.pullLengthText(ft),
+                const snakeRow = { type, length: this.pullCableLength(ft, 'data'),
                                    qty: 1, label: s.name || '',
                                    notes: [typeof this.snakeSizeText === 'function'
                                                ? this.snakeSizeText(`${type} ${s.name || ''}`, ways)
@@ -1321,7 +1387,7 @@ class _PullList {
             } else {
                 const word = this.pullDataConnectorWord(cable.id);
                 into.cable = cable.text;
-                push(row(word || 'Data Cable', this.pullLengthText(cable.ft), 1, label, '', at));
+                push(row(word || 'Data Cable', this.pullCableLength(cable.ft, 'data'), 1, label, '', at));
             }
         };
         // A run's jumpers go with the box delivering its primary socket.

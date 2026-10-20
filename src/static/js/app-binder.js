@@ -4358,7 +4358,7 @@ class _Binder {
             ctx.lineTo(x - dir * 14, yb);
             ctx.stroke();
             const label = box.homeRun
-                ? `${box.name} · ${this.pullLengthText(box.homeRun)}` : `${box.name}`;
+                ? `${box.name} · ${this.pullLengthText(box.homeRun, this.pullHomeRunKind(box))}` : `${box.name}`;
             ctx.save();
             ctx.translate(x + dir * 24, (ya + yb) / 2);
             ctx.rotate(dir > 0 ? Math.PI / 2 : -Math.PI / 2);
@@ -4418,7 +4418,7 @@ class _Binder {
     _bBoxBand(book, layer, box, sheetIds = null) {
         const n = (box.circuits || []).length;
         const parts = [box.name, box.type || 'no distro',
-                       box.homeRun ? this.pullLengthText(box.homeRun) : 'no length',
+                       box.homeRun ? this.pullLengthText(box.homeRun, this.pullHomeRunKind(box)) : 'no length',
                        this._bPlural(n, 'circuit')];
         for (const [id, other] of Object.entries(book.list.byScreen)) {
             if (sheetIds ? sheetIds.has(String(id)) : String(id) === String(layer.id)) continue;
@@ -4968,7 +4968,7 @@ class _Binder {
         // from the fan-out to the panel ('—' with none); an end that is not
         // on a snake reads its whole run, because no heading said it.
         const runOf = (c, headed) => (headed
-            ? (snakeId(c) ? (c.ext != null ? `+${this.cableText(c.ext, '')}` : '—') : this.runText(c))
+            ? (snakeId(c) ? (c.ext != null ? `+${this.cableText(c.ext, '', 'data')}` : '—') : this.runText(c))
             : this.runText(c));
         const partnered = new Set();
         let procs = new Map();
@@ -5607,7 +5607,7 @@ class _Binder {
                 if (seenBox.has(box.key)) continue;
                 seenBox.add(box.key);
                 hw.push({ cells: ['', box.name, [box.type || 'no distro',
-                    box.homeRun ? this.pullLengthText(box.homeRun) : 'no length'].join(' · ')] });
+                    box.homeRun ? this.pullLengthText(box.homeRun, this.pullHomeRunKind(box)) : 'no length'].join(' · ')] });
                 if (box.distroId && !seenDistro.has(box.distroId)) {
                     seenDistro.add(box.distroId);
                     const d = (this.getDistros ? this.getDistros() : []).find(x => x.id === box.distroId);
@@ -5810,7 +5810,7 @@ class _Binder {
             }
             allCircuits += circuits;
             boxes.push({ cells: [`${d.name} ${number}`, typed ? typed.name : '—',
-                                 homeRun ? this.pullLengthText(homeRun) : 'no length',
+                                 homeRun ? this.pullLengthText(homeRun, this.pullHomeRunKind(fbox)) : 'no length',
                                  names.join(' + '), String(circuits), this._bNum(amps, 1)] });
         }
         // The table is named by what it lists - "4 Multi 208 · 1 L21-30" -
@@ -6189,7 +6189,7 @@ class _Binder {
                     // "call it 4 channel snake", and never snake twice).
                     runs.push({ cells: [`${s.name || 'snake'} · ${this.snakeSizeText('snake', (s.members || []).length)}`,
                                         'snake',
-                                        s.ft ? this.pullLengthText(s.ft) : 'no length',
+                                        s.ft ? this.pullLengthText(s.ft, 'data') : 'no length',
                                         `${o.title} ${this._fmtTails(here)}`
                                         + (connId ? ` · ${this.dataCableConnectorName(connId)}` : '')
                                         + away] });
@@ -6209,11 +6209,11 @@ class _Binder {
                     const connId = this.dataPortConnectorId({ rec: o.rec }, c.connector);
                     const snake = this.dataPortSnake(o, socket);
                     if (snake) {
-                        runs.push({ cells: [`${o.title} ${socket}`, 'ext', this.pullLengthText(ft),
+                        runs.push({ cells: [`${o.title} ${socket}`, 'ext', this.pullLengthText(ft, 'data'),
                                             snake.name || 'snake'] });
                         continue;
                     }
-                    runs.push({ cells: [`${o.title} ${socket}`, 'cable', this.pullLengthText(ft),
+                    runs.push({ cells: [`${o.title} ${socket}`, 'cable', this.pullLengthText(ft, 'data'),
                                         connId ? this.dataCableConnectorName(connId) : ''] });
                 }
             }
