@@ -30,6 +30,8 @@ presets/
 /src/layouts/
 # Saved distro presets, kept beside the presets the same way
 /src/distro_presets/
+# Saved cable stock presets, the same way
+/src/cable_stock_presets/
 
 # Claude Code local config
 .claude/

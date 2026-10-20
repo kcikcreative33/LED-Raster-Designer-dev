@@ -29,6 +29,7 @@ import './app-layers-panel.js';
 import './app-pull-list.js';
 import './app-jumpers.js';
 import './app-cable-units.js';
+import './app-cable-stock.js';
 import './app-beaches.js';
 import './app-pull-sheet-editor.js';
 import './app-binder.js';

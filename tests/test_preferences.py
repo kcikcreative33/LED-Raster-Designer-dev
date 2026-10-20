@@ -1,4 +1,4 @@
-"""The Preferences dialog: seven tabs, every field once, Save / Cancel /
+"""The Preferences dialog: eight tabs, every field once, Save / Cancel /
 Reset Defaults at the foot - and every new default honoured only where the
 app CREATES something (a distro, a binder block on a project with no
 values of its own, a snake, a loose port cable, a power cable).
@@ -17,7 +17,7 @@ def _guard(server_project_guard):
     module found them."""
 
 
-# The seven tabs, in the order the strip shows them, with the field ids
+# The eight tabs, in the order the strip shows them, with the field ids
 # each holds. Every id today's dialog had keeps its id; the new ones are
 # the mock's (mocks/preferences-mock.html?layout=tabs).
 TABS = {
@@ -65,10 +65,17 @@ TABS = {
              'pref-pull-data-jump-length-h-m', 'pref-snake-home-run-length-m',
              'pref-loose-port-cable-length-m', 'pref-power-cable-length-m',
              'pref-jumper-stock-ft', 'pref-jumper-stock-m'],
+    # the show's cable stock and its presets (2026-10-20, app-cable-stock.js)
+    'stock': ['pref-cable-stock-per-kind', 'pref-cable-stock-all-ft', 'pref-cable-stock-all-m',
+              'pref-cable-stock-multi-ft', 'pref-cable-stock-multi-m',
+              'pref-cable-stock-data-ft', 'pref-cable-stock-data-m',
+              'pref-cable-stock-circuit-ft', 'pref-cable-stock-circuit-m',
+              'pref-cable-stock-preset', 'pref-cable-stock-load', 'pref-cable-stock-save-preset',
+              'pref-cable-stock-delete', 'pref-cable-stock-default'],
 }
 ALL_IDS = [i for ids in TABS.values() for i in ids]
 # 1.5 audit: the distro voltage + phase pair became one system picker.
-assert len(ALL_IDS) == 94
+assert len(ALL_IDS) == 108
 
 # Issue 28: the colour defaults a NEW screen starts with, id -> (the colour
 # the dialog is given, the preference key, the layer property it lands on).
@@ -315,7 +322,7 @@ def _save(pg):
 # ── the dialog ────────────────────────────────────────────────────────────
 
 def test_every_field_is_there_once_and_one_tab_shows_at_a_time(page):
-    """All 65 field ids, no id twice, today's 36 among them; seven tabs in
+    """All 65 field ids, no id twice, today's 36 among them; eight tabs in
     the mock's order, one section up at a time, the strip switching them;
     Reset Defaults / Cancel / Save at the foot."""
     pg, ids = page
@@ -331,7 +338,7 @@ def test_every_field_is_there_once_and_one_tab_shows_at_a_time(page):
         '#preferences-modal .pm-tabstrip .view-tab')].map(t => [t.dataset.key, t.textContent.trim()])""")
     assert strip == [['wall', 'Wall'], ['look', 'Look'], ['data', 'Data'], ['power', 'Power'],
                      ['distros', 'Distros & multis'], ['binder', 'Binder'],
-                     ['pull', 'Pull sheet & cables']], strip
+                     ['pull', 'Pull sheet & cables'], ['stock', 'Cable stock']], strip
     for key, fields in TABS.items():
         _tab(pg, key)
         d = pg.evaluate(DIALOG_JS)
@@ -1058,7 +1065,7 @@ def test_the_dialog_s_tabs_leave_the_workspace_alone(page):
     pg.locator('#preferences-cancel').click()
     pg.wait_for_timeout(200)
     assert pg.evaluate(WORKSPACE_JS) == before
-    assert pg.evaluate("() => window.app._prefsTab") == 'pull'
+    assert pg.evaluate("() => window.app._prefsTab") == list(TABS)[-1]
     assert ids['errors'] == [], ids['errors']
 
 
