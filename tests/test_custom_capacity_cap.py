@@ -748,7 +748,10 @@ def test_data_click_past_the_cap_is_refused(page):
 def test_a_per_run_override_is_capped_by_the_same_gate(page):
     """Alt takeover shares the click path. Automatic organized rows on a
     14-wide screen put row 0 (1,610 W) on circuit 1; taken over, it is
-    already full, and the first click onto row 1 is refused."""
+    already full, and the first click onto row 1 is refused. Row 1 is
+    circuit 2's, and on an automatic screen a redraw may not take another
+    circuit's cabinet at all (2026-10-20), so the refusal names that
+    first: either way nothing is added."""
     reset(page, columns=14, rows=3, autoPower=True)
     out = page.evaluate("""() => {
         const app = window.app, cap = window.__cap;
@@ -766,7 +769,7 @@ def test_a_per_run_override_is_capped_by_the_same_gate(page):
     }""")
     assert out['seeded'] == 14 and out['editing'] is True, out
     assert out['n'] == 14, out
-    assert len(out['toasts']) == 1 and 'is full' in out['toasts'][0], out['toasts']
+    assert len(out['toasts']) == 1 and 'already wired to circuit 2' in out['toasts'][0], out['toasts']
 
 
 def test_no_capacity_means_no_cap(page):
