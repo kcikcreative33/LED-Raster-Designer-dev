@@ -69,6 +69,9 @@ BUILD_JS = """async ([walls, pattern, rot]) => {
             powerOrganized: true, powerMaximize: false,
             powerFlowPattern: dataFlow ? 'tl-h' : pattern, rotation: rot || 0,
             powerSplitters: { enabled: true, maxWays: 3, manual: { merge: [], split: [] } },
+            // the cables ride a fed multi: a circuit no distro feeds draws
+            // no extension (2026-10-20)
+            powerSocaDistro: { 1: 'd1' }, powerSocaNames: { 1: 'S1' },
             powerCircuitCables: { 1: { ft: 10 }, 2: { ft: 25 } },
             showPowerCableTags: true, showPowerNferTags: true, powerLabelSize: 14,
             group_id: null, panels }, o);
@@ -95,7 +98,8 @@ BUILD_JS = """async ([walls, pattern, rot]) => {
     const layers = walls.map(n => screen(all[n]));
     const j = (method, url, body) => fetch(url, {method, headers: {'Content-Type': 'application/json'},
         body: body === undefined ? undefined : JSON.stringify(body)}).then(r => r.json());
-    await j('PUT', '/api/project', { layers, groups: [], canvases: [], rack: [] });
+    await j('PUT', '/api/project', { layers, groups: [], canvases: [], rack: [],
+        distros: [{ id: 'd1', name: 'PD', ratingA: 200, system: '120/208', voltage: 208, phase: 3 }] });
     app.project = await j('GET', '/api/project');
     app.selectLayer(app.project.layers[0]);
     await app.refreshProcessors();

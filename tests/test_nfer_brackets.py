@@ -81,7 +81,8 @@ BUILD_JS = """async (rot) => {
     ];
     const j = (method, url, body) => fetch(url, {method, headers: {'Content-Type': 'application/json'},
         body: body === undefined ? undefined : JSON.stringify(body)}).then(r => r.json());
-    await j('PUT', '/api/project', { layers, groups: [], canvases: [], rack: [] });
+    await j('PUT', '/api/project', { layers, groups: [], canvases: [], rack: [],
+        distros: [{ id: 'd1', name: 'PD', ratingA: 200, system: '120/208', voltage: 208, phase: 3 }] });
     app.project = await j('GET', '/api/project');
     app.selectLayer(app.project.layers[0]);
     await app.refreshProcessors();
@@ -96,6 +97,8 @@ SET_JS = """([cable, nfer]) => {
     const app = window.app;
     for (const l of app.project.layers) {
         l.powerSplitters = { enabled: l.name !== 'PLAIN', maxWays: 3, manual: { merge: [], split: [] } };
+        // fed, so the cables draw: no distro, no extension (2026-10-20)
+        l.powerSocaDistro = { 1: 'd1' }; l.powerSocaNames = { 1: 'S1' };
         l.powerCircuitCables = { 1: { ft: 10 }, 2: { ft: 25 } };
         l.showPowerCableTags = cable;
         l.showPowerNferTags = nfer;
