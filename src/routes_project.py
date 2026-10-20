@@ -60,6 +60,13 @@ def new_project():
     # file saved before the setting has no key and reads as feet; only a
     # NEW show is written one here.
     app.current_project['cableUnit'] = app.preferred_cable_unit()
+    # And with the cable stock of the preset the Preferences name as the
+    # default (2026-10-20, routes_cable_stock.py), when one is set and still
+    # saved. None set: the show has no stock and writes lengths as typed.
+    import routes_cable_stock
+    stock = routes_cable_stock.default_stock(app.server_preferences)
+    if stock is not None:
+        app.current_project['cableStock'] = stock
     # Add default layer to new projects
     app.initialize_default_layer()
     _stamp_app_version(app.current_project)

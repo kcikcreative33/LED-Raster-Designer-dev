@@ -2345,6 +2345,7 @@
                 <button type="button" class="view-tab" data-key="distros">Distros &amp; multis</button>
                 <button type="button" class="view-tab" data-key="binder">Binder</button>
                 <button type="button" class="view-tab" data-key="pull">Pull sheet &amp; cables</button>
+                <button type="button" class="view-tab" data-key="stock">Cable stock</button>
             </div>
             <div class="pm-body">
                 <section class="pm-section active" id="pm-sec-wall" data-key="wall">
@@ -2841,6 +2842,76 @@
                                 <span class="pm-unit">ft</span>
                                 <input type="text" id="pref-power-cable-length-m" placeholder="3" class="pm-short">
                                 <span class="pm-unit">m</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                <!-- Cable stock (2026-10-20, app-cable-stock.js): the cable
+                     lengths the OPEN SHOW has on hand - saved with the show,
+                     applied on Save like everything else here - and the
+                     named presets kept for every show. -->
+                <section class="pm-section" id="pm-sec-stock" data-key="stock">
+                    <div class="prefs-group">
+                        <div class="pm-row">
+                            <label>This show</label>
+                            <div class="prefs-row">
+                                <label class="pm-check" data-tooltip="Off: one list for multis, data and power cables. On: a list for each."><input type="checkbox" id="pref-cable-stock-per-kind"> A list for each kind of cable</label>
+                            </div>
+                            <div class="pm-note">The cable lengths this show has on hand, saved with the show. A run the stock cannot make exactly is written as the pieces with the least extra length: with 25, 50 and 100, a 125 run reads 100'+25' on the map tags, the pull sheet and the binder. Blank: lengths are written as typed. Fiber and jumpers are not counted here.</div>
+                        </div>
+                        <div class="pm-row" data-cable-stock-list="all">
+                            <label>All cables</label>
+                            <div class="prefs-row">
+                                <input type="text" id="pref-cable-stock-all-ft" placeholder="none" class="pm-wide" data-tooltip="The lengths this show has, in feet, for every kind of cable.">
+                                <span class="pm-unit">ft</span>
+                                <input type="text" id="pref-cable-stock-all-m" placeholder="none" class="pm-wide" data-tooltip="The lengths this show has, in meters, for every kind of cable.">
+                                <span class="pm-unit">m</span>
+                            </div>
+                        </div>
+                        <div class="pm-row" data-cable-stock-list="multi">
+                            <label>Multi home runs</label>
+                            <div class="prefs-row">
+                                <input type="text" id="pref-cable-stock-multi-ft" placeholder="none" class="pm-wide" data-tooltip="Multi lengths in feet: the home run from a distro to a screen.">
+                                <span class="pm-unit">ft</span>
+                                <input type="text" id="pref-cable-stock-multi-m" placeholder="none" class="pm-wide" data-tooltip="Multi lengths in meters: the home run from a distro to a screen.">
+                                <span class="pm-unit">m</span>
+                            </div>
+                        </div>
+                        <div class="pm-row" data-cable-stock-list="data">
+                            <label>Data cables</label>
+                            <div class="prefs-row">
+                                <input type="text" id="pref-cable-stock-data-ft" placeholder="none" class="pm-wide" data-tooltip="Data lengths in feet: snakes, port cables and extensions.">
+                                <span class="pm-unit">ft</span>
+                                <input type="text" id="pref-cable-stock-data-m" placeholder="none" class="pm-wide" data-tooltip="Data lengths in meters: snakes, port cables and extensions.">
+                                <span class="pm-unit">m</span>
+                            </div>
+                        </div>
+                        <div class="pm-row" data-cable-stock-list="circuit">
+                            <label>Power cables</label>
+                            <div class="prefs-row">
+                                <input type="text" id="pref-cable-stock-circuit-ft" placeholder="none" class="pm-wide" data-tooltip="Circuit cable lengths in feet: the cable on each circuit and a direct output's cable.">
+                                <span class="pm-unit">ft</span>
+                                <input type="text" id="pref-cable-stock-circuit-m" placeholder="none" class="pm-wide" data-tooltip="Circuit cable lengths in meters: the cable on each circuit and a direct output's cable.">
+                                <span class="pm-unit">m</span>
+                            </div>
+                        </div>
+                        <div class="pm-row">
+                            <label>Presets</label>
+                            <div class="prefs-row">
+                                <select id="pref-cable-stock-preset" class="pm-fit" data-tooltip="A cable stock saved under a name, for every show."></select>
+                                <button type="button" id="pref-cable-stock-load" class="btn" data-tooltip="Put the picked preset's lengths in the fields above. Save gives them to this show.">Load</button>
+                                <button type="button" id="pref-cable-stock-save-preset" class="btn" data-tooltip="Save the lengths in the fields above as a preset.">Save as preset…</button>
+                                <button type="button" id="pref-cable-stock-delete" class="btn" data-tooltip="Delete the picked preset. Shows already using its lengths keep them.">Delete</button>
+                            </div>
+                            <div class="pm-note">Load fills the fields; Save at the foot gives them to this show. Saving or deleting a preset happens right away.</div>
+                            <div class="pm-note" id="pref-cable-stock-status" style="display: none;"></div>
+                        </div>
+                        <div class="pm-row">
+                            <label>New shows start with</label>
+                            <div class="prefs-row">
+                                <select id="pref-cable-stock-default" class="pm-fit" data-tooltip="The preset a new show takes its cable stock from.">
+                                    <option value="">No stock</option>
+                                </select>
                             </div>
                         </div>
                     </div>

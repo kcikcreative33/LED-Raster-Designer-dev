@@ -3634,6 +3634,76 @@
                     + v + ' ft and ' + h + ' ft again.';
             }
         },
+        // Cable stock (1.5.3, app-cable-stock.js): the cable lengths the
+        // show has on hand, in Preferences > Cable stock. The lists are the
+        // show's and Save gives them to it. The guide never stores the
+        // person's preferences, so its hand presses Save and the act gives
+        // the lists to the show through applyCableStockPreferences, the
+        // path Save takes for them; the dialog closes on the way out.
+        cableStock: {
+            since: '1.5.3',
+            target: '#pref-cable-stock-all-ft', place: 'bottom', title: 'Cable stock',
+            avoid: ['#pref-cable-stock-all-ft', '#preferences-save'],
+            body: 'In Preferences, Cable stock, type the lengths this show has on hand: 25, 50, 100. Each run is then written as the stock pieces that make it, and a preset keeps the list for the next show.',
+            before: function () {
+                switchView('power');
+                var a = A();
+                a.openPreferencesModal();
+                a.showPreferencesTab('stock');
+            },
+            act: function (t) {
+                return t.type('#pref-cable-stock-all-ft', '25, 50, 100').then(function () {
+                    return t.hover('#preferences-save');
+                }).then(function (p) {
+                    press(true);
+                    ripple(p.x, p.y);
+                    return t.pause(90);
+                }).then(function () {
+                    press(false);
+                    A().applyCableStockPreferences();
+                    return t.wait(function () { return A().cableStockList('multi', 'ft').join(',') === '25,50,100'; });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the show did not take the cable stock');
+                    return t.pause(PACE.rest);
+                });
+            },
+            check: function () {
+                if (A().cableStockList('multi', 'ft').join(',') !== '25,50,100') return null;
+                return 'This show has 25, 50 and 100 ft cables on hand. A 125 ft run is written ' + A().cableStockText(125, 'multi') + '.';
+            },
+            after: function () { closePrefs(); }
+        },
+        // The breakdown (app-cable-units.js breakCableLength): the least
+        // extra length, then the fewest pieces. The typed 125 stays in the
+        // field; the tags, the pull sheet and the binder write 100'+25',
+        // and the pull sheet counts one of each.
+        cableStockPieces: {
+            since: '1.5.3',
+            target: function () { var w = wall(); return w ? '[data-lrd-field^="power-soca-length-' + w.id + '-"]' : '[data-lrd-field^="power-soca-length-"]'; },
+            place: 'top', title: 'A run made of stock pieces',
+            body: 'Type 125 as the multi&rsquo;s home run. The field keeps 125; the pull sheet and the binder write it as 100&rsquo;+25&rsquo; and count one of each.',
+            before: function () { switchView('power'); closePrefs(); },
+            act: function (t) {
+                var w = wall();
+                var sel = '[data-lrd-field^="power-soca-length-' + w.id + '-"]';
+                return t.type(sel, '125').then(function () {
+                    return t.wait(function () {
+                        var l = wall(); var m = (l && l.powerSocaLengths) || {};
+                        return Object.keys(m).some(function (k) { return Number(m[k]) === 125; });
+                    });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the home run did not take');
+                    return t.pause(PACE.rest);
+                });
+            },
+            check: function () {
+                var a = A();
+                var multi = (a.buildPullSheet().totals || []).filter(function (r) { return r.type === 'Multi'; });
+                var lengths = multi.map(function (r) { return r.length + ' x' + r.qty; });
+                if (lengths.indexOf("100' x1") < 0 || lengths.indexOf("25' x1") < 0) return null;
+                return 'The 125 ft home run is written ' + a.cableStockText(125, 'multi') + ': the pull sheet lists one 100 ft and one 25 ft multi.';
+            }
+        },
         powerCableTags: {
             target: '#show-power-cable-tags', place: 'right', title: 'Show Cable Tags (power)',
             body: 'Tick it and each circuit&rsquo;s cable prints as a gold tag beside its label on the wall and in the export.',
@@ -4341,7 +4411,7 @@
         preferences: {
             target: '#btn-preferences', place: 'bottom', title: 'Preferences',
             avoid: ['#btn-preferences', '#preferences-modal .pm-tabstrip'],
-            body: 'App-wide defaults in seven tabs. The Binder tab holds the sheet size, the logo, the screen order and the title block default.',
+            body: 'App-wide defaults in eight tabs. The Binder tab holds the sheet size, the logo, the screen order and the title block default.',
             before: function () { closeExport(); },
             act: function (t) {
                 return t.click('#btn-preferences').then(function () {
@@ -4434,7 +4504,7 @@
                     'overrideRun', 'addBreakoutBox', 'boxFiber', 'fiberStrands', 'panelWatts', 'breakoutType', 'addDistro', 'nameDistro',
                     'distroPhase', 'distroRating', 'distroMain', 'distroPreset', 'distroRows',
                     'dropMulti', 'clearCircuit', 'clearMultiByMenu', 'dropMultiAgain',
-                    'multiCableSheet', 'powerJumpers', 'cableUnit', 'powerCableTags',
+                    'multiCableSheet', 'powerJumpers', 'cableUnit', 'cableStock', 'cableStockPieces', 'powerCableTags',
                     'powerColumns', 'splitters', 'takeOver', 'customPower', 'customDraw', 'sweepShare', 'balance',
                     'addBeach', 'screenBeach', 'addScreen', 'beachByMenu', 'crossScreens', 'groupScreens',
                     'exportBinder', 'screenOrder', 'wiringTick', 'titleBlock', 'fileExports', 'preferences',

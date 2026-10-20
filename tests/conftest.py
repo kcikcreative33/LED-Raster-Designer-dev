@@ -75,6 +75,16 @@ def _scratch_distro_presets_file(tmp_path_factory):
     yield routes_distro_presets.DISTRO_PRESETS_FILE
 
 
+# Saved cable stock presets the same way (routes_cable_stock).
+
+@pytest.fixture(scope="session", autouse=True)
+def _scratch_cable_stock_presets_file(tmp_path_factory):
+    import routes_cable_stock
+    routes_cable_stock.CABLE_STOCK_PRESETS_FILE = str(
+        tmp_path_factory.mktemp('cable_stock_presets') / 'cable_stock_presets.json')
+    yield routes_cable_stock.CABLE_STOCK_PRESETS_FILE
+
+
 # ── Waiting for the page to settle ───────────────────────────────────────
 # A fixed sleep and then a read is a guess about how fast the machine is.
 # On a busy Windows box the dock's fold transition and the next animation

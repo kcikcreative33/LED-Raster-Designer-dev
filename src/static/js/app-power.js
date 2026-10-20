@@ -1881,7 +1881,7 @@ class _Power {
         const name = this.cableConnectorName(id) || '';
         return {
             ft, connector: rec.connector || null, id, name,
-            text: this.cableText(ft, name),
+            text: this.cableText(ft, name, 'circuit'),
         };
     }
 
@@ -1900,11 +1900,14 @@ class _Power {
     }
 
     // "10' True1" in a feet show, "3 m True1" in a meters one: the length
-    // in the show's unit (app-cable-units.js), then the connector.
-    cableText(ft, name) {
+    // in the show's unit (app-cable-units.js), then the connector. `kind`
+    // ('multi' / 'data' / 'circuit') writes the length as the show's cable
+    // stock pieces ("100'+25' True1", cableStockText); without one, or
+    // with no stock, the length as typed.
+    cableText(ft, name, kind = null) {
         const n = Number(ft);
-        const len = this.cableUnit() === 'm'
-            ? `${this.cableFigure(n)} m` : `${this.cableFigure(n)}'`;
+        const len = (kind && this.cableStockText(n, kind)) || (this.cableUnit() === 'm'
+            ? `${this.cableFigure(n)} m` : `${this.cableFigure(n)}'`);
         return `${len}${name ? ` ${name}` : ''}`;
     }
 

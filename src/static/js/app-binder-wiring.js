@@ -393,7 +393,7 @@ class _BinderWiring {
             const caption = [box.name,
                              box.kind === 'direct' ? box.type
                                  : (box.type ? `${box.type} breakout` : 'no distro'),
-                             box.homeRun ? this.pullLengthText(box.homeRun) : 'no length',
+                             box.homeRun ? this.pullLengthText(box.homeRun, this.pullHomeRunKind(box)) : 'no length',
                              ...(crowd ? [`${crowd} circuits on a one-circuit output`] : [])]
                 .join(' · ');
             const d = { key: box.key, title: caption, n: slots, sockets: new Map(), notes: new Map() };

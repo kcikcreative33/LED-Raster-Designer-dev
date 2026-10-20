@@ -148,7 +148,10 @@ class _DockCableSheets {
                 ft.value = stored && Number(stored.ft) > 0
                     ? String(stored.ft) : '';
                 ft.dataset.lrdField = `power-cable-ft-${layer.id}-${h.circuit}`;
-                ft.title = `Length in ${this.cableUnitWord()}. Blank = no cable.`;
+                // The field keeps what was typed; the tooltip says how the
+                // show's cable stock writes it out (cableStockHint).
+                ft.title = `Length in ${this.cableUnitWord()}. Blank = no cable.`
+                    + this.cableStockHint(stored && stored.ft, 'circuit');
                 td3.appendChild(ft);
                 td3.appendChild(document.createTextNode(` ${this.cableUnitAbbr()}`));
                 tr.appendChild(td3);
@@ -650,7 +653,8 @@ class _DockCableSheets {
                 const ft = ftInput(`data-snake-ft-${owner.id}-${snake.id}`,
                                    snake.ft,
                                    `The snake’s home run in ${this.cableUnitWord()}. `
-                                   + 'Blank = no length.');
+                                   + 'Blank = no length.'
+                                   + this.cableStockHint(snake.ft, 'data'));
                 ft.addEventListener('change', () => {
                     this.setSnake(snake.id, { ft: ft.value.trim() },
                                   'Set Snake Home Run').then(after);
@@ -692,13 +696,14 @@ class _DockCableSheets {
             const stored = (owner.rec.portCables || {})[String(n)] || null;
             const ft = ftInput(`data-cable-ft-${owner.id}-${n}`,
                                stored && stored.ft,
-                               snake
+                               (snake
                                    ? 'Extension from the snake to this '
                                      + `panel, in ${this.cableUnitWord()} - the shorter cable `
                                      + 'a snake’s fan-out sometimes needs. '
                                      + 'Blank = none.'
                                    : `This port’s own home run in ${this.cableUnitWord()}. `
-                                     + 'Blank = no cable.');
+                                     + 'Blank = no cable.')
+                               + this.cableStockHint(stored && stored.ft, 'data'));
             const commit = () => this.setPortCable(owner, n, {
                 ft: ft.value.trim(),
                 connector: (stored && stored.connector) || null,

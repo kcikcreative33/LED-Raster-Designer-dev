@@ -911,8 +911,13 @@ Object.assign(CanvasRenderer.prototype, {
                 ? app.directCircuitCable(layer, s.legs[0].circuit) : null;
             // A multi on no distro has no feed and so no home run to print
             // (owner, 2026-10-17), whatever an older file left stored.
+            // Written as the show's cable stock pieces ("100'+25'"): a
+            // direct output's one cable from the circuits' stock, a
+            // multi's home run from the multis'.
             const homeRun = this.exportMode && s.distroId
-                ? this._homeRunText(lone ? lone.ft : s.length) : '';
+                ? this._homeRunText(lone ? lone.ft : s.length,
+                                    lone ? 'circuit' : (typeof app.socaHomeRunKind === 'function'
+                                        ? app.socaHomeRunKind(s) : 'multi')) : '';
             const label = (dashed ? pend.boxName : s.name)
                 + (homeRun ? ` · ${homeRun}` : '')
                 + ` · ${s.amps.toFixed(1)}A`;
@@ -992,8 +997,12 @@ Object.assign(CanvasRenderer.prototype, {
     // A multi's typed home run as the exported map's bracket prints it,
     // in the show's unit ("100'" / "30 m"): the pull sheet's own reading
     // (app-cable-units.js parseCableLength - a number, or one with the
-    // show's unit), '' for no length.
-    _homeRunText(raw) {
+    // show's unit), '' for no length. `kind` writes it as the show's cable
+    // stock pieces (cableStockText).
+    _homeRunText(raw, kind = 'multi') {
+        if (window.app && typeof window.app.cableStockText === 'function') {
+            return window.app.cableStockText(raw, kind);
+        }
         if (window.app && typeof window.app.cableLengthText === 'function') {
             return window.app.cableLengthText(raw);
         }

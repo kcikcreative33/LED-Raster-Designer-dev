@@ -1,0 +1,492 @@
+"""Cable stock: the cable lengths a show has on hand, and every length
+written out as the stock pieces that make it (app-cable-units.js
+breakCableLength / cableStockText, app-cable-stock.js, routes_cable_stock.py).
+
+Owner rulings, 2026-10-20:
+
+  * "if i have 25, 50 and 100 but on cable length on the show file i chose
+    125 then it will need to change to 100+25 on the pull sheet or anywhere
+    it is written out".
+  * Covered: multi home runs, data snakes and port cables (snake home runs,
+    loose port cables, extensions), circuit power cables. Not fiber, not the
+    cabinet jumpers.
+  * The stock lives in the SHOW (project.cableStock), saved, loaded and
+    undone with it; a show without one writes every length as typed.
+  * One shared list, or a list per kind; feet and meters each their own.
+  * Least extra length wins, then the fewest pieces: 125 -> 100+25, 60 ->
+    50+25, 130 -> 100+50. Unlimited pieces; an empty list is no breakdown.
+  * The typed length stays as typed; it is WRITTEN as the pieces, "100'+25'",
+    and the pull sheet counts the pieces.
+
+Run locally:
+    ~/.venvs/led-raster-designer/bin/python -m pytest tests/test_cable_stock.py -v --browser chromium
+"""
+
+import base64
+import io
+import json
+import os
+import sys
+
+import pytest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, '..', 'src'))
+sys.path.insert(0, HERE)
+
+FEET = {'perKind': False, 'ft': {'all': [25, 50, 100]}, 'm': {'all': [10, 15, 30]}}
+
+
+# ── the server: presets and a new show ───────────────────────────────────
+
+@pytest.fixture()
+def presets_file():
+    """A clean presets file for one test, put back after."""
+    import routes_cable_stock
+    path = routes_cable_stock.CABLE_STOCK_PRESETS_FILE
+    before = open(path, encoding='utf-8').read() if os.path.exists(path) else None
+    if os.path.exists(path):
+        os.remove(path)
+    yield path
+    if before is None:
+        if os.path.exists(path):
+            os.remove(path)
+    else:
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(before)
+
+
+def test_a_stock_is_cleaned_and_a_junk_one_refused():
+    import routes_cable_stock as rcs
+    s = rcs.normalize_stock({'perKind': True, 'ft': {'multi': [100, 25, 50, 25.0]},
+                             'm': {'all': [7.62]}})
+    assert s == {'perKind': True,
+                 'ft': {'all': [], 'multi': [25, 50, 100], 'data': [], 'circuit': []},
+                 'm': {'all': [7.62], 'multi': [], 'data': [], 'circuit': []}}
+    for junk in (None, [], 'x', {'perKind': 'yes'}, {'ft': {'all': [0]}},
+                 {'ft': {'all': ['25']}}, {'ft': {'all': [True]}}, {'ft': [25]},
+                 {'m': {'data': [-5]}}, {'ft': {'all': list(range(1, 60))}}):
+        assert rcs.normalize_stock(junk) is None, junk
+
+
+def test_presets_save_list_replace_and_delete(client, presets_file):
+    """PUT saves under a name (the same name in any case replaces it), GET
+    lists them by name, DELETE removes one; a bad stock or a blank name is
+    refused and nothing is written."""
+    r = client.put('/api/cable-stock-presets', json={'name': 'Shop  A', 'stock': FEET})
+    assert r.status_code == 200
+    assert [p['name'] for p in r.get_json()['presets']] == ['Shop A']
+    client.put('/api/cable-stock-presets', json={'name': 'Vendor', 'stock': {'ft': {'all': [50]}}})
+    r = client.put('/api/cable-stock-presets', json={'name': 'shop a', 'stock': {'ft': {'all': [10]}}})
+    got = {p['name']: p['stock']['ft']['all'] for p in r.get_json()['presets']}
+    assert got == {'shop a': [10], 'Vendor': [50]}, got
+    assert client.put('/api/cable-stock-presets', json={'name': '', 'stock': FEET}).status_code == 400
+    assert client.put('/api/cable-stock-presets',
+                      json={'name': 'Bad', 'stock': {'ft': {'all': ['x']}}}).status_code == 400
+    listed = client.get('/api/cable-stock-presets').get_json()['presets']
+    assert [p['name'] for p in listed] == ['shop a', 'Vendor']
+    r = client.delete('/api/cable-stock-presets', json={'name': 'VENDOR'})
+    assert [p['name'] for p in r.get_json()['presets']] == ['shop a']
+    assert client.delete('/api/cable-stock-presets', json={'name': 'Vendor'}).status_code == 404
+    with open(presets_file, encoding='utf-8') as f:
+        assert [p['name'] for p in json.load(f)['presets']] == ['shop a']
+
+
+def test_a_damaged_presets_file_is_moved_aside_not_overwritten(client, presets_file):
+    os.makedirs(os.path.dirname(presets_file), exist_ok=True)
+    with open(presets_file, 'w', encoding='utf-8') as f:
+        f.write('{not json')
+    assert client.get('/api/cable-stock-presets').get_json()['presets'] == []
+    assert client.put('/api/cable-stock-presets', json={'name': 'A', 'stock': FEET}).status_code == 200
+    folder = os.path.dirname(presets_file)
+    aside = [n for n in os.listdir(folder) if '.corrupt-' in n]
+    assert aside, os.listdir(folder)
+    for n in aside:
+        os.remove(os.path.join(folder, n))
+
+
+def test_a_new_show_starts_with_the_default_preset(client, presets_file):
+    """POST /api/project/new stamps the stock of the preset the Preferences
+    name as the default. No default, or a default whose preset is gone: the
+    show carries no stock, as every show did before."""
+    import app as app_module
+    client.put('/api/cable-stock-presets', json={'name': 'Shop', 'stock': FEET})
+    app_module.server_preferences = {}
+    assert 'cableStock' not in client.post('/api/project/new').get_json()
+    app_module.server_preferences = {'cableStockDefault': 'shop'}
+    p = client.post('/api/project/new').get_json()
+    assert p['cableStock']['ft']['all'] == [25, 50, 100] and p['cableStock']['perKind'] is False
+    app_module.server_preferences = {'cableStockDefault': 'Gone'}
+    assert 'cableStock' not in client.post('/api/project/new').get_json()
+
+
+def test_the_show_s_stock_rides_save_and_restore(client):
+    """The stock is a top-level project key: POST merges it, PUT (undo, a
+    file load) restores exactly what it carries - none when it carries
+    none."""
+    import app as app_module
+    client.post('/api/project', json={'cableStock': FEET})
+    assert app_module.current_project['cableStock'] == FEET
+    proj = client.get('/api/project').get_json()
+    proj.pop('cableStock')
+    client.put('/api/project', json=proj)
+    assert 'cableStock' not in app_module.current_project
+
+
+# ── the browser ───────────────────────────────────────────────────────────
+
+import openpyxl  # noqa: E402
+
+pytest.importorskip("playwright.sync_api", reason="playwright not installed")
+
+from test_power_cables import SEED_JS as POWER_SEED_JS  # noqa: E402
+from test_data_snakes import SEED_JS as DATA_SEED_JS  # noqa: E402
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _guard(server_project_guard):
+    """Leave the shared server project (and the preferences) as found."""
+
+
+@pytest.fixture(scope="module")
+def page(e2e_server, pw_browser):
+    context = pw_browser.new_context(viewport={'width': 1700, 'height': 950})
+    context.add_init_script(
+        "try{localStorage.setItem('lrd_quickstart_disabled','1');}catch(e){}")
+    pg = context.new_page()
+    errors = []
+    pg.on('pageerror', lambda e: errors.append(str(e)))
+    pg.goto(e2e_server, wait_until='domcontentloaded')
+    pg.wait_for_function("() => !!(window.app && window.app._initialLoadComplete)")
+    pg.wait_for_timeout(1500)
+    pg.locator('[data-mode="power"]').click()
+    pg.wait_for_timeout(500)
+    yield pg, errors
+    context.close()
+
+
+BREAK_JS = """async ([cases]) => {
+    const { breakCableLength } = await import('/static/js/app-cable-units.js');
+    return cases.map(([n, stock]) => breakCableLength(n, stock));
+}"""
+
+
+def test_the_breakdown_least_extra_then_fewest_pieces(page):
+    """The owner's three, then the edges: an exact stock length is itself, a
+    length under the shortest takes the shortest, several of one length,
+    a tie on extra broken by the fewest pieces, meters to the centimeter,
+    and nothing to break (no length, no stock)."""
+    pg, errors = page
+    s = [25, 50, 100]
+    table = [
+        ((125, s), [100, 25]),
+        ((60, s), [50, 25]),
+        ((130, s), [100, 50]),
+        ((100, s), [100]),
+        ((10, s), [25]),
+        ((25, s), [25]),
+        ((26, s), [50]),
+        ((175, s), [100, 50, 25]),
+        ((300, s), [100, 100, 100]),
+        ((240, s), [100, 100, 50]),
+        ((0.5, s), [25]),
+        # a tie on extra (both 150): two pieces beat four
+        ((150, [25, 50, 100]), [100, 50]),
+        # 7.62 m: 2 x 3.81 is exact
+        ((7.62, [3.81, 10]), [3.81, 3.81]),
+        ((12, [5, 7.5]), [7.5, 5]),
+        ((20, [7.5, 15]), [15, 7.5]),
+        # one length only: as many as it takes
+        ((310, [100]), [100, 100, 100, 100]),
+        # unsorted, repeated stock
+        ((60, [50, 25, 25, 100]), [50, 25]),
+        ((0, s), None),
+        ((-5, s), None),
+        ((125, []), None),
+        ((125, None), None),
+    ]
+    got = pg.evaluate(BREAK_JS, [[list(c) for c, _ in table]])
+    assert got == [w for _, w in table], [(c, g, w) for (c, w), g in zip(table, got) if g != w]
+    assert errors == [], errors
+
+
+TEXT_JS = """([stock, unit, cases]) => {
+    const app = window.app;
+    const keep = app.project.cableStock, keepUnit = app.project.cableUnit;
+    app.project.cableStock = stock;
+    app.project.cableUnit = unit;
+    try {
+        return cases.map(([n, kind]) => app.cableStockText(n, kind));
+    } finally {
+        app.project.cableStock = keep;
+        app.project.cableUnit = keepUnit;
+    }
+}"""
+
+
+def test_one_formatter_writes_the_pieces(page):
+    """cableStockText: the pieces joined by + in the show's unit ("100'+25'",
+    "30 m+10 m"), the length as typed where the stock has nothing to say -
+    no stock (an old show), an empty list for that kind, a jumper (no kind)
+    or a length nobody typed."""
+    pg, errors = page
+    cases = [[125, 'multi'], [60, 'data'], [130, 'circuit'], [100, 'multi'], ['125', 'multi'],
+             [125, None], [125, 'fiber'], ['', 'multi'], [0, 'multi']]
+    assert pg.evaluate(TEXT_JS, [FEET, 'ft', cases]) == [
+        "100'+25'", "50'+25'", "100'+50'", "100'", "100'+25'", "125'", "125'", '', '']
+    # a show with no stock - every file saved before the setting
+    assert pg.evaluate(TEXT_JS, [None, 'ft', cases[:3]]) == ["125'", "60'", "130'"]
+    # meters reads the meters list
+    assert pg.evaluate(TEXT_JS, [FEET, 'm', [[40, 'multi'], [36, 'data'], [30, 'circuit']]]) == [
+        '30 m+10 m', '30 m+10 m', '30 m']
+    # a list per kind: each kind its own, an empty one writes as typed
+    per = {'perKind': True, 'ft': {'all': [25, 50, 100], 'multi': [50, 100], 'data': [25, 50],
+                                   'circuit': []}}
+    assert pg.evaluate(TEXT_JS, [per, 'ft', [[125, 'multi'], [125, 'data'], [125, 'circuit']]]) == [
+        "100'+50'", "50'+50'+25'", "125'"]
+    assert errors == [], errors
+
+
+def _power_seed(pg, stock):
+    """WALL on SR box 1 (test_power_cables): multi 1's home run 125,
+    circuit 1 a 60 cable and circuit 2 a 25 one, the show's stock `stock`."""
+    ids = pg.evaluate(POWER_SEED_JS)
+    pg.wait_for_timeout(500)
+    pg.evaluate("""async (stock) => {
+        const app = window.app;
+        const wall = app.project.layers[0];
+        app.setSocaLength(wall, 1, '125', false);
+        app.setCircuitCable(wall, 1, {ft: 60}, false);
+        app.setCircuitCable(wall, 2, {ft: 25}, false);
+        app.updateLayers([wall]);
+        app.project.cableUnit = 'ft';
+        app.project.cableStock = stock;
+        delete app.project.pullSheetEdits;
+        await fetch('/api/project', {method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({cableUnit: 'ft', cableStock: stock, pullSheetEdits: null})});
+        app._circuitTailCache = null;
+        app.resetHistory('Stock Seed');
+        app.renderHardwareDock();
+    }""", stock)
+    pg.wait_for_timeout(500)
+    return ids
+
+
+PULL_ROWS_JS = """() => {
+    const app = window.app;
+    app._circuitTailCache = null;
+    const list = app.buildPullSheet();
+    return {
+        rows: list.positions.flatMap(p => p.rows).map(r => [r.type, r.length, r.qty, r.label]),
+        totals: list.totals.map(r => [r.type, r.length, r.qty]),
+        hardware: list.hardware.flatMap(h => h.rows).map(r => [r.type, r.length, r.qty]),
+    };
+}"""
+
+TAG_TEXTS_JS = """(exportMode) => {
+    const app = window.app, r = window.canvasRenderer, ctx = r.ctx;
+    const l = app.project.layers[0];
+    const brackets = l.showSocaBrackets;
+    l.showPowerCableTags = true;
+    l.showSocaBrackets = true;
+    const oT = ctx.fillText, texts = [];
+    ctx.fillText = function (t, x, y, w) { texts.push(String(t)); return oT.call(ctx, t, x, y, w); };
+    const prev = r.viewMode, prevExport = r.exportMode;
+    try { r.viewMode = 'power'; r.exportMode = exportMode; r.render(); }
+    finally { ctx.fillText = oT; r.viewMode = prev; r.exportMode = prevExport; }
+    l.showPowerCableTags = false;
+    l.showSocaBrackets = brackets;
+    r.render();
+    return texts;
+}"""
+
+
+def test_power_lengths_are_written_as_pieces_everywhere(page):
+    """With 25 / 50 / 100 on hand: multi 1's typed 125 home run and circuit
+    1's 60 cable are written 100'+25' and 50'+25' True1 - the chip, the map
+    tag, the exported map's bracket, the pull sheet (which counts the
+    pieces: a 100' and a 25' Multi, a 50' and two 25' Tru-1 with circuit
+    2's own 25), the workbook, the binder - while the multi's own field
+    still holds 125."""
+    pg, errors = page
+    ids = _power_seed(pg, FEET)
+    cable = pg.evaluate("([id]) => window.app.powerCircuitCable(window.app.project.layers.find(l => l.id === id), 1)",
+                        [ids['id']])
+    assert cable['text'] == "50'+25' True1" and cable['ft'] == 60, cable
+
+    pull = pg.evaluate(PULL_ROWS_JS)
+    multis = sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'Multi')
+    assert multis == [("100'", 1), ("25'", 1)], pull['totals']
+    tru = sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'Tru-1')
+    assert tru == [("25'", 2), ("50'", 1)], pull['totals']
+    assert not [r for r in pull['rows'] if '+' in str(r[1])], 'the sheet lists pieces, never sums'
+    # the pieces keep the row's label
+    assert ['Multi', "100'", 1, 'SR 1'] in pull['rows'] and ['Multi', "25'", 1, 'SR 1'] in pull['rows'], pull['rows']
+    # the distro's hardware rows count the same pieces
+    assert sorted((r[1], r[2]) for r in pull['hardware'] if r[0] == 'Multi') == [("100'", 1), ("25'", 1)]
+
+    tags = pg.evaluate(TAG_TEXTS_JS, False)
+    assert "50'+25' True1" in tags and "25' True1" in tags, tags
+    exported = pg.evaluate(TAG_TEXTS_JS, True)
+    assert any("SR1 · 100'+25'" in t for t in exported), [t for t in exported if 'SR1' in t]
+
+    # the workbook: the piece rows, and the GEAR LIST takes them
+    b64 = pg.evaluate("""async () => {
+        const list = window.app.buildPullSheet();
+        const resp = await fetch('/api/export/pull-sheet', {method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({pull_list: list, project_name: 'Stock', engineer: '', rev: '1.0',
+                                  date: '', date_iso: ''})});
+        const bytes = new Uint8Array(await resp.arrayBuffer());
+        let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000)
+            bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        return btoa(bin);
+    }""")
+    wb = openpyxl.load_workbook(io.BytesIO(base64.b64decode(b64)))
+    import pull_sheet
+    ws = wb['Pull Sheet']
+    col = pull_sheet.BLOCK_COLS[0]
+    block = [tuple(ws.cell(r, col + i).value for i in range(4)) for r in range(7, 40)]
+    assert ('Multi', "100'", 1, 'SR 1') in block and ('Multi', "25'", 1, 'SR 1') in block, block
+    assert ('Tru-1', "50'", 1) in [b[:3] for b in block], block
+    assert not [b for b in block if b[1] and '+' in str(b[1])], block
+
+    # the binder's power sheet: the circuits table and the multi's band
+    texts = pg.evaluate("""() => {
+        const app = window.app;
+        const opts = { sheet: 'tabloid', palette: 'colour', sides: {power: true, data: false},
+                       scope: {kind: 'show'}, cover: false, pull: true, hardware: true, titleBlock: true };
+        const plan = app.planBinder(opts);
+        const out = [];
+        plan.forEach((p, i) => { out.push(...app.renderBinderPage(opts, i).texts); });
+        return out;
+    }""")
+    assert "50'+25' True1" in texts, [t for t in texts if 'True1' in t]
+    assert any("100'+25'" in t and 'SR1' in t for t in texts), [t for t in texts if 'SR1' in t]
+    assert not [t for t in texts if "125'" in t or "60' True1" in t], [t for t in texts if "125'" in t]
+
+    # the tray: the multi's field keeps what was typed, its tooltip says how
+    # it is pulled; the circuit's sheet field the same
+    dock = pg.evaluate("""([id, distroId]) => {
+        const app = window.app;
+        const f = document.querySelector(`[data-lrd-field="power-soca-length-${id}-1"]`);
+        app._setCableSheetOpen(distroId, 1, true);
+        app.renderHardwareDock();
+        const c = document.querySelector(`[data-lrd-field="power-cable-ft-${id}-1"]`);
+        const out = { value: f && f.value, title: f && f.title, cvalue: c && c.value, ctitle: c && c.title };
+        app._setCableSheetOpen(distroId, 1, false);
+        app.renderHardwareDock();
+        return out;
+    }""", [ids['id'], ids['distroId']])
+    assert dock['value'] == '125' and "Pulled as 100'+25' from this show's cable stock." in dock['title'], dock
+    assert dock['cvalue'] == '60' and "Pulled as 50'+25'" in dock['ctitle'], dock
+    assert errors == [], errors
+
+
+def test_an_old_show_without_a_stock_reads_as_before(page):
+    """No cableStock (a file saved before the setting) or an emptied one:
+    every length as typed, one row each, exactly as before."""
+    pg, errors = page
+    for stock in (None, {'perKind': False, 'ft': {'all': []}, 'm': {'all': []}}):
+        ids = _power_seed(pg, stock)
+        pull = pg.evaluate(PULL_ROWS_JS)
+        assert sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'Multi') == [("125'", 1)], pull
+        assert sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'Tru-1') == [("25'", 1), ("60'", 1)]
+        cable = pg.evaluate("([id]) => window.app.powerCircuitCable(window.app.project.layers.find(l => l.id === id), 1).text",
+                            [ids['id']])
+        assert cable == "60' True1"
+    assert errors == [], errors
+
+
+def test_setting_the_stock_is_one_undo_step_the_server_holds(page):
+    """setCableStock: one 'Set Cable Stock' entry, the server holds the new
+    stock, the papers follow; undo puts the old one back on both sides, and
+    redo again. An unchanged stock records nothing."""
+    pg, errors = page
+    _power_seed(pg, None)
+    st = pg.evaluate("""async (stock) => {
+        const app = window.app;
+        const n0 = app.history.length;
+        const changed = app.setCableStock(stock);
+        const again = app.setCableStock(stock);
+        await app._pullSheetStateSettled();
+        const served = (await (await fetch('/api/project')).json()).cableStock;
+        return { changed, again, steps: app.history.length - n0,
+                 action: app.history[app.historyIndex].action, served,
+                 text: app.cableStockText(125, 'multi') };
+    }""", FEET)
+    assert st['changed'] is True and st['again'] is False and st['steps'] == 1, st
+    assert st['action'] == 'Set Cable Stock' and st['text'] == "100'+25'", st
+    assert st['served']['ft']['all'] == [25, 50, 100], st
+    undone = pg.evaluate("""async () => {
+        const app = window.app;
+        app.undo();
+        await new Promise(r => setTimeout(r, 600));
+        const served = (await (await fetch('/api/project')).json()).cableStock;
+        return { stock: app.cableStock(), served: served === undefined ? null : served,
+                 text: app.cableStockText(125, 'multi') };
+    }""")
+    assert undone['stock'] is None and not undone['served'] and undone['text'] == "125'", undone
+    redone = pg.evaluate("""async () => {
+        const app = window.app;
+        app.redo();
+        await new Promise(r => setTimeout(r, 600));
+        return { text: app.cableStockText(125, 'multi'),
+                 served: (await (await fetch('/api/project')).json()).cableStock };
+    }""")
+    assert redone['text'] == "100'+25'" and redone['served']['ft']['all'] == [25, 50, 100], redone
+    assert errors == [], errors
+
+
+def test_data_lengths_are_written_as_pieces_everywhere(page):
+    """Data: a snake's 130 home run is "100'+50'" on its tag and run text,
+    a snaked port's 60 extension "+50'+25'", a loose port's 125 cable
+    "100'+25'" on its chip corner and map tag; the pull sheet counts the
+    pieces, and the binder's run cells say the same."""
+    pg, errors = page
+    pg.locator('[data-mode="data-flow"]').click()
+    pg.wait_for_timeout(400)
+    ids = pg.evaluate(DATA_SEED_JS)
+    pg.wait_for_timeout(800)
+    out = pg.evaluate("""async ([ids, stock]) => {
+        const app = window.app;
+        app.project.cableStock = stock;
+        app.project.cableUnit = 'ft';
+        await fetch('/api/project', {method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({cableStock: stock, cableUnit: 'ft'})});
+        const box = () => app._dataCableOwner('cvt', ids.boxId);
+        await app.snakePorts(app.snakeMembersOf(box(), [2, 3]));
+        const snake = app.getShowSnakes()[0];
+        await app.setSnake(snake.id, {ft: '130'}, 'Set Snake Home Run');
+        await app.setPortCable(box(), 3, {ft: '60', connector: ''});
+        await app.setPortCable(box(), 1, {ft: '125', connector: ''});
+        app.renderHardwareDock();
+        const loose = app.dataPortCable(ids.cardId, 1);
+        const snaked = app.dataPortCable(ids.cardId, 3);
+        const list = app.buildPullSheet();
+        const s = app.getShowSnakes()[0];
+        return {
+            loose: loose.text, snaked: snaked.text, run: app.runText(snaked),
+            tag: app.snakeTagText(s),
+            corner: (document.querySelector(`[data-hwdock="port-${ids.boxId}-1"] .hw-dock-chip-cable`)
+                     || document.querySelector(`[data-hwdock="port-${ids.cardId}-1"] .hw-dock-chip-cable`) || {}).textContent || null,
+            totals: list.totals.map(r => [r.type, r.length, r.qty]),
+        };
+    }""", [ids, FEET])
+    assert out['loose'].startswith("100'+25'"), out
+    assert out['snaked'].endswith("+50'+25'"), out
+    assert "100'+50'" in out['run'] and out['run'].endswith("+50'+25'"), out
+    assert out['tag'].endswith(" · 100'+50'"), out
+    lengths = {}
+    for t, length, q in out['totals']:
+        if length and length != 'EA':
+            lengths.setdefault(t, []).append((length, q))
+    assert not [r for r in out['totals'] if '+' in str(r[1])], out['totals']
+    snake_rows = [v for k, v in lengths.items() if k.endswith('Snake')]
+    assert snake_rows and sorted(snake_rows[0]) == [("100'", 1), ("50'", 1)], lengths
+    flat = sorted(lengths.get('Ether-con', []))
+    # the loose 125 (100 + 25) and the extension 60 (50 + 25)
+    assert flat == [("100'", 1), ("25'", 2), ("50'", 1)], lengths
+    pg.locator('[data-mode="power"]').click()
+    pg.wait_for_timeout(300)
+    assert errors == [], errors

@@ -306,6 +306,9 @@ class _ClientProps {
             // lengths, so it reads the set in that unit. Rides the POST
             // below.
             this.project.cableUnit = this.preferredCableUnit();
+            // And the default preset's cable stock (app-cable-stock.js),
+            // none when no default is set. Rides the POST below.
+            if (typeof this.followDefaultCableStock === 'function') this.followDefaultCableStock();
             this.clearJumperLengths(layer);
             layer.dataFlowLabelSize = prefs.dataLabelSize || 30;
             layer.powerLabelSize = prefs.powerLabelSize || 14;
@@ -356,6 +359,7 @@ class _ClientProps {
                     show_raster_height: prefs.rasterHeight,
                     app_version: this.project.app_version,
                     cableUnit: this.project.cableUnit,
+                    cableStock: this.project.cableStock === undefined ? null : this.project.cableStock,
                     keep_pristine: true
                 })
             }));

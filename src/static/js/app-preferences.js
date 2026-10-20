@@ -155,7 +155,12 @@ class _Preferences {
             powerCableFt: 10,
             powerCableM: 3,
             jumperStockFt: [3, 6, 10, 15, 25],
-            jumperStockM: [1, 2, 3, 5, 10]
+            jumperStockM: [1, 2, 3, 5, 10],
+            // ---- Cable stock (2026-10-20, app-cable-stock.js): the name
+            // of the saved preset a NEW show takes its cable stock from;
+            // '' is none, and a new show writes lengths as typed. The
+            // stock itself is the show's (project.cableStock).
+            cableStockDefault: ''
         };
     }
 
@@ -275,10 +280,10 @@ class _Preferences {
         });
     }
 
-    // The seven tabs, in strip order. The strip remembers the last tab
+    // The eight tabs, in strip order. The strip remembers the last tab
     // opened within the session (not across reloads).
     _prefsTabKeys() {
-        return ['wall', 'look', 'data', 'power', 'distros', 'binder', 'pull'];
+        return ['wall', 'look', 'data', 'power', 'distros', 'binder', 'pull', 'stock'];
     }
 
     showPreferencesTab(key) {
@@ -515,6 +520,11 @@ class _Preferences {
                 // Preferences are defaults for future/new projects.
                 // Only apply to the current project when it is the startup default untitled project.
                 this.applyPreferencesToDefaultLayerIfMatch(false);
+                // The Cable stock tab's lists are the OPEN SHOW's: edited,
+                // they go to the show as one undo step (app-cable-stock.js).
+                if (typeof this.applyCableStockPreferences === 'function') {
+                    this.applyCableStockPreferences();
+                }
                 this.saveClientSideProperties();
                 // v0.8.8.x: font change is project-wide and affects every
                 // on-canvas label, repaint so the new font shows immediately.
@@ -609,6 +619,7 @@ class _Preferences {
                 this._syncPreferenceLogoRow();
             });
         }
+        if (typeof this.setupCableStockPreferences === 'function') this.setupCableStockPreferences();
         syncVoltageCustom();
         syncAmperageCustom();
     }
@@ -620,6 +631,8 @@ class _Preferences {
         this._sayPreferenceLogoStatus('');
         this._fillPreferenceCatalogs();
         this.fillPreferencesUI(prefs);
+        // The Cable stock tab: the open show's lists and the presets.
+        if (typeof this.openCableStockPreferences === 'function') this.openCableStockPreferences(prefs);
         // Hydrate the Fonts picker, then pull in the machine's installed fonts
         // (refreshes the picker again when they arrive).
         this._loadSystemFonts();
@@ -775,6 +788,9 @@ class _Preferences {
         const ladder = (list, fallback) => this.jumperStockText(this.normalizeJumperStock(list) || fallback);
         setVal('pref-jumper-stock-ft', ladder(prefs.jumperStockFt, defaults.jumperStockFt));
         setVal('pref-jumper-stock-m', ladder(prefs.jumperStockM, defaults.jumperStockM));
+        // Cable stock: the preset a new show starts with ('' none). The
+        // show's own lists are not preferences: Reset leaves them.
+        setVal('pref-cable-stock-default', prefs.cableStockDefault || '');
     }
 
     readPreferencesFromUI() {
@@ -959,6 +975,13 @@ class _Preferences {
             // holds no list keeps the stored ladder (else the shipped one).
             jumperStockFt: readLadder('pref-jumper-stock-ft', stored.jumperStockFt, defaults.jumperStockFt),
             jumperStockM: readLadder('pref-jumper-stock-m', stored.jumperStockM, defaults.jumperStockM),
+            // The preset a new show takes its cable stock from ('' none);
+            // with the dialog closed, the stored one.
+            cableStockDefault: (() => {
+                const el = document.getElementById('pref-cable-stock-default');
+                if (!el || !dialogOpen) return stored.cableStockDefault || '';
+                return String(el.value || '');
+            })(),
         };
     }
 

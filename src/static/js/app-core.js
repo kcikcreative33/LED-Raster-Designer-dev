@@ -663,6 +663,12 @@ export class LEDRasterApp {
         } catch (e) {
             console.error('Error fetching server preferences:', e);
         }
+        // The saved cable stock presets, before the project loads: the
+        // pristine startup show takes the default one's stock in the same
+        // pass that takes the cable unit (app-cable-stock.js).
+        if (typeof this.loadCableStockPresets === 'function') {
+            try { await this.loadCableStockPresets(); } catch (e) { /* none saved yet */ }
+        }
     }
     
     connectWebSocket() {
@@ -1562,6 +1568,12 @@ export class LEDRasterApp {
                 body: JSON.stringify({ cableUnit: unit, keep_pristine: true }),
             }).catch(() => {});
             if (this.syncCableUnitControls) this.syncCableUnitControls();
+        }
+        // And the default cable stock preset (app-cable-stock.js), the same
+        // way: its own POST keeps the show pristine.
+        if (typeof this.followDefaultCableStock === 'function' && this.followDefaultCableStock(true)
+                && typeof this.refreshCableUnitViews === 'function') {
+            this.refreshCableUnitViews();
         }
         this.clearJumperLengths(this.currentLayer);
         this.applyPreferencesToCurrentLayer(prefs);

@@ -803,7 +803,7 @@ class _DistroSystems {
         const ft = this.parseCableLength((layer.powerSocaLengths || {})[box.idx]);
         if (ft === null) return null;
         const name = fbox.conn.cable;
-        return { ft, name, text: this.cableText(ft, name) };
+        return { ft, name, text: this.cableText(ft, name, 'circuit') };
     }
 
     // How many circuits sit on the DIRECT output that circuit `circuitNum`
