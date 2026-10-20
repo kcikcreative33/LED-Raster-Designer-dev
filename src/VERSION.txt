@@ -5,7 +5,8 @@ v1.5.3 - October 19, 2026
 ----------------------------
 
 2fers and 3fers now work the way you'd expect in custom mode and across a
-group, and What's New can walk you through what changed after an update.
+group, the pull sheet can count the cable lengths you actually stock, and
+What's New can walk you through what changed after an update.
 
 WHAT'S NEW, SHOWN TO YOU
 
@@ -17,6 +18,17 @@ opens it any time.
 The Advanced Guide now covers 1.5 too: distros built from their outputs,
 the 80% limit, feet or meters, cabinets across screens, the exports in the
 File menu, and 2fers and 3fers.
+
+CABLE STOCK
+
+Tell the show what cable lengths you actually have. In Preferences >
+Cable stock, type them in (say 25, 50 and 100), either one list for every
+cable or one each for multi home runs, data and power cables. A 125 ft run
+then reads 100'+25' on the map, the pull sheet and the binder, and the pull
+sheet counts the pieces. A length the stock can't make exactly uses the
+pieces with the least extra cable. Save the lists as a preset for each shop
+you work with, load one into any show, and pick the one new shows start
+with.
 
 FIXES
 
@@ -56,6 +68,11 @@ FIXES
   3fers from this screen, and the tray's Clear multi and Clear circuit
   are Unplug multi and Unplug circuit. Previous and Next say Circuit
   instead of Port.
+- FIX: A distro's OUTPUTS row shows one chip per connector type, like
+  Socapex 208V x 3, instead of a card per output that wrapped under the
+  label. Dragging the chip hands out the next free output of that type.
+- FIX: The whole header bar of a distro is the handle for dragging it
+  onto a screen, and it says so when you hover it.
 - FIX: A circuit you're redrawing stays highlighted until you press Esc,
   not just while Alt is held.
 - FIX: A 3fer on the second or third screen of a group, or one that
