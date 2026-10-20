@@ -172,9 +172,11 @@ BLUE, ORANGE = '#1f5fd6', '#f08a24'
 
 def test_strands_swatches_and_fiber_groups_centre_in_their_cells(page):
     """Three 300 wide columns: a strand list (one strand a line), a
-    strand's tinted cell, and an outlined fiber group - each line's swatch
-    and name, the tinted cell's swatch and name, and the group's outline
-    all centred on 150, 450 and 750."""
+    strand's tinted cell, and an outlined fiber group - the strand list as
+    one block (its lines on one left edge, owner 2026-10-20: "the
+    color/number to all match in the X coordinate"), the tinted cell's
+    swatch and name, and the group's outline all centred on 150, 450 and
+    750."""
     pg, _ = page
     sw = lambda c: {'base': c}  # noqa: E731
     texts, calls = _table(pg, {
@@ -202,8 +204,12 @@ def test_strands_swatches_and_fiber_groups_centre_in_their_cells(page):
     in_col = lambda t, lo, hi: lo <= t['x'] < hi  # noqa: E731
     parts = [t for t in texts if t['t'] in ('1 Blue', '2 Orange') and in_col(t, 0, 300)]
     assert len(parts) == 2 and parts[0]['y'] < parts[1]['y'], parts
-    for t in parts:
-        assert abs(centre(t) - 150) < 0.6, (t, centre(t))
+    lead = [next(c for c in swatches if 0 < t['x'] - c['x'] <= 34 and c['y'] <= t['y'] <= c['y'] + 30)
+            for t in parts]
+    assert abs(lead[0]['x'] - lead[1]['x']) < 0.01, lead          # one left edge
+    assert abs(parts[0]['x'] - parts[1]['x']) < 0.01, parts
+    block = (lead[0]['x'] + max(t['x'] + t['w'] for t in parts)) / 2
+    assert abs(block - 150) < 0.6, (block, parts)                  # the block centred
     tinted = next(t for t in texts if t['t'] == '1 Blue' and in_col(t, 300, 600))
     assert abs(centre(tinted) - 450) < 0.6, tinted
     # two groups of different widths: one outline width, one under the
