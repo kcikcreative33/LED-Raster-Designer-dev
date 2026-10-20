@@ -2392,9 +2392,14 @@ class _HardwareDock {
             `distro-${d.id}`,
             '',
             this.distroSupplyText(d),
-            'Drag onto a screen to assign its ports; drag along the tray to '
-            + 'reorder.',
+            'Drag onto a screen: its unassigned multis land on this distro. '
+            + 'Drag along the tray to reorder.',
             load && load.ratingA > 0 ? this._dockDistroGlance(d, load) : null);
+        // The whole header bar is the distro's handle (owner pick C,
+        // 2026-10-20): shaded, a bigger grip than the multi strips' own,
+        // and a hint in its empty stretch while hovered. The controls on
+        // it stay controls - the drag pickup skips them.
+        head.classList.add('hw-dock-distro-head');
         // An over-loaded service is a strip question, not just a red bar.
         // The figure is the WORST LEG against the main's continuous limit
         // (1.5, bug fix 2; the limit 2026-10-18 - 80% of the rating on a
@@ -2491,6 +2496,16 @@ class _HardwareDock {
         const info = head.querySelector(':scope > .hw-dock-unit-info');
         const gearBtn = head.querySelector(':scope > .hw-dock-gear');
         [info, bal, gearBtn].forEach(el => { if (el) acts.appendChild(el); });
+        // The hint fills the free stretch before the group and shows only
+        // where it fits whole (style.css); its words ride an attribute, so
+        // the header's own text stays the name and the figures.
+        const cue = document.createElement('span');
+        cue.className = 'hw-dock-dragcue';
+        cue.setAttribute('aria-hidden', 'true');
+        const cueText = document.createElement('i');
+        cueText.dataset.cue = 'Drag onto a screen';
+        cue.appendChild(cueText);
+        head.appendChild(cue);
         head.appendChild(acts);
         unit.appendChild(head);
         // The LEGS line rides between the header and the foldable body, so
@@ -2736,12 +2751,7 @@ class _HardwareDock {
         if (face) return this._dockFaceOutputsRow(d, face);
         const types = this.distroOutputs(d);
         if (!types.length) return null;
-        const row = document.createElement('div');
-        row.className = 'hw-dock-outputs';
-        const cap = document.createElement('span');
-        cap.className = 'hw-dock-outputs-cap';
-        cap.textContent = 'OUTPUTS';
-        row.appendChild(cap);
+        const { row, chips } = this._dockOutputsShell();
         const name = d.name || d.id;
         types.forEach(t => {
             const chip = this._plugChip(t);
@@ -2755,39 +2765,67 @@ class _HardwareDock {
                 type: 'plug', distroId: d.id, output: t.id,
                 title: `${name} · ${t.name}`,
             }, `plug-${d.id}-${t.id}`);
-            row.appendChild(chip);
+            chips.appendChild(chip);
         });
         return row;
     }
 
-    // The OUTPUTS line of a distro with a face (1.5): one plug chip per
-    // row - its connector, its name and how many - each a drag handle for
-    // "the next free one of these". A paired row's chip says so.
-    _dockFaceOutputsRow(d, face) {
+    // The OUTPUTS row's frame: the caption, then the chips in a column of
+    // their own beside it (owner pick A, 2026-10-20: "one chip per type"),
+    // so a second line of chips wraps under the first chip, never under
+    // the caption.
+    _dockOutputsShell() {
         const row = document.createElement('div');
         row.className = 'hw-dock-outputs';
         const cap = document.createElement('span');
         cap.className = 'hw-dock-outputs-cap';
         cap.textContent = 'OUTPUTS';
         row.appendChild(cap);
+        const chips = document.createElement('div');
+        chips.className = 'hw-dock-outputs-chips';
+        row.appendChild(chips);
+        return { row, chips };
+    }
+
+    // The OUTPUTS line of a distro with a face (1.5): one plug chip per
+    // connector TYPE - its connector, its name and how many the face has
+    // of it, every row of that type summed (owner pick A, 2026-10-20: three
+    // one-Socapex rows read "Socapex 208V × 3", not three chips of "× 1").
+    // Each chip is a drag handle for "the next free one of these", on
+    // whichever row it sits (_plugGate reads the chip's `group`). Paired
+    // rows keep a chip of their own that says so: their outputs are the
+    // same circuits as another row's, not more of them.
+    _dockFaceOutputsRow(d, face) {
+        const { row, chips } = this._dockOutputsShell();
         const name = d.name || d.id;
+        const groups = new Map();
         for (const r of face.rows) {
             const info = face.rowInfo.get(r.id);
             const t = this.faceBoxType(d, info.boxes[0]);
+            const key = `${t.name}|${r.pairedWith ? 'paired' : ''}`;
+            if (!groups.has(key)) groups.set(key, { t, infos: [] });
+            groups.get(key).infos.push(info);
+        }
+        for (const { t, infos } of groups.values()) {
+            const count = infos.reduce((n, info) => n + info.row.count, 0);
+            const free = infos.reduce((n, info) => n + this.faceRowFreeBoxes(d, info).length, 0);
+            const paired = infos.filter(info => info.row.pairedWith)
+                .map(info => this._faceRowSummary(d, info.row.pairedWith));
             const chip = this._plugChip(Object.assign({}, t, {
-                sub: `× ${r.count}${r.pairedWith ? ' · paired' : ''}`,
+                sub: `× ${count}${paired.length ? ' · paired' : ''}`,
             }));
-            chip.title = `${r.count} × ${t.name} on ${name}`
-                + (r.pairedWith ? `, paired with ${this._faceRowSummary(d, r.pairedWith)} `
+            chip.title = `${count} × ${t.name} on ${name}, ${free} free`
+                + (paired.length ? `, paired with ${[...new Set(paired)].join(' and ')} `
                     + '(the same circuits)' : '')
                 + `. Drag onto a screen: the next free ${t.name} takes the screen's next `
                 + (t.kind === 'direct' ? 'unassigned circuit.' : 'unassigned multi.')
                 + ' Refused, with the reason, when the screen cannot run on it.';
+            const group = infos.map(info => `face:${info.row.id}`);
             this._dockWireDraggable(chip, {
-                type: 'plug', distroId: d.id, output: t.id,
+                type: 'plug', distroId: d.id, output: t.id, group,
                 title: `${name} · ${t.name}`,
             }, `plug-${d.id}-${t.id}`);
-            row.appendChild(chip);
+            chips.appendChild(chip);
         }
         return row;
     }

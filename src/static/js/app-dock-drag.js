@@ -713,9 +713,18 @@ class _DockDrag {
         // A distro with a FACE (1.5): the payload names one of its rows
         // ('face:r2'), or - from the right-click menu, which asks by the
         // screen's own multi type - the first multi row that feeds it.
+        // The OUTPUTS chip is one per connector TYPE and names every row
+        // of that type (`group`): the first row with an output free deals,
+        // so the chip hands out the type's next free output whichever row
+        // it sits on; with none free, the first row says so.
         const face = d ? this.distroFace(d) : null;
         if (face) {
             let faceRow = this._faceRowFor(d, payload.output);
+            if (Array.isArray(payload.group) && payload.group.length > 1) {
+                const rows = payload.group.map(o => this._faceRowFor(d, o)).filter(Boolean);
+                faceRow = rows.find(info => this.faceRowFreeBoxes(d, info).length)
+                    || rows[0] || null;
+            }
             if (!faceRow && layer) {
                 const fits = face.rows.map(r => face.rowInfo.get(r.id))
                     .filter(info => info.conn.kind === 'multi' && !info.row.pairedWith);
@@ -778,10 +787,8 @@ class _DockDrag {
     // plug plan; `face` tells the release which way to land it.
     _facePlugDropPlan(payload, layer, gate) {
         const { d, type, glyph, faceRow } = gate;
-        const numbers = this._distroMultiNumbers(d.id);
         const direct = faceRow.conn.kind === 'direct';
-        const box = faceRow.boxes.find(b => !(numbers.get(b.number) || []).length
-            && !this._facePairedHolders(d, b.number, direct ? 1 : null).length);
+        const box = this.faceRowFreeBoxes(d, faceRow)[0];
         if (!box) {
             return { ok: false, glyph,
                      message: `Every ${type.name} on ${d.name || d.id} is in use.` };

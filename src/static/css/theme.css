@@ -609,6 +609,29 @@ select, .info-select {
 .hw-dock-col > .hw-dock-distro > .lrd-sec-body { padding:0; }
 .hw-dock-col > .hw-dock-distro.lrd-sec-collapsed { padding-bottom:6px !important; }
 .hw-dock-col > .hw-dock-distro > .hw-dock-legs { margin:2px 1px 4px; }
+/* the distro's header is its HANDLE (2026-10-20, owner pick C: "whole
+   header bar"): a raised bar a step lighter than the multi strips'
+   headers, a grab hand over all of it but its controls, and a grip a size
+   up from the strips' own, so grabbing the distro and grabbing a multi
+   read as two different things. */
+.hw-dock-col > .hw-dock-distro > .hw-dock-head-row.hw-dock-distro-head {
+  background:linear-gradient(#4a4a4a,#3a3a3a); border:1px solid #5c5c5c;
+  border-radius:4px; padding:3px 6px 3px 2px; margin-bottom:4px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.09), 0 1px 2px rgba(0,0,0,0.45);
+  cursor:grab; align-items:center; transition:background .12s, border-color .12s;
+}
+.hw-dock-col > .hw-dock-distro > .hw-dock-head-row.hw-dock-distro-head:hover {
+  background:linear-gradient(#545454,#424242); border-color:#6c6c6c;
+}
+.hw-dock-col > .hw-dock-distro > .hw-dock-head-row.hw-dock-distro-head:active { cursor:grabbing; }
+.hw-dock-distro-head > .hw-dock-grip {
+  color:#bdbdbd !important; font-size:16px; line-height:1; letter-spacing:-3px;
+  padding:0 5px 0 1px;
+}
+.hw-dock-distro-head > .hw-dock-name { cursor:text; }
+.hw-dock-distro-head .hw-dock-dragcue > i {
+  font:600 10px var(--font-ps); color:var(--ps-text); letter-spacing:0.2px;
+}
 /* the pair rule's gold edge must survive the box/unit frame above (same
    specificity, later sheet - restated so the role still reads) */
 .lrd-red-backup { border-left:2px solid #6b5626 !important; }
