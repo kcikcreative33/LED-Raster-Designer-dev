@@ -442,12 +442,13 @@ Object.assign(CanvasRenderer.prototype, {
             if (layer.showPowerCableTags === true && circuitNum != null
                     && window.app
                     && typeof window.app.powerCircuitCable === 'function') {
-                // An exported map is paperwork: a cable on a circuit no
-                // distro feeds (an older file's leftover) prints nowhere
-                // there - printedCircuitCable - while the working view
-                // still shows what is stored.
-                const cable = this.exportMode
-                        && typeof window.app.printedCircuitCable === 'function'
+                // A cable on a circuit no distro feeds draws nowhere, the
+                // working view included (printedCircuitCable): no distro, no
+                // extension. The owner, 2026-10-20: "i have no circuits on a
+                // distro but it shows extensions on my screen" - leftovers
+                // whose circuits were renumbered under them. Before, only an
+                // exported map left them off.
+                const cable = typeof window.app.printedCircuitCable === 'function'
                     ? window.app.printedCircuitCable(layer, circuitNum)
                     : window.app.powerCircuitCable(layer, circuitNum);
                 if (cable) cableText = cable.text;

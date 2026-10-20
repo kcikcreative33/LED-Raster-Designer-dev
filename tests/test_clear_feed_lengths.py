@@ -31,7 +31,8 @@ A length never reappears when a later feed takes the same multi index or
 the same socket; undo puts the lengths back; a locked screen keeps its own;
 a copy carries none; a shared box clears once; a pull-sheet edit on a row
 that went goes with it. Opening a show changes nothing - an orphan length an
-older file holds stays stored, and prints nowhere.
+older file holds stays stored, and prints nowhere, the working map
+included (2026-10-20).
 
 Every test checks the browser AND the server's project, waits on real
 conditions, and leaves the shared server project as it found it
@@ -1229,3 +1230,25 @@ def test_an_undo_whose_restore_lands_late_still_brings_the_cables_back(page):
                          " return Object.keys(s.card.portCables || {}).length === 5;"
                          " return false; }", arg=card, timeout=5000)
     assert _client_cables(pg, card) == SHARED_ALL
+
+
+def test_the_working_map_draws_no_extension_on_a_circuit_no_distro_feeds(page):
+    """The owner, 2026-10-20: "i have no circuits on a distro but it shows
+    extensions on my screen". A cable stored on a circuit nothing feeds is
+    left off the working map too, not only the paperwork: the fed circuit's
+    10' tag draws, the unfed circuit's 11' does not."""
+    pg = page
+    proj = pg.evaluate("""() => window.__fl.project({ layers: { A: {
+        powerSocaDistro: { 1: 'd1' }, powerSocaNumber: { 1: 6 },
+        showPowerCableTags: true,
+        powerCircuitCables: { 1: { ft: 10, connector: null }, 7: { ft: 11, connector: null } } } } })""")
+    pg.evaluate("(p) => window.__fl.open(p)", proj)
+    _settle(pg)
+    painted = pg.evaluate("""() => {
+        const r = window.canvasRenderer, ctx = r.ctx, oT = ctx.fillText;
+        const texts = [];
+        ctx.fillText = function (t, x, y, w) { texts.push(String(t)); return oT.call(ctx, t, x, y, w); };
+        try { r.render(); } finally { ctx.fillText = oT; }
+        return texts; }""")
+    assert any("10'" in t for t in painted), painted
+    assert not any("11'" in t for t in painted), [t for t in painted if "11'" in t]

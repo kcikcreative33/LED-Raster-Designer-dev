@@ -76,6 +76,9 @@ FIXES
 - FIX: After turning custom mode off, redrawing a circuit works again.
   Clicks and fills were refused as "already wired to other circuits"
   because the old custom drawing was still being counted.
+- FIX: A circuit that isn't on a distro no longer shows a cable tag on
+  the map. Lengths left over from an earlier setup stayed on screen after
+  the multis came off the distro.
 - FIX: A circuit you're redrawing stays highlighted until you press Esc,
   not just while Alt is held.
 - FIX: A 3fer on the second or third screen of a group, or one that
