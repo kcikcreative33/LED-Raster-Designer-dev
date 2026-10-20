@@ -1,5 +1,5 @@
 // app-dock-menus: the dock's right-click menus - the Clear, Merge,
-// Share / Un-share and batch items armed for a chip, run, card, box or
+// Share / Remove Nfer and batch items armed for a chip, run, card, box or
 // distro, and the chip payload reader they all start from. Moved verbatim
 // out of app-dock.js and attached to the prototype via the carrier class.
 import { LEDRasterApp } from './app-core.js';
@@ -144,19 +144,19 @@ class _DockMenus {
         const name = rec.name || `multi ${rec.number}`;
         if (!rec.distroId) {
             return {
-                label: `Clear multi ${name}`, disabled: true,
+                label: `Unplug multi ${name}`, disabled: true,
                 title: `${name} is not on a distro - there is nothing to `
-                    + 'clear.',
+                    + 'unplug.',
             };
         }
         return {
-            label: `Clear multi ${name}`,
-            title: 'Clear this multi - its distro, number, stored '
+            label: `Unplug multi ${name}`,
+            title: 'Unplug this multi - its distro, number, stored '
                 + 'positions, typed name, home-run length and label '
                 + 'overrides are all forgotten. One undo puts everything '
                 + 'back.',
             run: () => this._clearMultis(
-                [{ layerId: owner.id, soca: rec.index }], 'Clear Multi'),
+                [{ layerId: owner.id, soca: rec.index }], 'Unplug Multi'),
         };
     }
 
@@ -266,7 +266,7 @@ class _DockMenus {
     // The manual 2fer lever the retired Splitters panel rows carried, on
     // the surfaces the circuit actually lives on: right-click a drawn
     // circuit run or its chip and "Share with next run via 2fer" gangs it
-    // with the run after it (mergeSplitterCircuits), "Un-share" un-gangs a
+    // with the run after it (mergeSplitterCircuits), "Remove 3fer" un-gangs a
     // shared one (splitSplitterCircuits) - the existing ops, the existing
     // undo entries. Gated exactly as the panel rows were: packed auto
     // circuits (splitters on), or drawn custom circuits (merge-only by the
@@ -376,7 +376,7 @@ class _DockMenus {
                             ? 'Custom mode: a share past the amps is '
                                 + 'honored and the chip flags OVER. '
                             : '')
-                        + 'Undo un-shares it.',
+                        + 'Undo takes it back off.',
                     run: () => {
                         sendClientLog('dock_share',
                                       { layerId: layer.id, num: c.num });
@@ -390,11 +390,14 @@ class _DockMenus {
             }
         }
         if ((c.runIds || []).length > 1) {
+            // Named by what it takes apart (the owner, 2026-10-20:
+            // "unshare doesnt sound correct"): a 3fer reads "Remove 3fer".
+            const ways = c.runIds.length;
             out.unshare = {
-                label: 'Un-share',
-                title: `Un-share ${label}'s runs back onto circuits of `
+                label: `Remove ${ways}fer`,
+                title: `Put the ${ways} legs of ${label} back on circuits of `
                     + 'their own, and pin them out of auto packing. Undo '
-                    + 'restores the share.',
+                    + `puts the ${ways}fer back.`,
                 run: () => {
                     sendClientLog('dock_unshare',
                                   { layerId: layer.id, num: c.num });
@@ -610,18 +613,24 @@ class _DockMenus {
         if (!entries.length) return null;
         const out = { entries, scope };
         if (hasGang && !gated) {
+            // "Remove 3fers from this screen", naming the sizes it takes
+            // apart, like the single circuit's "Remove 3fer".
+            const removed = this._nferKindsText(this._wallCircuits(layer)
+                .filter(x => picked.has(`${x.layer.id}:${x.c.num}`)
+                    && !this._isTakenOverCircuit(x.layer, x.c.num)
+                    && (x.c.runIds || []).length > 1)
+                .map(x => x.c.runIds.length));
             out.unshare = {
-                label: scope === 'screen'
-                    ? 'Un-share this screen' : 'Un-share all',
-                title: 'Un-share every shared circuit '
+                label: `Remove ${removed} from `
+                    + (scope === 'screen' ? 'this screen' : 'these'),
+                title: `Put every leg of the ${removed} `
                     + (scope === 'screen'
                         ? 'on this screen' : 'in the selection')
-                    + ' back onto runs of their own. One undoable step.',
+                    + ' back on a circuit of its own. One undoable step.',
                 run: () => {
                     sendClientLog('power_batch_unshare',
                                   { layerId: layer.id, scope });
-                    const action = scope === 'screen'
-                        ? 'Un-share Screen' : 'Un-share Selection';
+                    const action = `Remove ${removed}`;
                     if (refs) {
                         // Across the wall each member un-shares in its own
                         // store - one PUT, one history entry.
@@ -644,6 +653,14 @@ class _DockMenus {
             };
         }
         return out;
+    }
+
+    // The splitter sizes in a list of ways, as words: [3, 3] -> "3fers",
+    // [2, 3] -> "2fers and 3fers", [2, 3, 4] -> "2fers, 3fers and 4fers".
+    _nferKindsText(ways) {
+        const kinds = [...new Set(ways)].sort((a, b) => a - b).map(n => `${n}fers`);
+        if (kinds.length <= 1) return kinds[0] || 'shares';
+        return `${kinds.slice(0, -1).join(', ')} and ${kinds[kinds.length - 1]}`;
     }
 
     // Why a deal of size `n` shares nothing when its runs span more columns
@@ -726,7 +743,7 @@ class _DockMenus {
                 return {
                     label, disabled: true,
                     title: `${payload.title} is free - there is nothing to `
-                        + 'clear.',
+                        + 'unplug.',
                 };
             }
             // Every claim is a pin (nothing lands any other way), so an
@@ -835,17 +852,17 @@ class _DockMenus {
                 payload.distroId, parseInt(payload.number, 10), payload.tail);
             if (!held) {
                 return {
-                    label: `Clear ${payload.title}`, disabled: true,
+                    label: `Unplug ${payload.title}`, disabled: true,
                     title: `${payload.title} is free - there is nothing to `
-                        + 'clear.',
+                        + 'unplug.',
                 };
             }
             const label = this.getPowerCircuitLabel(held.layer,
                                                     held.circuit);
             const rest = held.rec.circuits.length - 1;
             return {
-                label: `Clear circuit ${label}`,
-                title: `Take this circuit off ${held.rec.name || 'its multi'} `
+                label: `Unplug circuit ${label}`,
+                title: `Unplug this circuit from ${held.rec.name || 'its multi'} `
                     + 'and forget how it was programmed - its stored position and its '
                     + 'label override go with the assignment'
                     + (rest
@@ -859,14 +876,14 @@ class _DockMenus {
             };
         }
         if (payload.type === 'slot') {
-            const label = `Clear ${payload.title}`;
+            const label = `Unplug ${payload.title}`;
             const members = this._distroMultiNumbers(payload.distroId)
                 .get(payload.number) || [];
             if (!members.length) {
                 return {
                     label, disabled: true,
                     title: `${payload.title} is free - there is nothing to `
-                        + 'clear.',
+                        + 'unplug.',
                 };
             }
             const slotDistro = this.getDistros()
@@ -874,14 +891,14 @@ class _DockMenus {
             const slotType = this.distroBoxType(slotDistro, payload.number).type;
             return {
                 label,
-                title: `Clear every multi on this slot - the chip is the `
-                    + `${slotType.name}, and clearing it takes all its feeds and `
+                title: `Unplug every multi on this slot - the chip is the `
+                    + `${slotType.name}, and unplugging it takes all its feeds and `
                     + 'forgets how they were programmed: stored positions, '
                     + 'typed names, home-run lengths and label overrides. '
                     + 'One undoable step.',
                 run: () => this._clearMultis(
                     members.map(m => ({ layerId: m.layerId, soca: m.soca })),
-                    'Clear Multi'),
+                    'Unplug Multi'),
             };
         }
         if (payload.type === 'distro') {

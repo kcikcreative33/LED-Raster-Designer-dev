@@ -1671,7 +1671,7 @@ def test_drag_back_to_the_dock_unassigns_the_multi(dock_page):
     # 2026-08-29 undo audit: pulling the box off the wall is ONE decision and
     # ONE entry - the same promise the right-click clear (_clearMultis) makes
     # for this very chip - so a single Ctrl+Z puts every feed back at once.
-    assert page.evaluate(HIST_JS, 1) == ['Clear Multi']
+    assert page.evaluate(HIST_JS, 1) == ['Unplug Multi']
     page.evaluate("() => window.app.undo()")
     landed(page)
     out = page.evaluate("""(aId) => {
@@ -2359,12 +2359,12 @@ def test_right_click_on_a_circuit_clears_the_multi_in_one_step(dock_page):
     tgt = panel_point(page, ids['aId'], {'circuit': 0})
     item = right_click(page, tgt['x'], tgt['y'])
     assert item['shown'] and not item['disabled'], item
-    assert item['label'].startswith('Clear multi '), item
+    assert item['label'].startswith('Unplug multi '), item
     take_clear(page)
     out = page.evaluate(POWER_STATE_JS, ids['aId'])
     assert out == {'distro': {}, 'num': {}}, (
         f'the clear did not unassign the multi: {out}')
-    assert page.evaluate(HIST_JS, 1) == ['Clear Multi']
+    assert page.evaluate(HIST_JS, 1) == ['Unplug Multi']
     assert page.evaluate(HIST_LEN_JS) == before + 1, (
         'the multi clear is not ONE history entry')
     page.evaluate("() => window.app.undo()")
@@ -2398,13 +2398,13 @@ def test_a_slot_chip_right_click_clears_every_member_in_one_step(dock_page):
     sx, sy = dock_tile_center(page, f'slot-{ids["distroId"]}-1')
     item = right_click(page, sx, sy)
     assert item['shown'] and not item['disabled'], item
-    assert item['label'].startswith('Clear '), item
+    assert item['label'].startswith('Unplug '), item
     take_clear(page)
     for lid in (ids['aId'], ids['bId']):
         out = page.evaluate(POWER_STATE_JS, lid)
         assert out == {'distro': {}, 'num': {}}, (
             f'layer {lid} kept its assignment: {out}')
-    assert page.evaluate(HIST_JS, 1) == ['Clear Multi']
+    assert page.evaluate(HIST_JS, 1) == ['Unplug Multi']
     assert page.evaluate(HIST_LEN_JS) == before + 1, (
         'the box clear is not ONE history entry')
     page.evaluate("() => window.app.undo()")
@@ -2606,7 +2606,7 @@ def test_the_canvas_run_menu_keeps_layer_items_beside_the_clear(dock_page):
     tgt = panel_point(page, ids['aId'], {'circuit': 0})
     item = right_click(page, tgt['x'], tgt['y'])
     assert item['menuShown'] and item['shown'], item
-    assert item['label'].startswith('Clear multi '), item
+    assert item['label'].startswith('Unplug multi '), item
     state = page.evaluate(MENU_ITEMS_JS)
     for action in LAYER_ITEMS + ['hw-clear']:
         assert action in state['items'], (
@@ -4082,7 +4082,7 @@ def test_a_circuit_chips_menu_is_the_circuit_runs_menu(dock_page):
     sx, sy = dock_tile_center(page, f'tail-{ids["distroId"]}-1-1')
     item = right_click(page, sx, sy)
     assert item['menuShown'] and item['shown'] and not item['disabled'], item
-    assert item['label'].startswith('Clear circuit '), (
+    assert item['label'].startswith('Unplug circuit '), (
         f"the one-circuit chip must offer the circuit-scope clear: {item}")
     # 2026-08-31: a circuit chip names its screen, so it also carries the
     # screen's "Add <type> from…" outputs submenu (test_distro_outputs.py)
@@ -4094,7 +4094,7 @@ def test_a_circuit_chips_menu_is_the_circuit_runs_menu(dock_page):
     out = page.evaluate(POWER_STATE_JS, ids['bId'])
     assert out == {'distro': {}, 'num': {}}, (
         f'the chip clear did not unassign the multi: {out}')
-    assert page.evaluate(HIST_JS, 1) == ['Clear Circuit']
+    assert page.evaluate(HIST_JS, 1) == ['Unplug Circuit']
     assert page.evaluate(HIST_LEN_JS) == before + 1
 
     # a free chip: the item is there, disabled, and says why
@@ -4232,7 +4232,7 @@ def test_clear_multi_forgets_programming_and_one_undo_restores_it(dock_page):
     tgt = panel_point(page, ids['aId'], {'circuit': 0})
     item = right_click(page, tgt['x'], tgt['y'])
     assert item['shown'] and not item['disabled'], item
-    assert item['label'].startswith('Clear multi '), item
+    assert item['label'].startswith('Unplug multi '), item
     take_clear(page)
     out = page.evaluate(POWER_PROGRAMMING_JS, ids['aId'])
     assert out['distro'] == {} and out['num'] == {}, out
@@ -4244,7 +4244,7 @@ def test_clear_multi_forgets_programming_and_one_undo_restores_it(dock_page):
         f'the label override survived the clear: {out}')
     assert out['merge'] == [] and out['splitPins'] == [], (
         f'the manual share entries survived the clear: {out}')
-    assert page.evaluate(HIST_JS, 1) == ['Clear Multi']
+    assert page.evaluate(HIST_JS, 1) == ['Unplug Multi']
     assert page.evaluate(HIST_LEN_JS) == before + 1, (
         'the multi clear is not ONE history entry')
     # after the clear, positions deal naturally - nothing resurrects
@@ -4307,7 +4307,7 @@ def test_clear_circuit_chip_forgets_position_and_override(dock_page):
     sx, sy = dock_tile_center(page, f'tail-{ids["distroId"]}-1-5')
     item = right_click(page, sx, sy)
     assert item['shown'] and not item['disabled'], item
-    assert item['label'].startswith('Clear circuit '), item
+    assert item['label'].startswith('Unplug circuit '), item
     take_clear(page)
     out = page.evaluate(POWER_PROGRAMMING_JS, ids['bId'])
     assert out['distro'] == {} and out['num'] == {}, out
@@ -4317,7 +4317,7 @@ def test_clear_circuit_chip_forgets_position_and_override(dock_page):
         f'the label override survived the circuit clear: {out}')
     assert out['names'] == {'1': 'B BOX'}, (
         f"a circuit clear must keep the multi's typed name: {out}")
-    assert page.evaluate(HIST_JS, 1) == ['Clear Circuit']
+    assert page.evaluate(HIST_JS, 1) == ['Unplug Circuit']
     assert page.evaluate(HIST_LEN_JS) == before + 1, (
         'the circuit clear is not ONE history entry')
 
@@ -4429,7 +4429,7 @@ def test_drag_back_forgets_programming_like_the_clear(dock_page):
     assert out['distro'] == {} and out['num'] == {}, out
     assert out['pos'] == {} and out['names'] == {}, (
         f'the drag-back remembered the programming: {out}')
-    assert page.evaluate(HIST_JS, 1) == ['Clear Multi']
+    assert page.evaluate(HIST_JS, 1) == ['Unplug Multi']
     page.evaluate("() => window.app.undo()")
     landed(page)
     out = page.evaluate(POWER_PROGRAMMING_JS, ids['aId'])
@@ -4722,8 +4722,8 @@ def test_sweep_right_click_deals_nfers_in_one_entry(dock_page):
     assert items['n1'] and not items['n1']['disabled'], items
     assert items['share'] is None, (
         f'the single-run share must stand down behind a sweep: {items}')
-    # the packed 2fers count as existing gangs, so Un-share all is offered
-    assert items['unshare'] and items['unshare']['label'] == 'Un-share all', items
+    # the packed 2fers count as existing gangs, so removing them is offered
+    assert items['unshare'] and items['unshare']['label'] == 'Remove 2fers from these', items
 
     page.locator('#context-menu [data-action="hw-batch-n1"]').click()
     landed(page)

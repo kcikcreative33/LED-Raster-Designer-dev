@@ -1334,12 +1334,12 @@ class _DockDrag {
             // Clear every multi the chip names - the chip is the box, and
             // pulling the box off the wall pulls all its feeds. The SAME
             // clear the right-click of this very chip runs (_clearMultis):
-            // one gesture, one 'Clear Multi' entry, and the stored
+            // one gesture, one 'Unplug Multi' entry, and the stored
             // programming is forgotten with the assignment - two gestures
             // wearing one history name must not keep different paperwork.
             this._clearMultis(
                 members.map(m => ({ layerId: m.layerId, soca: m.soca })),
-                'Clear Multi');
+                'Unplug Multi');
         }
     }
 
@@ -1357,7 +1357,7 @@ class _DockDrag {
             // The drag-back: the chip is the circuit, and pulling it off
             // the wall takes that one circuit off its box - the SAME clear
             // the right-click of this very chip runs (_clearCircuitChip),
-            // one gesture, one 'Clear Circuit' entry. A free chip has
+            // one gesture, one 'Unplug Circuit' entry. A free chip has
             // nothing to release.
             const held = this._dockTailHolder(
                 payload.distroId, parseInt(payload.number, 10), payload.tail);

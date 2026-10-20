@@ -1050,7 +1050,7 @@ class _Power {
     // No history entry and none of the circuit's own paperwork here: the
     // dock's _clearCircuitChip wraps this with the wipe of the removed
     // circuit's programming (label override, manual splitter entries) and
-    // the one 'Clear Circuit' entry, so a single undo puts back the cuts,
+    // the one 'Unplug Circuit' entry, so a single undo puts back the cuts,
     // the stores and the positions together. Returns { touched,
     // removedIdx } or null when the circuit is not in that multi.
     //

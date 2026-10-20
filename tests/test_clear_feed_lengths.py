@@ -283,7 +283,7 @@ def test_clearing_a_multi_forgets_its_home_run_and_its_circuit_cables(page):
         it.run();
         return it.label;
     }""")
-    assert item and item.startswith('Clear multi'), item
+    assert item and item.startswith('Unplug multi'), item
     _settle(pg)
     assert _stores(pg, 'A') == {'lengths': {'2': '25'}, 'cables': [], 'distro': {'2': 'd1'}}
     srv = _wait_server(pg, lambda p: _srv_stores('A', p)['cables'] == [])

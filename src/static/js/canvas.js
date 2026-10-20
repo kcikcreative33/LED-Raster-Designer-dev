@@ -2083,6 +2083,17 @@ class CanvasRenderer {
                 && sw.nums.includes(num)))) {
             return true;
         }
+        // The run open for redrawing stays lit until the redraw ends (Esc,
+        // or another run picked): the owner, 2026-10-20, "it stays
+        // highlighted until after it has been redrawn". The Alt hover that
+        // picked it goes out the moment Alt is let go.
+        const ed = window.app && window.app._overrideEditing;
+        if (ed && ed.layerId === layer.id && ed.num === num
+                && ((ed.kind === 'power') === (this.viewMode === 'power'))
+                && typeof window.app._isOverrideEditing === 'function'
+                && window.app._isOverrideEditing(layer, ed.kind)) {
+            return true;
+        }
         const hov = window.app && window.app._overrideHover;
         if (hov && hov.layerId === layer.id && hov.num === num
                 && ((hov.kind === 'power') === (this.viewMode === 'power'))) {

@@ -404,7 +404,7 @@ def test_clear_circuit_chip_forgets_the_pip_drops_two_cuts(page):
     assert out['names'] == {'2': 'REST'}, (
         f'the welded multi lost the name that was on file: {out}')
     assert page.evaluate(HIST_LEN_JS) == hist + 1
-    assert page.evaluate(HIST_JS, 1) == ['Clear Circuit']
+    assert page.evaluate(HIST_JS, 1) == ['Unplug Circuit']
     undo(page)
     assert read(page, lid) == before
 
@@ -539,7 +539,7 @@ def test_clear_circuit_chip_welds_the_neighbouring_leftovers_too(page):
     assert out['distro'] == {'1': 'dtk'} and out['num'] == {'1': 1}, out
     assert out['pos'] == {}, out
     assert page.evaluate(HIST_LEN_JS) == hist + 1, 'not ONE history entry'
-    assert page.evaluate(HIST_JS, 1) == ['Clear Circuit']
+    assert page.evaluate(HIST_JS, 1) == ['Unplug Circuit']
     undo(page)
     assert read(page, lid) == before, 'one undo did not restore every cut'
 
@@ -869,7 +869,7 @@ def test_clear_the_sixth_circuit_leaves_the_other_five_where_they_were(page):
     assert labels(page, lid) == ['SR1-1', 'SR1-2', 'SR1-3', 'SR1-4', 'SR1-5', 'SR1-6']
     hist = page.evaluate(HIST_LEN_JS)
     item = chip_clear(page, 'dtk', 1, 6, 'SR 1 circuit 6')
-    assert item['label'] == 'Clear circuit SR1-6', item
+    assert item['label'] == 'Unplug circuit SR1-6', item
     assert 'other 5 circuits stay where they are' in item['title'], item
     assert 'tail' not in item['title'].lower(), item
     out = read(page, lid)
@@ -882,7 +882,7 @@ def test_clear_the_sixth_circuit_leaves_the_other_five_where_they_were(page):
     assert labels(page, lid)[:5] == ['SR1-1', 'SR1-2', 'SR1-3', 'SR1-4', 'SR1-5']
     assert tail_holder(page, 'dtk', 1, 6) is None, 'tail 6 is not free'
     assert page.evaluate(HIST_LEN_JS) == hist + 1, 'not ONE history entry'
-    assert page.evaluate(HIST_JS, 1) == ['Clear Circuit']
+    assert page.evaluate(HIST_JS, 1) == ['Unplug Circuit']
     undo(page)
     assert read(page, lid) == before, 'one undo did not put it back whole'
 
@@ -924,7 +924,7 @@ def test_clear_a_middle_circuit_keeps_the_tail_part_on_the_box(page):
         .find(x => x.id === id).powerLabelOverrides""", lid)
     assert list(overrides.values()) == ['KEPT'], overrides
     assert page.evaluate(HIST_LEN_JS) == hist + 1, 'not ONE history entry'
-    assert page.evaluate(HIST_JS, 1) == ['Clear Circuit']
+    assert page.evaluate(HIST_JS, 1) == ['Unplug Circuit']
     # ... and the box dropped back on the freed circuit puts it on its old
     # tail: the anchored take (2026-09-05) reaches 1-3 - 1-2 are already
     # on this box and are re-taken, 4-6 stay held - so the wall welds to
@@ -962,7 +962,7 @@ def test_clear_the_first_circuit_hands_the_identity_to_the_rest(page):
     assert labels(page, lid)[1:] == [
         'STAGE LEFT-2', 'STAGE LEFT-3', 'STAGE LEFT-4', 'STAGE LEFT-5',
         'STAGE LEFT-6']
-    assert page.evaluate(HIST_JS, 1) == ['Clear Circuit']
+    assert page.evaluate(HIST_JS, 1) == ['Unplug Circuit']
     undo(page)
     assert read(page, lid) == before
 
@@ -1035,7 +1035,7 @@ def test_the_chip_dragged_back_onto_the_tray_runs_the_same_clear(page):
     assert out['splits'] == [5] and out['shape'] == [5, 1], out
     assert out['pos'] == {'1': [1, 2, 3, 4, 5]}, out
     assert page.evaluate(HIST_LEN_JS) == hist + 1, 'not ONE history entry'
-    assert page.evaluate(HIST_JS, 1) == ['Clear Circuit']
+    assert page.evaluate(HIST_JS, 1) == ['Unplug Circuit']
     page.evaluate("""() => window.app._dockPerformDrop(
         { type: 'tail', distroId: 'dtk', number: 1, tail: 6,
           title: 'SR 1 circuit 6' }, { kind: 'dock' })""")

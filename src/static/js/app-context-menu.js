@@ -302,6 +302,19 @@ class _ContextMenu {
             }
         });
 
+        // Tab steps circuits in the Power view and ports everywhere else, so
+        // the two items say which.
+        const stepWord = (window.canvasRenderer
+            && window.canvasRenderer.viewMode === 'power') ? 'Circuit' : 'Port';
+        [['prev-port', 'Previous'], ['next-port', 'Next']].forEach(([action, word]) => {
+            const item = menu.querySelector(`[data-action="${action}"]`);
+            if (!item) return;
+            item.setAttribute('data-label', `${word} ${stepWord}`);
+            const key = item.getAttribute(this._isMacPlatform()
+                ? 'data-shortcut-mac' : 'data-shortcut-win');
+            item.textContent = key ? `${word} ${stepWord} (${key})` : `${word} ${stepWord}`;
+        });
+
         menu.style.visibility = 'hidden';
         menu.style.display = 'block';
         const menuRect = menu.getBoundingClientRect();

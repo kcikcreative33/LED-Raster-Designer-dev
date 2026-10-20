@@ -825,7 +825,7 @@ def test_clearing_a_taken_over_circuit_chip_keeps_the_auto_shares(page):
     page.evaluate("(id) => window.app._clearCircuitChip("
                   "window.__nf.layer(id), 2, 4)", wall)
     landed(page)
-    assert history(page)[-1] == 'Clear Circuit', history(page)
+    assert history(page)[-1] == 'Unplug Circuit', history(page)
     assert manual(page, wall)['merge'] == [[4, 5, 6]], manual(page, wall)
     c2 = next(c for c in circuits(page, wall) if c['num'] == 2)
     assert c2['runs'] == [5, 5, 5], c2

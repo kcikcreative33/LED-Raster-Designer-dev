@@ -547,7 +547,7 @@ def test_clearing_the_circuit_forgets_its_cable(page):
     }""", ids['id'])
     pg.wait_for_timeout(900)
     st = pg.evaluate(STATE_JS, ids['id'])
-    assert '6' not in st['cables'] and st['action'] == 'Clear Circuit', st
+    assert '6' not in st['cables'] and st['action'] == 'Unplug Circuit', st
     assert st['cables']['1'] == {'ft': 10, 'connector': None}, st
     pg.evaluate('() => window.app.undo()')
     pg.wait_for_timeout(900)

@@ -297,7 +297,7 @@ def test_chip_drag_to_tray_is_one_entry(page):
     }""", ids)
     assert out['grew'] == 1, (
         f'the tray drop is not ONE history entry: {out}')
-    assert out['last'] == 'Clear Multi', out
+    assert out['last'] == 'Unplug Multi', out
     assert page.evaluate(_multi_state_read(), ids) == '[{},{}]'
     page.evaluate("() => window.app.undo()")
     page.wait_for_timeout(400)

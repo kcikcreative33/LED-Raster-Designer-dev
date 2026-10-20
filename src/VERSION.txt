@@ -51,6 +51,13 @@ FIXES
 - FIX: In custom mode a group is one wall. Its circuits are numbered as
   one, and runs on different screens can share a circuit. A run drawn
   earlier on another screen joins the wall when you share it.
+- FIX: Right-click wording on the Power view says what it does. Un-share
+  is now Remove 3fer (or Remove 2fer), Un-share this screen is Remove
+  3fers from this screen, and the tray's Clear multi and Clear circuit
+  are Unplug multi and Unplug circuit. Previous and Next say Circuit
+  instead of Port.
+- FIX: A circuit you're redrawing stays highlighted until you press Esc,
+  not just while Alt is held.
 - FIX: A 3fer on the second or third screen of a group, or one that
   crosses from one screen to the next, draws as one circuit with one
   label. Before, each leg got its own label and the numbers ran off by

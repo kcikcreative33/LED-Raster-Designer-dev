@@ -3836,7 +3836,7 @@ class _HardwareDock {
             this._wipeSplitterManualFor(layer, runIds);
             this._circuitTailCache = null;
             this._dropPullEditsGoneWith(pullBefore);
-            this.updateLayers(r.touched, true, 'Clear Circuit');
+            this.updateLayers(r.touched, true, 'Unplug Circuit');
             this._restateNaming();
             return;
         }
@@ -3858,7 +3858,7 @@ class _HardwareDock {
             layer, this._socaClearSplitPoints(layer, [idx]));
         this._circuitTailCache = null;
         this._dropPullEditsGoneWith(pullBefore);
-        this.updateLayers([layer], true, 'Clear Circuit');
+        this.updateLayers([layer], true, 'Unplug Circuit');
         this._restateNaming();
     }
 

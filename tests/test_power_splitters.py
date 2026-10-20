@@ -1033,7 +1033,7 @@ def test_share_and_unshare_drive_the_merge_ops_from_the_chip(page, panel):
     page.evaluate("() => window.app.renderHardwareDock()")
     merged = page.evaluate(SHARE_PROBE_JS, [1, None])
     assert merged['share'] == 'Share with next run via 3fer', merged
-    assert merged['unshare'] == 'Un-share', merged
+    assert merged['unshare'] == 'Remove 2fer', merged
     last = page.evaluate(SHARE_PROBE_JS, [3, None])
     assert last['found'] and last['unshare'] is None, (
         f"Un-share belongs only on a merged circuit: {last}")
