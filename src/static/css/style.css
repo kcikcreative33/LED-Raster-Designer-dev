@@ -1945,14 +1945,21 @@ body { font-family: Arial, sans-serif; background: #1a1a1a; color: #e0e0e0; over
     stroke-linecap: round; stroke-linejoin: round;
 }
 .hw-plug-g .pin { fill: currentColor; stroke: none; }
-/* the OUTPUTS row under LEGS: same register as the LEGS line, wrapping
-   rather than clipping when the unit is narrow */
+/* the OUTPUTS row under LEGS: same register as the LEGS line. The caption
+   holds its column; the chips (one per connector type) sit in their own
+   column beside it and wrap there rather than clipping when the unit is
+   narrow, so a second line of chips never drops under the caption. */
 .hw-dock-outputs {
-    display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+    display: flex; align-items: flex-start; gap: 6px;
     margin: 4px 6px 2px; font: 9px ui-monospace, Menlo, monospace;
     color: #777; letter-spacing: 0.5px; min-width: 0;
 }
-.hw-dock-outputs-cap { flex: 0 0 auto; }
+/* the caption sits level with the FIRST line of chips: a plug chip's
+   two text lines plus its padding and rim come to about 31px */
+.hw-dock-outputs-cap { flex: 0 0 auto; line-height: 31px; }
+.hw-dock-outputs-chips {
+    display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 auto; min-width: 0;
+}
 /* the plug chip: a small machined tab, grabbable, the face on the left */
 .hw-dock-plug {
     display: inline-flex; align-items: center; gap: 6px; cursor: grab;
@@ -2341,6 +2348,25 @@ button.hw-dock-typechip:focus-visible { outline: 1px solid var(--ps-accent, #ef3
     flex: 0 0 auto; margin-left: auto; max-width: 100%;
 }
 .hw-dock-head-acts > .hw-dock-unit-info { margin-left: 0; }
+/* The distro header bar's hover hint (app-dock.js _dockBuildDistro): it
+   takes the free stretch before the group and never pushes anything to a
+   new line (zero basis); narrower than its words, it hides rather than
+   clips. Clicks fall through to the bar, so the stretch drags. */
+.hw-dock-dragcue {
+    flex: 1 1 0; min-width: 0; align-self: center; text-align: right;
+    container-type: inline-size; pointer-events: none;
+}
+.hw-dock-dragcue > i {
+    font-style: normal; white-space: nowrap; opacity: 0;
+    transition: opacity .12s;
+}
+.hw-dock-dragcue > i::before { content: attr(data-cue); }
+.hw-dock-distro-head:hover:not(:has(input:hover, button:hover)) .hw-dock-dragcue > i {
+    opacity: 1;
+}
+@container (max-width: 110px) {
+    .hw-dock-dragcue > i { display: none; }
+}
 .hw-dock-names {
     flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 2px 6px;
     align-items: baseline; min-width: 0;

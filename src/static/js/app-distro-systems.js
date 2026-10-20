@@ -718,6 +718,16 @@ class _DistroSystems {
         return face && face.rowInfo.get(m[1]) ? face.rowInfo.get(m[1]) : null;
     }
 
+    // A face row's outputs nobody holds - nor its pair (ruling 7) - in
+    // face order: what a drag of that row deals next, and what the OUTPUTS
+    // chip counts as free.
+    faceRowFreeBoxes(d, info) {
+        const numbers = this._distroMultiNumbers(d.id);
+        const direct = info.conn.kind === 'direct';
+        return info.boxes.filter(b => !(numbers.get(b.number) || []).length
+            && !this._facePairedHolders(d, b.number, direct ? 1 : null).length);
+    }
+
     _isDirectBox(distroId, number) {
         const d = this.getDistros().find(x => x.id === distroId);
         const box = d ? this.faceBox(d, number) : null;
