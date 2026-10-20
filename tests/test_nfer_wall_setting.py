@@ -714,3 +714,38 @@ def test_a_split_feeds_every_leg_from_the_same_end_like_auto(page):
         return [2, 3, 4].map(n => [p[n][0].row, p[n][p[n].length - 1].row]);
     }""", wall)
     assert heads == [[0, 4]] * 3, heads
+
+
+DRAWN_LABELS_JS = """(ids) => {
+    const app = window.app;
+    const l = window.__nf.layer(ids[0]);
+    const asked = [];
+    const real = app.getPowerCircuitLabel;
+    app.getPowerCircuitLabel = function (layer, num) {
+        if (layer && ids.includes(layer.id)) asked.push(parseInt(num, 10));
+        return real.apply(this, arguments);
+    };
+    app._circuitTailCache = null;
+    try { window.canvasRenderer.render(); } finally { app.getPowerCircuitLabel = real; }
+    return { asked: [...new Set(asked)].sort((x, y) => x - y),
+             circuits: app.screenCircuits(l).map(c => c.num) };
+}"""
+
+
+def test_a_grouped_custom_3fer_on_a_peer_draws_as_one_circuit(page):
+    """The owner's wall after "3fer this screen" (2026-10-20): every 3fer
+    whose legs sit on a group peer - wholly on B, or across B and C - draws
+    ONE bubble under its circuit's number. It drew every leg as a circuit
+    of its own, each printing its own raw leg number: S2-2, S2-2, S2-3 ...
+    and an S3-4 on a wall of 15 circuits."""
+    close_menu(page)
+    a, b, c = make(page, [{'name': 'A', 'columns': 6},
+                          {'name': 'B', 'columns': 4, 'x': 1200},
+                          {'name': 'C', 'columns': 6, 'x': 2000}], group=True)
+    page.evaluate(AUTO_LAYOUT_JS, [a, b, c])
+    landed(page)
+    menu_at(page, pt(page, a, 2, 0))
+    take(page, 'hw-batch-n1')
+    assert [x['runs'] for x in circuits(page, a)] == [[5, 5, 5]] * 5 + [[5]]
+    drawn = page.evaluate(DRAWN_LABELS_JS, [a, b, c])
+    assert drawn['asked'] == drawn['circuits'], drawn

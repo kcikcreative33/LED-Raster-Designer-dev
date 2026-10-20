@@ -643,9 +643,12 @@ Object.assign(CanvasRenderer.prototype, {
                 .sort((a, b) => a - b);
             // Manual splitter merges: the group's member paths draw as the
             // BRANCHES of one shared circuit - one label (the first member's
-            // number), dashed stubs to the other runs. A group touching a
-            // cross-member path keeps the per-path drawing (the overlay pass
-            // machinery owns those), so nothing is wired twice.
+            // number), dashed stubs to the other runs. A share with a leg on
+            // a group peer draws the same way, whole, in the overlay pass:
+            // drawn leg by leg, every leg past the first printed its own raw
+            // number as a circuit of its own - a grouped custom wall of 3fers
+            // read S2-2, S2-2, S2-3 ... and S3-4 on a 15-circuit wall
+            // (2026-10-20).
             const groups = (window.app && typeof window.app.appliedSplitterGroups === 'function')
                 ? window.app.appliedSplitterGroups(layer, circuitNums).merge : [];
             const inG = new Map();
@@ -657,15 +660,19 @@ Object.assign(CanvasRenderer.prototype, {
             circuitNums.forEach(circuitNum => {
                 if (done.has(circuitNum)) return;
                 const g = inG.get(circuitNum);
-                if (g && !this._crossMemberPass) {
+                if (g) {
                     const members = g.filter(n => circuitNums.includes(n));
                     const crosses = members.some(n =>
                         this._pathCrossesMembers(layer, layer.powerCustomPaths[n] || []));
+                    members.forEach(n => done.add(n));
                     if (!crosses) {
-                        members.forEach(n => done.add(n));
-                        drawCircuitBranches(members.map(homePanelsOf), members[0]);
+                        if (!this._crossMemberPass) drawCircuitBranches(members.map(homePanelsOf), members[0]);
                         return;
                     }
+                    if (this._deferCrossMember(layer, true)) return;
+                    drawCircuitBranches(members.map(n =>
+                        this._crossMemberDrawPanels(layer, layer.powerCustomPaths[n] || [])), members[0]);
+                    return;
                 }
                 const path = layer.powerCustomPaths[circuitNum] || [];
                 // v0.11.0: same split as the data-flow custom branch, and it has

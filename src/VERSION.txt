@@ -51,6 +51,10 @@ FIXES
 - FIX: In custom mode a group is one wall. Its circuits are numbered as
   one, and runs on different screens can share a circuit. A run drawn
   earlier on another screen joins the wall when you share it.
+- FIX: A 3fer on the second or third screen of a group, or one that
+  crosses from one screen to the next, draws as one circuit with one
+  label. Before, each leg got its own label and the numbers ran off by
+  one.
 - FIX: Turning custom mode on starts the screen empty, circuit labels you
   typed included.
 - FIX: Clearing a circuit you took over no longer clears the 2fer or 3fer
