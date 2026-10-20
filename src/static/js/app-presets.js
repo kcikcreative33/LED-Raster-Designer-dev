@@ -656,6 +656,12 @@ class _Presets {
     }
 
     _toast(msg, isError, durationMs) {
+        // A refusal the user reads must reach the log too: a redraw refused
+        // with "already wired" left no trace in the log the owner sent
+        // (2026-10-20).
+        if (isError && typeof sendClientLog === 'function') {
+            sendClientLog('toast_error', { message: String(msg).slice(0, 500) });
+        }
         let host = document.getElementById('app-toast-host');
         if (!host) {
             host = document.createElement('div');

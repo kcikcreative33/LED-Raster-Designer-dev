@@ -751,9 +751,18 @@ class _CrossLayerPaths {
         if (!ownerLayer || !panel) return null;
         const source = panelLayer || ownerLayer;
         const key = this.getScopedPanelKey(source.id, panel);
+        const kind = pathsKey === 'powerCustomPaths' ? 'power' : 'data';
         for (const scope of this.getPathScopeLayers(ownerLayer)) {
             const paths = scope && scope[pathsKey];
             if (!paths) continue;
+            // On an automatic screen only the runs taken over by hand hold
+            // cabinets. A screen switched back from custom keeps its old
+            // drawing in the same dict, unused, and reading it refused every
+            // redraw on the wall: "5 panels already wired to other circuits,
+            // R1C20 on Screen2 -> circuit 40" on a wall of 15 automatic
+            // circuits (the owner, 2026-10-20).
+            const custom = kind === 'power' ? this.isCustomPower(scope) : this.isCustomFlow(scope);
+            const live = custom ? null : new Set(this.getOverrideNums(scope, kind));
             for (const numStr of Object.keys(paths)) {
                 // Number("0") is 0, which is falsy - the old `Number(s) || s`
                 // handed back the STRING "0" and then failed to match a
@@ -768,6 +777,7 @@ class _CrossLayerPaths {
                 // member's own requirement), so a cabinet already claimed by
                 // the peer's port 1 genuinely is taken.
                 if (scope.id === ownerLayer.id && num === excludeNum) continue;
+                if (live && !live.has(num)) continue;
                 const path = paths[numStr] || [];
                 const hit = path.some(e => e && this.getScopedPanelKey(
                     this.getPathEntryLayerId(scope, e), e) === key);

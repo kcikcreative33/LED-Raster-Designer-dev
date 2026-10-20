@@ -67,3 +67,51 @@ def test_the_circuit_being_redrawn_stays_lit_until_esc(page):
     page.keyboard.press('Escape')
     landed(page)
     assert not page.evaluate(lit, wall), 'Esc ends the redraw and its highlight'
+
+
+# ── a screen back from custom keeps its old drawing, unused ───────────────
+#
+# The owner, 2026-10-20, on beta.4: custom off, take a circuit over, and
+# every click or fill was refused - "5 panels already wired to other
+# circuits, R1C20 on Screen2 -> circuit 40". The old custom drawing stays in
+# powerCustomPaths after custom goes off; only the runs taken over by hand
+# may hold cabinets on an automatic screen.
+
+def _back_from_custom(page):
+    from test_nfer_custom_rulings import custom_on, fill
+    (wall,) = make(page, [{'name': 'Wall', 'columns': 10}])
+    page.evaluate("() => window.app.hideContextMenu()")
+    custom_on(page)
+    assert fill(page, [(wall, 0, 9)])
+    custom_on(page)    # and off again: the drawing stays in the dict
+    assert page.evaluate("(id) => window.__nf.layer(id).powerFlowPattern", wall) != 'custom'
+    assert page.evaluate("(id) => Object.keys(window.__nf.layer(id).powerCustomPaths).length", wall) > 0
+    return wall
+
+
+def test_a_redraw_after_custom_off_adds_the_clicked_cabinet(page):
+    wall = _back_from_custom(page)
+    alt_click(page, pt(page, wall, 0, 4))
+    num = page.evaluate("(id) => window.__nf.layer(id).powerCustomIndex", wall)
+    before = page.evaluate("([id, n]) => window.__nf.layer(id).powerCustomPaths[n].length", [wall, num])
+    q = pt(page, wall, 0, 9)
+    page.mouse.click(q['x'], q['y'])
+    landed(page)
+    after = page.evaluate("([id, n]) => window.__nf.layer(id).powerCustomPaths[n].map(e => [e.row, e.col])",
+                          [wall, num])
+    assert len(after) == before + 1 and after[-1] == [0, 9], after
+    page.keyboard.press('Escape')
+    landed(page)
+
+
+def test_a_refused_redraw_is_in_the_log(page):
+    """A refusal the user reads reaches the log as toast_error."""
+    (wall,) = make(page, [{'name': 'Wall', 'columns': 4}])
+    sent = page.evaluate("""async () => {
+        const blobs = [];
+        const real = navigator.sendBeacon;
+        navigator.sendBeacon = (url, body) => { if (String(url).includes('/api/log')) blobs.push(body); return true; };
+        try { window.app._toast('Cannot apply: test refusal', true); }
+        finally { navigator.sendBeacon = real; }
+        return Promise.all(blobs.map(b => (typeof b === 'string' ? b : b.text()))); }""")
+    assert any('toast_error' in s and 'test refusal' in s for s in sent), sent

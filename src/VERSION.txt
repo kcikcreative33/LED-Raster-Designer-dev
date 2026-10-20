@@ -73,6 +73,9 @@ FIXES
   label. Dragging the chip hands out the next free output of that type.
 - FIX: The whole header bar of a distro is the handle for dragging it
   onto a screen, and it says so when you hover it.
+- FIX: After turning custom mode off, redrawing a circuit works again.
+  Clicks and fills were refused as "already wired to other circuits"
+  because the old custom drawing was still being counted.
 - FIX: A circuit you're redrawing stays highlighted until you press Esc,
   not just while Alt is held.
 - FIX: A 3fer on the second or third screen of a group, or one that
