@@ -79,6 +79,10 @@ FIXES
   3fers from this screen, and the tray's Clear multi and Clear circuit
   are Unplug multi and Unplug circuit. Previous and Next say Circuit
   instead of Port.
+- FIX: A half-size cabinet draws half the watts of a full one, unless
+  the panel library lists its half with its own watts. It used to count as
+  65%, which made a wall with a row of half cabinets read a few percent
+  heavy. Weight is unchanged.
 - FIX: A distro's rating reads its service size first, like 200 A
   service · 120/208V 3φ. Cam inputs are named by their amps (200 A), and
   the binder only names the input when it differs from the service.

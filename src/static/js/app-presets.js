@@ -312,10 +312,12 @@ class _Presets {
                 this._panelCatalogFlat.push(Object.assign({ _mfr: mfr, _searchKey: (mfr + ' ' + (p.name || '')).toLowerCase() }, p));
             });
         });
-        // A half tile's weight reads the catalog (catalogHalfWeightKg): a
-        // new catalog answers afresh, and a wall already drawn with half
-        // tiles is redrawn with the weights it now gives.
+        // A half tile's weight and watts read the catalog
+        // (catalogHalfWeightKg, catalogHalfWattsRatio): a new catalog
+        // answers afresh, and a wall already drawn with half tiles is
+        // redrawn with the figures it now gives.
         this._halfWeightCache = new Map();
+        this._halfWattsCache = new Map();
         const layers = (this.project && this.project.layers) || [];
         if (layers.some(l => (l.panels || []).some(q => q && q.halfTile && q.halfTile !== 'none'))) {
             if (window.canvasRenderer && typeof window.canvasRenderer.render === 'function') window.canvasRenderer.render();
@@ -445,6 +447,64 @@ class _Presets {
         }
         if (found && halves.size === 1 && !halves.has(null)) answer = [...halves][0];
         this._halfWeightCache.set(key, answer);
+        return answer;
+    }
+
+    // A screen's half tile's share of the full cabinet's WATTS from the
+    // library, or null (the caller's 50%). The model is found the way
+    // catalogHalfWeightKg finds it - every library model whose size (mm and
+    // pixels) and weight are this screen's cabinet's - and each must have a
+    // perfect half (same series, exactly half on the halved axis, the same
+    // pitch) with watts listed on both, all giving one share. Null while
+    // the library is still loading; the walls redraw when it lands.
+    catalogHalfWattsRatio(layer, axis) {
+        if (!layer || (axis !== 'height' && axis !== 'width')) return null;
+        this._halfWeightAsked = true;
+        if (!this._panelCatalog) {
+            if (typeof this._ensurePanelCatalogData === 'function') this._ensurePanelCatalogData();
+            return null;
+        }
+        const w = Number(layer.panel_weight) || 20;
+        const kg = (layer.weight_unit || 'kg') === 'lb' ? w / 2.20462 : w;
+        const key = [layer.panel_width_mm, layer.panel_height_mm, layer.cabinet_width, layer.cabinet_height,
+                     kg.toFixed(4), axis].join('|');
+        if (!this._halfWattsCache) this._halfWattsCache = new Map();
+        if (this._halfWattsCache.has(key)) return this._halfWattsCache.get(key);
+        const num = (v) => (v === null || v === undefined || v === '' ? NaN : Number(v));
+        const same = (a, b) => num(a) > 0 && num(a) === num(b);
+        const dims = (p) => ['width_mm', 'height_mm', 'pixels_w', 'pixels_h', 'pitch_mm'].map(k => num(p[k]));
+        const ratios = new Set();
+        let found = 0, short = false;
+        for (const mfr of Object.keys(this._panelCatalog)) {
+            for (const F of this._panelCatalog[mfr] || []) {
+                if (!same(F.width_mm, layer.panel_width_mm) || !same(F.height_mm, layer.panel_height_mm)
+                        || !same(F.pixels_w, layer.cabinet_width) || !same(F.pixels_h, layer.cabinet_height)) continue;
+                if (!(num(F.weight_kg) > 0) || Math.abs(num(F.weight_kg) - kg) > 0.006) continue;
+                found++;
+                const series = this._catalogSizeToken(F, 'full');
+                const [fw, fh, fpw, fph, fp] = dims(F);
+                if (series === null || !(num(F.watts_max) > 0) || ![fw, fh, fpw, fph, fp].every(v => v > 0)) {
+                    short = true;
+                    continue;
+                }
+                const mine = new Set();
+                for (const H of this._panelCatalog[mfr] || []) {
+                    if (H === F) continue;
+                    const [hw, hh, hpw, hph, hp] = dims(H);
+                    if (![hw, hh, hpw, hph, hp].every(v => v > 0) || hp !== fp) continue;
+                    const halved = axis === 'width'
+                        ? (hh === fh && hph === fph && hw * 2 === fw && hpw * 2 === fpw)
+                        : (hw === fw && hpw === fpw && hh * 2 === fh && hph * 2 === fph);
+                    if (!halved || !(num(H.watts_max) > 0)) continue;
+                    if (this._catalogSizeToken(H, 'half') !== series) continue;
+                    mine.add(num(H.watts_max) / num(F.watts_max));
+                }
+                if (mine.size !== 1) { short = true; continue; }
+                ratios.add([...mine][0]);
+            }
+        }
+        const answer = (found && !short && ratios.size === 1) ? [...ratios][0] : null;
+        this._halfWattsCache.set(key, answer);
         return answer;
     }
 

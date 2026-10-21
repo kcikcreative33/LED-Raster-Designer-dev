@@ -4,7 +4,33 @@ import { LEDRasterApp } from './app-core.js';
 import { evaluateMathExpression, sendClientLog, refreshAllColorSwatches } from './helpers.js';
 
 class _ScreenInfo {
+    // A cabinet's share of the screen's per-cabinet WATTS: 1 for a full
+    // cabinet; a half tile draws half (owner, 2026-10-20: "we can change it
+    // to 50% unless stated otherwise by the panel type in panel library") -
+    // or, where the library has the model's matching half-size variant with
+    // watts on both, that half's share of the full model's watts
+    // (catalogHalfWattsRatio). Any other part-cabinet draws by its area.
+    // It used to be area x 1.3 (0.65 a half), which read a wall with a half
+    // row about 3% heavy.
     getPanelLoadFactor(layer, panel) {
+        const fullPixels = this.getFullPanelPixels(layer);
+        const panelPixels = this.getPanelPixelArea(panel);
+        if (fullPixels <= 0 || panelPixels <= 0) return 0;
+        const areaRatio = panelPixels / fullPixels;
+        if (areaRatio >= 0.999) return 1;
+        const axis = panel && panel.halfTile;
+        if ((axis === 'height' || axis === 'width') && typeof this.catalogHalfWattsRatio === 'function') {
+            const ratio = this.catalogHalfWattsRatio(layer, axis);
+            if (ratio > 0) return Math.min(1, ratio);
+        }
+        return Math.min(1, areaRatio);
+    }
+
+    // A part-cabinet's share of the full cabinet's WEIGHT where the library
+    // names no half: 0.65 a half tile (area x 1.3), as it always was - the
+    // frame and electronics weigh more than half. Power reads
+    // getPanelLoadFactor; weight keeps this.
+    _panelWeightFactor(layer, panel) {
         const fullPixels = this.getFullPanelPixels(layer);
         const panelPixels = this.getPanelPixelArea(panel);
         if (fullPixels <= 0 || panelPixels <= 0) return 0;
@@ -18,12 +44,12 @@ class _ScreenInfo {
     // for the model's matching half-size variant where the library has
     // one that matches perfectly (catalogHalfWeightKg: same manufacturer
     // and series, exactly half on the halved axis, the same pitch), else
-    // 0.65 of the full cabinet's - the load factor (getPanelLoadFactor),
-    // as it always was. Power keeps the load factor either way.
+    // 0.65 of the full cabinet's (_panelWeightFactor), as it always was.
+    // Power reads its own factor (getPanelLoadFactor).
     getPanelWeightKg(layer, panel) {
         const w = Number(layer && layer.panel_weight) || 20;
         const fullKg = ((layer && layer.weight_unit) || 'kg') === 'lb' ? w / 2.20462 : w;
-        const factor = this.getPanelLoadFactor(layer, panel);
+        const factor = this._panelWeightFactor(layer, panel);
         const axis = panel && panel.halfTile;
         if (factor > 0 && factor < 1 && (axis === 'height' || axis === 'width')
                 && typeof this.catalogHalfWeightKg === 'function') {
