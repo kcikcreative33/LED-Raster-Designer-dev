@@ -1957,8 +1957,10 @@ class _Wiring {
                 const owner = this.powerPathOwner(this.currentLayer);
                 const circuitNum = owner.powerCustomIndex || 1;
                 // This screen's circuit, and - whole - any peer's circuit of
-                // the same number that lands here - see clearCustomRun.
-                const { touched, skipped } = this.clearCustomRun(owner, 'power', circuitNum);
+                // the same number that lands here - see clearCustomRun. A
+                // custom 2fer / 3fer is one circuit: every leg goes, in one
+                // entry (clearCustomCircuit).
+                const { touched, skipped } = this.clearCustomCircuit(owner, circuitNum);
                 if (touched.length) {
                     this.saveState('Power Custom Clear Circuit');
                     this.saveClientSideProperties();
@@ -2000,21 +2002,28 @@ class _Wiring {
                 // The active circuit of a custom group is the wall owner's
                 // (powerPathOwner).
                 const owner = this.powerPathOwner(this.currentLayer);
+                // The field reads and takes the CIRCUIT on a custom wall:
+                // 5 is the fifth circuit, a 3fer's legs counted once
+                // (customCircuitRun), never the drawn run numbered 5.
+                const shownNow = () => `${this.customCircuitShown(owner, owner.powerCustomIndex || 1)}`;
+                const typed = parseInt(powerCustomActive.value, 10);
+                const typedCircuit = (Number.isFinite(typed) && typed >= 1
+                        && !this._isOverrideEditing(owner, 'power'))
+                    ? this.customCircuitRun(owner, typed) : typed;
                 // The number already active is no change, so no error.
-                const typedCircuit = parseInt(powerCustomActive.value, 10);
                 if (owner.locked
                         && typedCircuit === (owner.powerCustomIndex || 1)) return;
                 if (this._lockedStepRefused(owner)) {
-                    powerCustomActive.value = `${owner.powerCustomIndex || 1}`;
+                    powerCustomActive.value = shownNow();
                     return;
                 }
                 this.ensureCustomPowerState(owner);
-                const nextVal = parseInt(powerCustomActive.value, 10);
+                const nextVal = typedCircuit;
                 // Pinned to the override list while one is open - see the
                 // data-flow input above.
                 if (this._isOverrideEditing(owner, 'power')
                         && !this.getOverrideNums(owner, 'power').includes(nextVal)) {
-                    powerCustomActive.value = `${owner.powerCustomIndex || 1}`;
+                    powerCustomActive.value = shownNow();
                     return;
                 }
                 if (Number.isFinite(nextVal) && nextVal >= 1) {

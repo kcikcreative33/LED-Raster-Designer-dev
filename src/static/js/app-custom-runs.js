@@ -100,6 +100,9 @@ class _CustomRuns {
     customHitLoad(kind, hitLayer, panel) {
         if (!panel) return 0;
         if (kind === 'power') {
+            // a blank cabinet (the old `blank` flag on a drawn path) draws
+            // nothing, as every other load figure leaves it out
+            if (panel.blank) return 0;
             return (parseFloat(hitLayer && hitLayer.panelWatts) || 0)
                 * this.getPanelLoadFactor(hitLayer, panel);
         }
@@ -330,7 +333,7 @@ class _CustomRuns {
 
     _customRunLabel(owner, kind, num) {
         return kind === 'power'
-            ? this.getPowerCircuitLabel(owner, num)
+            ? this.getPowerCircuitLabel(owner, this._customCircuitHead(owner, num))
             : this.getPortLabelText(owner, num, 'primary');
     }
 

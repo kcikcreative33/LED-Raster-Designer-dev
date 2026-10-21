@@ -1007,8 +1007,9 @@ def test_share_menu_arms_by_the_old_rows_gate(page, panel):
 def test_share_and_unshare_drive_the_merge_ops_from_the_chip(page, panel):
     """.run() on the armed entries is the manual lever itself. Share gangs
     the circuit with the next run (mergeSplitterCircuits, under the rows'
-    old 'Edit Splitter Groups' action); the merged chip re-arms as a 3fer
-    Share plus Un-share while the LAST circuit still offers neither; and
+    old 'Edit Splitter Groups' action); the merged chip offers Remove 2fer
+    and Share stays on it disabled (a custom 2fer never joins another),
+    while the LAST circuit still offers neither; and
     Un-share dissolves the group (splitSplitterCircuits) without pinning
     the drawn circuits."""
     panel(CUSTOM3)
@@ -1034,7 +1035,12 @@ def test_share_and_unshare_drive_the_merge_ops_from_the_chip(page, panel):
     page.wait_for_timeout(100)   # the deferred restate re-renders the dock
     page.evaluate("() => window.app.renderHardwareDock()")
     merged = page.evaluate(SHARE_PROBE_JS, [1, None])
-    assert merged['share'] == 'Share with next run via 3fer', merged
+    # custom mode joins only single-run circuits (the owner's ruling,
+    # 2026-10-19): the 2fer keeps the entry, disabled, the reason its title
+    assert merged['share'] == 'Share with next run', merged
+    full = page.evaluate(SHARE_FULL_PROBE_JS, 1)
+    assert full['disabled'] and not full['runnable'], full
+    assert 'is already a 2fer' in full['title'], full
     assert merged['unshare'] == 'Remove 2fer', merged
     last = page.evaluate(SHARE_PROBE_JS, [3, None])
     assert last['found'] and last['unshare'] is None, (
@@ -1134,8 +1140,18 @@ SPLIT_STATE_JS = """() => {
              over: window.canvasRenderer._nferGangs(l).map(g => g.over) };
 }"""
 
-OVER_TEXT = 'share past the amps only in custom mode'
+OVER_TEXT = 'Share past the amps only in custom mode.'
 BATCH_NONE_TEXT = 'no runs here fit on one circuit together'
+
+# A refusal names circuits by the labels the wall prints, never by run
+# number (the owner, 2026-10-21): "S1-1 and S1-2 together draw ...".
+NAMES_JS = """(nums) => {
+    const app = window.app, l = app.currentLayer;
+    app._circuitTailCache = null;
+    const n = nums.map(x => app.getPowerCircuitLabel(l, x));
+    return n.length === 1 ? n[0]
+        : n.slice(0, -1).join(', ') + ' and ' + n[n.length - 1];
+}"""
 
 
 def test_auto_mode_refuses_a_share_past_the_amps(page, panel):
@@ -1157,21 +1173,22 @@ def test_auto_mode_refuses_a_share_past_the_amps(page, panel):
     assert share['found'] and share['label'] == 'Share with next run via 2fer', share
     assert share['disabled'] and not share['runnable'], (
         f"a share past the amps must be refused in automatic mode: {share}")
-    assert share['title'] == ('Runs 1 and 2 together draw 10.0 A on a 8 A '
-                              'circuit - ' + OVER_TEXT), share
+    names = page.evaluate(NAMES_JS, [1, 2])
+    assert share['title'] == (f'{names} together draw 10.0 A on a 8 A '
+                              'circuit. ' + OVER_TEXT), share
 
     batch = page.evaluate(BATCH_PROBE_JS, [1, 2])
     assert batch and batch[0]['label'].startswith('2fer them'), batch
     assert batch[0]['disabled'], f"a deal that shares nothing is refused: {batch}"
-    assert batch[0]['title'] == ('Runs 1 and 2 together draw 10.0 A on a 8 A '
-                                 'circuit - ' + BATCH_NONE_TEXT), batch
+    assert batch[0]['title'] == (f'{names} together draw 10.0 A on a 8 A '
+                                 'circuit, so ' + BATCH_NONE_TEXT), batch
 
     # a 3fer over all three runs: no two of them fit, so it names the
     # first pair that does not
     batch3 = page.evaluate(BATCH_PROBE_JS, [1, 2, 3])
     three = [e for e in batch3 if e['label'].startswith('3fer')]
     assert three and three[0]['disabled'], batch3
-    assert three[0]['title'].startswith('Runs 1 and 2 together draw 10.0 A'), three
+    assert three[0]['title'].startswith(f'{names} together draw 10.0 A'), three
 
     # the model refuses too, whatever surface asks
     refused = page.evaluate("""() => {
@@ -1223,8 +1240,9 @@ def test_custom_mode_honors_a_share_past_the_amps_and_flags_over(page, panel):
     batch = page.evaluate(BATCH_PROBE_JS, [1, 2])
     assert batch and batch[0]['disabled'], (
         f"the batch verb never deals past the amps, even in custom: {batch}")
-    assert batch[0]['title'] == ('Runs 1 and 2 together draw 4.0 A on a 3 A '
-                                 'circuit - ' + BATCH_NONE_TEXT), batch
+    names = page.evaluate(NAMES_JS, [1, 2])
+    assert batch[0]['title'] == (f'{names} together draw 4.0 A on a 3 A '
+                                 'circuit, so ' + BATCH_NONE_TEXT), batch
 
     assert page.evaluate(SHARE_RUN_JS, [1, 'share']) is True
     state = page.evaluate(SPLIT_STATE_JS)
@@ -1283,7 +1301,8 @@ def test_leaving_custom_mode_unshares_a_share_past_the_amps(page, panel):
     assert after['nums'] == [1, 2, 3] and after['over'] == [], after
     assert out['added'] == 1 and out['action'] == 'Power Custom Mode Toggle', (
         f"the un-share rides in the toggle's one history entry: {out}")
-    assert out['toast'] and 'runs 1 and 2 drew 10.0 A on a 8 A circuit' in out['toast'], out
+    names = page.evaluate(NAMES_JS, [1, 2])
+    assert out['toast'] and f'{names} drew 10.0 A on a 8 A circuit' in out['toast'], out
     assert 'holds only in custom mode' in out['toast'], out
 
     # a share within the amps survives the switch untouched, no toast

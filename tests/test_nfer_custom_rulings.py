@@ -646,9 +646,9 @@ def test_batch_with_nothing_that_fits_is_disabled_with_the_reason(page):
     items = menu_at(page, pt(page, wall, 0, 0))
     assert items['n0'] and items['n0']['disabled'], items
     assert items['n0']['title'] == (
-        'S1-1, S1-2 and S1-3 span more columns than a 2fer has ways - a '
+        'S1-1, S1-2 and S1-3 span more columns than a 2fer has ways. A '
         'circuit across several columns splits into its own legs and never '
-        'joins another'), items
+        'joins another.'), items
     take(page, 'hw-batch-n0')
     assert manual(page, wall)['merge'] == [] and len(history(page)) == h0
 
@@ -666,8 +666,8 @@ def test_batch_with_nothing_that_fits_is_disabled_with_the_reason(page):
     h0 = len(history(page))
     items = menu_at(page, pt(page, wall, 0, 0))
     assert items['n0'] and items['n0']['disabled'], items
-    assert items['n0']['title'] == ('Runs 1 and 2 together draw 7.2 A on a '
-                                    '6 A circuit - no runs here fit on one '
+    assert items['n0']['title'] == ('S1-1 and S1-2 together draw 7.2 A on a '
+                                    '6 A circuit, so no runs here fit on one '
                                     'circuit together'), items
     take(page, 'hw-batch-n0')
     assert manual(page, wall)['merge'] == [] and len(history(page)) == h0

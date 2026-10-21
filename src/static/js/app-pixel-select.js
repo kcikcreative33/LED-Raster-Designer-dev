@@ -293,8 +293,8 @@ class _PixelSelect {
             const who = undone.length > 1 || this.getSelectedLayers().length > 1
                 ? `${undone[0].layer.name}: ` : '';
             this._toast(
-                `Custom mode off - ${who}${this._runListText(first.runIds)
-                    .toLowerCase()} drew ${first.load.amps.toFixed(1)} A on a `
+                `Custom mode off. ${who}${this._runListText(first.runIds, undone[0].layer)
+                } drew ${first.load.amps.toFixed(1)} A on a `
                 + `${+first.load.cap.toFixed(1)} A circuit, so the share was `
                 + 'undone'
                 + (count > 1 ? ` (${count - 1} more like it)` : '')
@@ -337,7 +337,10 @@ class _PixelSelect {
             container.style.display = isCustom ? 'block' : 'none';
         }
         if (portInput && this.currentLayer) {
-            portInput.value = `${this.powerPathOwner(this.currentLayer).powerCustomIndex || 1}`;
+            // The circuit, not the drawn run: a 3fer's legs read as one
+            // number (customCircuitShown).
+            const owner = this.powerPathOwner(this.currentLayer);
+            portInput.value = `${this.customCircuitShown(owner, owner.powerCustomIndex || 1)}`;
         }
         // Power view only - see the note on the same line in
         // updateCustomFlowUI. Unguarded, this one always won.

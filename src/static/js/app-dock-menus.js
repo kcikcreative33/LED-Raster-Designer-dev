@@ -107,7 +107,7 @@ class _DockMenus {
         if (!port || !port.cardId) {
             return {
                 label: `Clear port ${label}`, disabled: true,
-                title: `${label} is not attached to ${this.showUnitWord() === 'card' ? 'a sending card' : `a ${this.showUnitWord()}`} - there `
+                title: `${label} is not attached to ${this.showUnitWord() === 'card' ? 'a sending card' : `a ${this.showUnitWord()}`}, so there `
                     + 'is nothing to clear.',
             };
         }
@@ -145,13 +145,13 @@ class _DockMenus {
         if (!rec.distroId) {
             return {
                 label: `Unplug multi ${name}`, disabled: true,
-                title: `${name} is not on a distro - there is nothing to `
+                title: `${name} is not on a distro, so there is nothing to `
                     + 'unplug.',
             };
         }
         return {
             label: `Unplug multi ${name}`,
-            title: 'Unplug this multi - its distro, number, stored '
+            title: 'Unplug this multi. Its distro, number, stored '
                 + 'positions, typed name, home-run length and label '
                 + 'overrides are all forgotten. One undo puts everything '
                 + 'back.',
@@ -352,12 +352,32 @@ class _DockMenus {
                 : (c.runIds || [c.num]).concat(next.runIds || [next.num]);
             const ways = joined.length;
             const shareLabel = `Share with next run via ${ways}fer`;
+            // Custom mode joins only single-run circuits (customShareBlock,
+            // the owner's ruling 12): a 2fer, a 3fer or a circuit drawn
+            // across several columns keeps the entry, disabled, the reason
+            // as its title, and its own "Nfer it" splits a wide one.
+            const block = this.isCustomPower(layer)
+                ? this.customShareBlock([{ layer, c }, { layer: nextAt.layer, c: next }])
+                : null;
+            // An automatic share never builds a splitter past the wall's
+            // Max splitter (the owner, 2026-10-21).
+            const maxWays = sp.maxWays;
+            const tooBig = !this.isCustomPower(layer) && ways > maxWays
+                ? `A ${ways}fer is bigger than the Max splitter set in Power `
+                    + `Settings (${maxWays}fer), so ${label} shares no further.`
+                : null;
             // The amps rule (app-power.js): in automatic mode a share whose
             // runs together draw past the screen's amps stays on the menu
             // DISABLED, the reason as its title - the gesture is found, the
             // rule is read. Custom mode honors it and flags OVER.
-            const refusal = crosses ? null : this.shareRefusal(layer, [joined]);
-            if (refusal) {
+            const refusal = (crosses || block || tooBig) ? null
+                : this.shareRefusal(layer, [joined]);
+            if (block) {
+                out.share = { label: 'Share with next run', disabled: true,
+                              title: block };
+            } else if (tooBig) {
+                out.share = { label: shareLabel, disabled: true, title: tooBig };
+            } else if (refusal) {
                 out.share = { label: shareLabel, disabled: true,
                               title: refusal.text };
             } else {
@@ -365,7 +385,7 @@ class _DockMenus {
                     ? this.shareLoad(wallOwner, joined, this._wallRunAmps(wallOwner))
                     : this.shareLoad(layer, joined);
                 const figure = load.cap > 0
-                    ? ` - ${load.amps.toFixed(1)} A of ${+load.cap.toFixed(1)} A`
+                    ? `, ${load.amps.toFixed(1)} A of ${+load.cap.toFixed(1)} A`
                     : '';
                 out.share = {
                     label: shareLabel,
@@ -395,9 +415,12 @@ class _DockMenus {
             const ways = c.runIds.length;
             out.unshare = {
                 label: `Remove ${ways}fer`,
+                // Custom never packs on its own, so only an automatic
+                // wall pins the legs out of packing.
                 title: `Put the ${ways} legs of ${label} back on circuits of `
-                    + 'their own, and pin them out of auto packing. Undo '
-                    + `puts the ${ways}fer back.`,
+                    + (custom ? 'their own. '
+                        : 'their own, and pin them out of auto packing. ')
+                    + `Undo puts the ${ways}fer back.`,
                 run: () => {
                     sendClientLog('dock_unshare',
                                   { layerId: layer.id, num: c.num });
@@ -448,7 +471,7 @@ class _DockMenus {
         }
         const name = this.getPowerCircuitLabel(at.layer, at.num);
         const figure = plan.cap > 0
-            ? ` - ${plan.amps.toFixed(1)} A of ${+plan.cap.toFixed(1)} A` : '';
+            ? `, ${plan.amps.toFixed(1)} A of ${+plan.cap.toFixed(1)} A` : '';
         return {
             label: plan.label,
             title: `Split ${name} into ${plan.ways} ${plan.noun} runs on the `
@@ -544,13 +567,15 @@ class _DockMenus {
         const gated = !sp.enabled && !custom;
         const verb = scope === 'screen' ? 'this screen' : 'them';
         const entries = [];
-        [2, 3, 4].forEach(n => {
+        // The batch never deals past the wall's Max splitter (the owner,
+        // 2026-10-21): at 3fer there is no "4fer this screen".
+        [2, 3, 4].filter(n => n <= sp.maxWays).forEach(n => {
             if (gated) {
                 if (runCount < n) return;
                 entries.push({
                     label: `${n}fer ${verb} (${this.batchNferLabel(runCount, n)})`,
                     disabled: true,
-                    title: `Sharing is off for ${layer.name} - turn on `
+                    title: `Sharing is off for ${layer.name}. Turn on `
                         + '"Share circuits via splitters" in Power Settings '
                         + '(or route its circuits custom) to share runs.',
                 });
@@ -578,9 +603,9 @@ class _DockMenus {
                 entries.push({
                     label, disabled: true,
                     title: load
-                        ? `${this._runListText(deal.over)} together draw `
+                        ? `${this._runListText(deal.over, layer)} together draw `
                             + `${load.amps.toFixed(1)} A on a `
-                            + `${+load.cap.toFixed(1)} A circuit - no runs `
+                            + `${+load.cap.toFixed(1)} A circuit, so no runs `
                             + 'here fit on one circuit together'
                         : (deal.tooWide.length
                             ? this._tooWideText(layer, deal.tooWide, n)
@@ -593,19 +618,25 @@ class _DockMenus {
                 + 'stay on circuits of their own.' : '';
             const legs = deal.splits.length ? ' A circuit drawn across several '
                 + 'columns splits into a run per column on its own circuit.' : '';
+            // "2fer / 3fer this screen" ticks the wall's "Share circuits via
+            // splitters" in the same step (batchShareCircuits tickSharing).
+            const ticks = scope === 'screen' && !sp.enabled;
+            const tickText = ticks ? ' Also turns on "Share circuits via '
+                + 'splitters" for this screen.' : '';
             entries.push({
                 label,
                 title: `Deal ${runCount} run${runCount === 1 ? '' : 's'} `
-                    + `left to right as ${this._nferSizesLabel(sizes)} `
-                    + '- adjacent groups, each its own circuit, every group '
-                    + `within the amps.${leftPlain}${legs} One undoable step.`,
+                    + `left to right as ${this._nferSizesLabel(sizes)}: `
+                    + 'adjacent groups, each its own circuit, every group '
+                    + `within the amps.${leftPlain}${legs}${tickText} One undoable step.`,
                 run: () => {
                     sendClientLog('power_batch_nfer',
                                   { layerId: layer.id, n, scope,
                                     runs: runCount });
                     this.batchShareCircuits(layer, nums, n,
                         `${n}fer ${scope === 'screen'
-                            ? 'Screen' : 'Selection'}`, refs);
+                            ? 'Screen' : 'Selection'}`, refs,
+                        { tickSharing: ticks });
                     this._sweepSelection = null;
                 },
             });
@@ -634,13 +665,22 @@ class _DockMenus {
                     if (refs) {
                         // Across the wall each member un-shares in its own
                         // store - one PUT, one history entry.
+                        // A locked member refuses the whole verb and is
+                        // named, as "Remove 3fer" names it.
                         const by = new Map();
                         refs.forEach(r => by.set(r.layerId,
                             (by.get(r.layerId) || []).concat([r.num])));
+                        const locked = [...by.keys()]
+                            .map(id => (this.project.layers || []).find(l => l.id === id))
+                            .filter(m => m && m.locked);
+                        if (locked.length) {
+                            this._showLockedError(locked);
+                            return;
+                        }
                         const written = [];
                         by.forEach((ns, id) => {
                             const m = (this.project.layers || []).find(l => l.id === id);
-                            if (!m || m.locked) return;
+                            if (!m) return;
                             this.splitSplitterCircuits(m, ns, null, { silent: true });
                             written.push(m);
                         });
@@ -665,7 +705,7 @@ class _DockMenus {
 
     // Why a deal of size `n` shares nothing when its runs span more columns
     // than an `n`fer has ways: "S1-1, S1-2 and S1-3 span more columns than a
-    // 2fer has ways - ...". `wide` is batchShareGroups' tooWide.
+    // 2fer has ways. ...". `wide` is batchShareGroups' tooWide.
     _tooWideText(owner, wide, n) {
         const names = wide.map(w => {
             if (typeof w.id === 'string') {
@@ -679,8 +719,8 @@ class _DockMenus {
             : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
         const noun = wide[0].noun || 'column';
         return `${list} ${names.length === 1 ? 'spans' : 'span'} more ${noun}s `
-            + `than a ${n}fer has ways - a circuit across several ${noun}s `
-            + 'splits into its own legs and never joins another';
+            + `than a ${n}fer has ways. A circuit across several ${noun}s `
+            + 'splits into its own legs and never joins another.';
     }
 
     // A dock chip: the same clears, from the hardware end of the cable.
@@ -702,7 +742,7 @@ class _DockMenus {
             const pickOnly = () => ({
                 label,
                 title: `${payload.title} holds no claim, but it picks `
-                    + 'a backup port - clear that pick. Undo puts it '
+                    + 'a backup port. Clear that pick; undo puts it '
                     + 'back.',
                 run: () => {
                     sendClientLog('dock_clear',
@@ -734,7 +774,7 @@ class _DockMenus {
                             || `${rp.backsUp.boxTitle
                                 ? `${rp.backsUp.boxTitle} ` : ''}port `
                                 + `${rp.backsUp.localPort
-                                    || rp.backsUp.port}`} - it is that `
+                                    || rp.backsUp.port}`}. It is that `
                             + 'port\'s return end and holds no claim of '
                             + 'its own.',
                     };
@@ -742,7 +782,7 @@ class _DockMenus {
                 if (pick) return pickOnly();
                 return {
                     label, disabled: true,
-                    title: `${payload.title} is free - there is nothing to `
+                    title: `${payload.title} is free, so there is nothing to `
                         + 'unplug.',
                 };
             }
@@ -750,7 +790,7 @@ class _DockMenus {
             // occupied socket always clears: every claimant comes off.
             return {
                 label,
-                title: 'Take the screen port off this socket - it stays '
+                title: 'Take the screen port off this socket. It stays '
                     + 'unattached until placed again'
                     + (pick ? ', and clear the socket\'s hand-picked '
                         + 'backup port'
@@ -804,16 +844,16 @@ class _DockMenus {
                 return {
                     label, disabled: true,
                     title: `Nothing is attached to ${payload.title} and it `
-                        + 'holds no per-port backup picks - there is '
+                        + 'holds no per-port backup picks, so there is '
                         + 'nothing to clear.',
                 };
             }
             return {
                 label,
-                title: `Take every screen port off ${payload.title} - they `
+                title: `Take every screen port off ${payload.title}. They `
                     + 'stay unattached until placed again'
                     + (picks.length
-                        ? ' - and clear its per-port backup picks' : '')
+                        ? ', and clear its per-port backup picks' : '')
                     + ', as one undoable step.',
                 run: () => {
                     sendClientLog('dock_clear',
@@ -853,7 +893,7 @@ class _DockMenus {
             if (!held) {
                 return {
                     label: `Unplug ${payload.title}`, disabled: true,
-                    title: `${payload.title} is free - there is nothing to `
+                    title: `${payload.title} is free, so there is nothing to `
                         + 'unplug.',
                 };
             }
@@ -863,7 +903,7 @@ class _DockMenus {
             return {
                 label: `Unplug circuit ${label}`,
                 title: `Unplug this circuit from ${held.rec.name || 'its multi'} `
-                    + 'and forget how it was programmed - its stored position and its '
+                    + 'and forget how it was programmed: its stored position and its '
                     + 'label override go with the assignment'
                     + (rest
                         ? `; the multi's other ${rest} circuit`
@@ -882,7 +922,7 @@ class _DockMenus {
             if (!members.length) {
                 return {
                     label, disabled: true,
-                    title: `${payload.title} is free - there is nothing to `
+                    title: `${payload.title} is free, so there is nothing to `
                         + 'unplug.',
                 };
             }
@@ -891,7 +931,7 @@ class _DockMenus {
             const slotType = this.distroBoxType(slotDistro, payload.number).type;
             return {
                 label,
-                title: `Unplug every multi on this slot - the chip is the `
+                title: `Unplug every multi on this slot. The chip is the `
                     + `${slotType.name}, and unplugging it takes all its feeds and `
                     + 'forgets how they were programmed: stored positions, '
                     + 'typed names, home-run lengths and label overrides. '
@@ -915,15 +955,15 @@ class _DockMenus {
             if (!members.length) {
                 return {
                     label, disabled: true,
-                    title: `No multis are assigned to ${payload.title} - `
+                    title: `No multis are assigned to ${payload.title}, so `
                         + 'there is nothing to clear.',
                 };
             }
             return {
                 label,
-                title: `Clear every multi on ${payload.title} - the `
+                title: `Clear every multi on ${payload.title}: the `
                     + 'assignments and the stored programming (positions, '
-                    + 'typed names, home-run lengths, label overrides) - '
+                    + 'typed names, home-run lengths, label overrides), '
                     + `as one undoable step. ${payload.title} itself keeps `
                     + 'its name and electrical setup.',
                 run: () => this._clearMultis(members, 'Clear Distro'),
