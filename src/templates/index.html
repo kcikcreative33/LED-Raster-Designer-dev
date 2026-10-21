@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LED Raster Designer v1.5.3</title>
+    <title>LED Raster Designer v1.5.4</title>
     <link rel="icon" type="image/svg+xml" href="/static/img/logo.svg">
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="stylesheet" href="/static/css/color_picker.css">
@@ -237,7 +237,7 @@
 
         <div id="toolbar">
             <div class="toolbar-section toolbar-project">
-                    <h1><svg class="lrd-logo-mark" width="38" height="38" viewBox="0 0 48 48" aria-hidden="true" style="vertical-align:middle; margin-right:11px;"><rect x="3" y="3" width="42" height="42" rx="10" fill="#161616" stroke="#3a3a3a" stroke-width="1.5"/><rect x="11" y="11" width="8" height="8" rx="2" fill="#5a5a5a"/><rect x="20" y="11" width="8" height="8" rx="2" fill="var(--ps-accent, #e22330)"/><rect x="29" y="11" width="8" height="8" rx="2" fill="#5a5a5a"/><rect x="11" y="20" width="8" height="8" rx="2" fill="var(--ps-accent, #e22330)"/><rect x="20" y="20" width="8" height="8" rx="2" fill="#cfcfcf"/><rect x="29" y="20" width="8" height="8" rx="2" fill="#5a5a5a"/><rect x="11" y="29" width="8" height="8" rx="2" fill="#5a5a5a"/><rect x="20" y="29" width="8" height="8" rx="2" fill="#5a5a5a"/><rect x="29" y="29" width="8" height="8" rx="2" fill="var(--ps-accent, #e22330)"/></svg><span style="white-space:nowrap; vertical-align:middle;">LED Raster Designer <span id="app-version-label" style="font-size: 0.6em; color: #888;">v1.5.3</span></span></h1>
+                    <h1><svg class="lrd-logo-mark" width="38" height="38" viewBox="0 0 48 48" aria-hidden="true" style="vertical-align:middle; margin-right:11px;"><rect x="3" y="3" width="42" height="42" rx="10" fill="#161616" stroke="#3a3a3a" stroke-width="1.5"/><rect x="11" y="11" width="8" height="8" rx="2" fill="#5a5a5a"/><rect x="20" y="11" width="8" height="8" rx="2" fill="var(--ps-accent, #e22330)"/><rect x="29" y="11" width="8" height="8" rx="2" fill="#5a5a5a"/><rect x="11" y="20" width="8" height="8" rx="2" fill="var(--ps-accent, #e22330)"/><rect x="20" y="20" width="8" height="8" rx="2" fill="#cfcfcf"/><rect x="29" y="20" width="8" height="8" rx="2" fill="#5a5a5a"/><rect x="11" y="29" width="8" height="8" rx="2" fill="#5a5a5a"/><rect x="20" y="29" width="8" height="8" rx="2" fill="#5a5a5a"/><rect x="29" y="29" width="8" height="8" rx="2" fill="var(--ps-accent, #e22330)"/></svg><span style="white-space:nowrap; vertical-align:middle;">LED Raster Designer <span id="app-version-label" style="font-size: 0.6em; color: #888;">v1.5.4</span></span></h1>
                 <div style="position:relative;">
                     <input type="text" id="project-name" value="Untitled Project" class="editable-project-name">
                     <div id="project-name-warning" style="display:none; position:absolute; top:100%; left:0; margin-top:4px; padding:4px 8px; font-size:11px; color:#f5a623; background:#1a1a1a; border:1px solid #f5a623; border-radius:4px; white-space:nowrap; z-index:1000; pointer-events:none;"></div>
@@ -1272,11 +1272,11 @@
                                 <label style="font-weight: 400;">Breakout</label>
                                 <select id="power-breakout-type" data-lrd-field="power-breakout-type" class="info-select" style="flex: 1 1 100px; min-width: 0; max-width: 150px;"></select>
                             </div>
-                            <div class="info-row" id="power-panel-input-row" style="display: none; flex-wrap: wrap; align-items: center; gap: 5px;" data-tooltip="Panel input, The connector the panels take power in on: TRUE1 or powerCON. An Edison or L6-20 breakout needs a tail to it per circuit, and the jumpers and splitters are this connector.">
+                            <div class="info-row" id="power-panel-input-row" style="display: none; flex-wrap: wrap; align-items: center; gap: 5px;" data-tooltip="Panel input, The connector the panels take power in on: TRUE1 or powerCON. An Edison or L6-20 breakout needs one cable to it per circuit (Edison → TRUE1, say), and the jumpers and splitters are this connector.">
                                 <label style="font-weight: 400;">Panel input</label>
                                 <select id="power-panel-input" data-lrd-field="power-panel-input" class="info-select" style="flex: 1 1 100px; min-width: 0; max-width: 150px;"></select>
                             </div>
-                            <div class="info-row checkbox-row" data-tooltip="Circuit sharing, Put consecutive row/column runs onto one shared circuit through a 2fer or 3fer, up to the splitter size and the circuit capacity. Only adjacent runs share - a run is never skipped to pair two non-neighbours. Share one circuit, or remove its 2fer or 3fer, by right-clicking it on the map or its chip in the Hardware tray. A share past the circuit's amps is refused in automatic mode; custom mode allows it and flags it OVER.">
+                            <div class="info-row checkbox-row" data-tooltip="Circuit sharing, Put consecutive row/column runs onto one shared circuit through a 2fer or 3fer, up to the splitter size and the circuit capacity. Only adjacent runs share: a run is never skipped to pair two runs that aren't neighbors. Share one circuit, or remove its 2fer or 3fer, by right-clicking it on the map or its chip in the Hardware tray. A share past the circuit's amps is refused in automatic mode; custom mode allows it and flags it OVER.">
                                 <input type="checkbox" id="power-splitters-enabled" data-lrd-field="power-splitters-enabled">
                                 <label for="power-splitters-enabled">Share circuits via splitters</label>
                             </div>
@@ -2085,26 +2085,26 @@
                 <label style="display: block; margin-bottom: 8px; color: #ccc; font-size: 13px;">Pull Sheet:</label>
                 <div class="export-views" style="display: flex; flex-direction: column; gap: 8px;">
                     <div style="display: flex; gap: 8px; align-items: center; font-size: 12px; color: #aaa;">
-                        <span style="flex: none; width: 92px;">Cable lengths</span>
+                        <span style="flex: none; width: 108px; white-space: nowrap;">Cable lengths</span>
                         <select id="export-pull-sheet-cable-unit" class="cable-unit-select" data-tooltip="The unit this show's cable lengths are typed and printed in. Saved with the project; new shows start in the Preferences' unit. Changing it keeps every typed number: 25 ft becomes 25 m." style="flex: 1; min-width: 60px; padding: 4px 6px; background: #1a1a1a; border: 1px solid #3a3a3a; color: #fff; border-radius: 3px;">
                             <option value="ft">Feet</option>
                             <option value="m">Meters</option>
                         </select>
                     </div>
                     <div style="display: flex; gap: 8px; align-items: center; font-size: 12px; color: #aaa;">
-                        <span style="flex: none; width: 92px;">Data jumper</span>
-                        <input type="text" id="export-pull-sheet-data-jump-name" placeholder="Data Jump" data-tooltip="The data jumper's name on the pull sheet - one row per length. Each screen sets its own lengths in the Data sidebar's Jumpers row." style="flex: 1; min-width: 60px; padding: 4px 6px; background: #1a1a1a; border: 1px solid #3a3a3a; color: #fff; border-radius: 3px;">
+                        <span style="flex: none; width: 108px; white-space: nowrap;">Data jumper</span>
+                        <input type="text" id="export-pull-sheet-data-jump-name" placeholder="Data Jump" data-tooltip="The data jumper's name on the pull sheet, one row per length. Each screen sets its own lengths in the Data sidebar's Jumpers row." style="flex: 1; min-width: 60px; padding: 4px 6px; background: #1a1a1a; border: 1px solid #3a3a3a; color: #fff; border-radius: 3px;">
                     </div>
                     <div style="display: flex; gap: 8px; align-items: center; font-size: 12px; color: #aaa;">
-                        <span style="flex: none; width: 92px;">TRUE1 jumper</span>
-                        <input type="text" id="export-pull-sheet-power-jump-name-true1" placeholder="TRUE1 Power Jump" data-tooltip="The TRUE1 power jumper's name on the pull sheet - one row per length. Each screen sets its own lengths in the Power sidebar's Jumpers row." style="flex: 1; min-width: 60px; padding: 4px 6px; background: #1a1a1a; border: 1px solid #3a3a3a; color: #fff; border-radius: 3px;">
+                        <span style="flex: none; width: 108px; white-space: nowrap;">TRUE1 jumper</span>
+                        <input type="text" id="export-pull-sheet-power-jump-name-true1" placeholder="TRUE1 Power Jump" data-tooltip="The TRUE1 power jumper's name on the pull sheet, one row per length. Each screen sets its own lengths in the Power sidebar's Jumpers row." style="flex: 1; min-width: 60px; padding: 4px 6px; background: #1a1a1a; border: 1px solid #3a3a3a; color: #fff; border-radius: 3px;">
                     </div>
                     <div style="display: flex; gap: 8px; align-items: center; font-size: 12px; color: #aaa;">
-                        <span style="flex: none; width: 92px;">powerCON jumper</span>
-                        <input type="text" id="export-pull-sheet-power-jump-name-powercon" placeholder="powerCON Power Jump" data-tooltip="The powerCON power jumper's name on the pull sheet - one row per length. Each screen sets its own lengths in the Power sidebar's Jumpers row." style="flex: 1; min-width: 60px; padding: 4px 6px; background: #1a1a1a; border: 1px solid #3a3a3a; color: #fff; border-radius: 3px;">
+                        <span style="flex: none; width: 108px; white-space: nowrap;">powerCON jumper</span>
+                        <input type="text" id="export-pull-sheet-power-jump-name-powercon" placeholder="powerCON Power Jump" data-tooltip="The powerCON power jumper's name on the pull sheet, one row per length. Each screen sets its own lengths in the Power sidebar's Jumpers row." style="flex: 1; min-width: 60px; padding: 4px 6px; background: #1a1a1a; border: 1px solid #3a3a3a; color: #fff; border-radius: 3px;">
                     </div>
                     <div style="display: flex; gap: 8px; align-items: center; font-size: 12px; color: #aaa;">
-                        <span style="flex: none; width: 92px;">Engineer</span>
+                        <span style="flex: none; width: 108px; white-space: nowrap;">Engineer</span>
                         <input type="text" id="export-pull-sheet-engineer" placeholder="Name" data-tooltip="Printed in the sheet's ENGINEER cell. Remembered as a preference." style="flex: 1; min-width: 60px; padding: 4px 6px; background: #1a1a1a; border: 1px solid #3a3a3a; color: #fff; border-radius: 3px;">
                         <span style="flex: none;">Rev</span>
                         <input type="text" id="export-pull-sheet-rev" placeholder="1.0" data-tooltip="Printed in the sheet's REV cell." style="flex: none; width: 44px; padding: 4px 6px; background: #1a1a1a; border: 1px solid #3a3a3a; color: #fff; border-radius: 3px; text-align: right;">
@@ -2780,13 +2780,20 @@
                                     <option value="m">Meters</option>
                                 </select>
                             </div>
-                            <div class="pm-note">What a new show starts in. Each show keeps its own (the Jumpers unit in the Data and Power sidebars, or the Export dialog); a change here offers to switch the open show too. Below, a show uses the lengths in its unit.</div>
+                            <div class="pm-note" title="Each show keeps its own unit: the Jumpers unit in the Data and Power sidebars, or the Export dialog. Below, a show uses the lengths in its unit.">What a new show starts in. A change here offers to switch the open show too.</div>
+                        </div>
+                        <div class="pm-row">
+                            <label>Power jumper names</label>
+                            <div class="prefs-row">
+                                <span>TRUE1</span>
+                                <input type="text" id="pref-pull-power-jump-name-true1" placeholder="TRUE1 Power Jump" title="The TRUE1 power jumper's name on the pull sheet" aria-label="TRUE1 power jumper name" class="pm-wide">
+                                <span>powerCON</span>
+                                <input type="text" id="pref-pull-power-jump-name-powercon" placeholder="powerCON Power Jump" title="The powerCON power jumper's name on the pull sheet" aria-label="powerCON power jumper name" class="pm-wide">
+                            </div>
                         </div>
                         <div class="pm-row">
                             <label>Power jumper</label>
                             <div class="prefs-row">
-                                <input type="text" id="pref-pull-power-jump-name-true1" placeholder="TRUE1 Power Jump" title="The TRUE1 power jumper's name" class="pm-wide">
-                                <input type="text" id="pref-pull-power-jump-name-powercon" placeholder="powerCON Power Jump" title="The powerCON power jumper's name" class="pm-wide">
                                 <span>V</span>
                                 <input type="text" id="pref-pull-power-jump-length" placeholder="—" class="pm-short">
                                 <span>H</span>
@@ -2824,7 +2831,7 @@
                                 <input type="text" id="pref-jumper-stock-m" placeholder="1, 2, 3, 5, 10" class="pm-wide">
                                 <span class="pm-unit">m</span>
                             </div>
-                            <div class="pm-note">A jump between cabinets that do not touch: center to center plus 1 ft (0.3 m), up to the next of these; past the last, the next 5.</div>
+                            <div class="pm-note" title="A jump between cabinets that do not touch: center to center plus 1 ft (0.3 m), up to the next of these lengths; past the last, the next 5.">Cabinets that don't touch: center to center plus 1 ft (0.3 m), rounded up to a length here.</div>
                         </div>
                         <div class="pm-row">
                             <label>Snake home run</label>
@@ -2833,8 +2840,8 @@
                                 <span class="pm-unit">ft</span>
                                 <input type="text" id="pref-snake-home-run-length-m" placeholder="—" class="pm-short">
                                 <span class="pm-unit">m</span>
+                                <span style="font-size: 11px;">Blank: a new snake starts with no length.</span>
                             </div>
-                            <div class="pm-note">Blank: a new snake starts with no length.</div>
                         </div>
                         <div class="pm-row">
                             <label>Loose port cable</label>
@@ -2867,7 +2874,7 @@
                             <div class="prefs-row">
                                 <label class="pm-check" data-tooltip="Off: one list for every cable. On: a list for each kind: multis, data, power, L21-30 and Harting home runs, direct-output cables and feeders."><input type="checkbox" id="pref-cable-stock-per-kind"> A list for each kind of cable</label>
                             </div>
-                            <div class="pm-note">The cable lengths this show has on hand, saved with the show. A run the stock cannot make exactly is written as the pieces with the least extra length: with 25, 50 and 100, a 125 run reads 100'+25' on the map tags, the pull sheet and the binder. Blank: lengths are written as typed. Fiber and jumpers are not counted here.</div>
+                            <div class="pm-note" title="A run the stock can't make exactly is written as the pieces with the least extra length, on the map tags, the pull sheet and the binder. Fiber and jumpers aren't counted here.">The lengths this show has on hand. With 25, 50 and 100, a 125 run reads 100'+25'. Blank: lengths are written as typed.</div>
                         </div>
                         <div class="pm-row" data-cable-stock-list="all">
                             <label>All cables</label>
@@ -2946,10 +2953,9 @@
                             <div class="prefs-row">
                                 <select id="pref-cable-stock-preset" class="pm-fit" data-tooltip="A cable stock saved under a name, for every show."></select>
                                 <button type="button" id="pref-cable-stock-load" class="btn" data-tooltip="Put the picked preset's lengths in the fields above. Save gives them to this show.">Load</button>
-                                <button type="button" id="pref-cable-stock-save-preset" class="btn" data-tooltip="Save the lengths in the fields above as a preset.">Save as preset…</button>
-                                <button type="button" id="pref-cable-stock-delete" class="btn" data-tooltip="Delete the picked preset. Shows already using its lengths keep them.">Delete</button>
+                                <button type="button" id="pref-cable-stock-save-preset" class="btn" data-tooltip="Save the lengths in the fields above as a preset. The preset is saved right away.">Save as preset…</button>
+                                <button type="button" id="pref-cable-stock-delete" class="btn" data-tooltip="Delete the picked preset right away. Shows already using its lengths keep them.">Delete</button>
                             </div>
-                            <div class="pm-note">Load fills the fields; Save at the foot gives them to this show. Saving or deleting a preset happens right away.</div>
                             <div class="pm-note" id="pref-cable-stock-status" style="display: none;"></div>
                         </div>
                         <div class="pm-row">

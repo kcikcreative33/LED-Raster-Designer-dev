@@ -111,8 +111,8 @@ if IS_MAC:
         info_plist={
             'CFBundleName': 'LED Raster Designer',
             'CFBundleDisplayName': 'LED Raster Designer',
-            'CFBundleShortVersionString': '1.5.3',
-            'CFBundleVersion': '1.5.3',
+            'CFBundleShortVersionString': '1.5.4',
+            'CFBundleVersion': '1.5.4',
             'NSHighResolutionCapable': True,
             # Menu-bar app, no Dock icon (same as the pre-window launcher):
             # the launcher window hides to the menu-bar status item, which is

@@ -1504,9 +1504,9 @@ class _Power {
         const v = this.voltageNumber(voltage);
         const at = v > 0 ? `at ${v}V` : 'until a voltage is set';
         const id = String(type && type.id);
-        if (id.startsWith('l2130-')) return `Not available ${at} — L21-30 is 208V only.`;
-        if (id === 'soca-edison') return `Not available ${at} — Edison is for screens up to 120V.`;
-        return `Not available ${at} — a screen up to 120V runs Multi → TRUE1, powerCON or Edison.`;
+        if (id.startsWith('l2130-')) return `Not available ${at}: L21-30 is 208V only.`;
+        if (id === 'soca-edison') return `Not available ${at}: Edison is for screens up to 120V.`;
+        return `Not available ${at}: a screen up to 120V runs Multi → TRUE1, powerCON or Edison.`;
     }
 
     // The voltage CLASS a screen belongs to for distro matching, as a
@@ -2746,7 +2746,7 @@ class _Power {
             if (skipped.length) {
                 const names = skipped.map(l => `${l.name || l.id} `
                     + `(${parseFloat(l.powerVoltage) || 0}V)`).join(', ');
-                const msg = `${type.name} is not available at ${names} — `
+                const msg = `${type.name} is not available at ${names}, so `
                     + `${skipped.length === 1 ? 'that screen keeps its' : 'those screens keep their'} breakout.`;
                 if (typeof this._toast === 'function') this._toast(msg, true, 4000);
                 else if (typeof this._dockSay === 'function') this._dockSay(msg);

@@ -923,6 +923,14 @@ def test_the_jumper_names_are_project_state_with_one_entry_per_edit(page):
     assert pg.locator('#export-pull-sheet-power-jump-name-true1').input_value() == 'TRUE1 Power Jump'
     assert pg.locator('#export-pull-sheet-power-jump-name-powercon').input_value() == 'powerCON Power Jump'
     assert pg.locator('#export-pull-sheet-power-jump-name').count() == 0
+    # every label of the section reads on one line in its slot: "powerCON
+    # jumper" wrapped in the old 92 px one (2026-10-22)
+    labels = pg.evaluate("""() => [...document.querySelectorAll(
+        '#export-pull-sheet-section .export-views > div > span:first-child')]
+        .map(s => [s.textContent.trim(), s.scrollWidth <= s.clientWidth + 1,
+                   Math.round(s.getBoundingClientRect().height)])""")
+    assert 'powerCON jumper' in [t for t, _, _ in labels], labels
+    assert all(fits and h < 22 for _, fits, h in labels), labels
     assert pg.locator('#export-pull-sheet-power-jump-length').count() == 0
     pg.locator('#export-pull-sheet-data-jump-name').fill('Absen Long Data Jump')
     pg.locator('#export-pull-sheet-data-jump-name').dispatch_event('change')
