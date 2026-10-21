@@ -138,9 +138,9 @@ window.__sp = {
     // the reference-show tower: 6 wide, 7 full rows over 4 half-HEIGHT
     // rows (half the pixel area = 0.65 load factor), 344W tiles on a
     // 208V x 20A circuit (4160W capacity), organized tr-h. Row loads:
-    // full 2064W, half 1341.6W - so the plain filler closes circuit 4 at
-    // {row6 full, row7 half} (3405.6W) and circuit 5 takes the last
-    // three half rows (4024.8W).
+    // full 2064W, half 1032W (a half tile draws 50%, 2026-10-21) - so the
+    // plain filler closes circuit 4 at {row6 full, rows 7-8 half} (4128W)
+    // and circuit 5 takes the last two half rows (2064W).
     srrr_tower(extra) {
         const s = this.screen(Object.assign({
             id: 1, name: 'Tower', columns: 6, rows: 11,
@@ -417,33 +417,33 @@ def _tower_shape(page, build_js):
 
 def test_half_tile_runs_pack_by_watt_equivalents_not_panel_count(page):
     """Packing capacity is WATTS (half tiles derated by load factor), not a
-    raw panel count: the tower's last circuit gangs three 6-panel half rows
-    - 18 panels where only 12 FULL tiles fit the 4160W circuit - because
-    their watt-equivalent load is 4024.8W. And no packed circuit exceeds
-    capacity."""
+    raw panel count: the tower's fourth circuit gangs a full row and two
+    6-panel half rows - 18 panels where only 12 FULL tiles fit the 4160W
+    circuit - because their watt-equivalent load is 4128W. And no packed
+    circuit exceeds capacity."""
     out = _tower_shape(page, """(sp) =>
         sp.srrr_tower({ powerSplitters: sp.splitters(3) })""")
-    assert out['runs'] == [[6, 6], [6, 6], [6, 6], [6, 6], [6, 6, 6]]
-    assert out['panels'][-1] == 18, 'three half rows share one circuit'
-    assert out['loads'] == [4128, 4128, 4128, 3405.6, 4024.8]
+    assert out['runs'] == [[6, 6], [6, 6], [6, 6], [6, 6, 6], [6, 6]]
+    assert out['panels'][3] == 18, 'a full row and two half rows share one circuit'
+    assert out['loads'] == [4128, 4128, 4128, 4128, 2064]
     assert all(load <= out['cap'] for load in out['loads']), \
         'auto packing must never build an over-capacity circuit'
 
 
 def test_fer_sizes_land_on_the_same_row_groups_the_plain_filler_makes(page):
     """Splitters on (maxWays 3) must gang exactly the row groups the plain
-    filler already put on each circuit: the {full,half} 2-row circuit is
-    the 2fer, the 3-half-row circuit is the 3fer. Total panels per circuit
+    filler already put on each circuit: the {full,half,half} 3-row circuit
+    is the 3fer, the last two half rows the 2fer. Total panels per circuit
     do not move when packing turns on."""
     off = _tower_shape(page, "(sp) => sp.srrr_tower()")
     on = _tower_shape(page, """(sp) =>
         sp.srrr_tower({ powerSplitters: sp.splitters(3) })""")
-    assert off['rows'] == [[0, 1], [2, 3], [4, 5], [6, 7], [8, 9, 10]]
+    assert off['rows'] == [[0, 1], [2, 3], [4, 5], [6, 7, 8], [9, 10]]
     assert on['rows'] == off['rows'], \
         'packing must regroup nothing the filler decided'
-    assert on['panels'] == off['panels'] == [12, 12, 12, 12, 18]
-    assert on['runIds'] == [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10, 11]], \
-        '2fer on rows 6-7, 3fer on rows 8-10'
+    assert on['panels'] == off['panels'] == [12, 12, 12, 18, 12]
+    assert on['runIds'] == [[1, 2], [3, 4], [5, 6], [7, 8, 9], [10, 11]], \
+        '3fer on rows 6-8, 2fer on rows 9-10'
 
 
 def test_cen_srrr_tower_stale_custom_merges_stay_dormant_in_auto_pack(page):
@@ -451,8 +451,10 @@ def test_cen_srrr_tower_stale_custom_merges_stay_dormant_in_auto_pack(page):
     per-row drawn circuits and the merges authored against them (no space
     stamp - a legacy file). Auto packing must leave those groups dormant
     with the paths: same circuits as a tower with no manual state at all,
-    nothing over capacity. (Before the fix: runIds [..., [7,8,9], [10,11]]
-    - rows 6-8 ganged at 4747.2W on the 4160W circuit, rows 9-10 a 2fer.)"""
+    nothing over capacity. (Before the fix the stale groups were honoured -
+    then rows 6-8 ganged at 4747.2W on the 4160W circuit. Since half tiles
+    draw 50% (2026-10-21) rows 6-8 fit, so the stale groups here gang rows
+    4-6 instead: three full rows, 6192W, over the circuit if honoured.)"""
     stale = """(sp) => {
         const paths = {};
         for (let r = 0; r < 12; r++) {   // 12 rows once, path 12 now stale
@@ -461,14 +463,14 @@ def test_cen_srrr_tower_stale_custom_merges_stay_dormant_in_auto_pack(page):
         return sp.srrr_tower({
             powerCustomPaths: paths,
             powerSplitters: sp.splitters(3, {
-                merge: [[7, 8, 9], [10, 11, 12]], split: [] }),
+                merge: [[5, 6, 7], [8, 9, 10]], split: [] }),
         });
     }"""
     out = _tower_shape(page, stale)
     clean = _tower_shape(page, """(sp) =>
         sp.srrr_tower({ powerSplitters: sp.splitters(3) })""")
     assert out == clean, 'custom-space merges must not steer auto packing'
-    assert out['runIds'] == [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10, 11]]
+    assert out['runIds'] == [[1, 2], [3, 4], [5, 6], [7, 8, 9], [10, 11]]
     assert all(load <= out['cap'] for load in out['loads'])
 
 

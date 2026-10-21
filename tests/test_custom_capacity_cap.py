@@ -286,8 +286,8 @@ def test_power_fill_is_one_undo_step_that_puts_everything_back(page):
 
 
 def test_power_fill_counts_half_tiles_by_watt_equivalent(page):
-    """A half-height row derates to 0.65 of a cabinet (getPanelLoadFactor),
-    so the row of 14 halves is 1,046.5 W - and circuit 1 is that row alone,
+    """A half-height row derates to 0.5 of a cabinet (getPanelLoadFactor,
+    2026-10-21), so the row of 14 halves is 805 W - and circuit 1 is that row alone,
     because the whole row of 14 wholes below it (1,610 W) would cross
     1,650 W and a run never takes part of a row. Same figures the automatic
     engine's loadOf charges."""
@@ -305,7 +305,7 @@ def test_power_fill_counts_half_tiles_by_watt_equivalent(page):
         };
     }""")
     assert out['counts'] == [[1, 14], [2, 14], [3, 14]], out['counts']
-    assert abs(out['fill1']['load'] - 1046.5) < 1e-6, out['fill1']
+    assert abs(out['fill1']['load'] - 805) < 1e-6, out['fill1']
     assert out['active'] == 3, out['active']
 
 
