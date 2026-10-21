@@ -6046,9 +6046,9 @@ class _Binder {
             }
         }
         pairs.push(['Circuits', boxes.length ? `${allCircuits} on ${counts}` : 'none']);
-        // "INPUT", not "SERVICE" (owner, 2026-10-21): a SERVICE is the
+        // "DISTRO", not "SERVICE" (owner, 2026-10-21): a SERVICE is the
         // house power now, with a sheet of its own.
-        blocks.push({ lines: this._bKvLines(book, 'Input', pairs) });
+        blocks.push({ lines: this._bKvLines(book, 'Distro', pairs) });
         const hw = (book.list.hardware || []).find(h => h.kind === 'distro' && h.id === d.id);
         blocks.push({ lines: this._bPullLines(book, 'Pull list', (hw && hw.rows) || []) });
         return blocks;

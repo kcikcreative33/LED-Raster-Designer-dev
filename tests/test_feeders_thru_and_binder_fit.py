@@ -343,7 +343,7 @@ def test_the_kv_rows_never_draw_past_their_height(page):
         const pairs = [['Fed from', 'SR DISTRO B, cam thru · 400 A cam set 100\\'+25\\' · '
                         + 'HOUSE · 600 A · 120/208V 3φ · 100% rated · and some more words to wrap'],
                        ['Load', 'X 87.1 · Y 81.4 · Z 81.4 A']];
-        const lines = app._bKvLines(book, 'Input', pairs);
+        const lines = app._bKvLines(book, 'Distro', pairs);
         const drawn = [];
         const orig = app._bText;
         app._bText = function (bk, text, x, y, o) {
@@ -383,13 +383,13 @@ def test_the_distro_sheet_prints_input_names_whole_and_no_length(page):
           assign=[['WALL A', 0, 9, 'd1'], ['WALL B', 0, 0, 'd1']])
     b = pg.evaluate(BINDER_JS)
     titles = {c['title'] for c in b['caught']}
-    assert 'Input' in titles and 'Service' not in titles, titles
-    blocks = [dict(c['pairs']) for c in b['caught'] if c['title'] == 'Input']
+    assert 'Distro' in titles and 'Service' not in titles, titles
+    blocks = [dict(c['pairs']) for c in b['caught'] if c['title'] == 'Distro']
     assert [p['Rating'] for p in blocks] == ['400 A service · 120/208V 3φ'] * 2, blocks
     assert blocks[1]['Fed from'] == 'SR DISTRO B, cam thru · 400 A cam set, no length', blocks[1]
     sheets = [p for p in b['pages'] if p['kind'] == 'distro']
     texts = [t['t'] for p in sheets for t in p['texts']]
-    assert 'INPUT' in texts and 'SERVICE' not in texts, texts
+    assert 'DISTRO' in texts and 'SERVICE' not in texts, texts
     assert '400 A cam set · 5-wire' in texts and 'no length' in texts, texts
     assert cut(b['pages'], ('distro', 'pull', 'totals')) == [], cut(b['pages'], ('distro', 'pull', 'totals'))
     # the box names whole: on one line, or wrapped with every word there

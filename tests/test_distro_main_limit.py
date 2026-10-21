@@ -125,7 +125,7 @@ READ_JS = """() => {
     const caught = [];
     const orig = app._bKvLines;
     app._bKvLines = function (book, title, pairs) {
-        if (title === 'Input') caught.push(pairs.map(p => p.slice()));
+        if (title === 'Distro') caught.push(pairs.map(p => p.slice()));
         return orig.apply(this, arguments);
     };
     try {

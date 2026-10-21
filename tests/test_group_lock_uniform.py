@@ -263,3 +263,28 @@ def test_two_locked_screens_that_disagree_are_refused_and_named(page):
     assert toasts == ["A and C are locked and disagree on Voltage. A locked screen keeps "
                       "its settings, so they can't share one group. Unlock one of them "
                       "first."], toasts
+
+
+def test_unlocking_and_ungrouping_keep_the_groups_settings(page):
+    """Owner, 2026-10-21: a screen changed to its group's settings keeps
+    them. Unlocking the group, then ungrouping it, leaves A at the 208 V
+    it took from locked B - nothing goes back to what A had before."""
+    a, b = two(page, b_locked=True)
+    page.evaluate("(id) => window.app.setScreenVoltage(window.__nf.layer(id), 120)", a)
+    select(page, a, b)
+    start(page, "window.app.groupSelectedLayers()")
+    page.locator('#group-lock-lock').click()
+    finish(page)
+    grouped = page.evaluate(SETTINGS_JS, [a, b])
+    assert grouped[0]['v'] == 208, grouped
+    select(page, a)
+    page.evaluate("() => window.app.toggleLockOnSelected()")
+    landed(page)
+    assert state(page, [a, b])['locked'] == [False, False], state(page, [a, b])
+    assert page.evaluate(SETTINGS_JS, [a, b]) == grouped
+    gid = state(page, [a])['groups'][0]
+    page.evaluate("(g) => window.app.ungroupSelectedLayers(g)", gid)
+    landed(page)
+    out = state(page, [a, b])
+    assert out['groups'] == [None, None], out
+    assert page.evaluate(SETTINGS_JS, [a, b]) == grouped, 'ungrouping keeps the settings'
