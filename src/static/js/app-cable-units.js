@@ -233,6 +233,30 @@ class _CableUnits {
         return Number.isFinite(n) && n > 0 ? n : null;
     }
 
+    // A length TYPED INTO A FIELD, read for storing: { n, from } - `n` the
+    // length in the show's unit (or `unit`), null for none; `from` the
+    // other unit when the text carried that unit's suffix and was
+    // converted ("30m" in a feet show is 98.4 ft, to the figure's own
+    // decimals), else null. Blank is { n: null, bad: false }; text that
+    // is no length in either unit is { n: null, bad: true }, so a field
+    // can refuse it rather than clear what was there.
+    parseTypedCableLength(value, unit) {
+        const u = this.cableUnitAbbr(unit);
+        // a zero is no length, as it always read
+        const blank = value === null || value === undefined
+            || (typeof value === 'number' && value === 0)
+            || (typeof value === 'string' && /^0*\.?0*$/.test(value.trim()));
+        if (blank) return { n: null, from: null, bad: false };
+        const own = this.parseCableLength(value, u);
+        if (own !== null) return { n: own, from: null, bad: false };
+        const other = u === 'm' ? 'ft' : 'm';
+        const there = typeof value === 'string' && /[a-z'’]\s*\.?\s*$/i.test(value.trim())
+            ? this.parseCableLength(value, other) : null;
+        if (there === null) return { n: null, from: null, bad: true };
+        const n = Number(this.cableFigure(there * MM_PER_UNIT[other] / MM_PER_UNIT[u], u));
+        return n > 0 ? { n, from: other, bad: false } : { n: null, from: null, bad: true };
+    }
+
     // A length as every paper prints it: "100'" in feet, "30 m" in
     // meters, "" for a length nobody typed (blank, zero, not a length).
     cableLengthText(n, unit) {

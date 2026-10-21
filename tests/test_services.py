@@ -296,7 +296,7 @@ def test_drag_a_distro_s_header_bar_onto_the_service_card(page):
     assert out['serviceIds'] == {'d1': 's1', 'd2': None}, out['serviceIds']
     assert out['services']['s1']['chips'] == ['SL 400 A'], out['services']['s1']
     assert pg.evaluate(HIST_JS)[-1] == 'Put Distro on Service'
-    assert pg.evaluate(STATUS_JS) == 'SL is on HOUSE 400 A · 120/208V 3φ.'
+    assert pg.evaluate(STATUS_JS) == 'SL is on HOUSE · 400 A · 120/208V 3φ.'
     assert 'hw-dock-svc-drop' not in pg.evaluate(
         "() => document.querySelector('[data-lrd-service=\"s1\"]').className"), 'the light stayed on'
     # The same drag again is no change: said, and no entry.
@@ -322,7 +322,7 @@ def test_pick_the_service_in_the_distro_gear_and_none_takes_it_off(page):
     open_gear(pg, 'distro-d2')
     opts = pg.evaluate("""() => [...document.querySelectorAll(
         '#hw-gear-popover [data-lrd-field="distro-service-d2"] option')].map(o => [o.value, o.textContent])""")
-    assert opts == [['', 'None'], ['s1', 'HOUSE 400 A · 120/208V 3φ']], opts
+    assert opts == [['', 'None'], ['s1', 'HOUSE · 400 A · 120/208V 3φ']], opts
     pick(pg, 'distro-service-d2', 's1')
     assert read(pg)['serviceIds']['d2'] == 's1'
     assert pg.evaluate(HIST_JS)[-1] == 'Put Distro on Service'
@@ -634,7 +634,8 @@ BINDER_JS = """() => {
     const caught = [];
     const orig = app._bKvLines;
     app._bKvLines = function (book, title, pairs) {
-        if (title === 'Service') caught.push(pairs.map(p => p.slice()));
+        // the distro's block is INPUT (2026-10-21), the service's SERVICE
+        if (title === 'Service' || title === 'Input') caught.push(pairs.map(p => p.slice()));
         return orig.apply(this, arguments);
     };
     const opts = Object.assign(app.readBinderOptions(),
@@ -665,10 +666,13 @@ def test_the_binder_names_the_service_and_prints_a_service_sheet(page):
     blocks = out['caught']
     distro = [dict(p) for p in blocks if any(k == 'Circuits' for k, _ in p)]
     service = [dict(p) for p in blocks if any(k == 'Distros' for k, _ in p)]
-    # Fed from on the distros on it - and the rating line as it always read
+    # Fed from on the distros on it ("HOUSE · 400 A · ...", read the way
+    # FACTS reads it) - and every rating line by its service size first,
+    # an old-style distro's too (2026-10-21)
     fed = [d.get('Fed from') for d in distro]
-    assert fed == ['HOUSE 400 A · 120/208V 3φ', 'HOUSE 400 A · 120/208V 3φ', None], distro
-    assert [d['Rating'] for d in distro] == ['400 A 208 V 3φ', '200 A 208 V 3φ', '200 A 208 V 3φ']
+    assert fed == ['HOUSE · 400 A · 120/208V 3φ', 'HOUSE · 400 A · 120/208V 3φ', None], distro
+    assert [d['Rating'] for d in distro] == ['400 A service · 120/208V 3φ', '200 A service · 120/208V 3φ',
+                                             '200 A service · 120/208V 3φ']
     assert list(distro[0])[:2] == ['Rating', 'Fed from'], list(distro[0])
     # the Service block
     assert len(service) == 1, service

@@ -67,17 +67,84 @@ class _Services {
         });
     }
 
+    // THRU LOADS (owner rulings, 2026-10-21): a distro fed thru another
+    // (its feeder's `from`) draws through it from the service that one is
+    // on - its load counts on that SERVICE, never on the pass-through
+    // distro's own legs. So B fed thru A, A on HOUSE: B belongs to HOUSE
+    // for the service's leg sums, its imbalance and its ratings added up,
+    // even when B itself was never put on HOUSE. B on a DIFFERENT service
+    // from A's is refused, saying why (_serviceRefusal, setDistroFeeder):
+    // one cable cannot come from two houses.
+
+    // The distro `d` is fed thru, or null (fed from its service).
+    _feederSource(d) {
+        const from = d && d.feeder && typeof d.feeder === 'object' ? d.feeder.from : null;
+        if (from == null || from === d.id) return null;
+        const all = typeof this.getDistros === 'function' ? this.getDistros() : [];
+        return all.find(x => x.id === from) || null;
+    }
+
+    // The service up `d`'s chain of feeders - the first distro it is fed
+    // thru (or that one is fed thru, and on) that is on a service - or
+    // null. `d`'s own service is not read.
+    _feedUpstreamService(d) {
+        const seen = new Set([d && d.id]);
+        for (let cur = this._feederSource(d); cur && !seen.has(cur.id); cur = this._feederSource(cur)) {
+            seen.add(cur.id);
+            const s = this.distroService(cur);
+            if (s) return s;
+        }
+        return null;
+    }
+
+    // The service a distro's load counts on: its own, else the one it is
+    // fed thru from - only where the systems match.
+    distroEffectiveService(d) {
+        const own = this.distroService(d);
+        if (own) return own;
+        const up = this._feedUpstreamService(d);
+        return up && d && d.system && up.system === d.system ? up : null;
+    }
+
+    // Every distro fed thru `d`, down the chain, in tray order.
+    _feedDownstream(d) {
+        const all = typeof this.getDistros === 'function' ? this.getDistros() : [];
+        const out = [];
+        const seen = new Set([d && d.id]);
+        const walk = [d];
+        while (walk.length) {
+            const cur = walk.shift();
+            for (const x of all) {
+                if (seen.has(x.id)) continue;
+                const src = this._feederSource(x);
+                if (src && src.id === cur.id) { seen.add(x.id); out.push(x); walk.push(x); }
+            }
+        }
+        return all.filter(x => out.includes(x));
+    }
+
+    // Every distro whose load counts on one service: those on it and
+    // those fed thru one of them - { distro, thru } with `thru` the
+    // distro it is fed thru (null for one fed straight from it).
+    serviceFedDistros(serviceId) {
+        const all = typeof this.getDistros === 'function' ? this.getDistros() : [];
+        return all.filter(d => {
+            const s = this.distroEffectiveService(d);
+            return s && s.id === serviceId;
+        }).map(d => ({ distro: d, thru: this._feederSource(d) }));
+    }
+
     // "600 A · 120/208V 3φ" - the service's size and system.
     serviceSizeText(s) {
         if (!s) return '';
         return `${+(Number(s.ratingA) || 0).toFixed(1)} A · ${this.distroSystemName(s)}`;
     }
 
-    // "House 600 A · 120/208V 3φ" - how the card, the gear and the binder
-    // name a service.
+    // "House · 600 A · 120/208V 3φ" - how the card, the gear and the
+    // binder name a service, read the way FACTS reads it.
     serviceLabel(s) {
         if (!s) return '';
-        return `${s.name || s.id} ${this.serviceSizeText(s)}`;
+        return `${s.name || s.id} · ${this.serviceSizeText(s)}`;
     }
 
     addService(opts = {}) {
@@ -165,6 +232,22 @@ class _Services {
         if (sys.id !== s.system) {
             return `${dn} is ${sys.name} and ${sn} is ${this.distroSystemName(s)}. `
                 + 'A distro goes only on a service of the same system.';
+        }
+        // fed thru a distro on another service, or feeding one that is
+        const up = this._feedUpstreamService(d);
+        if (up && up.id !== s.id) {
+            const src = this._feederSource(d);
+            return `${dn} is fed thru ${src ? (src.name || src.id) : 'another distro'}, which is on `
+                + `${up.name || up.id}. A distro fed thru another counts on that distro's service: `
+                + `feed it from ${sn} directly, or leave it off a service.`;
+        }
+        for (const x of this._feedDownstream(d)) {
+            const xs = this.distroService(x);
+            if (xs && xs.id !== s.id) {
+                return `${x.name || x.id} is fed thru ${dn} and is on ${xs.name || xs.id}. `
+                    + `Take ${x.name || x.id} off ${xs.name || xs.id}, or feed it from its service, `
+                    + `before putting ${dn} on ${sn}.`;
+            }
         }
         return null;
     }
@@ -306,10 +389,11 @@ class _Services {
         return f.ft ? `${t.type} ${this.cableStockText(f.ft, 'feeder')}` : `${t.type}, no length`;
     }
 
-    // The distros `d` can be fed from: every other distro whose own chain
-    // of feeders does not lead back to `d`.
+    // The distros `d` can be fed from: every other distro of the same
+    // system whose own chain of feeders does not lead back to `d`.
     feederSources(d) {
-        const all = typeof this.getDistros === 'function' ? this.getDistros() : [];
+        const all = (typeof this.getDistros === 'function' ? this.getDistros() : [])
+            .filter(x => !d || !d.system || !x.system || x.system === d.system);
         const feeds = (x, seen = new Set()) => {
             for (let cur = x; cur && !seen.has(cur.id); ) {
                 if (cur.id === d.id) return true;
@@ -327,25 +411,66 @@ class _Services {
     // entry when something changed; a feeder emptied of both forgets the
     // key, so an untouched distro saves as it always did. Returns whether
     // it changed.
+    // A length in the other unit ("30m" in a feet show) is converted and
+    // said; text that is no length at all is refused, saying so, and the
+    // length that was there stays (2026-10-21). A `from` whose service is
+    // not the one this distro - or a distro fed thru it - is on is
+    // refused the same way.
     setDistroFeeder(distroId, patch = {}) {
         const d = (typeof this.getDistros === 'function' ? this.getDistros() : []).find(x => x.id === distroId);
         if (!d || !patch) return false;
         const before = JSON.stringify(d.feeder || null);
         const next = { ...(d.feeder && typeof d.feeder === 'object' ? d.feeder : {}) };
         if (patch.ft !== undefined) {
-            const ft = this.parseCableLength(patch.ft);
-            if (ft === null) delete next.ft; else next.ft = ft;
+            const read = this.parseTypedCableLength(patch.ft);
+            if (read.bad) {
+                this._sayServiceRefusal(`"${String(patch.ft).trim()}" is not a length. Type the feeder's `
+                    + `length in ${this.cableUnitWord()}, like ${this.cableUnit() === 'm' ? '30' : '100'}.`);
+                return false;
+            }
+            if (read.from) {
+                this._sayServiceRefusal(`${String(patch.ft).trim()} is ${this.cableLengthWords(read.n)} `
+                    + `in this ${this.cableUnitWord()} show.`);
+            }
+            if (read.n === null) delete next.ft; else next.ft = read.n;
         }
         if (patch.from !== undefined) {
             const id = patch.from && patch.from !== 'service' ? String(patch.from) : null;
-            if (id && this.feederSources(d).some(x => x.id === id)) next.from = id;
-            else delete next.from;
+            const src = id ? this.feederSources(d).find(x => x.id === id) : null;
+            if (src) {
+                const why = this._feederRefusal(d, src);
+                if (why) {
+                    this._sayServiceRefusal(why);
+                    return false;
+                }
+                next.from = id;
+            } else {
+                delete next.from;
+            }
         }
         if (Object.keys(next).length) d.feeder = next; else delete d.feeder;
         if (JSON.stringify(d.feeder || null) === before) return false;
         this.saveState('Set Distro Feeder');
         this._persistDistros();
         return true;
+    }
+
+    // Why `d` cannot be fed thru `src`, or null: the service `src` draws
+    // from must be the one `d` - and every distro fed thru `d` - is on,
+    // where they are on one.
+    _feederRefusal(d, src) {
+        const up = this.distroService(src) || this._feedUpstreamService(src);
+        if (!up) return null;
+        for (const x of [d, ...this._feedDownstream(d)]) {
+            const xs = this.distroService(x);
+            if (xs && xs.id !== up.id) {
+                const via = x === d ? '' : ` (fed thru ${d.name || d.id})`;
+                return `${x.name || x.id}${via} is on ${xs.name || xs.id} and ${src.name || src.id} `
+                    + `draws from ${up.name || up.id}. A distro fed thru another counts on that `
+                    + `distro's service: take ${x.name || x.id} off ${xs.name || xs.id} first.`;
+            }
+        }
+        return null;
     }
 
     // The distro gear's FEEDER row: its length and where it is fed from.
@@ -366,6 +491,10 @@ class _Services {
             + this.cableStockHint(d.feeder && d.feeder.ft, 'feeder');
         len.addEventListener('change', () => {
             this.setDistroFeeder(d.id, { ft: len.value });
+            // what is stored now: a refused entry goes back to the length
+            // that stayed, a converted one reads in the show's unit
+            const live = (this.getDistros() || []).find(x => x.id === d.id);
+            len.value = live && live.feeder && live.feeder.ft != null ? String(live.feeder.ft) : '';
             if (typeof this.renderHardwareDock === 'function') this.renderHardwareDock();
         });
         r.appendChild(len);
@@ -379,11 +508,13 @@ class _Services {
         sel.style.flex = '1 1 0';
         sel.style.minWidth = '0';
         sel.title = 'Where the feeder comes from: the service (each distro on a service runs its '
-            + 'own feeder from it), or another distro it is fed thru from.';
+            + 'own feeder from it), or another distro of the same system it is fed thru from - '
+            + 'its load then counts on that distro\'s service.';
         const f = this.distroFeeder(d);
         const svc = document.createElement('option');
         svc.value = '';
-        svc.textContent = f.service ? `from ${f.service.name || f.service.id}` : 'from the service';
+        // no service to name: it says so rather than "from the service"
+        svc.textContent = f.service ? `from ${f.service.name || f.service.id}` : 'Fed from: none';
         if (!f.from) svc.selected = true;
         sel.appendChild(svc);
         this.feederSources(d).forEach(x => {
@@ -423,8 +554,11 @@ class _Services {
 
     _serviceLoad(s, loads) {
         const names = this.distroLegNames(s);
-        const rows = this.serviceDistros(s.id).map(d => ({
-            distro: d, load: (loads || []).find(x => x.id === d.id) || null,
+        // its distros and every distro fed thru one of them (thru loads):
+        // each distro's own load once, `thru` naming the distro it is fed
+        // thru
+        const rows = this.serviceFedDistros(s.id).map(({ distro: d, thru }) => ({
+            distro: d, thru, load: (loads || []).find(x => x.id === d.id) || null,
         }));
         const rating = Number(s.ratingA) || 0;
         const rule = this.distroMainLimit(s);
@@ -625,11 +759,17 @@ class _Services {
             row.appendChild(empty);
             return row;
         }
-        rows.forEach(({ distro: d }) => {
+        rows.forEach(({ distro: d, thru }) => {
             const chip = document.createElement('span');
             chip.className = 'hw-dock-svc-chip';
             chip.dataset.lrdSvcDistro = d.id;
-            chip.textContent = `${d.name || d.id} ${+(Number(d.ratingA) || 0).toFixed(1)} A`;
+            chip.textContent = `${d.name || d.id} ${+(Number(d.ratingA) || 0).toFixed(1)} A`
+                + (thru ? ` thru ${thru.name || thru.id}` : '');
+            if (thru) {
+                chip.dataset.lrdSvcThru = thru.id;
+                chip.title = `${d.name || d.id} is fed thru ${thru.name || thru.id}: its load counts `
+                    + 'on this service, not on that distro\'s legs.';
+            }
             row.appendChild(chip);
         });
         const sum = document.createElement('span');
@@ -749,6 +889,21 @@ class _Services {
                 done();
             });
             r.appendChild(off);
+            list.appendChild(r);
+        });
+        // the distros fed thru one on it count here too; they come off by
+        // their own feeder, so no Take off
+        this.serviceFedDistros(s.id).filter(x => !on.includes(x.distro)).forEach(({ distro: d, thru }) => {
+            const r = this._distroGearRow();
+            r.classList.add('hw-pop-svc-row');
+            const name = document.createElement('span');
+            name.className = 'hw-pop-svc-name';
+            name.dataset.lrdSvcThru = d.id;
+            name.textContent = `${d.name || d.id} · ${+(Number(d.ratingA) || 0).toFixed(1)} A`
+                + (thru ? ` · thru ${thru.name || thru.id}` : '');
+            name.title = `${d.name || d.id} is fed thru ${thru ? (thru.name || thru.id) : 'a distro on it'}: `
+                + 'its load counts on this service. Its feeder, behind its ⚙, changes that.';
+            r.appendChild(name);
             list.appendChild(r);
         });
         wrap.appendChild(list);

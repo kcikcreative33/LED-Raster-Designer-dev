@@ -1246,23 +1246,63 @@ class _PullList {
             const into = directSeen.has(key) ? directOn : boxesOn;
             into.set(distroId, (into.get(distroId) || 0) + 1);
         }
+        // The distros another distro is fed thru (feeder.from), each with
+        // the distros fed thru it - a pass-through distro is pulled even
+        // with nothing plugged into it (owner, 2026-10-21).
+        const fedThru = new Map();            // String(distroId) -> [distros fed thru it]
+        for (const x of distros) {
+            const from = x && x.feeder && typeof x.feeder === 'object' ? x.feeder.from : null;
+            if (from == null || String(from) === String(x.id)) continue;
+            if (!fedThru.has(String(from))) fedThru.set(String(from), []);
+            fedThru.get(String(from)).push(x);
+        }
+        // Where a distro with no location and nothing of its own plugged
+        // in falls back to: the first screen a distro fed thru it feeds
+        // (down the chain), else the one the distro it is fed thru feeds
+        // (up the chain), else the first position.
+        const fallbackLayer = (d) => {
+            const seen = new Set();
+            const walk = [d];
+            while (walk.length) {
+                const cur = walk.shift();
+                if (!cur || seen.has(String(cur.id))) continue;
+                seen.add(String(cur.id));
+                const at = distroFirstLayer.get(String(cur.id));
+                if (at != null) return at;
+                walk.push(...(fedThru.get(String(cur.id)) || []));
+            }
+            for (let cur = d, hops = 0; cur && hops < distros.length; hops++) {
+                const from = cur.feeder && typeof cur.feeder === 'object' ? cur.feeder.from : null;
+                cur = from != null ? distroById.get(from) : null;
+                const at = cur ? distroFirstLayer.get(String(cur.id)) : null;
+                if (at != null) return at;
+            }
+            const first = bases.find(b => (b.layers || []).length);
+            return first ? first.layers[0].id : null;
+        };
         for (const d of distros) {
             const n = boxesOn.get(String(d.id)) || 0;
             const k = directOn.get(String(d.id)) || 0;
-            if (!n && !k) continue;
+            // Listed when something is plugged into it, when another distro
+            // is fed thru it, or when its feeder is set; a distro with none
+            // of those stays off.
+            const passes = fedThru.has(String(d.id));
+            const fed = !!(d.feeder && typeof d.feeder === 'object');
+            if (!n && !k && !passes && !fed) continue;
             // Named by its Type; a distro feeding direct outputs only says
             // its outputs in Notes, as it always has.
             const r = { type: this.pullDistroType(d), length: 'EA', qty: 1,
                         label: d.name || '',
-                        notes: n ? '' : `${k} direct output${k === 1 ? '' : 's'}`,
+                        notes: n || !k ? '' : `${k} direct output${k === 1 ? '' : 's'}`,
                         side: 'power' };
-            if (!gearAt(r, this.pullLocationOf(d), distroFirstLayer.get(String(d.id)))) continue;
+            const at = n || k ? distroFirstLayer.get(String(d.id)) : fallbackLayer(d);
+            if (!gearAt(r, this.pullLocationOf(d), at)) continue;
             hw('distro', d.id, d.name).rows.push({ ...r });
             // Its FEEDER (2026-10-21, app-services.js): one row under the
             // distro's name, where the distro sits - "400 A cam set" with
             // its length, "no length" where none is typed.
             const feeder = typeof this.pullFeederRow === 'function' ? this.pullFeederRow(d) : null;
-            if (feeder && gearAt(feeder, this.pullLocationOf(d), distroFirstLayer.get(String(d.id)))) {
+            if (feeder && gearAt(feeder, this.pullLocationOf(d), at)) {
                 hw('distro', d.id, d.name).rows.push({ ...feeder });
             }
         }
