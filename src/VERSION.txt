@@ -1,7 +1,7 @@
 LED RASTER DESIGNER - VERSION HISTORY
 =====================================
 
-v1.5.3 - October 19, 2026
+v1.5.3 - October 21, 2026
 ----------------------------
 
 2fers and 3fers now work the way you'd expect in custom mode and across a
@@ -110,10 +110,6 @@ FIXES
   the multis came off the distro.
 - FIX: A circuit you're redrawing stays highlighted until you press Esc,
   not just while Alt is held.
-- FIX: A 3fer on the second or third screen of a group, or one that
-  crosses from one screen to the next, draws as one circuit with one
-  label. Before, each leg got its own label and the numbers ran off by
-  one.
 - FIX: Turning custom mode on starts the screen empty, circuit labels you
   typed included.
 - FIX: Clearing a circuit you took over no longer clears the 2fer or 3fer
