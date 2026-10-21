@@ -618,7 +618,9 @@ def test_five_and_six_at_both_ends_are_one_four_way(page):
     pull = pg.evaluate(PULL_JS)
     rows = [r for _name, rs in pull['rows'] for r in rs]
     snakes = [r for r in rows if r[0] == 'etherCON Snake']
-    assert snakes == [['etherCON Snake', "150'", 1, '5-6 PAIR', '4 channel']], rows
+    # labelled by its ports, its name and size in Notes (2026-10-21)
+    assert snakes == [['etherCON Snake', "150'", 1, 'BOX A-5, BOX A-6, BOX B-5, BOX B-6',
+                       '5-6 PAIR · 4 channel']], rows
     barrels = [r for r in rows if r[0] == 'etherCON Barrel']
     assert [r[2] for r in barrels] == [2], barrels
     exts = [r for r in rows if r[0] == 'etherCON Extension' and 'ext' in r[4]]

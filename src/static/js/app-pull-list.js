@@ -24,16 +24,18 @@
 //   * data: `Cat6` (or `etherCON`, where the box's output is etherCON -
 //     dataCableWord) + length for a loose port cable, `Cat6` with an empty
 //     length and "no length" in Notes for a port with none typed, one
-//     `Cat6 Snake` row per snake (qty 1, "6 channel" in Notes - the
-//     type already says Snake, so snakeSizeText does not say it again -
-//     snakes of different channel counts are never merged), lengths as
-//     the snake's ONE home run. A snake is said ONCE for the show, keyed by the snake
+//     `Cat6 Snake` row per snake (qty 1, labelled by the port labels of
+//     its sockets folded - "VX A-1 … A-4" - with "SNAKE A · 6 channel" in
+//     Notes, 2026-10-21 - the type already says Snake, so snakeSizeText
+//     does not say it again - two snakes are never merged, `apart`),
+//     lengths as the snake's ONE home run. A snake is said ONCE for the show, keyed by the snake
 //     itself: since 2026-09-09 one holds sockets from as many cards and
 //     boxes as it was formed across ("Any sockets, any device"), and it is
 //     still one cable to pull - its hardware rows land on every processor
 //     it touches. A snaked port's EXTENSION (the shorter cable from the
 //     snake's fan-out to the panel, 2026-09-07) is one `Cat6 Extension` +
-//     length row under the port's label with "ext · <snake>" in Notes,
+//     length row under the socket's own port label ("VX A-1",
+//     2026-10-21) with "ext · <snake>" in Notes,
 //     and ONE `Cat6 Barrel` EA row under the same label beside it -
 //     the coupler that joins the extension to the snake's fan-out
 //     ("every time we add an extension to a snake, we need to count for
@@ -41,7 +43,9 @@
 //     ethercon barrels", 2026-09-07). A loose port's own home run joins
 //     nothing, so it takes no barrel - unless the stock makes it of
 //     several pieces: every join of two pieces is one more barrel (one per
-//     channel on a snake). Power multis join without one.
+//     channel on a snake). Power multis join without one; a powerCON
+//     cable's join takes one `powerCON Coupler` EA, a TRUE1 cable's none
+//     (2026-10-21, _pullPowerJoin).
 //   * the BACKUP end of a port (the socket its return comes back on -
 //     backedBy, the card's 1:1 partner or the box's) is walked exactly like
 //     the primary: its snake said once, its cable or extension as a row
@@ -391,11 +395,12 @@ class _PullList {
     // Rows whose length is several stock pieces (pullCableLength), one row
     // per piece length: "Multi | 100'+25' | 1" pulls as "Multi | 100' | 1"
     // and "Multi | 25' | 1", each with the row's label and notes, so the
-    // sheet and its totals count the cables a crew pulls. A data row that
-    // carries `_join` (its barrel's type and how many per join) adds the
-    // barrels its joins take: "Cat6 | 100'+25'" is 100' + 25' + one "Cat6
-    // Barrel" EA. A power multi joins without one. Every other row passes
-    // through as it is.
+    // sheet and its totals count the cables a crew pulls. A row that
+    // carries `_join` (its coupler's type and how many per join) adds the
+    // couplers its joins take: "Cat6 | 100'+25'" is 100' + 25' + one "Cat6
+    // Barrel" EA, "powerCON | 100'+25'" one "powerCON Coupler" EA
+    // (_pullPowerJoin). A power multi and a TRUE1 cable join without one.
+    // Every other row passes through as it is.
     _pullExpandPieces(rows) {
         const out = [];
         for (const r of rows) {
@@ -414,8 +419,62 @@ class _PullList {
                                  qty: (Number(r.qty) || 0) * joins * (Number(r._join.per) || 1) };
                 delete barrel._pieces;
                 delete barrel._join;
+                // a coupler is a coupler, whichever snake it joins
+                delete barrel.apart;
                 out.push(barrel);
             }
+        }
+        return out;
+    }
+
+    // A powerCON cable made of several stock pieces (a circuit's cable, a
+    // direct output's, any cable whose panel end is powerCON) is joined
+    // where the pieces meet by one "powerCON Coupler" EA per join, under
+    // the cable's label (owner, 2026-10-21). TRUE1 needs none - a female
+    // mates with a male - and neither does a multi or any other power
+    // cable. _pullExpandPieces counts them.
+    _pullPowerJoin(r) {
+        if (r && Array.isArray(r._pieces) && r._pieces.length > 1
+                && /(^|→\s*)powerCON$/.test(String(r.type || '').trim())) {
+            r._join = { type: 'powerCON Coupler', per: 1 };
+        }
+        return r;
+    }
+
+    // One socket as the pull sheet labels a snake and its extensions
+    // (owner, 2026-10-21): the port label its own device gives it ("VX
+    // A-1" off a box named VX A), else `fallback` (the label of the screen
+    // port riding it), else that screen port's label read off the
+    // assignment, else the device's name and the socket's number.
+    _pullSocketLabel(owner, socket, fallback = '') {
+        if (!owner) return fallback || '';
+        const n = parseInt(socket, 10);
+        const port = ((owner.rec || {}).ports || []).find(p => p.number === n);
+        if (port && port.label) return String(port.label);
+        if (fallback) return fallback;
+        const occ = owner.cardId && typeof this._portOccupants === 'function'
+            ? this._portOccupants(owner.cardId, n) : [];
+        for (const o of occ) {
+            const layer = ((this.project && this.project.layers) || [])
+                .find(l => String(l.id) === String(o.layerId));
+            if (!layer || typeof this.getPortLabelText !== 'function') continue;
+            const text = this.getPortLabelText(layer, o.number, o.role === 'return' ? 'return' : 'primary');
+            if (text) return String(text);
+        }
+        const own = typeof this.dataSocketLabel === 'function' ? this.dataSocketLabel(owner, n) : String(n);
+        if (!/^\d+$/.test(own)) return own;
+        const title = typeof this.dataOwnerTitle === 'function' ? this.dataOwnerTitle(owner) : '';
+        return title ? `${title} ${own}` : own;
+    }
+
+    // Every port on a snake, labelled as _pullSocketLabel says, in member
+    // order: what the snake's row is labelled with.
+    _pullSnakePortLabels(snake) {
+        const out = [];
+        for (const m of ((snake && snake.members) || [])) {
+            const owner = typeof this._dataCableOwner === 'function' ? this._dataCableOwner(m.kind, m.id) : null;
+            const label = owner ? this._pullSocketLabel(owner, m.socket) : String(m.socket);
+            if (label && !out.includes(label)) out.push(label);
         }
         return out;
     }
@@ -633,17 +692,22 @@ class _PullList {
     // carrying `split` (a group member's jumpers, one row per member on the
     // group's pull sheet) merges only with rows of the same split, and keeps
     // it; without, every row of a type and length folds into one - the
-    // totals, and a screen's own reading.
+    // totals, and a screen's own reading. A row carrying `apart` (a snake's,
+    // `snake:<id>`) merges only with its own copies everywhere, totals
+    // included: two snakes are never one row, whatever their channels
+    // (owner, 2026-10-21).
     _pullMergeRows(rows, keepSplit = false) {
         const byKey = new Map();
         for (const r of this._pullExpandPieces(rows)) {
             if (!r || !r.type) continue;
             const split = keepSplit && r.split ? r.split : '';
-            const key = `${r.type}\u0000${r.length}\u0000${split}`;
+            const apart = r.apart || '';
+            const key = `${r.type}\u0000${r.length}\u0000${split}\u0000${apart}`;
             let hit = byKey.get(key);
             if (!hit) {
                 hit = { type: r.type, length: r.length, qty: 0, _labels: [], _notes: [] };
                 if (split) hit.split = split;
+                if (apart) hit.apart = apart;
                 byKey.set(key, hit);
             }
             hit.qty += Number(r.qty) || 0;
@@ -663,6 +727,7 @@ class _PullList {
                 notes: r._notes.join('; '),
                 side: r.side || 'power',
                 ...(r.split ? { split: r.split } : {}),
+                ...(r.apart ? { apart: r.apart } : {}),
                 _labels: r._labels, _notes: r._notes,
             })));
     }
@@ -675,7 +740,10 @@ class _PullList {
     // "19x11") is never cut off it. A dashed name - a multi under a
     // digit-ending distro ("DISTRO 1-1") or a circuit label ("SR1-1") -
     // folds only a run of three or more, its first name whole and its last
-    // from the number before the dash: "DISTRO 1-1 … 1-7". A list still
+    // from the number before the dash: "DISTRO 1-1 … 1-7". A socket's
+    // port label - a letter before the dash, "VX A-1" off a box named VX A
+    // (2026-10-21, a snake's and its extensions' labels) - folds the same
+    // way: "VX A-1 … A-4". A list still
     // longer than eight pieces after folding (a wall's worth of circuit
     // labels) is said as its ends and a count.
     _pullCompressNames(names) {
@@ -702,6 +770,13 @@ class _PullList {
             const dashed = n.match(/^(.*?)(\d+)([-–])(\d+)$/);
             if (dashed) {
                 const [, head, mid, sep, tail] = dashed;
+                add(`d\u0000${head}${mid}${sep}`, n, parseInt(tail, 10),
+                    ([a, b]) => `${head}${mid}${sep}${a} … ${mid}${sep}${b}`);
+                continue;
+            }
+            const lettered = n.match(/^(.*?)([A-Za-z]+)([-–])(\d+)$/);
+            if (lettered) {
+                const [, head, mid, sep, tail] = lettered;
                 add(`d\u0000${head}${mid}${sep}`, n, parseInt(tail, 10),
                     ([a, b]) => `${head}${mid}${sep}${a} … ${mid}${sep}${b}`);
                 continue;
@@ -1217,7 +1292,8 @@ class _PullList {
         // (where the row was pulled) has done its work.
         const strip = r => ({ type: r.type, length: r.length, qty: r.qty,
                               label: r.label, notes: r.notes, side: r.side || 'power',
-                              ...(r.split ? { split: r.split } : {}) });
+                              ...(r.split ? { split: r.split } : {}),
+                              ...(r.apart ? { apart: r.apart } : {}) });
         listed.forEach(p => { p.rows = p.rows.map(strip); });
         hardware.forEach(h => { h.rows = h.rows.map(strip); });
         // `rowsOn`: the screen's rows unmerged, each with the screens its
@@ -1419,8 +1495,8 @@ class _PullList {
                     box.homeRun = one.ft;
                     if (one.name) box.cable = one.name;
                 } else if (cable) {
-                    row(cable.name ? this.pullPowerConnectorName(cable.name) : 'Power Cable',
-                        this.pullCableLength(cable.ft, 'circuit'), 1, leg.label, '', locationOf(d));
+                    this._pullPowerJoin(row(cable.name ? this.pullPowerConnectorName(cable.name) : 'Power Cable',
+                                            this.pullCableLength(cable.ft, 'circuit'), 1, leg.label, '', locationOf(d)));
                 }
             }
         }
@@ -1476,8 +1552,8 @@ class _PullList {
                 const notes = [box.homeRun ? '' : 'no length',
                                box.crowded ? `${box.crowded} circuits on a one-circuit output` : '']
                     .filter(Boolean).join(' · ');
-                const r = row(this.pullPowerConnectorName(box.cable),
-                              this.pullCableLength(box.homeRun, 'direct'), 1, boxLabel, notes, at);
+                const r = this._pullPowerJoin(row(this.pullPowerConnectorName(box.cable),
+                                                  this.pullCableLength(box.homeRun, 'direct'), 1, boxLabel, notes, at));
                 hw('distro', box.distroId, distroName).rows.push({ ...r });
                 continue;
             }
@@ -1645,8 +1721,11 @@ class _PullList {
                         this.dataPortConnectorId(owner, cable.extConnector));
                     // An extension is a type of its own ("Cat6 Extension"),
                     // so its note never rides onto the home runs of the same
-                    // length when the rows merge.
-                    push(joined(row(`${extWord} Extension`, this.pullCableLength(cable.ext, 'data'), 1, label,
+                    // length when the rows merge. It and its barrel are
+                    // labelled by the socket's own port label, "VX A-1"
+                    // (owner, 2026-10-21), the note still naming the snake.
+                    const sockLabel = this._pullSocketLabel(owner, socket, label);
+                    push(joined(row(`${extWord} Extension`, this.pullCableLength(cable.ext, 'data'), 1, sockLabel,
                                     `ext · ${s.name || 'snake'}`, at), extWord));
                     // One barrel per extension (2026-09-07): the coupler
                     // between the fan-out and the extension, in the
@@ -1654,7 +1733,7 @@ class _PullList {
                     // notes. _pullMergeRows folds a snake's four into
                     // `Cat6 Barrel | EA | 4`. The backup end passes through
                     // here too, so its extension takes one as well.
-                    push(row(`${extWord} Barrel`, 'EA', 1, label, '', at));
+                    push(row(`${extWord} Barrel`, 'EA', 1, sockLabel, '', at));
                 }
                 // ONE row for the loom, keyed by the SNAKE (2026-09-09:
                 // "Any sockets, any device" - one snake can hold sockets
@@ -1668,18 +1747,26 @@ class _PullList {
                 out.snakes.push({ name: s.name || '', ways, ft: s.ft || null,
                                   connector: connId || null, owner: owner.kind,
                                   ownerId: owner.id, id: s.id });
+                // Labelled by the ports on it, folded ("VX A-1 … A-4"),
+                // the snake's own name in Notes beside its size, "SNAKE A
+                // · 4 channel" (owner, 2026-10-21). `apart` keeps it its
+                // own row: two snakes never merge, whatever their channels.
                 const type = `${word} Snake`;
                 const ft = this.parseCableLength(s.ft);
+                const size = typeof this.snakeSizeText === 'function'
+                    ? this.snakeSizeText(`${type} ${s.name || ''}`, ways)
+                    : `${ways} channel`;
+                const ports = this._pullSnakePortLabels(s);
                 const snakeRow = { type, length: this.pullCableLength(ft, 'data'),
-                                   qty: 1, label: s.name || '',
-                                   notes: [typeof this.snakeSizeText === 'function'
-                                               ? this.snakeSizeText(`${type} ${s.name || ''}`, ways)
-                                               : `${ways} channel`,
+                                   qty: 1, label: this._pullCompressNames(ports),
+                                   notes: [[s.name || '', size].filter(Boolean).join(' · '),
                                            (Number.isFinite(ft) && ft > 0)
                                                ? '' : 'no length']
                                        .filter(Boolean).join('; ') };
                 const r = joined(row(snakeRow.type, snakeRow.length, snakeRow.qty,
                                      snakeRow.label, snakeRow.notes, at), word, Math.max(1, ways));
+                r.apart = snakeKey;
+                r._labels = ports;
                 saidOnce.set(snakeKey, r);
                 for (const pid of this._snakeProcessorIds(s)) {
                     const p2 = (this.project.processors || [])
@@ -1750,10 +1837,12 @@ class _PullList {
     }
 
     // A group member's jumper row (`split`) is keyed with its screen, so an
-    // edit to "Data Jump 2' WALL SL" never lands on WALL SR's.
+    // edit to "Data Jump 2' WALL SL" never lands on WALL SR's; a snake's row
+    // (`apart`) with its snake, so two snakes of one length keep their own.
     pullRowKey(row) {
         return `${row && row.type != null ? row.type : ''}|${row && row.length != null ? row.length : ''}`
-            + (row && row.split ? `|${row.split}` : '');
+            + (row && row.split ? `|${row.split}` : '')
+            + (row && row.apart ? `|${row.apart}` : '');
     }
 
     // A stored edit's key as the row it answers to is keyed today: a key
@@ -1899,8 +1988,10 @@ class _PullList {
     applyPullSheetEdits(list) {
         const edits = this.getPullSheetEdits();
         const out = { ...list, positions: [], totals: (list.totals || []).slice() };
-        // the totals are by type and length, whatever split a row carries
-        const totalKey = (r) => `${r && r.type != null ? r.type : ''}|${r && r.length != null ? r.length : ''}`;
+        // the totals are by type and length, whatever split a row carries -
+        // and by snake, as the engine's are (_pullMergeRows)
+        const totalKey = (r) => `${r && r.type != null ? r.type : ''}|${r && r.length != null ? r.length : ''}`
+            + (r && r.apart ? `|${r.apart}` : '');
         const touched = new Set();
         const touchedRows = [];
         // What each engine-row edit does to the screens and the hardware:
@@ -1956,6 +2047,7 @@ class _PullList {
                 let hit = rebuilt.get(key);
                 if (!hit) {
                     hit = { type: r.type, length: r.length, qty: 0, labels: [], notes: [], side: r.side || 'power' };
+                    if (r.apart) hit.apart = r.apart;
                     rebuilt.set(key, hit);
                 }
                 hit.qty += Number(r.qty) || 0;
@@ -1966,6 +2058,7 @@ class _PullList {
         const totals = kept.concat([...rebuilt.values()].map(h => ({
             type: h.type, length: h.length, qty: h.qty,
             label: h.labels.join(', '), notes: h.notes.join('; '), side: h.side,
+            ...(h.apart ? { apart: h.apart } : {}),
         })));
         out.totals = this._pullSortRows(totals);
         if (carried.length) this._pullCarryEdits(list, out, carried);
@@ -2013,7 +2106,8 @@ class _PullList {
             }
             return hardware[i];
         };
-        const same = (a, b) => a.type === b.type && a.length === b.length;
+        const same = (a, b) => a.type === b.type && a.length === b.length
+            && (a.apart || '') === (b.apart || '');
         // Move a merged row's count by `delta`; a row brought to nothing goes.
         const moveRows = (rows, row, delta) => {
             const i = rows.findIndex(r => same(r, row));

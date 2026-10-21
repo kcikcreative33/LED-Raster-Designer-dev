@@ -261,16 +261,32 @@ def true1_spelling(text):
     return _OLD_TRUE1.sub('TRUE1', text) if isinstance(text, str) else text
 
 
+# The same sheet spells etherCON "Ether-con" ("Ether-con", "Ether-con
+# Snake", "Ether-con Barrel"). The app writes the connector in use the way
+# its maker does (2026-10-21), so the copy it hands out reads etherCON too.
+_OLD_ETHERCON = re.compile(r'\bEther-con\b')
+
+
+def connector_spelling(text):
+    """`text` with the template's old TRUE1 and etherCON spellings
+    replaced: "Tru-1 2fer" reads "TRUE1 2fer", "Ether-con Snake" reads
+    "etherCON Snake"."""
+    if not isinstance(text, str):
+        return text
+    return _OLD_ETHERCON.sub('etherCON', true1_spelling(text))
+
+
 def _true1_workbook(wb):
-    """The GEAR LIST cable types and the READ ME in the app's spelling."""
+    """The GEAR LIST cable types and the READ ME in the app's spelling
+    (connector_spelling)."""
     gear = wb[GEAR]
     for r in range(GEAR_FIRST_ROW, GEAR_TYPE_LAST_ROW + 1):
         cell = gear.cell(r, GEAR_TYPE_COL)
-        cell.value = true1_spelling(cell.value)
+        cell.value = connector_spelling(cell.value)
     if README in wb.sheetnames:
         for row in wb[README].iter_rows():
             for cell in row:
-                cell.value = true1_spelling(cell.value)
+                cell.value = connector_spelling(cell.value)
 
 
 def _sort_keys(row):
@@ -520,7 +536,7 @@ def gear_list(template_path=TEMPLATE_PATH):
     for r in range(GEAR_FIRST_ROW, GEAR_TYPE_LAST_ROW + 1):
         v = ws.cell(r, GEAR_TYPE_COL).value
         if v is not None and str(v).strip():
-            types.append(true1_spelling(str(v).strip()))
+            types.append(connector_spelling(str(v).strip()))
         if r <= GEAR_LENGTH_LAST_ROW:
             v = ws.cell(r, GEAR_LENGTH_COL).value
             if v is not None and str(v).strip():

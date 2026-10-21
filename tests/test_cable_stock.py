@@ -329,8 +329,10 @@ def test_power_lengths_are_written_as_pieces_everywhere(page):
     tru = sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'TRUE1')
     assert tru == [("25'", 2), ("50'", 1)], pull['totals']
     assert not [r for r in pull['rows'] if '+' in str(r[1])], 'the sheet lists pieces, never sums'
-    # a power multi joins without a barrel (2026-10-21)
+    # a power multi joins without a barrel (2026-10-21), and a TRUE1
+    # cable without a coupler - a female mates with a male
     assert not [r for r in pull['totals'] if 'Barrel' in r[0]], pull['totals']
+    assert not [r for r in pull['totals'] if 'Coupler' in r[0]], pull['totals']
     # the pieces keep the row's label
     assert ['Multi', "100'", 1, 'SR1'] in pull['rows'] and ['Multi', "25'", 1, 'SR1'] in pull['rows'], pull['rows']
     # the distro's hardware rows count the same pieces
@@ -392,6 +394,31 @@ def test_power_lengths_are_written_as_pieces_everywhere(page):
     }""", [ids['id'], ids['distroId']])
     assert dock['value'] == '125' and "Pulled as 100'+25' from this show's cable stock." in dock['title'], dock
     assert dock['cvalue'] == '60' and "Pulled as 50'+25'" in dock['ctitle'], dock
+    assert errors == [], errors
+
+
+def test_a_powercon_join_takes_a_coupler(page):
+    """A powerCON cable the stock splits is joined by one "powerCON
+    Coupler" EA per join, under the cable's label (owner, 2026-10-21):
+    circuit 1's 60 is 50'+25' - one join, one coupler; circuit 2's 25 is
+    one piece - none; the multi's 100'+25' joins with nothing."""
+    pg, errors = page
+    ids = _power_seed(pg, FEET)
+    pg.evaluate("""() => {
+        const app = window.app;
+        const wall = app.project.layers[0];
+        app.setCircuitCable(wall, 1, {ft: 60, connector: 'powercon'}, false);
+        app.setCircuitCable(wall, 2, {ft: 25, connector: 'powercon'}, false);
+        app.updateLayers([wall]);
+        app._circuitTailCache = null;
+    }""")
+    pull = pg.evaluate(PULL_ROWS_JS)
+    label = pg.evaluate("([id]) => window.app.getPowerCircuitLabel(window.app.project.layers.find(l => l.id === id), 1)",
+                        [ids['id']])
+    assert sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'powerCON') == [("25'", 2), ("50'", 1)], pull['totals']
+    assert [r for r in pull['totals'] if 'Coupler' in r[0]] == [['powerCON Coupler', 'EA', 1]], pull['totals']
+    assert ['powerCON Coupler', 'EA', 1, label] in pull['rows'], pull['rows']
+    assert not [r for r in pull['totals'] if 'Barrel' in r[0]], pull['totals']
     assert errors == [], errors
 
 

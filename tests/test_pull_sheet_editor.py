@@ -62,8 +62,10 @@ def test_the_menu_item_the_modal_the_button_and_the_gear_list_are_served(client)
     r = client.get('/api/pull-sheet/gear-list')
     assert r.status_code == 200
     v = r.get_json()
-    for word in ('TRUE1', 'Multi', 'Ether-con Snake', 'TRUE1 2fer'):
+    for word in ('TRUE1', 'Multi', 'etherCON Snake', 'etherCON', 'etherCON Barrel', 'TRUE1 2fer'):
         assert word in v['types'], word
+    # the template's old spellings are never offered (connector_spelling)
+    assert not [t for t in v['types'] if 'Ether-con' in t or 'Tru-1' in t], v['types']
     assert 'EA' in v['lengths'] and "100'" in v['lengths']
     assert v == dict(pull_sheet.gear_list(), meter_lengths=pull_sheet.meter_gear_lengths())
 
@@ -272,7 +274,10 @@ def test_the_file_menu_opens_the_editor_laid_out_like_the_workbook(page):
     # a grouped wall's jumper rows are one per member (2026-10-01), keyed
     # with the screen they sit on so an edit lands on that screen's row
     assert keys == [f"{r['type']}|{r['length']}" + (f"|{r['split']}" if r.get('split') else '')
+                    + (f"|{r['apart']}" if r.get('apart') else '')
                     for r in engine['positions'][0]['rows']]
+    # a snake's row is keyed with its snake, so two never share an edit
+    assert any(k.startswith("Cat6 Snake|100'|snake:") for k in keys), keys
     assert "Data Jump|1'|WALL-A" in keys, keys
     # type and length are readouts, the three others fields
     first = _pos(pg, ids['sr']).locator('tr.pull-row').first
@@ -286,7 +291,7 @@ def test_the_file_menu_opens_the_editor_laid_out_like_the_workbook(page):
     # the Cat6 home runs head the totals, then the jumpers - one row per
     # length (2026-09-25, test_pull_list's seed) - then the distro's own
     # row, by its Type ("Distro" with none, 2026-10-18)
-    assert tot[0:2] == [['Cat6', "50'", '1', 'SR-3'], ['Cat6 Snake', "100'", '1', 'SNAKE A']]
+    assert tot[0:2] == [['Cat6', "50'", '1', 'SR-3'], ['Cat6 Snake', "100'", '1', 'SR-1, SR-2']]
     assert tot[2:6] == [['Data Jump', "1'", '9', 'WALL-A'], ['Data Jump', "1.5'", '4', 'CENTER'],
                         ['Data Jump', "2'", '2', 'WALL-A'], ['Data Jump', "6'", '11', 'WALL-B']]
     assert tot[6] == ['Distro', 'EA', '1', 'SR']

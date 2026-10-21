@@ -8,8 +8,10 @@ is one `Multi` row plus one `<connector> Breakout`, a circuit's cable is
 its connector's name plus its length, a 2fer / 3fer is `<connector> 2fer`
 EA, a loose port cable is `Cat6` + length (`etherCON` where the box's
 output is etherCON), a snake is one
-`Cat6 Snake` row with its way count in Notes, an extension off a
-snake is `Cat6 Extension` + length with "ext · <snake>" in Notes plus ONE
+`Cat6 Snake` row labelled by the ports on it with its name and channel
+count in Notes ("SNAKE A · 2 channel"), an extension off a snake is
+`Cat6 Extension` + length under its socket's port label with "ext ·
+<snake>" in Notes plus ONE
 `Cat6 Barrel` EA ("a snake of four with four extensions would be
 four ethercon barrels", 2026-09-07 - a loose home run takes none), and
 JUMPERS are one per LINK within a run (per port for data, per circuit
@@ -32,6 +34,7 @@ import json
 import os
 import re
 import sys
+from unittest import mock
 
 import pytest
 
@@ -111,11 +114,11 @@ def test_the_route_lays_the_list_into_the_workbook(client):
     positions = [
         {'name': 'SR Beach', 'rows': [
             {'type': 'Multi', 'length': "125'", 'qty': 2, 'label': 'SR 1-2', 'notes': ''},
-            {'type': 'Tru-1', 'length': "10'", 'qty': 6, 'label': 'SR1-1, SR1-6', 'notes': ''},
+            {'type': 'TRUE1', 'length': "10'", 'qty': 6, 'label': 'SR1-1, SR1-6', 'notes': ''},
             {'type': 'Widget Cable', 'length': "12'", 'qty': 1, 'label': 'X', 'notes': 'new'},
         ]},
         {'name': 'CENTER', 'rows': [
-            {'type': 'Ether-con Snake', 'length': "100'", 'qty': 1, 'label': 'SNAKE A', 'notes': '6 channel'},
+            {'type': 'etherCON Snake', 'length': "100'", 'qty': 1, 'label': 'VX A-1 … A-6', 'notes': 'SNAKE A · 6 channel'},
         ]},
     ]
     r = _post_sheet(client, positions, engineer='Eng Name', rev='2.0',
@@ -133,11 +136,12 @@ def test_the_route_lays_the_list_into_the_workbook(client):
         'SR Beach', 'CENTER', 'POSITION 3', 'NEW POSITION', None, None]
     assert [[ws.cell(r, c).value for c in range(1, 6)] for r in range(7, 10)] == [
         ['Multi', "125'", 2, 'SR 1-2', None],
-        ['Tru-1', "10'", 6, 'SR1-1, SR1-6', None],
+        ['TRUE1', "10'", 6, 'SR1-1, SR1-6', None],
         ['Widget Cable', "12'", 1, 'X', 'new'],
     ]
     assert ws.cell(10, 1).value is None
-    assert [ws.cell(7, c).value for c in range(7, 12)] == ['Ether-con Snake', "100'", 1, 'SNAKE A', '6 channel']
+    assert [ws.cell(7, c).value for c in range(7, 12)] == ['etherCON Snake', "100'", 1, 'VX A-1 … A-6',
+                                                            'SNAKE A · 6 channel']
     assert ws.cell(7, 13).value is None
     gear = wb['GEAR LIST']
     types = [gear.cell(r, 1).value for r in range(4, 100) if gear.cell(r, 1).value]
@@ -151,6 +155,34 @@ def test_the_route_lays_the_list_into_the_workbook(client):
     assert sorted(str(dv.sqref) for dv in ws.data_validations.dataValidation) == [
         'A7:A36 G7:G36 M7:M36 S7:S36', 'B7:B36 H7:H36 N7:N36 T7:T36']
     assert 'Overflow' not in wb.sheetnames
+
+
+def test_the_gear_list_reads_the_connectors_in_use(client):
+    """Whatever connector is used is what the workbook writes, its GEAR LIST
+    dropdown included (owner, 2026-10-21): the template's "Ether-con",
+    "Ether-con Snake" and "Ether-con Barrel" read etherCON in the copy (as
+    "Tru-1" reads TRUE1), never twice, and every type the sheet can write
+    lands in the list."""
+    written = ['Cat6', 'Cat6 Snake', 'Cat6 Barrel', 'Cat6 Extension', 'etherCON', 'etherCON Snake',
+               'etherCON Barrel', 'etherCON Extension', 'powerCON', 'powerCON Coupler', 'TRUE1',
+               'TRUE1 Power Jump', 'powerCON Power Jump', 'Edison → TRUE1 tail', 'CEE 16A → powerCON',
+               '400 A cam set']
+    positions = [{'name': 'SR Beach', 'rows': [
+        {'type': t, 'length': 'EA', 'qty': 1, 'label': '', 'notes': ''} for t in written]}]
+    r = _post_sheet(client, positions)
+    assert r.status_code == 200, r.get_data(as_text=True)
+    assert json.loads(r.headers['X-Pull-Sheet-Warnings']) == []
+    wb = openpyxl.load_workbook(io.BytesIO(r.data))
+    gear = wb['GEAR LIST']
+    types = [gear.cell(r, 1).value for r in range(4, 201) if gear.cell(r, 1).value]
+    for t in written:
+        assert types.count(t) == 1, (t, types)
+    assert not [t for t in types if 'Ether-con' in t or 'Tru-1' in t or 'TRU-1' in t], types
+    # the template's own etherCON rows are rewritten in place, not appended
+    assert types[1:4] == ['etherCON Snake', 'etherCON', 'etherCON Barrel'], types
+    assert pull_sheet.connector_spelling('Ether-con Barrel') == 'etherCON Barrel'
+    assert pull_sheet.connector_spelling('Tru-1 2fer') == 'TRUE1 2fer'
+    assert pull_sheet.connector_spelling('Ethernet') == 'Ethernet'
 
 
 def test_four_to_six_positions_take_the_s_y_ae_blocks_and_more_overflow(client):
@@ -380,7 +412,7 @@ def test_positions_are_the_groups_and_the_rows_read_in_the_sheets_vocabulary(pag
     # the first screen it feeds. Its feeder beside it (2026-10-21): no
     # input picked, so "Feeder", and no length typed.
     assert sr == [
-        ('Cat6 Snake', "100'", 1, 'SNAKE A', '2 channel'),
+        ('Cat6 Snake', "100'", 1, 'SR-1, SR-2', 'SNAKE A · 2 channel'),
         ('Data Jump', "1'", 9, 'WALL-A', ''),
         ('Data Jump', "2'", 2, 'WALL-A', ''),
         ('Data Jump', "6'", 11, 'WALL-B', ''),
@@ -473,7 +505,7 @@ def test_the_per_screen_readings_the_packet_will_print(page):
         ('TRUE1 Breakout', 'EA', 2, 'SR 1-2', '')]
     proc_rows = next(v for (k, n), v in kinds.items() if k == 'processor')
     assert proc_rows == [('Cat6', "50'", 1, ids['centerPortLabel'], ''),
-                         ('Cat6 Snake', "100'", 1, 'SNAKE A', '2 channel'),
+                         ('Cat6 Snake', "100'", 1, 'SR-1, SR-2', 'SNAKE A · 2 channel'),
                          ('H9', 'EA', 1, '', '')]
 
 
@@ -520,7 +552,7 @@ def test_a_snaked_ports_extension_is_an_ether_con_row_with_notes(page):
     assert _rows(out['sr']) == [
         ('Cat6 Barrel', 'EA', 1, out['aLabel'], ''),
         ('Cat6 Extension', "25'", 1, out['aLabel'], 'ext · SNAKE A'),
-        ('Cat6 Snake', "100'", 1, 'SNAKE A', '2 channel'),
+        ('Cat6 Snake', "100'", 1, 'SR-1, SR-2', 'SNAKE A · 2 channel'),
         ('H9', 'EA', 1, '', '')], out['sr']
     assert (out['port']['snake'], out['port']['ext'], out['port']['cable']) == ('SNAKE A', 25, None), out['port']
     assert ('Cat6 Extension', "25'", 1, out['aLabel'], 'ext · SNAKE A') in _rows(out['hw'][0]), out['hw']
@@ -530,7 +562,7 @@ def test_a_snaked_ports_extension_is_an_ether_con_row_with_notes(page):
     assert _rows(out['barrels']) == [('Cat6 Barrel', 'EA', 1, out['aLabel'], '')], out['barrels']
     # the loose home run: no barrel
     assert _rows(out['center']) == [('Cat6', "50'", 1, ids['centerPortLabel'], '')], out['center']
-    assert _rows(out['after']) == [('Cat6 Snake', "100'", 1, 'SNAKE A', '2 channel'),
+    assert _rows(out['after']) == [('Cat6 Snake', "100'", 1, 'SR-1, SR-2', 'SNAKE A · 2 channel'),
                                    ('H9', 'EA', 1, '', '')]
 
 
@@ -582,7 +614,8 @@ def test_a_snake_of_two_with_two_extensions_is_two_barrels(page):
             {'type': 'Cat6 Barrel', 'length': 'EA', 'qty': 2, 'label': both, 'notes': '', 'side': 'data'},
             {'type': 'Cat6 Extension', 'length': "10'", 'qty': 1, 'label': lb, 'notes': 'ext · SNAKE A', 'side': 'data'},
             {'type': 'Cat6 Extension', 'length': "25'", 'qty': 1, 'label': la, 'notes': 'ext · SNAKE A', 'side': 'data'},
-            {'type': 'Cat6 Snake', 'length': "100'", 'qty': 1, 'label': 'SNAKE A', 'notes': '2 channel', 'side': 'data'},
+            {'type': 'Cat6 Snake', 'length': "100'", 'qty': 1, 'label': 'SR-1, SR-2', 'notes': 'SNAKE A · 2 channel', 'side': 'data',
+             'apart': mock.ANY},
             {'type': 'H9', 'length': 'EA', 'qty': 1, 'label': '', 'notes': '', 'side': 'data'}]],
         ['CENTER', [
             {'type': 'Cat6', 'length': "50'", 'qty': 1, 'label': ids['centerPortLabel'], 'notes': '', 'side': 'data'}]],
@@ -593,12 +626,13 @@ def test_a_snake_of_two_with_two_extensions_is_two_barrels(page):
         ('Cat6 Barrel', 'EA', 2, both, ''),
         ('Cat6 Extension', "10'", 1, lb, 'ext · SNAKE A'),
         ('Cat6 Extension', "25'", 1, la, 'ext · SNAKE A'),
-        ('Cat6 Snake', "100'", 1, 'SNAKE A', '2 channel')], out['totals']
+        ('Cat6 Snake', "100'", 1, 'SR-1, SR-2', 'SNAKE A · 2 channel')], out['totals']
     # each screen's own share: one barrel each, under its own label
     assert [r for r in _rows(out['byScreen'][0]) if r[0] == 'Cat6 Barrel'] == [('Cat6 Barrel', 'EA', 1, la, '')]
     assert [r for r in _rows(out['byScreen'][1]) if r[0] == 'Cat6 Barrel'] == [('Cat6 Barrel', 'EA', 1, lb, '')]
     assert out['after'] == [
-        ['SR Beach', [{'type': 'Cat6 Snake', 'length': "100'", 'qty': 1, 'label': 'SNAKE A', 'notes': '2 channel', 'side': 'data'},
+        ['SR Beach', [{'type': 'Cat6 Snake', 'length': "100'", 'qty': 1, 'label': 'SR-1, SR-2', 'notes': 'SNAKE A · 2 channel', 'side': 'data',
+             'apart': mock.ANY},
                       {'type': 'H9', 'length': 'EA', 'qty': 1, 'label': '', 'notes': '', 'side': 'data'}]],
         ['CENTER', [{'type': 'Cat6', 'length': "50'", 'qty': 1, 'label': ids['centerPortLabel'], 'notes': '', 'side': 'data'}]]], out['after']
     assert out['afterTotals'] == []
@@ -680,7 +714,7 @@ def test_a_backup_end_is_walked_like_the_primary_under_the_return_label(page):
     ws = wb['Pull Sheet']
     col = pull_sheet.BLOCK_COLS[0]
     block = [tuple(ws.cell(r, col + i).value for i in range(5)) for r in range(7, 30)]
-    assert ('Cat6 Snake', "150'", 1, 'SR Backup', '2 channel') in block, block
+    assert ('Cat6 Snake', "150'", 1, 'BK-1, BK-2', 'SR Backup · 2 channel') in block, block
     assert ('Cat6 Extension', "10'", 1, out['labels']['a'], 'ext · SR Backup') in block, block
     assert ('Cat6 Barrel', 'EA', 1, out['labels']['a'], None) in block, block
     col = pull_sheet.BLOCK_COLS[1]
@@ -693,8 +727,8 @@ def test_a_backup_end_is_walked_like_the_primary_under_the_return_label(page):
     assert _rows(out['sr']) == [
         ('Cat6 Barrel', 'EA', 1, la, ''),
         ('Cat6 Extension', "10'", 1, la, 'ext · SR Backup'),
-        ('Cat6 Snake', "100'", 1, 'SNAKE A', '2 channel'),
-        ('Cat6 Snake', "150'", 1, 'SR Backup', '2 channel'),
+        ('Cat6 Snake', "100'", 1, 'SR-1, SR-2', 'SNAKE A · 2 channel'),
+        ('Cat6 Snake', "150'", 1, 'BK-1, BK-2', 'SR Backup · 2 channel'),
         ('H9', 'EA', 1, '', '')], out['sr']
     assert _rows(out['center']) == [
         ('Cat6', "50'", 1, ids['centerPortLabel'], ''),
@@ -705,12 +739,13 @@ def test_a_backup_end_is_walked_like_the_primary_under_the_return_label(page):
     hw = _rows(out['hw'])
     for want in (('Cat6 Extension', "10'", 1, la, 'ext · SR Backup'), ('Cat6', "60'", 1, lc, ''),
                  ('Cat6 Barrel', 'EA', 1, la, ''),
-                 ('Cat6 Snake', "150'", 1, 'SR Backup', '2 channel')):
+                 ('Cat6 Snake', "150'", 1, 'BK-1, BK-2', 'SR Backup · 2 channel')):
         assert want in hw, (want, hw)
     assert out['totals'] == [['Cat6', "50'", 1], ['Cat6', "60'", 1],
                              ['Cat6 Barrel', 'EA', 1], ['Cat6 Extension', "10'", 1],
                              ['Cat6 Snake', "100'", 1], ['Cat6 Snake', "150'", 1]], out['totals']
-    assert out['after'] == [['SR Beach', [{'type': 'Cat6 Snake', 'length': "100'", 'qty': 1, 'label': 'SNAKE A', 'notes': '2 channel', 'side': 'data'},
+    assert out['after'] == [['SR Beach', [{'type': 'Cat6 Snake', 'length': "100'", 'qty': 1, 'label': 'SR-1, SR-2', 'notes': 'SNAKE A · 2 channel', 'side': 'data',
+             'apart': mock.ANY},
                                           {'type': 'H9', 'length': 'EA', 'qty': 1, 'label': '', 'notes': '', 'side': 'data'}]],
                             ['CENTER', [{'type': 'Cat6', 'length': "50'", 'qty': 1, 'label': ids['centerPortLabel'], 'notes': '', 'side': 'data'}]]], out['after']
 
@@ -838,7 +873,7 @@ def test_a_boxs_fiber_is_one_row_and_the_workbook_writes_it(page):
     no_len = ['CENTER', [['etherCON', '', 1, ids['centerPortLabel'], 'no length']]]
     assert out['typed'] == [['SR Beach', [['12 Tac Fiber', "250'", 1, 'CVT4K-S SR', ''],
                                           ['CVT4K-S', 'EA', 1, 'SR', ''],
-                                          ['etherCON Snake', "100'", 1, 'SNAKE A', '2 channel'],
+                                          ['etherCON Snake', "100'", 1, 'SR-1, SR-2', 'SNAKE A · 2 channel'],
                                           ['H9', 'EA', 1, '', '']]],
                             no_len], out['typed']
     assert out['unmodelled'] == []
@@ -846,7 +881,7 @@ def test_a_boxs_fiber_is_one_row_and_the_workbook_writes_it(page):
     assert out['hardware'] == [[['12 Tac Fiber', "250'", 1, 'CVT4K-S SR'],
                                 ['CVT4K-S', 'EA', 1, 'SR'],
                                 ['etherCON', '', 1, ids['centerPortLabel']],
-                                ['etherCON Snake', "100'", 1, 'SNAKE A'],
+                                ['etherCON Snake', "100'", 1, 'SR-1, SR-2'],
                                 ['H9', 'EA', 1, '']]]
     assert out['status'] == 200
     import base64
@@ -856,11 +891,11 @@ def test_a_boxs_fiber_is_one_row_and_the_workbook_writes_it(page):
     rows = [tuple(ws.cell(r, col + i).value for i in range(4)) for r in range(7, 30)]
     assert ('12 Tac Fiber', "250'", 1, 'CVT4K-S SR') in rows, rows
     assert out['untyped'] == [['SR Beach', [['CVT4K-S', 'EA', 1, 'SR', ''],
-                                            ['etherCON Snake', "100'", 1, 'SNAKE A', '2 channel'],
+                                            ['etherCON Snake', "100'", 1, 'SR-1, SR-2', 'SNAKE A · 2 channel'],
                                             ['Fiber', "250'", 1, 'CVT4K-S SR', ''],
                                             ['H9', 'EA', 1, '', '']]], no_len]
     assert out['noLength'] == [['SR Beach', [['CVT4K-S', 'EA', 1, 'SR', ''],
-                                             ['etherCON Snake', "100'", 1, 'SNAKE A', '2 channel'],
+                                             ['etherCON Snake', "100'", 1, 'SR-1, SR-2', 'SNAKE A · 2 channel'],
                                              ['H9', 'EA', 1, '', '']]],
                                no_len]
     # the box gone, CENTER's own cable reads again - and the snake that
@@ -1107,9 +1142,9 @@ def test_smoke_live_show_b(page):
         ('Cat6 Extension', "10'", 3, 'SR A-1, SR B-1, SR B-3', 'ext · SR A; ext · SR B'),
         ('Cat6 Extension', "25'", 2, 'SR A-3, SR A-4', 'ext · SR A'),
         ('Cat6 Extension', "75'", 1, 'SR B-4', 'ext · SR B'),
-        ('Cat6 Barrel', 'EA', 6, 'SR A-1, SR B-1, SR A-3, SR B-3, SR A-4, SR B-4', ''),
-        ('Cat6 Snake', "100'", 1, 'SR B', '4 channel'),
-        ('Cat6 Snake', "150'", 1, 'SR A', '4 channel'),
+        ('Cat6 Barrel', 'EA', 6, 'SR A-1, SR A-3, SR A-4, SR B-1, SR B-3, SR B-4', ''),
+        ('Cat6 Snake', "100'", 1, 'SR B-1 … B-4', 'SR B · 4 channel'),
+        ('Cat6 Snake', "150'", 1, 'SR A-1 … A-4', 'SR A · 4 channel'),
         ('Multi', "100'", 2, 'SR 2, 4', ''),
         ('Multi', "125'", 2, 'SR 1, 3', ''),
         ('TRUE1', "6'", 8, 'SR1-2, SR1-5, SR2-3, SR2-6, SR3-2, SR3-5, SR4-2, SR4-6', ''),
@@ -1146,9 +1181,9 @@ def test_smoke_live_show_b(page):
         ('Cat6 Extension', "10'", 3, 'SL A-1, SL B-1, SL B-3', 'ext · SL A; ext · SL B'),
         ('Cat6 Extension', "25'", 2, 'SL A-3, SL A-4', 'ext · SL A'),
         ('Cat6 Extension', "100'", 1, 'SL B-4', 'ext · SL B'),
-        ('Cat6 Barrel', 'EA', 6, 'SL A-1, SL B-1, SL A-3, SL B-3, SL A-4, SL B-4', ''),
-        ('Cat6 Snake', "100'", 1, 'SL A', '4 channel'),
-        ('Cat6 Snake', "150'", 1, 'SL B', '4 channel'),
+        ('Cat6 Barrel', 'EA', 6, 'SL A-1, SL A-3, SL A-4, SL B-1, SL B-3, SL B-4', ''),
+        ('Cat6 Snake', "100'", 1, 'SL A-1 … A-4', 'SL A · 4 channel'),
+        ('Cat6 Snake', "150'", 1, 'SL B-1 … B-4', 'SL B · 4 channel'),
         ('Multi', "100'", 2, 'SL 2, 4', ''),
         ('Multi', "125'", 2, 'SL 1, 3', ''),
         ('TRUE1', "6'", 8, 'SL1-2, SL1-5, SL2-3, SL2-6, SL3-2, SL3-5, SL4-2, SL4-6', ''),
@@ -1169,9 +1204,9 @@ def test_smoke_live_show_b(page):
         ('Cat6', "50'", 1, 'SR B-5', ''),
         ('Cat6 Extension', "75'", 1, 'SR B-4', 'ext · SR B'),
         ('Cat6', "100'", 1, 'SR A-5', ''),
-        ('Cat6 Barrel', 'EA', 6, 'SR A-1, SR B-1, SR A-3, SR B-3, SR A-4, SR B-4', ''),
-        ('Cat6 Snake', "100'", 1, 'SR B', '4 channel'),
-        ('Cat6 Snake', "150'", 1, 'SR A', '4 channel'),
+        ('Cat6 Barrel', 'EA', 6, 'SR A-1, SR A-3, SR A-4, SR B-1, SR B-3, SR B-4', ''),
+        ('Cat6 Snake', "100'", 1, 'SR B-1 … B-4', 'SR B · 4 channel'),
+        ('Cat6 Snake', "150'", 1, 'SR A-1 … A-4', 'SR A · 4 channel'),
         ('H9', 'EA', 1, '', ''),
         ('Multi', "100'", 2, 'SR 2, 4', ''),
         ('Multi', "125'", 3, 'SR 1, 3, 5', ''),
@@ -1190,9 +1225,9 @@ def test_smoke_live_show_b(page):
         ('Cat6 Extension', "25'", 2, 'SL A-3, SL A-4', 'ext · SL A'),
         ('Cat6', "50'", 1, 'SL B-5', ''),
         ('Cat6 Extension', "100'", 2, 'SL B-4, SL A-5', 'ext · SL B'),
-        ('Cat6 Barrel', 'EA', 6, 'SL A-1, SL B-1, SL A-3, SL B-3, SL A-4, SL B-4', ''),
-        ('Cat6 Snake', "100'", 1, 'SL A', '4 channel'),
-        ('Cat6 Snake', "150'", 1, 'SL B', '4 channel'),
+        ('Cat6 Barrel', 'EA', 6, 'SL A-1, SL A-3, SL A-4, SL B-1, SL B-3, SL B-4', ''),
+        ('Cat6 Snake', "100'", 1, 'SL A-1 … A-4', 'SL A · 4 channel'),
+        ('Cat6 Snake', "150'", 1, 'SL B-1 … B-4', 'SL B · 4 channel'),
         ('Multi', "100'", 2, 'SL 2, 4', ''),
         ('Multi', "125'", 3, 'SL 1, 3, 5', ''),
         ('TRUE1', "6'", 9, 'SL1-2 … SL5-3 (9)', ''),
@@ -1215,8 +1250,10 @@ def test_smoke_live_show_b(page):
         ('Cat6 Extension', "75'", 1, 'SR B-4', 'ext · SR B'),
         ('Cat6 Extension', "100'", 3, 'SR A-5, SL B-4, SL A-5', 'ext · SL B'),
         ('Cat6 Barrel', 'EA', 12, 'SR A-1 … SL B-4 (12)', ''),
-        ('Cat6 Snake', "100'", 2, 'SR B, SL A', '4 channel'),
-        ('Cat6 Snake', "150'", 2, 'SR A, SL B', '4 channel'),
+        ('Cat6 Snake', "100'", 1, 'SR B-1 … B-4', 'SR B · 4 channel'),
+        ('Cat6 Snake', "100'", 1, 'SL A-1 … A-4', 'SL A · 4 channel'),
+        ('Cat6 Snake', "150'", 1, 'SR A-1 … A-4', 'SR A · 4 channel'),
+        ('Cat6 Snake', "150'", 1, 'SL B-1 … B-4', 'SL B · 4 channel'),
         ('H9', 'EA', 1, '', ''),
         ('Multi', "100'", 4, 'SR 2, 4, SL 2, 4', ''),
         ('Multi', "125'", 6, 'SR 1, 3, 5, SL 1, 3, 5', ''),
@@ -1232,8 +1269,8 @@ def test_smoke_live_show_b(page):
     # home runs at either end
     assert [r for n in ('SR - MAIN', 'SR - Return', 'SL - MAIN', 'SL - Return')
             for r in scr[n] if r[0] == 'Cat6 Barrel'] == [
-        ('Cat6 Barrel', 'EA', 6, 'SR A-1, SR B-1, SR A-3, SR B-3, SR A-4, SR B-4', ''),
-        ('Cat6 Barrel', 'EA', 6, 'SL A-1, SL B-1, SL A-3, SL B-3, SL A-4, SL B-4', '')]
+        ('Cat6 Barrel', 'EA', 6, 'SR A-1, SR A-3, SR A-4, SR B-1, SR B-3, SR B-4', ''),
+        ('Cat6 Barrel', 'EA', 6, 'SL A-1, SL A-3, SL A-4, SL B-1, SL B-3, SL B-4', '')]
     # SL's data cable count is SR's: the same ports, the same extensions
     sr_data = [r for r in by['SR'] if r[0].startswith('Cat6')]
     sl_data = [r for r in by['SL'] if r[0].startswith('Cat6')]

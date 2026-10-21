@@ -14,7 +14,9 @@
   5. Every cable-stock join adds a barrel (per channel on a snake); a power
      multi needs none (tests/test_cable_stock.py counts them on the stock).
   6. An extension is a type of its own, so its "ext · <snake>" note never
-     rides onto the home runs of the same length.
+     rides onto the home runs of the same length. It and its barrel are
+     labelled by the socket's own port label; a snake by its ports, its
+     name and size in Notes, and two snakes never merge.
   7. A blank cabinet counts nothing on a hand-drawn data path.
   8. A fiber cable with no length is flagged on every surface.
   9. pullGuessSide puts free data rows on the data side.
@@ -225,7 +227,7 @@ def test_one_word_for_a_data_home_run_on_every_surface(page):
         return res;
     }""", ids)
     assert out['words'] == ['Cat6', 'etherCON', 'Cat6', 'Cat6']
-    assert _rows(out['before'][0]) == [('Cat6 Snake', "100'", 1, 'SNAKE A', '2 channel')]
+    assert _rows(out['before'][0]) == [('Cat6 Snake', "100'", 1, 'SR-1, SR-2', 'SNAKE A · 2 channel')]
     assert _rows(out['before'][1]) == [('Cat6', "50'", 1, ids['centerPortLabel'], '')]
     assert out['cText'] == "50' Cat6"
     la = out['aLabel']
@@ -234,7 +236,7 @@ def test_one_word_for_a_data_home_run_on_every_surface(page):
     assert _rows(out['picked'][0]) == [
         ('Cat6 Barrel', 'EA', 1, la, ''),
         ('Cat6 Extension', "25'", 1, la, 'ext · SNAKE A'),
-        ('etherCON Snake', "100'", 1, 'SNAKE A', '2 channel')], out['picked']
+        ('etherCON Snake', "100'", 1, 'SR-1, SR-2', 'SNAKE A · 2 channel')], out['picked']
     assert _rows(out['picked'][1]) == [('etherCON', "50'", 1, ids['centerPortLabel'], '')]
     assert out['pickedText'] == "50' etherCON"
     assert ids['errors'] == []
@@ -285,6 +287,59 @@ def test_an_extension_keeps_its_note_off_the_home_runs(page):
     assert _rows(out['totals']) == [
         ('Cat6', "25'", 1, ids['centerPortLabel'], ''),
         ('Cat6 Extension', "25'", 1, out['aLabel'], 'ext · SNAKE A')], out['totals']
+
+
+def test_a_snake_is_labelled_by_its_ports_and_its_name_moves_to_notes(page):
+    """The owner's rulings of 2026-10-21 on the card renamed VX A: a snake's
+    LABEL is the port labels of its sockets, folded ("VX A-3 … A-5"), its
+    own name in NOTES beside its size ("SNAKE B · 3 channel"); an
+    extension and its barrel are labelled by the socket's own port label
+    ("VX A-3"), the note still "ext · SNAKE B". SNAKE A (2 channel) and
+    SNAKE B (3 channel), both 100', stay two rows everywhere - totals,
+    the processor's pull list - and each keeps its own edit key."""
+    pg, ids = page
+    out = pg.evaluate("""async (ids) => {""" + HELPERS_JS + """
+        const a = Number(aSock), b = Number(ids.sockets['WALL-B'][0]), c = Number(cSock);
+        const free = [];
+        for (let n = c + 1; free.length < 2 && n <= 16; n++) if (n !== a && n !== b) free.push(n);
+        await j('PUT', cardUrl, {name: 'VX A'});
+        await j('POST', '/api/snakes', {name: 'SNAKE B', ft: 100,
+            members: [c, ...free].map(n => ({kind: 'card', id: ids.cardId, socket: n}))});
+        const list = await rebuild();
+        const snakeB = app.getShowSnakes().find(s => s.name === 'SNAKE B');
+        const res = {
+            a, b, c, free,
+            sr: dataRows(list.positions[0].rows),
+            center: dataRows(list.positions[1].rows),
+            totals: list.totals.filter(r => r.type === 'Cat6 Snake'),
+            hw: list.hardware.filter(h => h.kind === 'processor').map(h => h.rows.filter(r => r.type === 'Cat6 Snake'))[0],
+            screen: dataRows(list.byScreen[String(ids.c)].rows),
+            keys: list.positions.flatMap(p => p.rows).filter(r => r.type === 'Cat6 Snake').map(r => app.pullRowKey(r)),
+            fold: [app._pullCompressNames(['VX A-1', 'VX A-2', 'VX A-3', 'VX A-4']),
+                   app._pullCompressNames(['VX A-1', 'VX A-2']),
+                   app._pullCompressNames(['VX A-1', 'VX A-2', 'VX A-3', 'VX B-1'])],
+        };
+        await j('DELETE', `/api/snakes/${snakeB.id}`);
+        await j('PUT', cardUrl, {name: 'SR'});
+        await rebuild();
+        return res;
+    }""", ids)
+    assert out['fold'] == ['VX A-1 … A-4', 'VX A-1, VX A-2', 'VX A-1 … A-3, VX B-1'], out['fold']
+    a, b, c, free = out['a'], out['b'], out['c'], out['free']
+    assert free == [c + 1, c + 2], out
+    snake_a = ('Cat6 Snake', "100'", 1, f'VX A-{a}, VX A-{b}', 'SNAKE A · 2 channel')
+    snake_b = ('Cat6 Snake', "100'", 1, f'VX A-{c} … A-{c + 2}', 'SNAKE B · 3 channel')
+    assert _rows(out['sr']) == [snake_a], out['sr']
+    assert _rows(out['center']) == [
+        ('Cat6 Barrel', 'EA', 1, f'VX A-{c}', ''),
+        ('Cat6 Extension', "50'", 1, f'VX A-{c}', 'ext · SNAKE B'),
+        snake_b], out['center']
+    # never merged: two snakes of one length are two rows on every surface
+    assert _rows(out['totals']) == [snake_a, snake_b], out['totals']
+    assert sorted(_rows(out['hw'])) == sorted([snake_a, snake_b]), out['hw']
+    assert snake_b in _rows(out['screen']), out['screen']
+    assert len(set(out['keys'])) == 2 and all(k.startswith("Cat6 Snake|100'|snake:") for k in out['keys']), out['keys']
+    assert ids['errors'] == []
 
 
 def test_a_blank_cabinet_counts_nothing_on_a_hand_drawn_data_path(page):
