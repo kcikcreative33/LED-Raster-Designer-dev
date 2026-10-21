@@ -688,7 +688,8 @@ def test_the_binder_prints_the_face_once_with_paired_rows_together(seeded):
     assert out['lines'] == [
         '2 × Socapex 230V / 2 × Harting 16E 230V (paired) · 12 circuits · 16 A',
         '9 × Schuko · 9 direct circuits · 16 A'], out
-    assert out['legacy'] == '400 A 208 V 3φ'
+    # an old-style distro reads like every other (2026-10-21)
+    assert out['legacy'] == '400 A service · 120/208V 3φ'
 
 
 def test_every_binder_sheet_draws_a_face_distro_and_its_direct_output(seeded):

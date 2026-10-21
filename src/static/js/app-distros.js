@@ -270,6 +270,16 @@ class _Distros {
         }
         list.splice(i, 1);
         forget.forEach(f => this._forgetFeedLengths(f.layer, f.idx, f.circuits));
+        // A distro fed thru the one removed is fed from its service again:
+        // its feeder forgets the `from`, so a later distro that reuses the
+        // id is never read as the one it is fed thru (owner, 2026-10-21).
+        // A feeder left empty is forgotten, as one never set.
+        for (const other of list) {
+            const f = other && other.feeder;
+            if (!f || typeof f !== 'object' || f.from !== id) continue;
+            delete f.from;
+            if (!Object.keys(f).length) delete other.feeder;
+        }
         // orphaned soca assignments fall back to unassigned
         const touched = [];
         for (const layer of this.project.layers || []) {

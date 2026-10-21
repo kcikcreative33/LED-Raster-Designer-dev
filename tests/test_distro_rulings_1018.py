@@ -419,7 +419,7 @@ def test_an_old_crowded_show_prints_distro_and_opens_unchanged(e2e_server, pw_br
             const caught = [];
             const orig = app._bKvLines;
             app._bKvLines = function (book, title, pairs) {
-                if (title === 'Service') caught.push(pairs.map(p => p.slice()));
+                if (title === 'Input') caught.push(pairs.map(p => p.slice()));
                 return orig.apply(this, arguments);
             };
             try {

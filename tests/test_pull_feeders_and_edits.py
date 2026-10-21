@@ -361,6 +361,7 @@ def test_fed_from_another_distro_and_the_server_round_trip(seeded):
         d.system = '120/208'; d.voltage = 208; d.phase = 3; d.input = 'cam400';
         const sl = app.addDistro({ name: 'SL', system: '120/208' });
         app.setDistroFeeder(id, { ft: 150, from: sl.id });
+        const stored = JSON.parse(JSON.stringify(d.feeder));
         const loop = app.setDistroFeeder(sl.id, { from: id });
         const sources = app.feederSources(sl).map(x => x.id);
         await app._distroPushQueue;
@@ -368,7 +369,7 @@ def test_fed_from_another_distro_and_the_server_round_trip(seeded):
         const caught = [];
         const orig = app._bKvLines;
         app._bKvLines = function (book, title, pairs) {
-            if (title === 'Service') caught.push(pairs.map(p => p.slice()));
+            if (title === 'Input') caught.push(pairs.map(p => p.slice()));
             return orig.apply(this, arguments);
         };
         try {
@@ -380,13 +381,14 @@ def test_fed_from_another_distro_and_the_server_round_trip(seeded):
         app.removeDistro(sl.id);
         await app._distroPushQueue;
         const after = (await (await fetch('/api/project')).json()).distros.find(x => x.id === id).feeder;
-        return { slId: sl.id, stored: d.feeder, loop, sources, served, fed: block && block['Fed from'],
-                 after, source: app.feederSourceText(d), text: app.feederText(d) };
+        return { slId: sl.id, stored, loop, sources, served, fed: block && block['Fed from'],
+                 after, client: d.feeder, source: app.feederSourceText(d), text: app.feederText(d) };
     }""", did)
     assert out['stored']['from'] == out['slId'] and out['served'] == {'ft': 150, 'from': out['slId']}, out
     assert out['loop'] is False and did not in out['sources'], out
     assert out['fed'] == "SL, cam thru · 400 A cam set 150'", out
-    assert out['after'] == {'ft': 150}, out
+    # the removal clears it in the page too (2026-10-21), not only the server
+    assert out['after'] == {'ft': 150} and out['client'] == {'ft': 150}, out
     assert out['source'] is None and out['text'] == "400 A cam set 150'", out
     assert errors == [], errors
 
@@ -411,7 +413,8 @@ def test_the_gear_sets_the_feeder(seeded):
     ft = f'#hw-gear-popover [data-lrd-field="distro-feeder-ft-{did}"]'
     src = f'#hw-gear-popover [data-lrd-field="distro-feeder-from-{did}"]'
     assert pg.locator(ft).count() == 1 and pg.locator(src).count() == 1
-    assert pg.locator(src).locator('option').first.text_content().startswith('from ')
+    # SR is on no service: the first pick says so, not "from the service"
+    assert pg.locator(src).locator('option').first.text_content() == 'Fed from: none'
     n0 = pg.evaluate("() => window.app.history.length")
     pg.locator(ft).fill('80')
     pg.locator(ft).dispatch_event('change')

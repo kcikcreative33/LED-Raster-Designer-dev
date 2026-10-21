@@ -1550,7 +1550,7 @@ class _Binder {
                    { title: 'qty', w: 0.6, align: 'right', lend: true }],
             rows: rows.length
                 ? rows.map(r => ({ cells: [r.also ? `${this._bType(r.type)} · ${r.also}` : this._bType(r.type),
-                                           r.length || (/(^|; )no length\b/.test(r.notes || '') ? 'no length' : '—'),
+                                           r.length || (/(^|; |· )no length\b/.test(r.notes || '') ? 'no length' : '—'),
                                            this._bQty(r.qty)] }))
                 : [{ cells: ['no cables typed', '', ''] }],
         });
@@ -2426,8 +2426,13 @@ class _Binder {
             const m = /^(.*? on )(.+)$/.exec(s);
             return m ? [m[1], m[2]] : [s];
         }
-        // never break before a " · " - its dot stays with the word it follows
-        if (words) return s.split(/(?<= )(?!· )/).filter(Boolean);
+        // never break before a " · " - its dot stays with the word it
+        // follows - nor between a number and its unit ("30 m", "400 A"),
+        // so a length in stock pieces ("50 m+20 m") stays whole
+        if (words) {
+            return s.split(/(?<= )(?<!\d )(?!· )|(?<=\d )(?!· )(?!(?:m|ft|A|V|W|kW|kVA)(?!\w))/)
+                .filter(Boolean);
+        }
         const out = [];
         let cur = '';
         for (let i = 0; i < s.length; i++) {
@@ -2611,7 +2616,11 @@ class _Binder {
                         n = Math.max(n, ctxM.measureText(p.text).width + padX * 2
                             + (p.swatch ? SWATCH_W : 0));
                     }
-                } else if (c.list && whole) {
+                } else if (c.list && (whole || c.asksWhole)) {
+                    // (`asksWhole`: a list column that asks for its cell on
+                    // one line, the way a plain column does, and wraps only
+                    // where the table cannot give it that - the pull
+                    // tables' CABLE, the distro table's NAME)
                     n = Math.max(n, ctxM.measureText(String(cell).trim()).width + padX * 2);
                 } else if (c.list) {
                     for (const piece of this._bCellPieces(cell, c.words)) {
@@ -3317,6 +3326,17 @@ class _Binder {
         }
     }
 
+    // A KV value's words, split where it may wrap: at its spaces, except
+    // the one between a number and its unit ("50 m", "125 ft", "400 A",
+    // "208 V", "30.0 kW") and the ones inside a length written as stock
+    // pieces ("50 m+20 m") - those stay on one line.
+    _bKvWords(v) {
+        const GLUE = '\u0000';
+        const text = String(v == null ? '' : v)
+            .replace(/(\d) (?=(?:m|ft|A|V|W|kW|kVA)(?![\w]))/g, `$1${GLUE}`);
+        return text.split(' ').map(w => w.split(GLUE).join(' '));
+    }
+
     // A key/value block (the Facts) as lines.
     _bKvLines(book, title, pairs) {
         const lines = [];
@@ -3336,11 +3356,17 @@ class _Binder {
         const widest = pairs.reduce((m, [k]) => Math.max(m, ctxK.measureText(String(k)).width), 0);
         const keyW = widest > 150 - 4 ? Math.ceil(widest) + 16 : 150;
         for (const [k, v] of pairs) {
-            // Values wrap onto as many lines as they need.
-            const words = String(v == null ? '' : v).split(' ');
+            // Values wrap onto as many lines as they need - never between a
+            // number and its unit ("50 m", "400 A"), nor inside a length
+            // written as stock pieces ("50 m+20 m").
+            const words = this._bKvWords(v);
             const ctxM = book.measureCtx;
-            ctxM.font = this._bFont(SZ.cell, 400);
             const rowsOf = (w) => {
+                // measured in the value's own type every time: the measure
+                // context's font is whatever was set last, and a bold or a
+                // larger one wrapped a line more at paint than was
+                // measured - "Fed from"'s 125' printed over the Load row
+                ctxM.font = this._bFont(SZ.cell, 400);
                 const maxW = w - keyW - 8;
                 const out = [];
                 let cur = '';
@@ -3354,12 +3380,17 @@ class _Binder {
             };
             // Height is measured against the tables' own column width; a
             // wider column wraps a little looser and clips nothing - the
-            // row keeps its measured height.
+            // row keeps its measured height. A narrower one never draws
+            // past it: what would wrap below the row's last line joins
+            // that line, shrunk to fit, so the row under it stays clear.
             const n = rowsOf(COL_W).length;
             lines.push({ h: ROW_H * n, draw: (ctx, x, y, w) => {
                 this._bText(book, k, x, y + 27, { size: SZ.cell, weight: 700 });
-                rowsOf(w).forEach((t, i) => {
-                    this._bText(book, t, x + keyW, y + 27 + i * ROW_H, { size: SZ.cell, maxWidth: w - keyW });
+                let drawn = rowsOf(w);
+                if (drawn.length > n) drawn = [...drawn.slice(0, n - 1), drawn.slice(n - 1).join(' ')];
+                drawn.forEach((t, i) => {
+                    this._bText(book, t, x + keyW, y + 27 + i * ROW_H,
+                                { size: SZ.cell, maxWidth: w - keyW, shrink: i === n - 1 });
                 });
             } });
         }
@@ -4408,13 +4439,26 @@ class _Binder {
             ctx.lineTo(x, yb);
             ctx.lineTo(x - dir * 14, yb);
             ctx.stroke();
-            const label = box.homeRun
-                ? `${box.name} · ${this.pullLengthText(box.homeRun, this.pullHomeRunKind(box))}` : `${box.name}`;
+            const parts = box.homeRun
+                ? [box.name, this.pullLengthText(box.homeRun, this.pullHomeRunKind(box))] : [box.name];
+            const label = parts.join(' · ');
+            const span = Math.max(80, yb - ya);
             ctx.save();
             ctx.translate(x + dir * 24, (ya + yb) / 2);
             ctx.rotate(dir > 0 ? Math.PI / 2 : -Math.PI / 2);
-            this._bText(book, label, 0, 9, { size: SZ.bracket, weight: 700, align: 'center',
-                                              maxWidth: Math.max(80, yb - ya) });
+            if (parts.length < 2 || this._bTextWidth(book, label, { size: SZ.bracket, weight: 700 }) <= span) {
+                this._bText(book, label, 0, 9, { size: SZ.bracket, weight: 700, align: 'center',
+                                                  maxWidth: span });
+            } else {
+                // A label longer than its span wraps the way the other tags
+                // do, at its " · " (owner, 2026-10-21: "DISTRO 1-4 · 50
+                // m+…" in a meters show): the name, then the length on a
+                // line nearer the bracket - a length in stock pieces ("50
+                // m+20 m") never split - each shrinking a little before it
+                // is cut. Both stay inside the 78 a stepped bracket takes.
+                parts.forEach((t, i) => this._bText(book, t, 0, 9 - (parts.length - 1 - i) * 28,
+                    { size: SZ.bracket, weight: 700, align: 'center', maxWidth: span, shrink: true }));
+            }
             ctx.restore();
         }
     }
@@ -5665,11 +5709,9 @@ class _Binder {
     _bPullBlocks(book, pos, members) {
         const list = book.list;
         const tick = { title: '', w: 0.28, tick: true };
-        const cableCols = [tick, { title: 'cable', w: 1.5, lend: true }, { title: 'length', w: 0.6, borrow: 'len' },
-                           { title: 'qty', w: 0.5, align: 'right', lend: true },
-                           { title: 'label', w: 1.4, list: true }];
+        const cableCols = this._bPullCableCols();
         const cableRows = (side) => (pos.rows || []).filter(r => (r.side || 'power') === side)
-            .map(r => ({ cells: ['', this._bType(r.type), r.length || '—', this._bQty(r.qty), r.label || ''] }));
+            .map(r => ({ cells: ['', ...this._bPullCableCells(r), this._bQty(r.qty), r.label || ''] }));
         const blocks = [];
         const power = cableRows('power');
         blocks.push(this._bPullBlock(book, { title: 'Power cables', cols: cableCols,
@@ -5865,8 +5907,11 @@ class _Binder {
         const amps = (L) => names.length
             ? names.map(k => this._bNum(L && L.legs ? L.legs[k].amps : 0, 1))
             : [this._bNum(L ? L.amps : 0, 1)];
-        const rows = load.distros.map(({ distro: d, load: L }) => ({
-            cells: [d.name || d.id, `${this._bNum(d.ratingA, 0)} A`, ...amps(L)],
+        // a distro fed thru another counts here (thru loads, 2026-10-21)
+        // and says which one it is fed thru
+        const rows = load.distros.map(({ distro: d, load: L, thru }) => ({
+            cells: [thru ? `${d.name || d.id} · thru ${thru.name || thru.id}` : (d.name || d.id),
+                    `${this._bNum(d.ratingA, 0)} A`, ...amps(L)],
         }));
         if (rows.length) {
             rows.push({ cells: ['total', `${this._bNum(load.ratingSum, 0)} A`,
@@ -5879,7 +5924,7 @@ class _Binder {
         const blocks = [];
         blocks.push({ lines: this._bTableLines(book, {
             title: this._bPlural(load.distros.length, 'distro'),
-            cols: [{ title: 'distro', w: 1.1 }, { title: 'rating', w: 0.7, align: 'right' }, ...legCols],
+            cols: [{ title: 'distro', w: 1.1, list: 2 }, { title: 'rating', w: 0.7, align: 'right' }, ...legCols],
             rows: rows.length ? rows : [{ cells: ['none', '', ...legCols.map(() => '')] }],
             shrink: true,
         }) });
@@ -5961,9 +6006,13 @@ class _Binder {
         blocks.push({ lines: this._bTableLines(book, {
             title: counts,
             // TYPE and HOME RUN hold "Multi 208" and "no length" whole; the
-            // cells shrink a little before they cut
-            cols: [{ title: 'name', w: 0.75 }, { title: 'type', w: 1.05 }, { title: 'home run', w: 0.95 },
-                   { title: 'screens', w: 1.5 }, { title: 'circuits', w: 0.8, align: 'right' },
+            // cells shrink a little before they cut. NAME prints a box's
+            // name whole ("DISTRO 1-1", "SR DISTRO B" - owner, 2026-10-21):
+            // its width taken from SCREENS, and a name longer than that
+            // wraps at its spaces rather than being cut.
+            cols: [{ title: 'name', w: 1.3, list: 2, words: true, asksWhole: true }, { title: 'type', w: 1.05 },
+                   { title: 'home run', w: 0.95 },
+                   { title: 'screens', w: 1.1 }, { title: 'circuits', w: 0.8, align: 'right' },
                    { title: 'amps', w: 0.7, align: 'right' }],
             rows: boxes.length ? boxes : [{ cells: ['none', '', '', '', '', ''] }],
             shrink: true,
@@ -5997,7 +6046,9 @@ class _Binder {
             }
         }
         pairs.push(['Circuits', boxes.length ? `${allCircuits} on ${counts}` : 'none']);
-        blocks.push({ lines: this._bKvLines(book, 'Service', pairs) });
+        // "INPUT", not "SERVICE" (owner, 2026-10-21): a SERVICE is the
+        // house power now, with a sheet of its own.
+        blocks.push({ lines: this._bKvLines(book, 'Input', pairs) });
         const hw = (book.list.hardware || []).find(h => h.kind === 'distro' && h.id === d.id);
         blocks.push({ lines: this._bPullLines(book, 'Pull list', (hw && hw.rows) || []) });
         return blocks;
@@ -6044,19 +6095,16 @@ class _Binder {
         return parts.join(' · ');
     }
 
-    // A distro's rating as the papers print it: an old-style distro (no
-    // face) exactly as it always read - "400 A 208 V 3φ"; a distro with a
-    // face (1.5) by its service size first, then its system, its input and
-    // its breakers (owner, 2026-10-20: "it should read the service size
-    // first") - "200 A service · 120/208V 3φ · 100% rated breakers". A cam
-    // input is named only where it differs from the service, by its amps -
-    // "600 A service · 120/208V 3φ · 400 A input"; an L21-30, CEE or
-    // Powerlock input always by its name.
+    // A distro's rating as the papers print it, every distro alike - an
+    // old-style one (no face) included (owner, 2026-10-21): its service
+    // size first, then its system, its input and its breakers (owner,
+    // 2026-10-20: "it should read the service size first") - "200 A
+    // service · 120/208V 3φ · 100% rated breakers". A cam input is named
+    // only where it differs from the service, by its amps - "600 A
+    // service · 120/208V 3φ · 400 A input"; an L21-30, CEE or Powerlock
+    // input always by its name.
     _bDistroRatingText(d) {
         if (!d) return '';
-        if (!this.distroFace(d)) {
-            return `${d.ratingA} A ${d.voltage} V ${Number(d.phase) === 3 ? '3φ' : '1φ'}`;
-        }
         const input = this.distroInputs().find(i => i.id === d.input);
         const cam = !!(input && /^cam\d+$/.test(input.id));
         const inputText = !input ? null
@@ -6091,14 +6139,40 @@ class _Binder {
         return out;
     }
 
-    _bPullLines(book, title, rows) {
+    // A pull row's CABLE and LENGTH cells on a binder table that has no
+    // Notes column (the pull pages, the distro and processor Pull lists):
+    // a row nobody gave a length says "no length" (its Notes say it -
+    // after a " · " too, "5-wire · no length"), "—" only where the cell
+    // is truly empty; and a feeder's "5-wire" rides with its type, "400 A
+    // cam set · 5-wire" (owner, 2026-10-21).
+    _bPullCableCells(r) {
+        const notes = String((r && r.notes) || '');
+        const carried = notes.split(/ · |; /).map(t => t.trim()).filter(t => t === '5-wire');
+        const type = [this._bType(r.type), ...carried].join(' · ');
+        const length = r.length || (/(^|; |· )no length\b/.test(notes) ? 'no length' : '—');
+        return [type, length];
+    }
+
+    // The pull tables' CABLE column wraps at its spaces before it is cut
+    // ("powerCON Power Jump", "Edison → powerCON cable", "400 A cam set ·
+    // 5-wire" - owner, 2026-10-21); on the pull pages, sized to their
+    // content, it has the room to print each on one line wherever the
+    // sheet holds it.
+    _bPullCableCols() {
         const tick = { title: '', w: 0.28, tick: true };
+        return [tick, { title: 'cable', w: 1.5, lend: true, list: 2, words: true, asksWhole: true },
+                // LENGTH holds "no length" whole where the table has the
+                // room, else on two lines - never "no len…"
+                { title: 'length', w: 0.6, borrow: 'len', list: 2, words: true, asksWhole: true },
+                { title: 'qty', w: 0.5, align: 'right', lend: true },
+                { title: 'label', w: 1.4, list: true }];
+    }
+
+    _bPullLines(book, title, rows) {
         return this._bTableLines(book, {
             title,
-            cols: [tick, { title: 'cable', w: 1.5, lend: true }, { title: 'length', w: 0.6, borrow: 'len' },
-                   { title: 'qty', w: 0.5, align: 'right', lend: true },
-                   { title: 'label', w: 1.4, list: true }],
-            rows: rows.length ? rows.map(r => ({ cells: ['', this._bType(r.type), r.length || '—', this._bQty(r.qty), r.label || ''] }))
+            cols: this._bPullCableCols(),
+            rows: rows.length ? rows.map(r => ({ cells: ['', ...this._bPullCableCells(r), this._bQty(r.qty), r.label || ''] }))
                 : [{ cells: ['', 'none', '', '', ''] }],
         });
     }
