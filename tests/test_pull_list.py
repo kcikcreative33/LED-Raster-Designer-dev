@@ -185,6 +185,48 @@ def test_the_gear_list_reads_the_connectors_in_use(client):
     assert pull_sheet.connector_spelling('Ethernet') == 'Ethernet'
 
 
+def test_the_gear_list_lists_only_the_connectors_the_show_uses(client):
+    """Owner, 2026-10-21: a powerCON / Cat6 show's GEAR LIST has no TRUE1
+    or etherCON entries - the template's Breakout, 2fer, 3fer, Snake,
+    Barrel and its TRUE1 long power jump go - while the entries that name
+    no connector (Multi, Ethernet, fiber, processors, rigging) stay, in
+    the template's order with no gaps. A show using both lists both."""
+    written = ['powerCON', 'powerCON 2fer', 'powerCON Breakout', 'powerCON Power Jump',
+               'Cat6', 'Cat6 Snake', 'Cat6 Barrel', 'Multi']
+    positions = [{'name': 'SR Beach', 'rows': [
+        {'type': t, 'length': 'EA', 'qty': 1, 'label': '', 'notes': ''} for t in written]}]
+    r = _post_sheet(client, positions)
+    assert r.status_code == 200, r.get_data(as_text=True)
+    assert json.loads(r.headers['X-Pull-Sheet-Warnings']) == []
+    gear = openpyxl.load_workbook(io.BytesIO(r.data))['GEAR LIST']
+    cells = [gear.cell(r, 1).value for r in range(4, 201)]
+    types = [t for t in cells if t]
+    assert cells[:len(types)] == types, 'the list has a gap'
+    assert not [t for t in types if 'TRUE1' in t or 'etherCON' in t], types
+    for t in written:
+        assert types.count(t) == 1, (t, types)
+    tpl = pull_sheet.gear_list()['types']
+    kept = [t for t in tpl if not pull_sheet.gear_connectors(t)]
+    assert 'Absen TRUE1 Long Power Jump' in tpl and 'Absen TRUE1 Long Power Jump' not in types
+    for t in ('Multi', 'Ethernet', '12 Tac Fiber', 'Absen Long Data Jump', 'Shackle', 'H5'):
+        assert t in kept and t in types, (t, types)
+    # the template's own entries keep their order, then what was written
+    assert types[:len(kept)] == kept, types
+    # both connectors in use: both families listed
+    r = _post_sheet(client, [{'name': 'P', 'rows': [
+        {'type': t, 'length': 'EA', 'qty': 1, 'label': '', 'notes': ''}
+        for t in ('TRUE1', 'powerCON', 'etherCON Snake', 'Cat6')]}])
+    gear = openpyxl.load_workbook(io.BytesIO(r.data))['GEAR LIST']
+    types = [gear.cell(r, 1).value for r in range(4, 201) if gear.cell(r, 1).value]
+    for t in ('TRUE1 Breakout', 'TRUE1 2fer', 'TRUE1 3fer', 'Absen TRUE1 Long Power Jump',
+              'etherCON', 'etherCON Snake', 'etherCON Barrel', 'powerCON', 'Cat6'):
+        assert t in types, (t, types)
+    assert pull_sheet.gear_connectors('Edison → powerCON') == {'powerCON'}
+    assert pull_sheet.gear_connectors('Cat6A') == set()
+    assert pull_sheet.gear_connectors('Ethernet') == set()
+    assert pull_sheet.gear_connectors('TRUE1 Power Jump') == {'TRUE1'}
+
+
 def test_four_to_six_positions_take_the_s_y_ae_blocks_and_more_overflow(client):
     """The fourth position takes the tan block (restyled as a position,
     the copy-me block moving right), Y and AE are styled from it, more

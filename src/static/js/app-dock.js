@@ -2630,21 +2630,30 @@ class _HardwareDock {
 
     // One direct output as a chip: the circuit chip's grammar with the
     // OUTPUT's number on its face (the number its circuit is named by) and
-    // the cable's length in its corner; its editor carries the circuit's
-    // label and the cable length (the output's home run, in the show's
-    // unit).
+    // the cable in its corner the way the map, the pull sheet and the
+    // binder say it - its type outlet to panel ("Edison → powerCON",
+    // directCableType) and its length from the direct-output stock; its
+    // editor carries the circuit's label and the cable length (the
+    // output's home run, in the show's unit).
     _dockBuildDirectChip(d, box, type, holders) {
         const tile = this._dockBuildCircuitChip(d, box.number, 1, holders);
         const num = tile.querySelector('.lrd-tile-line span');
         if (num) num.textContent = String(box.number);
         const face = tile.querySelector('.lrd-tile-face');
         const top = tile.querySelector('.lrd-tile-line');
-        const lengths = holders.map(h => this.parseCableLength(h.length)).filter(n => n !== null);
-        if (lengths.length && top && !top.querySelector('.hw-dock-chip-cable')) {
+        const layerOf = (h) => (this.project.layers || []).find(x => x.id === h.layerId) || null;
+        const cables = holders.map(h => {
+            const l = layerOf(h);
+            const one = l ? this.directCircuitCable(l, h.circuit) : null;
+            if (one) return one.text;
+            const v = this.parseCableLength(h.length);
+            return v === null ? null : this.cableText(v, this.directCableType(type.cable, l), 'direct');
+        }).filter(Boolean);
+        if (cables.length && top && !top.querySelector('.hw-dock-chip-cable')) {
             top.classList.add('lrd-tile-line-cable');
             const corner = document.createElement('span');
             corner.className = 'hw-dock-chip-cable';
-            corner.textContent = lengths.map(v => this.cableText(v, type.cable, 'direct')).join(' / ');
+            corner.textContent = cables.join(' / ');
             top.appendChild(corner);
         }
         if (face) {
@@ -2654,10 +2663,11 @@ class _HardwareDock {
         const editor = tile.querySelector('.lrd-tile-body');
         if (editor) {
             holders.forEach(h => {
-                const l = (this.project.layers || []).find(x => x.id === h.layerId);
+                const l = layerOf(h);
                 if (!l) return;
                 const tip = `The cable from ${d.name || d.id} ${box.number} to ${l.name}, in `
-                    + `${this.cableUnitWord()} - it goes on the pull sheet as a ${type.name} run.`
+                    + `${this.cableUnitWord()} - it goes on the pull sheet as `
+                    + `${this.directCableType(type.cable, l)}.`
                     + this.cableStockHint((l.powerSocaLengths || {})[h.soca], 'direct');
                 const cell = this._buildPortNameField(
                     `Cable (${this.cableUnitAbbr()})`, `direct-length-${l.id}-${h.soca}`,
@@ -3237,9 +3247,12 @@ class _HardwareDock {
         // read): the line turns flex, the label ellipsizes, the length
         // never shortens (style.css .lrd-tile-line-cable); the bar row
         // under the chip stays clear. Nothing on a chip with none.
+        // A circuit alone on a DIRECT output: its cable is the output's
+        // one cable, written from the direct-output stock as the map and
+        // the pull sheet write it (directCircuitCable).
         const cables = holders.map(h => {
             const l = (this.project.layers || []).find(x => x.id === h.layerId);
-            return l ? this.powerCircuitCable(l, h.circuit) : null;
+            return l ? (this.directCircuitCable(l, h.circuit) || this.powerCircuitCable(l, h.circuit)) : null;
         }).filter(Boolean);
         if (cables.length) {
             top.classList.add('lrd-tile-line-cable');

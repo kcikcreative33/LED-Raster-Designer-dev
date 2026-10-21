@@ -190,13 +190,27 @@ const PULL_LEGACY_PREFIXED_TYPES = new Set(['SX40', 'S8', 'S4', 'M2', 'T1', 'SQ2
 
 // Data home runs as the sheet printed them until 2026-10-21 - "Ether-con",
 // a bare "Data Cable" / "Snake" / "Barrel" where no connector was known -
-// and as older files key their edits. Every one of them was a Cat6 run
-// (no box documented etherCON then), so its edit answers to the Cat6 row.
+// and as older files key their edits. Read alone (pullEditKey) each is its
+// Cat6 row; read against its position's rows it is the etherCON row where
+// the position has no Cat6 one, and a snake key the position's one snake
+// of that length (_pullResolveEditKey).
 const PULL_LEGACY_DATA_TYPES = new Map([
     ['Ether-con', 'Cat6'], ['Ether-con Snake', 'Cat6 Snake'],
     ['Ether-con Barrel', 'Cat6 Barrel'], ['Data Cable', 'Cat6'],
     ['Snake', 'Cat6 Snake'], ['Barrel', 'Cat6 Barrel'],
 ]);
+
+// A free row's side (pullGuessSide): these words, whole, make it power
+// whatever else it says ("Socapex Snake", "Camlok Barrel")...
+const PULL_POWER_WORDS = new RegExp('\\b(?:socapex|soca|camlok|camlock|cam|edison|true1|tru-1|powercon'
+    + '|harting|cee|nema|stage ?pin|l\\d{1,2}-\\d{2}|power|feeder|distro)\\b', 'i');
+// ...and these make it data.
+const PULL_DATA_WORDS = new RegExp('\\b(?:ether\\w*|cat(?:5e?|6a?|7|8)?|fiber|fibre|\\w*sdi|hdmi|data'
+    + '|snakes?|barrels?|tac\\s?\\d*|mtp\\s?\\d*|opticalcon\\w*|sfp\\+?|opt|cvt\\w*|xd(?:-\\w+)?)\\b', 'i');
+// What may follow a catalog model and leave it the head of the name.
+const PULL_MODEL_TAIL_WORDS = new Set(['rack', 'racks', 'case', 'cases', 'spare', 'spares', 'unit',
+    'units', 'processor', 'processors', 'card', 'cards', 'box', 'boxes', 'frame', 'kit', 'backup',
+    'pro', 'ea']);
 
 class _PullList {
 
@@ -1431,7 +1445,11 @@ class _PullList {
                 const d = s.distroId ? distroById.get(s.distroId) || null : null;
                 const typed = d ? this.distroBoxType(d, s.number).type : null;
                 box = {
-                    key, name: s.name, number: s.number,
+                    // a box on a distro by its label on paper - "-1", "-2"
+                    // where two boxes share a name (distroBoxLabels) - so
+                    // the binder's brackets read what the pull sheet does
+                    key, name: (s.distroId && ctx.boxLabels && ctx.boxLabels.get(key)) || s.name,
+                    number: s.number,
                     distroId: s.distroId || null, distro: d ? d.name : null,
                     type: typed ? typed.name : null,
                     typeId: typed ? typed.id : null,
@@ -1500,6 +1518,17 @@ class _PullList {
                 }
             }
         }
+        // The box's own name, as the tray and the binder say it ("SR1",
+        // "DISTRO 1-1", or what somebody typed; "-1", "-2" where two
+        // boxes share it, distroBoxLabels) - never the distro's name
+        // glued to the number, which made DISTRO 1's box 1 read
+        // "DISTRO 11". Its home run, its breakout and the breakout a
+        // second screen on a shared box takes all read it.
+        const boxLabelOf = (box) => (ctx.boxLabels && ctx.boxLabels.get(box.key))
+            || String(box.name || '').trim()
+            || (typeof this._deriveMultiName === 'function'
+                ? this._deriveMultiName(box.distro || '', box.number, null)
+                : `${box.distro || ''}${box.number}`);
         for (const box of boxes.values()) {
             out.boxes.push(box);
             if (!box.distroId) continue;
@@ -1521,7 +1550,7 @@ class _PullList {
                 if (box.kind !== 'direct' && !breakoutsSeen.has(brkKey)) {
                     breakoutsSeen.add(brkKey);
                     on = boxOn.get(box.key) || [layer.id];
-                    const b = row(breakoutType, 'EA', 1, `${distroName}${box.number}`, '', at);
+                    const b = row(breakoutType, 'EA', 1, boxLabelOf(box), '', at);
                     hw('distro', box.distroId, distroName).rows.push({ ...b });
                 }
                 continue;
@@ -1530,16 +1559,7 @@ class _PullList {
             if (!distroFirstLayer.has(String(box.distroId))) {
                 distroFirstLayer.set(String(box.distroId), layer.id);
             }
-            // The box's own name, as the tray and the binder say it ("SR1",
-            // "DISTRO 1-1", or what somebody typed; "-1", "-2" where two
-            // boxes share it, distroBoxLabels) - never the distro's name
-            // glued to the number, which made DISTRO 1's box 1 read
-            // "DISTRO 11".
-            const boxLabel = (ctx.boxLabels && ctx.boxLabels.get(box.key))
-                || String(box.name || '').trim()
-                || (typeof this._deriveMultiName === 'function'
-                    ? this._deriveMultiName(distroName, box.number, null)
-                    : `${distroName}${box.number}`);
+            const boxLabel = boxLabelOf(box);
             on = boxOn.get(box.key) || [layer.id];
             if (box.kind === 'direct') {
                 // A DIRECT output (1.5): its one cable, distro to screen, in
@@ -1877,18 +1897,123 @@ class _PullList {
         return model + (cut < 0 ? '' : text.slice(cut));
     }
 
+    // ---- old edits on renamed rows (owner, 2026-10-21) ----------------------
+    //
+    // An edit saved by 1.5.2 or a 1.5.3 beta is keyed on what the row was
+    // called then. Where the new name depends on the position's own rows,
+    // pullEditKey alone cannot say it, so these keys are read against the
+    // rows the position has now (_pullResolveEditKey):
+    //   * an old data word ("Ether-con|25'", "Data Cable|25'", "Barrel|EA")
+    //     is that position's Cat6 row, else its etherCON row;
+    //   * a snake key with no snake on it ("Ether-con Snake|100'", "Cat6
+    //     Snake|100'", "Snake|100'") is the position's ONE snake row of that
+    //     type and length; with several it stays stale;
+    //   * "Tru-1 Power Jump|6'" is the TRUE1 jumper row, else (a powerCON
+    //     screen) the powerCON jumper row of that length;
+    //   * "Edison 2fer|EA", "L6-20 3fer|EA" ... are "<panel input> Nfer",
+    //     TRUE1 or powerCON, whichever the position has.
+    // A 1.5.2 extension printed as "Ether-con|25'" too and cannot be told
+    // from a home run: it stays on the home-run row. Every other key is
+    // pullEditKey's.
+
+    // Does this stored key need the position's rows to be placed?
+    _pullEditNeedsRows(key) {
+        const text = String(key == null ? '' : key);
+        const cut = text.indexOf('|');
+        if (cut < 0) return false;
+        const type = text.slice(0, cut);
+        const parts = text.slice(cut + 1).split('|');
+        if (PULL_LEGACY_DATA_TYPES.has(type)) return true;
+        if (/ Snake$/.test(type) && parts.length === 1) return true;
+        if (this._pullLegacyJumpNames().includes(type)) return true;
+        const fer = /^(.+) (\d+)fer$/.exec(type);
+        return !!(fer && fer[1] !== 'TRUE1' && fer[1] !== 'powerCON');
+    }
+
+    // The jumper names an old file keyed its power jumper rows on: the
+    // shipped "Tru-1 Power Jump" and a single name somebody customised.
+    _pullLegacyJumpNames() {
+        const stored = (this.project && this.project.pullSheet) || {};
+        const custom = stored.powerJumpNameTrue1 == null ? this._legacyPowerJumpName(stored.powerJumpName) : null;
+        return custom ? [LEGACY_POWER_JUMP_NAME, custom] : [LEGACY_POWER_JUMP_NAME];
+    }
+
+    // A stored key as the row it answers to among `liveKeys` (the
+    // pullRowKey of every engine row of its position). A key the rows
+    // cannot place is pullEditKey's reading: an edit on no live row is
+    // stale, as before.
+    _pullResolveEditKey(key, liveKeys) {
+        const plain = this.pullEditKey(key);
+        if (!this._pullEditNeedsRows(key)) return plain;
+        const live = liveKeys instanceof Set ? liveKeys : new Set(liveKeys || []);
+        const text = String(key);
+        const cut = text.indexOf('|');
+        const type = text.slice(0, cut);
+        const rest = text.slice(cut);                 // "|25'" or "|6'|WALL-A"
+        const length = rest.slice(1).split('|')[0];
+        const first = (keys) => keys.find(k => live.has(k)) || null;
+        // the data words: Cat6, else etherCON
+        let types = null;
+        if (PULL_LEGACY_DATA_TYPES.has(type)) {
+            const cat = PULL_LEGACY_DATA_TYPES.get(type);
+            types = [cat, cat.replace(/^Cat6/, 'etherCON')];
+        } else if (/ Snake$/.test(type)) {
+            types = [type];
+        }
+        if (types && / Snake$/.test(types[0]) && rest.split('|').length === 2) {
+            // a snake by its type and length: the only one there is
+            for (const t of types) {
+                const head = `${t}|${length}|`;
+                const hits = [...live].filter(k => k.startsWith(head));
+                if (hits.length === 1) return hits[0];
+                if (hits.length > 1) return plain;
+            }
+            return plain;
+        }
+        if (types) return first(types.map(t => t + rest)) || plain;
+        if (this._pullLegacyJumpNames().includes(type)) {
+            return first([plain, `${this.getPullSheetSettings().powerJumpNamePowercon}${rest}`]) || plain;
+        }
+        const fer = /^(.+) (\d+)fer$/.exec(type);
+        if (fer) return first([`TRUE1 ${fer[2]}fer${rest}`, `powerCON ${fer[2]}fer${rest}`]) || plain;
+        return plain;
+    }
+
+    // The pullRowKey of every row of one position of `list`.
+    _pullPositionRowKeys(list, positionKey) {
+        const pos = ((list && list.positions) || []).find(p => this.pullPositionKey(p) === positionKey);
+        return new Set(((pos && pos.rows) || []).map(r => this.pullRowKey(r)));
+    }
+
     // The stored edits, never the store itself (readers must not mutate).
-    // Each row edit carries its key as pullEditKey reads it; where an old
-    // key and its new spelling both hold an edit, the new one is the edit.
-    getPullSheetEdits() {
+    // Each row edit carries its key as the row it answers to reads it
+    // (pullEditKey; an old key on a renamed row is read against its
+    // position's rows in `list`, or in the show's own list when none is
+    // handed in - _pullResolveEditKey); where an old key and its new
+    // spelling both hold an edit, the new one is the edit.
+    getPullSheetEdits(list) {
         const stored = (this.project && this.project.pullSheetEdits) || {};
+        let engine = list || null;
+        const liveOf = (positionKey) => {
+            if (!engine) {
+                try { engine = this.buildPullList(); } catch (err) {
+                    sendClientLog('pull_edit_rows_failed', { error: String(err) });
+                    engine = { positions: [] };
+                }
+            }
+            return this._pullPositionRowKeys(engine, positionKey);
+        };
         const positions = {};
         for (const [k, v] of Object.entries(stored.positions || {})) {
             if (!v || typeof v !== 'object') continue;
             const held = Array.isArray(v.rows) ? v.rows : [];
+            let live = null;
+            const keyOf = (raw) => (this._pullEditNeedsRows(raw)
+                ? this._pullResolveEditKey(raw, live || (live = liveOf(k)))
+                : this.pullEditKey(raw));
             const rows = [];
             for (const r of held) {
-                const key = r && r.key != null ? this.pullEditKey(r.key) : null;
+                const key = r && r.key != null ? keyOf(r.key) : null;
                 if (key === null || key === r.key) { rows.push({ ...r }); continue; }
                 if (held.some(x => x && x.key === key)) continue;
                 rows.push({ ...r, key });
@@ -1937,22 +2062,40 @@ class _PullList {
         return Number.isFinite(n) && n > 0 ? n : null;
     }
 
-    // A free row's side, for the binder's power / data split: a data word
-    // in the type makes it data - Cat5e / Cat6 / Cat6A, etherCON, a barrel,
-    // fiber, a breakout box or a processor (XD, CVT10, any model the
-    // catalog or the show names) - everything else is power.
+    // A free row's side, for the binder's power / data split. Whole words
+    // only, so "Contactor", "Stacking plate" and "Ground Stack" never read
+    // as data through "tac":
+    //   * a POWER word wins outright - a connector or a feed (Socapex,
+    //     Camlok, Edison, TRUE1, powerCON, L21-30, power ...), so
+    //     "Socapex Snake" and "Camlok Barrel" are power;
+    //   * then a DATA word makes it data - Cat5e / Cat6 / Cat6A, etherCON
+    //     or Ethernet, fiber, SDI, HDMI, data, a snake, a barrel, a TAC,
+    //     MTP, opticalCON, SFP, OPT, a CVT, XD ("Optical isolator" is
+    //     not: "optical" alone is no data word);
+    //   * then a MODEL the catalog or the show names (XD, H9, MX40 Pro)
+    //     makes it data only where it is the whole name, or the name's
+    //     head followed by nothing but an equipment word - "S4 rack",
+    //     "H9 spare (2)" are data, "S4 Spanset", "T1 Tape", "M2 bolt" are
+    //     not (_pullModelIsHead);
+    //   * everything else is power.
     pullGuessSide(type) {
-        const text = String(type || '');
-        if (/ether|\bcat(?:5e?|6a?|7|8)?\b|fiber|fibre|sdi|hdmi|data|snake|opt|sfp|tac|barrel|\bcvt|\bxd\b/i.test(text)) {
-            return 'data';
-        }
+        const text = String(type || '').trim();
+        if (PULL_POWER_WORDS.test(text)) return 'power';
+        if (PULL_DATA_WORDS.test(text)) return 'data';
         const lower = text.toLowerCase();
-        return this._pullDataDeviceNames().some(n => {
-            const at = lower.indexOf(n);
-            if (at < 0) return false;
-            const before = lower[at - 1], after = lower[at + n.length];
-            return !(before && /[a-z0-9]/.test(before)) && !(after && /[a-z0-9]/.test(after));
-        }) ? 'data' : 'power';
+        return this._pullDataDeviceNames().some(n => this._pullModelIsHead(lower, n)) ? 'data' : 'power';
+    }
+
+    // `model` (lower-cased) is the whole of `lower`, or its head with only
+    // equipment words after it ("rack", "spare", a count, a note in
+    // brackets).
+    _pullModelIsHead(lower, model) {
+        if (!lower.startsWith(model)) return false;
+        const rest = lower.slice(model.length);
+        if (!rest.trim()) return true;
+        if (!/^[\s(]/.test(rest)) return false;
+        const words = rest.replace(/\([^)]*\)/g, ' ').trim().split(/\s+/).filter(Boolean);
+        return words.every(w => PULL_MODEL_TAIL_WORDS.has(w) || /^x?\d+x?$/.test(w));
     }
 
     // Every processor, card and breakout box model the catalog and the
@@ -1986,7 +2129,7 @@ class _PullList {
     // each distro's and processor's "Pull list" (_pullCarryEdits). Free
     // rows have no screen and stay on the pull pages.
     applyPullSheetEdits(list) {
-        const edits = this.getPullSheetEdits();
+        const edits = this.getPullSheetEdits(list);
         const out = { ...list, positions: [], totals: (list.totals || []).slice() };
         // the totals are by type and length, whatever split a row carries -
         // and by snake, as the engine's are (_pullMergeRows)
@@ -2180,9 +2323,10 @@ class _PullList {
     // For the editor: the stored overrides no engine row answers to any
     // more - kept, flagged, never exported. [{ positionKey, key, edit }].
     pullSheetStaleEdits(list) {
-        const edits = this.getPullSheetEdits();
+        const engine = list || this.buildPullList();
+        const edits = this.getPullSheetEdits(engine);
         const live = new Map();
-        for (const pos of (list || this.buildPullList()).positions || []) {
+        for (const pos of engine.positions || []) {
             live.set(this.pullPositionKey(pos), new Set(pos.rows.map(r => this.pullRowKey(r))));
         }
         const out = [];
@@ -2235,8 +2379,14 @@ class _PullList {
         let dropped = 0;
         for (const [pk, pos] of Object.entries(store.positions)) {
             if (!pos || !Array.isArray(pos.rows)) continue;
+            // an old key is read against the rows the position had
+            let had = null;
+            const keyOf = (raw) => (this._pullEditNeedsRows(raw)
+                ? this._pullResolveEditKey(raw, had || (had = new Set([...before]
+                    .filter(k => k.startsWith(`${pk}\n`)).map(k => k.slice(pk.length + 1)))))
+                : this.pullEditKey(raw));
             pos.rows = pos.rows.filter(e => {
-                const k = `${pk}\n${this.pullEditKey(e && e.key)}`;
+                const k = `${pk}\n${keyOf(e && e.key)}`;
                 if (before.has(k) && !after.has(k)) { dropped++; return false; }
                 return true;
             });
@@ -2264,11 +2414,30 @@ class _PullList {
 
     // The live edit on row KEY in one position's store: the one stored
     // under KEY itself, else one under an older spelling of it
-    // (pullEditKey). A writer that takes it stores KEY on it.
-    _pullFindRowEdit(pos, key) {
+    // (pullEditKey, or _pullResolveEditKey against the position's rows
+    // now, for a key only they can place). A writer that takes it stores
+    // KEY on it.
+    _pullFindRowEdit(pos, key, positionKey) {
         const rows = (pos && pos.rows) || [];
+        const keyOf = this._pullStoredKeyReader(positionKey);
         return rows.find(x => x && x.key === key)
-            || rows.find(x => x && this.pullEditKey(x.key) === key) || null;
+            || rows.find(x => x && keyOf(x.key) === key) || null;
+    }
+
+    // stored key -> the row key it answers to on one position, the
+    // position's rows built once and only for a key that needs them.
+    _pullStoredKeyReader(positionKey) {
+        let live = null;
+        return (raw) => {
+            if (positionKey == null || !this._pullEditNeedsRows(raw)) return this.pullEditKey(raw);
+            if (!live) {
+                try { live = this._pullPositionRowKeys(this.buildPullList(), positionKey); } catch (err) {
+                    sendClientLog('pull_edit_rows_failed', { error: String(err) });
+                    live = new Set();
+                }
+            }
+            return this._pullResolveEditKey(raw, live);
+        };
     }
 
     // Override one field of an engine row. A value equal to the engine's
@@ -2278,7 +2447,7 @@ class _PullList {
     setPullSheetRowEdit(positionKey, key, patch, engineRow, action = 'Edit Pull Sheet Row') {
         if (!this.project || !positionKey || !key || !patch) return false;
         const pos = this._pullPositionEdits(positionKey, true);
-        let e = this._pullFindRowEdit(pos, key);
+        let e = this._pullFindRowEdit(pos, key, positionKey);
         const storedKey = e ? e.key : key;
         const before = JSON.stringify(e ? { ...e, key } : null);
         if (!e) { e = { key }; pos.rows.push(e); }
@@ -2301,7 +2470,7 @@ class _PullList {
         }
         this._pullPruneEdits();
         const after = this._pullPositionEdits(positionKey, false);
-        const now = after ? this._pullFindRowEdit(after, key) : null;
+        const now = after ? this._pullFindRowEdit(after, key, positionKey) : null;
         if (JSON.stringify(now || null) === before) {
             if (now) now.key = storedKey;   // nothing changed: nor does the key
             return false;
@@ -2314,7 +2483,7 @@ class _PullList {
     removePullSheetRow(positionKey, key) {
         if (!this.project || !positionKey || !key) return false;
         const pos = this._pullPositionEdits(positionKey, true);
-        let e = this._pullFindRowEdit(pos, key);
+        let e = this._pullFindRowEdit(pos, key, positionKey);
         if (e && e.removed) return false;
         if (!e) { e = { key }; pos.rows.push(e); }
         e.key = key;
@@ -2325,7 +2494,7 @@ class _PullList {
 
     restorePullSheetRow(positionKey, key) {
         const pos = this._pullPositionEdits(positionKey, false);
-        const e = pos && this._pullFindRowEdit(pos, key);
+        const e = pos && this._pullFindRowEdit(pos, key, positionKey);
         if (!e || !e.removed) return false;
         e.key = key;
         delete e.removed;
@@ -2338,7 +2507,8 @@ class _PullList {
         const pos = this._pullPositionEdits(positionKey, false);
         if (!pos) return false;
         const n = pos.rows.length;
-        pos.rows = pos.rows.filter(x => !x || this.pullEditKey(x.key) !== key);
+        const keyOf = this._pullStoredKeyReader(positionKey);
+        pos.rows = pos.rows.filter(x => !x || keyOf(x.key) !== key);
         if (pos.rows.length === n) return false;
         this._commitPullSheetEdit('Reset Pull Sheet Row');
         return true;
