@@ -359,7 +359,9 @@ Object.assign(CanvasRenderer.prototype, {
         const layer = window.app.powerPathOwner(window.app.currentLayer);
         if (!window.app.isCustomPowerEditing(layer)) return;
         const circuitNum = layer.powerCustomIndex || 1;
-        const label = window.app.getPowerCircuitLabel(layer, circuitNum);
+        // A leg of a custom 3fer is labelled by its circuit.
+        const label = window.app.getPowerCircuitLabel(layer,
+            window.app._customCircuitHead(layer, circuitNum));
         const committedCount = this._getCustomPowerCircuitPanelCount(layer, circuitNum);
         const selectedCount = (window.app.powerCustomSelection && window.app.powerCustomSelection.size) || 0;
         const fill = (typeof window.app.customRunFill === 'function')

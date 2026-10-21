@@ -1272,11 +1272,11 @@
                                 <label style="font-weight: 400;">Breakout</label>
                                 <select id="power-breakout-type" data-lrd-field="power-breakout-type" class="info-select" style="flex: 1 1 100px; min-width: 0; max-width: 150px;"></select>
                             </div>
-                            <div class="info-row" id="power-panel-input-row" style="display: none; flex-wrap: wrap; align-items: center; gap: 5px;" data-tooltip="Panel input, The connector the panels take power in on: TRUE1 or powerCON. An Edison or L6-20 breakout needs a tail to it per circuit, and the jumpers and splitters are this connector.">
+                            <div class="info-row" id="power-panel-input-row" style="display: none; flex-wrap: wrap; align-items: center; gap: 5px;" data-tooltip="Panel input, The connector the panels take power in on: TRUE1 or powerCON. An Edison or L6-20 breakout needs an adapter cable to it per circuit, and the jumpers and splitters are this connector.">
                                 <label style="font-weight: 400;">Panel input</label>
                                 <select id="power-panel-input" data-lrd-field="power-panel-input" class="info-select" style="flex: 1 1 100px; min-width: 0; max-width: 150px;"></select>
                             </div>
-                            <div class="info-row checkbox-row" data-tooltip="Circuit sharing, Put consecutive row/column runs onto one shared circuit through a 2fer or 3fer, up to the splitter size and the circuit capacity. Only adjacent runs share - a run is never skipped to pair two non-neighbours. Share one circuit, or remove its 2fer or 3fer, by right-clicking it on the map or its chip in the Hardware tray. A share past the circuit's amps is refused in automatic mode; custom mode allows it and flags it OVER.">
+                            <div class="info-row checkbox-row" data-tooltip="Circuit sharing, Put consecutive row/column runs onto one shared circuit through a 2fer or 3fer, up to the splitter size and the circuit capacity. Only adjacent runs share; a run is never skipped to pair two non-neighbors. Share one circuit, or remove its 2fer or 3fer, by right-clicking it on the map or its chip in the Hardware tray. A share past the circuit's amps is refused in automatic mode; custom mode allows it and flags it OVER.">
                                 <input type="checkbox" id="power-splitters-enabled" data-lrd-field="power-splitters-enabled">
                                 <label for="power-splitters-enabled">Share circuits via splitters</label>
                             </div>

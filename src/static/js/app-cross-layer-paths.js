@@ -169,10 +169,14 @@ class _CrossLayerPaths {
     // step on this layer (2026-09-23, "a circuit is one circuit"; see the
     // section comment above). A run that touches a locked screen is kept
     // whole and its locked screens are reported in `skipped`.
-    clearCustomRun(layer, kind, num) {
+    // `opts.pullBefore`: the caller already read the pull sheet's rows
+    // (clearCustomCircuit, clearing several runs as one) and sweeps the
+    // edits itself.
+    clearCustomRun(layer, kind, num, opts) {
         if (!layer) return { touched: [], skipped: [] };
         const k = this._customRunKeys(kind);
-        const pullBefore = this._pullLiveRowKeys();
+        const swept = opts && opts.pullBefore;
+        const pullBefore = swept || this._pullLiveRowKeys();
         const touched = [];
         const skipped = new Map();
         const own = layer[k.paths];
@@ -201,8 +205,37 @@ class _CrossLayerPaths {
         });
         // An edit on a pull-sheet row the clear took away goes with it -
         // before the caller's snapshot, so undo brings both back.
-        if (touched.length) this._dropPullEditsGoneWith(pullBefore);
+        if (touched.length && !swept) this._dropPullEditsGoneWith(pullBefore);
         return { touched, skipped: [...skipped.values()] };
+    }
+
+    // Clear Circuit on a custom power wall (the owner's ruling, 2026-10-21):
+    // a 2fer or 3fer is ONE circuit, so the active number - whichever leg
+    // it names - clears every leg of its share, and the share's group goes
+    // with them, all in the caller's one history entry. A leg that touches
+    // a locked screen keeps the whole circuit, and the screen is named.
+    // A circuit that is not shared clears exactly as clearCustomRun does.
+    clearCustomCircuit(owner, num) {
+        if (!owner) return { touched: [], skipped: [] };
+        const head = parseInt(this._customCircuitHead(owner, num), 10);
+        const legs = this._customMergeGroups(owner).find(g => g.includes(head));
+        if (!legs) return this.clearCustomRun(owner, 'power', num);
+        const locked = new Map();
+        legs.forEach(n => this._runLockedLayers(owner, 'power', n)
+            .forEach(l => locked.set(l.id, l)));
+        if (locked.size) return { touched: [], skipped: [...locked.values()] };
+        const pullBefore = this._pullLiveRowKeys();
+        // The group first, while the store still reads the custom id space.
+        this._wipeSplitterManualFor(owner, legs);
+        const touched = new Map([[owner.id, owner]]);
+        const skipped = new Map();
+        legs.forEach(n => {
+            const r = this.clearCustomRun(owner, 'power', n, { pullBefore });
+            r.touched.forEach(l => touched.set(l.id, l));
+            r.skipped.forEach(l => skipped.set(l.id, l));
+        });
+        this._dropPullEditsGoneWith(pullBefore);
+        return { touched: [...touched.values()], skipped: [...skipped.values()] };
     }
 
     // Every member's runs go, and the wall is back to automatic - except a
@@ -730,9 +763,17 @@ class _CrossLayerPaths {
     // "port 2", or "port 2 on North Lower" when the conflict lives on a peer.
     // R3C4 alone stops meaning anything the moment two grids are in play, so
     // a toast that names only the number sends the user hunting.
+    // A circuit is named by the label the wall prints ("circuit S1-2"),
+    // never by its drawn number: a leg of a custom 3fer is drawn as its
+    // own number, which nothing on screen shows (the owner, 2026-10-21).
     _describePathConflict(conflict, kind) {
         if (!conflict) return '';
-        const base = `${kind} ${conflict.number}`;
+        const circuit = kind === 'circuit' && conflict.layer
+            && typeof this.getPowerCircuitLabel === 'function';
+        const base = circuit
+            ? `${kind} ${this.getPowerCircuitLabel(conflict.layer,
+                this._customCircuitHead(conflict.layer, conflict.number))}`
+            : `${kind} ${conflict.number}`;
         return conflict.foreign ? `${base} on ${this._pathLayerName(conflict.layer)}` : base;
     }
 

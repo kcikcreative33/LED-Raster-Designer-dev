@@ -165,7 +165,7 @@ def test_the_gear_list_reads_the_connectors_in_use(client):
     lands in the list."""
     written = ['Cat6', 'Cat6 Snake', 'Cat6 Barrel', 'Cat6 Extension', 'etherCON', 'etherCON Snake',
                'etherCON Barrel', 'etherCON Extension', 'powerCON', 'powerCON Coupler', 'TRUE1',
-               'TRUE1 Power Jump', 'powerCON Power Jump', 'Edison → TRUE1 tail', 'CEE 16A → powerCON',
+               'TRUE1 Power Jump', 'powerCON Power Jump', 'Edison → TRUE1 cable', 'CEE 16A → powerCON',
                '400 A cam set']
     positions = [{'name': 'SR Beach', 'rows': [
         {'type': t, 'length': 'EA', 'qty': 1, 'label': '', 'notes': ''} for t in written]}]
@@ -433,7 +433,7 @@ def test_positions_are_the_groups_and_the_rows_read_in_the_sheets_vocabulary(pag
     # beside, which count NOTHING (a blank horizontal: the panels link
     # themselves), and 4 down at 1.5'. No distro, so no Multi and no
     # breakout; a 110 V screen breaks out to Edison, which reaches its
-    # TRUE1 panels (the panel input as shipped) through a tail per circuit,
+    # TRUE1 panels (the panel input as shipped) through an adapter cable per circuit,
     # so the gang is on the panels' side, a TRUE1 2fer (2026-10-21), and
     # the loose port cable is 50' of Cat6.
     center = _rows(out['positions'][1]['rows'])
@@ -444,7 +444,7 @@ def test_positions_are_the_groups_and_the_rows_read_in_the_sheets_vocabulary(pag
     assert center == [
         ('Cat6', "50'", 1, ids['centerPortLabel'], ''),
         ('Data Jump', "1.5'", 4, 'CENTER', ''),
-        ('Edison → TRUE1 tail', 'EA', 2, ', '.join(labels), ''),
+        ('Edison → TRUE1 cable', 'EA', 2, ', '.join(labels), ''),
         ('TRUE1 2fer', 'EA', 1, ids['centerLabel'], ''),
         ('TRUE1 Power Jump', "3'", 12, 'CENTER', ''),
     ]
@@ -458,7 +458,7 @@ def test_positions_are_the_groups_and_the_rows_read_in_the_sheets_vocabulary(pag
     assert totals[('TRUE1', "10'")] == 2 and totals[('TRUE1', "6'")] == 1
     assert totals[('Multi', "125'")] == 1 and totals[('Multi', "100'")] == 1
     assert totals[('TRUE1 Breakout', 'EA')] == 2 and totals[('TRUE1 2fer', 'EA')] == 1
-    assert totals[('Edison → TRUE1 tail', 'EA')] == 2
+    assert totals[('Edison → TRUE1 cable', 'EA')] == 2
     assert totals[('Distro', 'EA')] == 1 and totals[('Feeder', '')] == 1
     assert totals[('H9', 'EA')] == 1
     assert len(out['totals']) == 20

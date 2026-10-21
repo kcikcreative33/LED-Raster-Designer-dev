@@ -4695,9 +4695,10 @@ def test_alt_drag_sweeps_and_alt_click_stays_takeover(dock_page):
 def test_sweep_right_click_deals_nfers_in_one_entry(dock_page):
     """Sweep three circuits (five packed runs), right-click: the menu
     offers the sizes with the group math, suppresses the single-run share
-    item, and '3fer them' deals [1,2,3] + [4,5] as ONE '3fer Selection'
-    entry. One undo heals the whole deal. (A 30 A circuit - see
-    SPLITTERS_ON_JS - so the 3fer is within the amps.)"""
+    item, and '2fer them' deals [1,2] + [3,4] + a plain 5 as ONE '2fer
+    Selection' entry. One undo heals the whole deal. The Max splitter is
+    2fer (SPLITTERS_ON_JS), so no '3fer them' is offered (the owner,
+    2026-10-21: the batch never deals past it)."""
     page, ids = dock_page
     open_view(page, 'power')
     page.evaluate(RESET_POWER_JS, ids)
@@ -4716,24 +4717,23 @@ def test_sweep_right_click_deals_nfers_in_one_entry(dock_page):
     landed(page)
     items = page.evaluate(BATCH_ITEMS_JS)
     assert items['shown'], items
-    assert items['n0'] and items['n0']['label'].startswith('2fer them ('), items
-    assert items['n1'] and '3fer them (1 × 3fer + 1 × 2fer)' == \
-        items['n1']['label'], items
-    assert items['n1'] and not items['n1']['disabled'], items
+    assert items['n0'] and items['n0']['label'] == '2fer them (2 × 2fer + 1 plain)', items
+    assert not items['n0']['disabled'], items
+    assert items['n1'] is None, f'no size past the Max splitter: {items}'
     assert items['share'] is None, (
         f'the single-run share must stand down behind a sweep: {items}')
     # the packed 2fers count as existing gangs, so removing them is offered
     assert items['unshare'] and items['unshare']['label'] == 'Remove 2fers from these', items
 
-    page.locator('#context-menu [data-action="hw-batch-n1"]').click()
+    page.locator('#context-menu [data-action="hw-batch-n0"]').click()
     landed(page)
     out = page.evaluate(SPLITTER_STATE_JS, ids['aId'])
-    assert out['merge'] == [[1, 2, 3], [4, 5]], (
-        f'the 3fer deal must partition the five runs as 3+2: {out}')
-    assert out['split'] == [], out
-    assert [len(r) for r in out['runIds'] if r] == [3, 2], out
+    assert out['merge'] == [[1, 2], [3, 4]], (
+        f'the 2fer deal must partition the five runs as 2+2+1: {out}')
+    assert out['split'] == [5], out
+    assert [len(r) for r in out['runIds'] if r] == [2, 2, 1], out
     assert out['sel'] is None, 'the commit must clear the selection'
-    assert page.evaluate(HIST_JS, 1) == ['3fer Selection']
+    assert page.evaluate(HIST_JS, 1) == ['2fer Selection']
     assert page.evaluate(HIST_LEN_JS) == before + 1, (
         'the batch deal is not ONE history entry')
 
@@ -4748,9 +4748,10 @@ def test_sweep_right_click_deals_nfers_in_one_entry(dock_page):
 
 def test_whole_wall_right_click_batches_and_keeps_single_run_items(dock_page):
     """No selection: right-click a run and the batch entries act on the
-    whole screen ('3fer this screen'), beside the single-run share item,
+    whole screen ('2fer this screen'), beside the single-run share item,
     which keeps working unchanged. (A 30 A circuit, as above: the deal
-    is within the amps.)"""
+    is within the amps; the Max splitter is 2fer, so no '3fer this
+    screen'.)"""
     page, ids = dock_page
     open_view(page, 'power')
     page.evaluate(RESET_POWER_JS, ids)
@@ -4763,15 +4764,16 @@ def test_whole_wall_right_click_batches_and_keeps_single_run_items(dock_page):
     landed(page)
     items = page.evaluate(BATCH_ITEMS_JS)
     assert items['shown'], items
-    assert items['n1'] and items['n1']['label'].startswith('3fer this screen ('), items
+    assert items['n0'] and items['n0']['label'].startswith('2fer this screen ('), items
+    assert items['n1'] is None, items
     assert items['share'] is not None, (
         f'the single-run share must keep working with no sweep: {items}')
 
-    page.locator('#context-menu [data-action="hw-batch-n1"]').click()
+    page.locator('#context-menu [data-action="hw-batch-n0"]').click()
     landed(page)
     out = page.evaluate(SPLITTER_STATE_JS, ids['aId'])
-    assert out['merge'] == [[1, 2, 3], [4, 5]], out
-    assert page.evaluate(HIST_JS, 1) == ['3fer Screen']
+    assert out['merge'] == [[1, 2], [3, 4]] and out['split'] == [5], out
+    assert page.evaluate(HIST_JS, 1) == ['2fer Screen']
     assert page.evaluate(HIST_LEN_JS) == before + 1
 
     page.evaluate("() => window.app.undo()")

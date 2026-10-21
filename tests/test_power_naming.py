@@ -10,7 +10,8 @@
     "powerCON Power Jump", one row per connector AND length, each link named
     by its cabinet's own screen; an old customised single name carries over
     to TRUE1 only, and edits saved on "Tru-1 ..." rows answer to the TRUE1 row
-  * an Edison / L6-20 screen lists one "Edison → TRUE1 tail" per circuit,
+  * an Edison / L6-20 screen lists one "Edison → TRUE1 cable" per circuit
+    (never "tail"; an edit saved on the old "… tail" row answers to it),
     and its splitters are on the panels' side ("TRUE1 2fer")
   * a direct distro output's cable names both ends where the outlet is not
     the panel input ("Edison → powerCON"), the panel input alone where it
@@ -26,6 +27,7 @@ Run locally:
 
 import io
 import os
+import re
 import sys
 
 import pytest
@@ -239,16 +241,18 @@ def test_a_grouped_walls_jumpers_take_each_members_connector(page):
 
 
 def test_an_edison_screen_picks_its_panel_input(page):
-    """A 120V Edison wall: the Panel input row shows, a tail per circuit,
+    """A 120V Edison wall: the Panel input row shows, an adapter cable per circuit,
     TRUE1 jumpers; picked powerCON (one 'Change Panel Input' entry, served)
-    the tails, the jumpers and the splitters are powerCON. A TRUE1 wall
+    the adapter cables, the jumpers and the splitters are powerCON. A TRUE1 wall
     has no Panel input row - its breakout is its input."""
     pg, errors = page
     nums = setup(pg, walls={'b': {'powerVoltage': 120, 'powerAmperage': 10,
                                   'powerBreakoutType': 'soca-edison'}})['WALL B']
     assert len(nums) == 3, nums
     rows = pg.evaluate(ROWS_JS)
-    assert _qty(rows, 'Edison → TRUE1 tail') == {'EA': 3}, rows
+    assert _qty(rows, 'Edison → TRUE1 cable') == {'EA': 3}, rows
+    # never "tail" (the owner, 2026-10-21)
+    assert not [r for r in rows if re.search(r'\btails?\b', str(r[0]).lower())], rows
     assert _qty(rows, 'TRUE1 Power Jump') and not _qty(rows, 'Edison Power Jump'), rows
     ev(pg, "app.selectLayer(B); app.refreshSocaRuns(); return null;")
     pg.wait_for_timeout(300)
@@ -263,7 +267,7 @@ def test_an_edison_screen_picks_its_panel_input(page):
         .layers.find(l => l.id === id) || {}).powerPanelInput""", ev(pg, "return B.id;"))
     assert served == 'powercon', served
     rows = pg.evaluate(ROWS_JS)
-    assert _qty(rows, 'Edison → powerCON tail') == {'EA': 3} and not _qty(rows, 'Edison → TRUE1 tail'), rows
+    assert _qty(rows, 'Edison → powerCON cable') == {'EA': 3} and not _qty(rows, 'Edison → TRUE1 cable'), rows
     assert _qty(rows, 'powerCON Power Jump') and not [r for r in rows if r[0] == 'TRUE1 Power Jump'
                                                        and r[3] == 'WALL B'], rows
     # the splitter is on the panels' side
@@ -276,14 +280,14 @@ def test_an_edison_screen_picks_its_panel_input(page):
     ev(pg, "B.powerSplitters = { enabled: false, maxWays: 3, manual: { merge: [], split: [] } };"
            " app.setScreenVoltage(B, 208); B.powerBreakoutType = 'soca-l620';"
            " app._circuitTailCache = null; return null;")
-    assert _qty(pg.evaluate(ROWS_JS), 'L6-20 → powerCON tail') == {'EA': 3}
+    assert _qty(pg.evaluate(ROWS_JS), 'L6-20 → powerCON cable') == {'EA': 3}
     # a TRUE1 wall: no row, its breakout is its input, whatever was stored
     ev(pg, "B.powerBreakoutType = 'soca-true1'; app.refreshSocaRuns(); return null;")
     pg.wait_for_timeout(200)
     assert not pg.locator('#power-panel-input-row').is_visible()
     assert ev(pg, "return app.panelInput(B).name;") == 'TRUE1'
     rows = pg.evaluate(ROWS_JS)
-    assert not [r for r in rows if 'tail' in r[0]], rows
+    assert not [r for r in rows if r[0].endswith(' cable')], rows
     assert errors == [], errors
 
 
@@ -381,6 +385,37 @@ def test_the_old_names_carry_over(page):
     assert errors == [], errors
 
 
+def test_an_edit_on_the_old_edison_tail_row_answers_to_the_cable_row(page):
+    """The 1.5.4 betas printed the Edison adapter as "Edison → TRUE1 tail";
+    it is "Edison → TRUE1 cable" now (the owner, 2026-10-21: never
+    "tail"). An edit a file saved on the old row (its count, its note)
+    lands on the cable row, and the sheet says tail nowhere."""
+    pg, errors = page
+    setup(pg, walls={'b': {'powerVoltage': 120, 'powerAmperage': 10,
+                           'powerBreakoutType': 'soca-edison'}})
+    keys = ev(pg, """return ['Edison → TRUE1 tail|EA', 'L6-20 → powerCON tail|EA',
+                             'Edison → TRUE1 tail', 'Edison → TRUE1 tailgate|EA',
+                             'TRUE1|10\\'']
+        .map(k => app.pullEditKey(k));""")
+    assert keys == ['Edison → TRUE1 cable|EA', 'L6-20 → powerCON cable|EA',
+                    'Edison → TRUE1 cable', 'Edison → TRUE1 tailgate|EA', "TRUE1|10'"], keys
+    edited = ev(pg, """
+        const sheet = app.buildPullSheet();
+        const pos = sheet.positions.find(p => p.rows.some(r => r.type === 'Edison → TRUE1 cable'));
+        const key = app.pullPositionKey(pos);
+        app.project.pullSheetEdits = { positions: { [key]: { rows: [
+            { key: 'Edison → TRUE1 tail|EA', qty: 7, notes: 'spares' }], added: [] } } };
+        const keys = app.getPullSheetEdits().positions[key].rows.map(r => r.key);
+        const rows = app.buildPullSheet().positions.find(p => app.pullPositionKey(p) === key).rows
+            .map(r => [r.type, r.length, r.qty, r.notes]);
+        delete app.project.pullSheetEdits;
+        return { keys, rows };""")
+    assert edited['keys'] == ['Edison → TRUE1 cable|EA'], edited
+    assert ['Edison → TRUE1 cable', 'EA', 7, 'spares'] in edited['rows'], edited
+    assert not [r for r in edited['rows'] if re.search(r'\btails?\b', str(r[0]).lower())], edited
+    assert errors == [], errors
+
+
 def test_a_blank_cabinet_on_a_drawn_power_run_counts_no_jumper(page):
     """WALL B's hand-drawn circuit 1 runs its top row and steps over a
     blank third cabinet: the blank takes no power, so no jumper lands on
@@ -399,8 +434,15 @@ def test_a_blank_cabinet_on_a_drawn_power_run_counts_no_jumper(page):
         const links = app.jumperLinksOfRun(c.panels, c.layers, B, 'power');
         const data = app.jumperLinksOfRun(c.panels, c.layers, B, 'data');
         const scr = app.buildPullList().byScreen[B.id];
+        // and it is counted nowhere else either (the owner, 2026-10-21):
+        // the soca plan's panels (the binder's CIRCUITS PANELS and "N
+        // panels each") and the custom run's load against its cap
+        const tiles = app.getSocaPlan(B)[0].legs[0].tiles;
+        const load = app.customRunFill(B, 'power', 1).load;
+        const hit = app.customHitLoad('power', B, blank);
         const res = { panels: c.panels.length, links: links.length, data: data.length,
                       touchesBlank: links.some(l => l.a.blank || l.b.blank), power: scr.jumpers.power };
+        Object.assign(res, { tiles, load, hit, watts: parseFloat(B.panelWatts) || 0 });
         delete blank.blank;
         B.powerFlowPattern = 'tl-h'; B.powerCustomPaths = {};
         app._circuitTailCache = null;
@@ -408,4 +450,6 @@ def test_a_blank_cabinet_on_a_drawn_power_run_counts_no_jumper(page):
     assert out['panels'] == 6 and out['links'] == 4 and not out['touchesBlank'], out
     assert out['power'] == 4, out
     assert out['data'] == 5, 'the data side is not this ruling'
+    assert out['tiles'] == 5 and out['hit'] == 0, out
+    assert out['load'] == pytest.approx(5 * out['watts']), out
     assert errors == [], errors

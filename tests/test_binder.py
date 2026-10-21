@@ -103,9 +103,6 @@ BREAKOUT_WORD = re.compile(r'\bbreakouts?\b', re.I)
 POWER_BREAKOUT = re.compile(r'\b(Multi (208|120)|L21-30)( (TRUE1|powerCON|Edison|L6-20))? breakout\b')
 # the pull list's breakout CABLE row, one per connector ("TRUE1 Breakout")
 BREAKOUT_CABLE = re.compile(r'\b(TRUE1|powerCON|Edison|L6-20) Breakout\b')
-# the pull list's tail CABLE row off an Edison / L6-20 breakout
-# (2026-10-21): "Edison → TRUE1 tail", the one place a sheet says tail
-TAIL_CABLE = re.compile(r'\b(Edison|L6-20) → (TRUE1|powerCON) tail\b')
 
 
 # The Fiber connections table's own headings say BREAKOUT for the end of a
@@ -1263,7 +1260,9 @@ def test_no_sheet_says_box_breakout_or_palette(page):
         assert not boxy, (idx, boxy)
         assert not _generic_breakout(texts), (idx, _generic_breakout(texts))
         assert not [t for t in texts if 'palette' in t.lower()], (idx, texts)
-        assert not [t for t in texts if re.search(r'\btails?\b', t.lower()) and not TAIL_CABLE.search(t)], (idx, texts)
+        # never "tail", the Edison adapter included: it is "Edison → TRUE1
+        # cable" (the owner, 2026-10-21)
+        assert not [t for t in texts if re.search(r'\btails?\b', t.lower())], (idx, texts)
     distro = _render(pg, SHOW, DISTRO)['texts']
     i = distro.index('2 MULTI 208')
     assert distro[i + 1] == 'NAME' and distro[i + 2] == 'TYPE' and 'SR1' in distro and 'SR2' in distro

@@ -12,6 +12,12 @@ class _Power {
         const current = kind === 'power'
             ? (layer.powerCustomIndex || 1) : (layer.customPortIndex || 1);
         if (!this._isOverrideEditing(layer, kind)) {
+            // A custom wall steps circuit by circuit, never leg by leg
+            // (customCircuitRun below).
+            if (kind === 'power' && this.isCustomPower(layer)) {
+                return this.customCircuitRun(layer,
+                    Math.max(1, this.customCircuitShown(layer, current) + delta));
+            }
             return Math.max(1, current + delta);
         }
         const nums = this.getOverrideNums(layer, kind);
@@ -19,6 +25,63 @@ class _Power {
         const next = at === -1 ? 0
             : Math.max(0, Math.min(nums.length - 1, at + delta));
         return nums[next];
+    }
+
+    // ---- a custom circuit is read by circuit, not by drawn run ----------
+    //
+    // A custom 2fer or 3fer is ONE circuit whose legs each hold a drawn
+    // number: a sharing fill over ten columns at 3fer draws runs 1-10 and
+    // merges 1-3, 4-6 and 7-9, four circuits that print S1-1 to S1-4. The
+    // owner's ruling, 2026-10-21: what you read and step is the circuit.
+    // The active-circuit field shows the circuit's place on the wall (4,
+    // not 10), Next / Prev / Tab step circuit by circuit, a typed number
+    // is that circuit (5 is the next free one, not the middle leg of
+    // S1-2), and a refusal names labels. The drawn numbers stay the
+    // store's keys. With no share drawn every one of these is the
+    // identity, so a wall without 2fers reads exactly as before.
+
+    // The share groups of a custom screen's drawn runs, as the wall reads
+    // them (appliedSplitterGroups): [[first, ...legs], ...].
+    _customMergeGroups(owner) {
+        if (!owner || !this.usesCustomCircuits(owner)) return [];
+        const paths = owner.powerCustomPaths || {};
+        const drawn = Object.keys(paths).map(n => parseInt(n, 10))
+            .filter(n => Number.isFinite(n) && (paths[n] || []).length > 0);
+        return this.appliedSplitterGroups(owner, drawn).merge;
+    }
+
+    // The circuit drawn run `num` is a leg of: its share's first run (the
+    // number the circuit is labelled by), or the run itself.
+    _customCircuitHead(owner, num) {
+        const n = parseInt(num, 10);
+        if (!owner || !Number.isFinite(n) || !this.isCustomPower(owner)) return num;
+        const g = this._customMergeGroups(owner).find(ids => ids.includes(n));
+        return g ? g[0] : num;
+    }
+
+    // The circuit number run `num` reads as: the circuit's place among the
+    // wall's circuits, a share counted once (powerCircuitDisplayNum). A
+    // number past the drawn ones counts on from the last circuit.
+    customCircuitShown(owner, num) {
+        const head = this._customCircuitHead(owner, num);
+        const shown = parseInt(this.powerCircuitDisplayNum(owner, head), 10);
+        return Number.isFinite(shown) ? shown : (parseInt(num, 10) || 1);
+    }
+
+    // The drawn number circuit `shown` is written under: that circuit's
+    // first run, or past the drawn circuits the free number it would be
+    // drawn as. The inverse of customCircuitShown.
+    customCircuitRun(owner, shown) {
+        const want = Math.max(1, parseInt(shown, 10) || 1);
+        if (!owner || !this.isCustomPower(owner)) return want;
+        const folded = new Set(this._customMergeGroups(owner).flatMap(g => g.slice(1)));
+        if (!folded.size) return want;
+        let count = 0;
+        for (let r = 1; ; r++) {
+            if (folded.has(r)) continue;
+            count += 1;
+            if (count === want) return r;
+        }
     }
 
     // A step button (Next / Prev, data and power) is a MOUSE control. A
@@ -1250,7 +1313,8 @@ class _Power {
             s.legs.push({
                 leg, circuit: c.num,
                 label: this.getPowerCircuitLabel(layer, c.num),
-                tiles: c.panels.length, watts,
+                // a blank cabinet on a drawn path is fed by nothing
+                tiles: c.panels.filter(p => p && !p.blank).length, watts,
                 amps: voltage ? watts / voltage : 0,
                 x1: Number.isFinite(lx1) ? lx1 : null,
                 x2: Number.isFinite(lx2) ? lx2 : null
@@ -1371,7 +1435,7 @@ class _Power {
     // Edison or L6-20 breakout is not, so those screens carry their own
     // choice, layer.powerPanelInput ('true1' / 'powercon'; absent reads
     // TRUE1, so a show from before it reads as it always did). The
-    // jumpers, the splitters and the tails follow it.
+    // jumpers, the splitters and the Edison / L6-20 adapter cables follow it.
     getPanelInputTypes() {
         return [{ id: 'true1', name: 'TRUE1' }, { id: 'powercon', name: 'powerCON' }];
     }
@@ -2959,11 +3023,37 @@ class _Power {
         return { amps, cap, over };
     }
 
-    // "Runs 5 and 6", "Runs 1, 2 and 3" - the runs a refusal names.
-    _runListText(runIds) {
+    // The runs a refusal names, by the labels the wall prints (the owner,
+    // 2026-10-21: a run number is nothing anybody can find on the wall):
+    // "S1-1 and S1-2", "S1-1, S1-2 and S1-3". A run that is one leg of a
+    // shared circuit is named by its leg, "S1-2 leg 3". `layer` is the
+    // screen (or a custom wall's owner) whose id space the runs are in;
+    // another member's run arrives as its `${layerId}:${run}` token.
+    // Without a layer, the run numbers: "Runs 5 and 6".
+    _runListText(runIds, layer) {
         const ids = (runIds || []).slice();
-        if (ids.length <= 1) return `Run ${ids[0]}`;
-        return `Runs ${ids.slice(0, -1).join(', ')} and ${ids[ids.length - 1]}`;
+        const list = (xs) => (xs.length <= 1 ? `${xs[0]}`
+            : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+        if (!layer) {
+            if (ids.length <= 1) return `Run ${ids[0]}`;
+            return `Runs ${list(ids)}`;
+        }
+        const where = new Map();
+        this._wallCircuits(layer).forEach(({ layer: m, c }) => {
+            // A taken-over circuit's number is a circuit, not a run.
+            if (this._isTakenOverCircuit(m, c.num)) return;
+            const legs = c.runIds || [c.num];
+            legs.forEach((id, k) => where.set(
+                m.id === layer.id ? String(id) : `${m.id}:${id}`,
+                { m, c, k, of: legs.length }));
+        });
+        const names = ids.map(id => {
+            const at = where.get(String(id));
+            if (!at) return `run ${id}`;
+            const name = this.getPowerCircuitLabel(at.m, at.c.num);
+            return at.of > 1 ? `${name} leg ${at.k + 1}` : name;
+        });
+        return list([...new Set(names)]);
     }
 
     // The refusal for a share of `groups` (arrays of run ids, each one
@@ -2979,10 +3069,38 @@ class _Power {
             if (!load.over) continue;
             return {
                 runs: g.slice(), amps: load.amps, cap: load.cap,
-                text: `${this._runListText(g)} together draw `
+                text: `${this._runListText(g, layer)} together draw `
                     + `${load.amps.toFixed(1)} A on a ${+load.cap.toFixed(1)} A `
-                    + 'circuit - share past the amps only in custom mode',
+                    + 'circuit. Share past the amps only in custom mode.',
             };
+        }
+        return null;
+    }
+
+    // Custom mode follows the leg model (the owner's ruling 12, 2026-10-19:
+    // "the batch button and the share verbs must split a wide custom
+    // circuit into its own legs, never join it with neighbours. Joining
+    // applies only to single-column circuits"). So Share with next joins
+    // two circuits only while each is one run on one column (or row): a
+    // circuit already shared - its runs are its legs - or one drawn across
+    // several columns never joins a neighbor. `items` are the circuits a
+    // share would join, [{ layer, c }] off screenCircuits / _wallCircuits.
+    // Returns the reason the Share entry wears, disabled, or null.
+    customShareBlock(items) {
+        for (const { layer, c } of items || []) {
+            if (!layer || !c) continue;
+            const name = this.getPowerCircuitLabel(layer, c.num);
+            const ways = (c.runIds || []).length;
+            if (ways > 1) {
+                return `${name} is already a ${ways}fer, and a shared circuit `
+                    + 'never joins another. Only a circuit of one run shares.';
+            }
+            const legs = this._runLegs(layer, c.num);
+            const n = legs ? legs.legs.length : 0;
+            if (n > 1) {
+                return `${name} runs across ${n} ${legs.noun}s, so it splits into `
+                    + `its own legs (${n}fer it) and never joins another.`;
+            }
         }
         return null;
     }
@@ -3014,6 +3132,9 @@ class _Power {
         // A circuit taken over by hand is a drawing, not a packed run - see
         // _shareRunSegments. It is never dealt into a share.
         if (circuitNums.some(n => this._isTakenOverCircuit(layer, n))) return false;
+        // Custom mode joins only single-run circuits (customShareBlock).
+        if (this.isCustomPower(layer) && this.customShareBlock(this.screenCircuits(layer)
+            .filter(c => circuitNums.includes(c.num)).map(c => ({ layer, c })))) return false;
         const runIds = this._shareRunSegments(layer, circuitNums).flat();
         if (runIds.length < 2) return false;
         if (this.shareRefusal(layer, [runIds])) return false;
@@ -3255,7 +3376,12 @@ class _Power {
     // `refs`: a custom group's wall circuits (batchShareGroups); runs of
     // another member are adopted first (_adoptWallCircuits), in the same
     // history entry.
-    batchShareCircuits(layer, circuitNums, n, action, refs) {
+    // `opts.tickSharing` ("2fer / 3fer this screen", the owner's ruling,
+    // 2026-10-21): the wall's "Share circuits via splitters" is ticked too,
+    // in the same history entry - every member of the wall at once, as the
+    // box writes it (_wireScreenPowerKnobs), and refused whole, the locked
+    // screens named, when a locked member would change.
+    batchShareCircuits(layer, circuitNums, n, action, refs, opts) {
         if (!layer || !(Array.isArray(circuitNums) || Array.isArray(refs))) return false;
         // A locked screen stays unchanged (owner, 2026-10-16) - the setter
         // refuses and names it, whichever control called it.
@@ -3264,6 +3390,16 @@ class _Power {
         let { runIds, groups, splits } = deal;
         if (!runIds.length) return false;
         if (!groups.some(g => g.length >= 2) && !splits.length) return false;
+        const wallWays = this.getPowerSplitters(layer).maxWays;
+        const tick = (opts && opts.tickSharing && !this.getPowerSplitters(layer).enabled)
+            ? this._splitterWallMembers(layer).filter(m => {
+                const own = this._ownPowerSplitters(m);
+                return !own.enabled || own.maxWays !== wallWays;
+            }) : [];
+        if (tick.some(m => m.locked)) {
+            this._showLockedError(tick.filter(m => m.locked));
+            return false;
+        }
         // A split rewrites its run's path: a run drawn across a locked
         // screen's cabinets is not rewritten (another member's run is
         // checked by its adoption).
@@ -3312,7 +3448,14 @@ class _Power {
                 this._splitCustomRun(layer, sp.id, this._pathLegs(layer, path).legs);
             }
         });
-        this._commitWallShare(adopted ? adopted.touched : [layer], action);
+        const written = new Map((adopted ? adopted.touched : [layer]).map(l => [l.id, l]));
+        tick.forEach(m => {
+            const own = this._ownPowerSplitters(m);
+            m.powerSplitters = { ...own, enabled: true, maxWays: wallWays,
+                                 manual: (m.powerSplitters || {}).manual || own.manual };
+            written.set(m.id, m);
+        });
+        this._commitWallShare([...written.values()], action);
         return true;
     }
 
@@ -3557,6 +3700,11 @@ class _Power {
     mergeWallCircuits(owner, refs) {
         if (!owner || !Array.isArray(refs) || refs.length < 2) return false;
         if (this._lockedRefused(owner)) return false;
+        // Only single-run circuits join (customShareBlock), across the seam
+        // as on one screen.
+        const picked = new Set(refs.map(r => `${r.layerId}:${r.num}`));
+        if (this.customShareBlock(this._wallCircuits(owner)
+            .filter(x => picked.has(`${x.layer.id}:${x.c.num}`)))) return false;
         const tokens = this._wallRunSegments(owner, refs).flat();
         if (tokens.length < 2) return false;
         const adopted = this._adoptWallCircuits(owner, refs);
@@ -3724,11 +3872,11 @@ class _Power {
         const label = ways >= 2 ? `${ways}fer it (${ways} ${noun} runs)` : '2fer / 3fer it';
         let reason = null;
         if (ways < 2) {
-            reason = `${name} feeds one ${noun} - a 2fer or 3fer needs a run `
-                + `per ${noun} on the circuit`;
+            reason = `${name} feeds one ${noun}. A 2fer or 3fer needs a run `
+                + `per ${noun} on the circuit.`;
         } else if (cap > 0 && amps > cap + 1e-9) {
             reason = `${name} draws ${amps.toFixed(1)} A on a ${+cap.toFixed(1)} A `
-                + 'circuit - over the amps, so it cannot be one splitter circuit';
+                + 'circuit. That is over the amps, so it cannot be one splitter circuit.';
         }
         return { mode, layer, num, path, noun, legs, ways, amps, cap,
                  label, reason };

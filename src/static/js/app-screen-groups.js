@@ -578,10 +578,13 @@ class _ScreenGroups {
         // all locked stay as they are and are named.
         const lock = await this._settleGroupLock(screens);
         if (!lock.ok) return null;
-        const chosen = await this._resolveGroupSettings(screens, 'create');
+        // Locked screens keep every setting (_lockedGroupSettings).
+        const keep = lock.locked === true ? screens.filter(l => l.locked) : [];
+        const chosen = keep.length ? this._lockedGroupSettings(screens, keep)
+            : await this._resolveGroupSettings(screens, 'create');
         if (!chosen) return null;  // Cancel groups nothing and changes nothing
         if (lock.locked !== null) screens.forEach(l => { l.locked = lock.locked; });
-        this._applyGroupSettings(screens, chosen);
+        this._applyGroupSettings(screens.filter(l => !keep.includes(l)), chosen);
         screens.forEach(layer => this._detachLayerFromGroups(layer));
         const group = {
             id: this._nextGroupId(),
@@ -610,10 +613,12 @@ class _ScreenGroups {
         // The joined group is locked or unlocked as one (_settleGroupLock).
         const lock = await this._settleGroupLock(all);
         if (!lock.ok) return false;
-        const chosen = await this._resolveGroupSettings(all, 'add');
+        const keep = lock.locked === true ? all.filter(l => l.locked) : [];
+        const chosen = keep.length ? this._lockedGroupSettings(all, keep)
+            : await this._resolveGroupSettings(all, 'add');
         if (!chosen) return false;
         if (lock.locked !== null) all.forEach(l => { l.locked = lock.locked; });
-        this._applyGroupSettings(all, chosen);
+        this._applyGroupSettings(all.filter(l => !keep.includes(l)), chosen);
         if (!Array.isArray(group.layer_ids)) group.layer_ids = [];
         incoming.forEach(layer => {
             this._detachLayerFromGroups(layer);
@@ -873,6 +878,35 @@ class _ScreenGroups {
         const pick = await this.askGroupLock(screens);
         if (!pick) return { ok: false, locked: null };
         return { ok: true, locked: pick === 'lock' };
+    }
+
+    // "Lock the whole group" over locked and unlocked screens (the owner's
+    // ruling, 2026-10-21): the locked screens' settings win, and nothing on
+    // a locked screen changes. The settings the group has to share are
+    // theirs, so there is nothing to choose and no dialog: the unlocked
+    // screens take the locked ones' values. Locked screens that disagree
+    // among themselves cannot both keep theirs, so nothing is grouped and
+    // they are named. Returns the values to write, or null.
+    _lockedGroupSettings(screens, locked) {
+        const own = this.validateGroupSettings(locked);
+        if (!own.ok) {
+            const n = locked.map(l => l.name || `Screen ${l.id}`);
+            const names = n.length <= 1 ? (n[0] || '')
+                : `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}`;
+            const fields = Object.keys(own.conflicts)
+                .map(f => this._groupSettingFieldLabel(f));
+            const what = fields.length <= 1 ? fields[0]
+                : `${fields.slice(0, -1).join(', ')} and ${fields[fields.length - 1]}`;
+            const msg = `${names} are locked and disagree on ${what}. A locked `
+                + 'screen keeps its settings, so they can\'t share one group. '
+                + 'Unlock one of them first.';
+            if (typeof this._toast === 'function') this._toast(msg, true, 6000);
+            return null;
+        }
+        const all = this.validateGroupSettings(screens);
+        const chosen = {};
+        Object.keys(all.conflicts).forEach(f => { chosen[f] = own.values[f][0]; });
+        return chosen;
     }
 
     // The question: resolves 'lock', 'unlock' or null (Cancel, Escape, the

@@ -18,7 +18,7 @@
 //     `<panel input> 2fer` EA - the panels' side, TRUE1 or powerCON; a box
 //     on a distro takes one `<connector> Breakout` EA per connector its
 //     screens break out to. A circuit off an Edison or L6-20 breakout
-//     takes one `Edison → TRUE1 tail` EA (2026-10-21). A DIRECT output's
+//     takes one `Edison → TRUE1 cable` EA (2026-10-21). A DIRECT output's
 //     one cable is the panel input, or both ends where the outlet is
 //     another plug ("CEE 16A → TRUE1"); its length is its own column.
 //   * data: `Cat6` (or `etherCON`, where the box's output is etherCON -
@@ -177,6 +177,11 @@ const POWER_CONNECTOR_SHEET_NAMES = {};
 // key their edits on it ("Tru-1|10'", "Tru-1 Breakout|EA"); such an edit
 // answers to the row under its TRUE1 name now (pullEditKey).
 const PULL_LEGACY_TRUE1 = 'Tru-1';
+
+// The Edison / L6-20 adapter cable printed as "Edison → TRUE1 tail" in the
+// 1.5.4 betas; it is "Edison → TRUE1 cable" now (2026-10-21, never "tail"),
+// and an edit keyed on the old row answers to the new one (pullEditKey).
+const PULL_LEGACY_ADAPTER = /^((?:Edison|L6-20) → (?:TRUE1|powerCON)) tail(?=\||$)/;
 
 // Brompton models as the pull sheet printed them until 2026-10-17 -
 // "Tessera XD", "Tessera SX40" - and as older files key their edits. The
@@ -1585,12 +1590,13 @@ class _PullList {
                 }
                 row(`${inputOf(c).name} ${ways}fer`, 'EA', 1, label, '', at);
             }
-            // An Edison or L6-20 breakout reaches the panels through a tail
-            // per circuit, "Edison → TRUE1 tail" (2026-10-21). A circuit on
-            // a direct output has no breakout: its one cable is the tail.
+            // An Edison or L6-20 breakout reaches the panels through an
+            // adapter cable per circuit, "Edison → TRUE1 cable" (the owner,
+            // 2026-10-21: never "tail"). A circuit on a direct output has no
+            // breakout: its one cable is that adapter.
             if (this.breakoutHasPanelInputChoice(breakout)
                     && !this.directOutputCircuitCount(layer, c.num)) {
-                row(`${screenConn} → ${inputOf(c).name} tail`, 'EA', 1, label, '', at);
+                row(`${screenConn} → ${inputOf(c).name} cable`, 'EA', 1, label, '', at);
             }
             // Jumpers: every link of each run (branch) of the circuit.
             const runs = Array.isArray(c.branches) && c.branches.length ? c.branches : [c.panels];
@@ -1851,11 +1857,13 @@ class _PullList {
     // ("Ether-con|50'") as its Cat6 row ("Cat6|50'"), and one on a
     // "Tru-1" row as its TRUE1 row ("Tru-1 Breakout|EA" is
     // "TRUE1 Breakout|EA"; the old shipped jumper name "Tru-1 Power Jump"
-    // is the TRUE1 jumper's shipped one). Every other key is
+    // is the TRUE1 jumper's shipped one), and the Edison adapter's old
+    // "Edison → TRUE1 tail|EA" as "Edison → TRUE1 cable|EA". Every other key is
     // itself. Nothing is rewritten on open - the stored key takes the new
     // spelling the next time somebody edits that row.
     pullEditKey(key) {
         const text = String(key == null ? '' : key);
+        if (PULL_LEGACY_ADAPTER.test(text)) return text.replace(PULL_LEGACY_ADAPTER, '$1 cable');
         // "Tru-1 ...|len" is the TRUE1 row of the same name now - unless
         // it is a jumper name somebody typed, which still prints as typed
         if (text.startsWith(PULL_LEGACY_TRUE1)

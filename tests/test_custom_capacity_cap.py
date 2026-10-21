@@ -769,7 +769,9 @@ def test_a_per_run_override_is_capped_by_the_same_gate(page):
     }""")
     assert out['seeded'] == 14 and out['editing'] is True, out
     assert out['n'] == 14, out
-    assert len(out['toasts']) == 1 and 'already wired to circuit 2' in out['toasts'][0], out['toasts']
+    # named by the label the wall prints (the owner, 2026-10-21), not "circuit 2"
+    name = page.evaluate("() => window.app.getPowerCircuitLabel(window.__cap.layer(), 2)")
+    assert len(out['toasts']) == 1 and f'already wired to circuit {name}.' in out['toasts'][0], out['toasts']
 
 
 def test_no_capacity_means_no_cap(page):
