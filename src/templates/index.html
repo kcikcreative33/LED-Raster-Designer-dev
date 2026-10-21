@@ -2856,7 +2856,7 @@
                         <div class="pm-row">
                             <label>This show</label>
                             <div class="prefs-row">
-                                <label class="pm-check" data-tooltip="Off: one list for multis, data and power cables. On: a list for each."><input type="checkbox" id="pref-cable-stock-per-kind"> A list for each kind of cable</label>
+                                <label class="pm-check" data-tooltip="Off: one list for every cable. On: a list for each kind: multis, data, power, L21-30 and Harting home runs, direct-output cables and feeders."><input type="checkbox" id="pref-cable-stock-per-kind"> A list for each kind of cable</label>
                             </div>
                             <div class="pm-note">The cable lengths this show has on hand, saved with the show. A run the stock cannot make exactly is written as the pieces with the least extra length: with 25, 50 and 100, a 125 run reads 100'+25' on the map tags, the pull sheet and the binder. Blank: lengths are written as typed. Fiber and jumpers are not counted here.</div>
                         </div>
@@ -2890,9 +2890,45 @@
                         <div class="pm-row" data-cable-stock-list="circuit">
                             <label>Power cables</label>
                             <div class="prefs-row">
-                                <input type="text" id="pref-cable-stock-circuit-ft" placeholder="none" class="pm-wide" data-tooltip="Circuit cable lengths in feet: the cable on each circuit and a direct output's cable.">
+                                <input type="text" id="pref-cable-stock-circuit-ft" placeholder="none" class="pm-wide" data-tooltip="Circuit cable lengths in feet: the cable on each circuit of a multi.">
                                 <span class="pm-unit">ft</span>
-                                <input type="text" id="pref-cable-stock-circuit-m" placeholder="none" class="pm-wide" data-tooltip="Circuit cable lengths in meters: the cable on each circuit and a direct output's cable.">
+                                <input type="text" id="pref-cable-stock-circuit-m" placeholder="none" class="pm-wide" data-tooltip="Circuit cable lengths in meters: the cable on each circuit of a multi.">
+                                <span class="pm-unit">m</span>
+                            </div>
+                        </div>
+                        <div class="pm-row" data-cable-stock-list="l2130">
+                            <label>L21-30 home runs</label>
+                            <div class="prefs-row">
+                                <input type="text" id="pref-cable-stock-l2130-ft" placeholder="none" class="pm-wide" data-tooltip="L21-30 home run lengths in feet: an L21-30 box's run from its distro.">
+                                <span class="pm-unit">ft</span>
+                                <input type="text" id="pref-cable-stock-l2130-m" placeholder="none" class="pm-wide" data-tooltip="L21-30 home run lengths in meters: an L21-30 box's run from its distro.">
+                                <span class="pm-unit">m</span>
+                            </div>
+                        </div>
+                        <div class="pm-row" data-cable-stock-list="harting">
+                            <label>Harting home runs</label>
+                            <div class="prefs-row">
+                                <input type="text" id="pref-cable-stock-harting-ft" placeholder="none" class="pm-wide" data-tooltip="Harting home run lengths in feet: a Harting box's run from its distro.">
+                                <span class="pm-unit">ft</span>
+                                <input type="text" id="pref-cable-stock-harting-m" placeholder="none" class="pm-wide" data-tooltip="Harting home run lengths in meters: a Harting box's run from its distro.">
+                                <span class="pm-unit">m</span>
+                            </div>
+                        </div>
+                        <div class="pm-row" data-cable-stock-list="direct">
+                            <label>Direct-output cables</label>
+                            <div class="prefs-row">
+                                <input type="text" id="pref-cable-stock-direct-ft" placeholder="none" class="pm-wide" data-tooltip="Direct-output cable lengths in feet: the one cable from a CEE, Schuko, Edison, L5-20, TRUE1 or powerCON output to its screen.">
+                                <span class="pm-unit">ft</span>
+                                <input type="text" id="pref-cable-stock-direct-m" placeholder="none" class="pm-wide" data-tooltip="Direct-output cable lengths in meters: the one cable from a CEE, Schuko, Edison, L5-20, TRUE1 or powerCON output to its screen.">
+                                <span class="pm-unit">m</span>
+                            </div>
+                        </div>
+                        <div class="pm-row" data-cable-stock-list="feeder">
+                            <label>Feeders</label>
+                            <div class="prefs-row">
+                                <input type="text" id="pref-cable-stock-feeder-ft" placeholder="none" class="pm-wide" data-tooltip="Feeder lengths in feet: the cam set or feeder cable that powers a distro.">
+                                <span class="pm-unit">ft</span>
+                                <input type="text" id="pref-cable-stock-feeder-m" placeholder="none" class="pm-wide" data-tooltip="Feeder lengths in meters: the cam set or feeder cable that powers a distro.">
                                 <span class="pm-unit">m</span>
                             </div>
                         </div>

@@ -16,9 +16,13 @@ its own; a file that is not JSON is moved aside
 (cable_stock_presets.json.corrupt-<time>) before the next save, never
 overwritten.
 
-A stock is { perKind, ft: {all, multi, data, circuit}, m: {...} }: one
-shared list, or a list per kind of cable, in feet and in meters. Each list
-is lengths, ascending, once each.
+A stock is { perKind, ft: {all, multi, data, circuit, l2130, harting,
+direct, feeder}, m: {...} }: one shared list, or a list per kind of cable,
+in feet and in meters. Each list is lengths, ascending, once each. The
+L21-30, Harting, direct-output and feeder lists came on 2026-10-21; a preset
+saved before then has none, and reads the L21-30 and Harting lists from its
+multi list and the direct-output list from its circuit list (FALLBACK), the
+lists those cables were pulled from then.
 """
 import json
 import os
@@ -43,9 +47,11 @@ MAX_LENGTHS = 40          # lengths in one list
 MAX_LENGTH = 100000       # past any cable a show pulls
 MAX_BODY = 16 * 1024
 
-# Mirrors app-cable-units.js CABLE_UNITS / CABLE_STOCK_ALL / CABLE_STOCK_KINDS.
+# Mirrors app-cable-units.js CABLE_UNITS / CABLE_STOCK_ALL / CABLE_STOCK_KINDS
+# / CABLE_STOCK_FALLBACK.
 UNITS = ('ft', 'm')
-LISTS = ('all', 'multi', 'data', 'circuit')
+LISTS = ('all', 'multi', 'data', 'circuit', 'l2130', 'harting', 'direct', 'feeder')
+FALLBACK = {'l2130': 'multi', 'harting': 'multi', 'direct': 'circuit'}
 
 _lock = threading.Lock()
 
@@ -96,7 +102,10 @@ def normalize_stock(stock):
             return None
         out[unit] = {}
         for key in LISTS:
-            cleaned = _clean_list(lists.get(key) or [])
+            raw = lists.get(key)
+            if key not in lists and key in FALLBACK:
+                raw = lists.get(FALLBACK[key])
+            cleaned = _clean_list(raw or [])
             if cleaned is None:
                 return None
             out[unit][key] = cleaned

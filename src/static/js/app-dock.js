@@ -2644,7 +2644,7 @@ class _HardwareDock {
             top.classList.add('lrd-tile-line-cable');
             const corner = document.createElement('span');
             corner.className = 'hw-dock-chip-cable';
-            corner.textContent = lengths.map(v => this.cableText(v, type.cable, 'circuit')).join(' / ');
+            corner.textContent = lengths.map(v => this.cableText(v, type.cable, 'direct')).join(' / ');
             top.appendChild(corner);
         }
         if (face) {
@@ -2658,7 +2658,7 @@ class _HardwareDock {
                 if (!l) return;
                 const tip = `The cable from ${d.name || d.id} ${box.number} to ${l.name}, in `
                     + `${this.cableUnitWord()} - it goes on the pull sheet as a ${type.name} run.`
-                    + this.cableStockHint((l.powerSocaLengths || {})[h.soca], 'circuit');
+                    + this.cableStockHint((l.powerSocaLengths || {})[h.soca], 'direct');
                 const cell = this._buildPortNameField(
                     `Cable (${this.cableUnitAbbr()})`, `direct-length-${l.id}-${h.soca}`,
                     (l.powerSocaLengths || {})[h.soca] || '',
@@ -3099,7 +3099,7 @@ class _HardwareDock {
                     + 'for every screen sharing it. It flows into the gear checklist '
                     + 'and report.'
                     + this.cableStockHint((first.layer.powerSocaLengths || {})[first.m.soca]
-                        || (first.s && first.s.length), 'multi'),
+                        || (first.s && first.s.length), this.pullHomeRunKind(boxType)),
                 onCommit: (val) => {
                     writeThrough(this.setSocaLength,
                                  'Set Multi Home Run', val);

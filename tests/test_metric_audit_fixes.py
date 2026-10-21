@@ -300,7 +300,7 @@ def test_a_multi_home_run_typed_with_the_shows_unit_prints_its_length(page):
                                                'powerSocaLengths': {'1': typed}}}})
         rows = pg.evaluate(ROWS_JS)
         multi = [r for r in rows if r[0] == 'Multi']
-        assert multi == [['Multi', length, 1, 'SL 1', note]], (typed, unit, rows)
+        assert multi == [['Multi', length, 1, 'SL1', note]], (typed, unit, rows)
         out = ev(pg, """const W = app.project.layers[0];
             const s = app.getSocaPlan(W)[0];
             return { count: app.typedCableLengthCount(),
@@ -333,8 +333,8 @@ def test_a_direct_output_reads_the_same_lengths(page):
     '30m' there is no length - not 30'."""
     pg, _ = page
     _power_show(pg)
-    for typed, want, row in (('25ft', "25' True1", ['Tru-1', "25'", 1, 'SL 5', '']),
-                             ('30m', None, ['Tru-1', '', 1, 'SL 5', 'no length'])):
+    for typed, want, row in (('25ft', "25' True1", ['Tru-1', "25'", 1, 'SL5', '']),
+                             ('30m', None, ['Tru-1', '', 1, 'SL5', 'no length'])):
         nums = pg.evaluate(SETUP_JS, {'distros': [DIST_US], 'walls': {'W': {
             'powerSocaSplits': [1], 'powerSocaDistro': {'1': 'd1'}, 'powerSocaNumber': {'1': 5},
             'powerSocaLengths': {'1': typed}}}})
@@ -376,10 +376,10 @@ def test_a_direct_output_with_its_own_circuit_cable_prints_one_cable(page):
     pg, errors = page
     _power_show(pg)
     for lengths, cable, want in (
-            ({'1': '25'}, {'ft': 10, 'connector': None}, [['Tru-1', "10'", 1, 'SL 5', '']]),
-            ({}, {'ft': 10, 'connector': None}, [['Tru-1', "10'", 1, 'SL 5', '']]),
-            ({'1': '25'}, None, [['Tru-1', "25'", 1, 'SL 5', '']]),
-            ({}, None, [['Tru-1', '', 1, 'SL 5', 'no length']])):
+            ({'1': '25'}, {'ft': 10, 'connector': None}, [['Tru-1', "10'", 1, 'SL5', '']]),
+            ({}, {'ft': 10, 'connector': None}, [['Tru-1', "10'", 1, 'SL5', '']]),
+            ({'1': '25'}, None, [['Tru-1', "25'", 1, 'SL5', '']]),
+            ({}, None, [['Tru-1', '', 1, 'SL5', 'no length']])):
         nums = pg.evaluate(SETUP_JS, {'distros': [DIST_US], 'walls': {'W': {
             'powerSocaSplits': [1], 'powerSocaDistro': {'1': 'd1'}, 'powerSocaNumber': {'1': 5},
             'powerSocaLengths': lengths}}})

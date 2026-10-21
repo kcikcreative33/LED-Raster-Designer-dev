@@ -1254,7 +1254,7 @@ def test_no_sheet_says_box_breakout_or_palette(page):
         assert not [t for t in texts if re.search(r'\btails?\b', t.lower())], (idx, texts)
     distro = _render(pg, SHOW, DISTRO)['texts']
     i = distro.index('2 MULTI 208')
-    assert distro[i + 1] == 'NAME' and distro[i + 2] == 'TYPE' and 'SR 1' in distro and 'SR 2' in distro
+    assert distro[i + 1] == 'NAME' and distro[i + 2] == 'TYPE' and 'SR1' in distro and 'SR2' in distro
     assert 'BREAKOUTS' not in distro and 'Breakouts' not in distro
     assert [t for t in distro if re.fullmatch(r'\d+ on 2 Multi 208', t)], distro
 

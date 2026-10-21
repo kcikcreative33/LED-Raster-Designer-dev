@@ -913,11 +913,11 @@ Object.assign(CanvasRenderer.prototype, {
             // A multi on no distro has no feed and so no home run to print
             // (owner, 2026-10-17), whatever an older file left stored.
             // Written as the show's cable stock pieces ("100'+25'"): a
-            // direct output's one cable from the circuits' stock, a
-            // multi's home run from the multis'.
+            // direct output's one cable from the direct-output stock, a
+            // box's home run from its own kind's (multi, L21-30, Harting).
             const homeRun = this.exportMode && s.distroId
                 ? this._homeRunText(lone ? lone.ft : s.length,
-                                    lone ? 'circuit' : (typeof app.socaHomeRunKind === 'function'
+                                    lone ? 'direct' : (typeof app.socaHomeRunKind === 'function'
                                         ? app.socaHomeRunKind(s) : 'multi')) : '';
             const label = (dashed ? pend.boxName : s.name)
                 + (homeRun ? ` · ${homeRun}` : '')

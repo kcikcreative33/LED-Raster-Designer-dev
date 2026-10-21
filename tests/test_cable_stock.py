@@ -60,9 +60,18 @@ def test_a_stock_is_cleaned_and_a_junk_one_refused():
     import routes_cable_stock as rcs
     s = rcs.normalize_stock({'perKind': True, 'ft': {'multi': [100, 25, 50, 25.0]},
                              'm': {'all': [7.62]}})
+    # a stock saved before the L21-30, Harting, direct-output and feeder
+    # lists (2026-10-21) reads the L21-30 and Harting lists from its multi
+    # list and the direct-output list from its circuit list
     assert s == {'perKind': True,
-                 'ft': {'all': [], 'multi': [25, 50, 100], 'data': [], 'circuit': []},
-                 'm': {'all': [7.62], 'multi': [], 'data': [], 'circuit': []}}
+                 'ft': {'all': [], 'multi': [25, 50, 100], 'data': [], 'circuit': [],
+                        'l2130': [25, 50, 100], 'harting': [25, 50, 100], 'direct': [], 'feeder': []},
+                 'm': {'all': [7.62], 'multi': [], 'data': [], 'circuit': [],
+                       'l2130': [], 'harting': [], 'direct': [], 'feeder': []}}
+    # a list present, even empty, is that kind's own
+    s = rcs.normalize_stock({'perKind': True, 'ft': {'multi': [50], 'circuit': [10], 'l2130': [],
+                                                     'direct': [5], 'feeder': [100]}})
+    assert (s['ft']['l2130'], s['ft']['harting'], s['ft']['direct'], s['ft']['feeder']) == ([], [50], [5], [100])
     for junk in (None, [], 'x', {'perKind': 'yes'}, {'ft': {'all': [0]}},
                  {'ft': {'all': ['25']}}, {'ft': {'all': [True]}}, {'ft': [25]},
                  {'m': {'data': [-5]}}, {'ft': {'all': list(range(1, 60))}}):
@@ -323,7 +332,7 @@ def test_power_lengths_are_written_as_pieces_everywhere(page):
     # a power multi joins without a barrel (2026-10-21)
     assert not [r for r in pull['totals'] if 'Barrel' in r[0]], pull['totals']
     # the pieces keep the row's label
-    assert ['Multi', "100'", 1, 'SR 1'] in pull['rows'] and ['Multi', "25'", 1, 'SR 1'] in pull['rows'], pull['rows']
+    assert ['Multi', "100'", 1, 'SR1'] in pull['rows'] and ['Multi', "25'", 1, 'SR1'] in pull['rows'], pull['rows']
     # the distro's hardware rows count the same pieces
     assert sorted((r[1], r[2]) for r in pull['hardware'] if r[0] == 'Multi') == [("100'", 1), ("25'", 1)]
 
@@ -349,7 +358,7 @@ def test_power_lengths_are_written_as_pieces_everywhere(page):
     ws = wb['Pull Sheet']
     col = pull_sheet.BLOCK_COLS[0]
     block = [tuple(ws.cell(r, col + i).value for i in range(4)) for r in range(7, 40)]
-    assert ('Multi', "100'", 1, 'SR 1') in block and ('Multi', "25'", 1, 'SR 1') in block, block
+    assert ('Multi', "100'", 1, 'SR1') in block and ('Multi', "25'", 1, 'SR1') in block, block
     assert ('Tru-1', "50'", 1) in [b[:3] for b in block], block
     assert not [b for b in block if b[1] and '+' in str(b[1])], block
 

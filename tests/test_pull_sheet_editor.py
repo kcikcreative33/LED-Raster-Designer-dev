@@ -398,7 +398,7 @@ def test_label_and_notes_overrides_wear_a_dot_and_reset_takes_the_row_back(page)
     row = _pos(pg, ids['sr']).locator('tr.pull-row[data-key="Multi|125\'"]')
     assert row.locator('td.pull-edited').count() == 0
     assert not row.locator('.pull-reset').is_visible()
-    assert ('Multi', "125'", 1, 'SR 1', '') in _rows_of(pg.evaluate(SHEET_JS), 'SR Beach')
+    assert ('Multi', "125'", 1, 'SR1', '') in _rows_of(pg.evaluate(SHEET_JS), 'SR Beach')
     # a non-number qty is refused, not stored
     _set(pg, _cell(pg, ids['sr'], "Multi|125'", 'qty'), 'lots')
     assert not any(r['key'] == "Multi|125'" for r in pg.evaluate(STORE_JS)['positions']['g1']['rows'])
@@ -607,7 +607,7 @@ def test_undo_and_redo_step_one_edit_at_a_time(page):
     pg.wait_for_timeout(700)
     store = pg.evaluate(STORE_JS)
     assert store['positions']['g1']['rows'] == [{'key': "Multi|100'", 'qty': 3}]
-    assert _cell(pg, ids['sr'], "Multi|100'", 'label').input_value() == 'SR 2'
+    assert _cell(pg, ids['sr'], "Multi|100'", 'label').input_value() == 'SR2'
     assert _cell(pg, ids['sr'], "Multi|100'", 'qty').input_value() == '3'
     pg.evaluate("() => window.app.undo()")
     pg.wait_for_timeout(600)
@@ -639,7 +639,7 @@ def test_the_edits_persist_through_the_project_api(page):
         return {served: back.pullSheetEdits, sheet: JSON.parse(JSON.stringify(window.app.buildPullSheet()))};
     }""")
     assert out['served'] == {'positions': {'g1': {'rows': [{'key': "Multi|100'", 'qty': 4, 'notes': 'via PUT'}], 'added': []}}}
-    assert ('Multi', "100'", 4, 'SR 2', 'via PUT') in _rows_of(out['sheet'], 'SR Beach')
+    assert ('Multi', "100'", 4, 'SR2', 'via PUT') in _rows_of(out['sheet'], 'SR Beach')
     # clearing the last override deletes the key client-side and empties it server-side
     pg.evaluate("""() => window.app.resetPullSheetRow('g1', "Multi|100'")""")
     pg.wait_for_timeout(500)

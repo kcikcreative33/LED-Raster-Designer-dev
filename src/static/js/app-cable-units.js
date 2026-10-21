@@ -44,16 +44,22 @@
 //     saved, loaded and undone with it. A show without one - every file
 //     saved before the setting - writes every length as typed, as before.
 //     Preferences keep named presets of it (app-cable-stock.js).
-//   * Three kinds take it: 'multi' (a multi's home run, distro to screen:
-//     powerSocaLengths), 'data' (a snake's home run, a loose port cable, a
-//     snaked port's extension) and 'circuit' (a circuit's own cable,
-//     powerCircuitCables, and a direct output's one cable). Fiber, the
-//     copper links and the jumpers do not: the jumpers keep their own
-//     ladder above.
-//   * ONE list for all three, or a list PER KIND (cableStock.perKind),
+//   * The kinds that take it: 'multi' (a multi's home run, distro to
+//     screen: powerSocaLengths), 'data' (a snake's home run, a loose port
+//     cable, a snaked port's extension) and 'circuit' (a circuit's own
+//     cable, powerCircuitCables). Since 2026-10-21 (owner: each cable kind
+//     gets its own list) also 'l2130' and 'harting' (an L21-30 or Harting
+//     box's home run, which was a multi's), 'direct' (a direct output's
+//     one cable - CEE, Schuko, Edison, L5-20, TRUE1, powerCON - which was
+//     a circuit's) and 'feeder' (a distro's feeder, app-services.js).
+//     Fiber, the copper links and the jumpers do not: the jumpers keep
+//     their own ladder above.
+//   * ONE list for all of them, or a list PER KIND (cableStock.perKind),
 //     each kept in feet and in meters like the preferences: a show reads
 //     the list in its own unit. An empty list is no breakdown for that
-//     kind.
+//     kind. A show or preset saved before a kind had its own list reads
+//     that kind from the list it was pulled from then
+//     (CABLE_STOCK_FALLBACK): its runs are written as they always were.
 //   * A length the stock cannot make exactly takes the LEAST EXTRA
 //     length, then the FEWEST pieces (breakCableLength): with 25, 50, 100,
 //     125 is 100+25, 60 is 50+25, 130 is 100+50.
@@ -102,8 +108,11 @@ const TYPED_LENGTH_KEYS = new Set(['ft', 'ext', 'homeRun', 'fiberFt',
 
 // The cable kinds the show's stock covers, and the key of the one shared
 // list in each unit.
-export const CABLE_STOCK_KINDS = ['multi', 'data', 'circuit'];
+export const CABLE_STOCK_KINDS = ['multi', 'data', 'circuit', 'l2130', 'harting', 'direct', 'feeder'];
 export const CABLE_STOCK_ALL = 'all';
+// A kind's list where a saved per-kind stock has none at all (saved
+// before the kind had one): the list its cables were pulled from then.
+export const CABLE_STOCK_FALLBACK = { l2130: 'multi', harting: 'multi', direct: 'circuit' };
 // The breakdown works on a grid of whole steps; past this many steps a
 // length is written as typed rather than searched (a figure no show cable
 // comes near).
@@ -242,10 +251,11 @@ class _CableUnits {
 
     // ---- the show's cable stock ------------------------------------------
 
-    // A stock as stored: { perKind, ft: { all, multi, data, circuit },
-    // m: { ... } }, every list positive lengths, ascending, once each
-    // (empty where nothing in it is a length). null for anything that is
-    // not a stock at all - a show without one.
+    // A stock as stored: { perKind, ft: { all, multi, data, circuit,
+    // l2130, harting, direct, feeder }, m: { ... } }, every list positive
+    // lengths, ascending, once each (empty where nothing in it is a
+    // length; a kind with no list at all reads its CABLE_STOCK_FALLBACK).
+    // null for anything that is not a stock at all - a show without one.
     normalizeCableStock(stock) {
         if (!stock || typeof stock !== 'object' || Array.isArray(stock)) return null;
         const out = { perKind: stock.perKind === true };
@@ -253,7 +263,9 @@ class _CableUnits {
             const lists = stock[u] && typeof stock[u] === 'object' ? stock[u] : {};
             out[u] = {};
             for (const k of [CABLE_STOCK_ALL, ...CABLE_STOCK_KINDS]) {
-                out[u][k] = this.normalizeJumperStock(lists[k]) || [];
+                const from = lists[k] === undefined && CABLE_STOCK_FALLBACK[k]
+                    ? lists[CABLE_STOCK_FALLBACK[k]] : lists[k];
+                out[u][k] = this.normalizeJumperStock(from) || [];
             }
         }
         return out;

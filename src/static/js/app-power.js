@@ -2348,6 +2348,11 @@ class _Power {
         if (typeof this._buildDistroServiceRow === 'function') {
             this._buildDistroServiceRow(d, wrap);
         }
+        // FEEDER (2026-10-21, app-services.js): its length and where it is
+        // fed from - the service, or another distro.
+        if (typeof this._buildDistroFeederRow === 'function') {
+            this._buildDistroFeederRow(d, wrap);
+        }
 
         if (Number(d.phase) === 3) {
             const ph = this.distroPhasingState(d);

@@ -73,7 +73,10 @@
 //     `type|length`, per position), and free rows added to a position.
 //     buildPullSheet() = applyPullSheetEdits(buildPullList()) is what BOTH
 //     exports read (the workbook and the binder's pull pages), so an edit
-//     rides into every paper. An override on a row the show no longer
+//     rides into every paper - since 2026-10-21 the binder's per-screen
+//     CABLES THIS SCREEN tables and the hardware pull lists as well (a
+//     hidden row and a changed count; _pullCarryEdits has the rule). An
+//     override on a row the show no longer
 //     produces stays in the store, is flagged stale in the editor, and is
 //     never exported. See app-pull-sheet-editor.js for the modal.
 //
@@ -320,20 +323,30 @@ class _PullList {
             ? pieces.map(p => this.cableLengthText(p)) : null };
     }
 
-    // Which stock a box's home run is pulled from: a DIRECT output's one
-    // cable is a circuit's cable (True1, powerCON), every other box's a
-    // multi's.
+    // Which stock a box's home run is pulled from (2026-10-21, a list per
+    // cable kind): a DIRECT output's one cable 'direct', an L21-30 box's
+    // 'l2130', a Harting box's 'harting', every other box's a multi's.
+    // Reads the pull list's box ({ kind, typeId, connectorId }), a face box
+    // ({ kind, conn }) or a box type ({ id }).
     pullHomeRunKind(box) {
-        return box && box.kind === 'direct' ? 'circuit' : 'multi';
+        if (!box) return 'multi';
+        if (box.kind === 'direct') return 'direct';
+        const conn = box.connectorId || (box.conn && box.conn.id) || '';
+        const type = String(box.typeId || box.id || '');
+        if (conn === 'l2130' || type.startsWith('l2130')) return 'l2130';
+        if (conn === 'harting') return 'harting';
+        return 'multi';
     }
 
     // The same for a multi's soca-plan record (getSocaPlan): the face box
-    // its distro and number name.
+    // its distro and number name, else the type its box is.
     socaHomeRunKind(s) {
         const d = s && s.distroId && typeof this.getDistros === 'function'
             ? this.getDistros().find(x => x.id === s.distroId) : null;
         const fbox = d && typeof this.faceBox === 'function' ? this.faceBox(d, s.number) : null;
-        return this.pullHomeRunKind(fbox);
+        if (fbox || !d || typeof this.distroBoxType !== 'function') return this.pullHomeRunKind(fbox);
+        const typed = this.distroBoxType(d, s.number).type;
+        return this.pullHomeRunKind(typed ? { typeId: typed.id } : null);
     }
 
     // Rows whose length is several stock pieces (pullCableLength), one row
@@ -377,6 +390,51 @@ class _PullList {
         this._pullLengthProbe = seen;
         try { this.buildPullList(); } finally { this._pullLengthProbe = null; }
         return seen;
+    }
+
+    // Every distro box's label on paper (owner, 2026-10-21: "should be
+    // only listing the distros by name, if there happen to be 2 of the
+    // exact same name, then you can use a -1 etc"): the box's OWN name -
+    // the multi's name as the tray shows it ("SR1", "DISTRO 1-1", a typed
+    // "MAIN") - never the distro's name and the number glued on. Only
+    // where two boxes of the show carry exactly the same name does each
+    // take "-1", "-2" (distro tray order, then box number). The pull
+    // sheet, the distros' pull lists and the binder's distro tables all
+    // read this one map: `${distroId}|${number}` -> label.
+    distroBoxLabels() {
+        const distros = typeof this.getDistros === 'function' ? this.getDistros() : [];
+        const order = new Map(distros.map((d, i) => [d.id, i]));
+        const found = new Map();      // key -> { d, number, name }
+        for (const l of ((this.project && this.project.layers) || [])) {
+            if (!l || (l.type || 'screen') !== 'screen' || typeof this._powerNaming !== 'function') continue;
+            for (const rec of this._powerNaming(l).socas.values()) {
+                if (!rec || !rec.distroId || !order.has(rec.distroId)) continue;
+                const key = `${rec.distroId}|${rec.number}`;
+                if (found.has(key)) continue;
+                const d = distros[order.get(rec.distroId)];
+                const name = String(rec.name || '').trim()
+                    || (typeof this._deriveMultiName === 'function'
+                        ? this._deriveMultiName(String(d.name || '').trim(), rec.number, null)
+                        : `${d.name || ''}${rec.number}`);
+                found.set(key, { d: rec.distroId, number: Number(rec.number), name });
+            }
+        }
+        const keys = [...found.keys()].sort((a, b) => {
+            const x = found.get(a), y = found.get(b);
+            return (order.get(x.d) - order.get(y.d)) || (x.number - y.number);
+        });
+        const count = new Map();
+        for (const k of keys) count.set(found.get(k).name, (count.get(found.get(k).name) || 0) + 1);
+        const seen = new Map();
+        const out = new Map();
+        for (const k of keys) {
+            const { name } = found.get(k);
+            if (count.get(name) < 2) { out.set(k, name); continue; }
+            const i = (seen.get(name) || 0) + 1;
+            seen.set(name, i);
+            out.set(k, `${name}-${i}`);
+        }
+        return out;
     }
 
     // What paper calls a breakout box (a CVT, an XD): its model and
@@ -570,34 +628,68 @@ class _PullList {
             })));
     }
 
-    // Short names covered: names ending in a number fold into ranges per
-    // prefix ("SR1", "SR2", "SR3", "SR4" -> "SR 1-4"); anything else is
-    // listed as typed. A list still longer than eight pieces after folding
-    // (a wall's worth of circuit labels) is said as its ends and a count.
+    // Short names covered. Only a true RUN of numbered siblings folds - two
+    // or more names sharing a prefix whose numbers follow on ("SR1", "SR2",
+    // "SR3", "SR4" -> "SR 1-4"). A lone name is listed exactly as typed
+    // ("SR 13x5", "Floor H2", "CVT10" never lose their last number), and
+    // a number glued to a token that already holds digits ("13x5",
+    // "19x11") is never cut off it. A dashed name - a multi under a
+    // digit-ending distro ("DISTRO 1-1") or a circuit label ("SR1-1") -
+    // folds only a run of three or more, its first name whole and its last
+    // from the number before the dash: "DISTRO 1-1 … 1-7". A list still
+    // longer than eight pieces after folding (a wall's worth of circuit
+    // labels) is said as its ends and a count.
     _pullCompressNames(names) {
-        const list = (names || []).filter(Boolean);
+        const list = (names || []).filter(Boolean).map(String);
         if (!list.length) return '';
-        const groups = new Map();      // prefix -> numbers
-        const plain = [];
-        for (const n of list) {
-            const m = String(n).match(/^(.*?)(\d+)$/);
-            // A circuit label like SR1-1 keeps its own text: folding its
-            // tail number would read as a range of tails, not circuits.
-            if (!m || /[-–]\d+$/.test(n)) { plain.push(String(n)); continue; }
-            const prefix = m[1].trim();
-            const arr = groups.get(prefix) || [];
-            arr.push(parseInt(m[2], 10));
-            groups.set(prefix, arr);
-        }
-        const out = [];
-        for (const [prefix, nums] of groups) {
-            const sorted = [...new Set(nums)].sort((a, b) => a - b);
+        const runsOf = (nums) => {
             const runs = [];
-            for (const n of sorted) {
+            for (const n of [...new Set(nums)].sort((a, b) => a - b)) {
                 const last = runs[runs.length - 1];
                 if (last && n === last[1] + 1) last[1] = n;
                 else runs.push([n, n]);
             }
+            return runs;
+        };
+        // key -> { names, nums, text(runs) }, in first-seen order
+        const groups = new Map();
+        const plain = [];
+        const add = (key, name, num, text) => {
+            const g = groups.get(key) || { names: [], nums: [], text };
+            if (!g.names.includes(name)) { g.names.push(name); g.nums.push(num); }
+            groups.set(key, g);
+        };
+        for (const n of list) {
+            const dashed = n.match(/^(.*?)(\d+)([-–])(\d+)$/);
+            if (dashed) {
+                const [, head, mid, sep, tail] = dashed;
+                add(`d\u0000${head}${mid}${sep}`, n, parseInt(tail, 10),
+                    ([a, b]) => `${head}${mid}${sep}${a} … ${mid}${sep}${b}`);
+                continue;
+            }
+            const m = n.match(/^(.*?)(\d+)$/);
+            // the token the number ends: letters then the number ("SR1",
+            // "H2") or the number alone; "13x5" holds digits before it. A
+            // port label like SR-1 keeps its own text, as it always has.
+            const token = m ? (m[1].match(/\S*$/) || [''])[0] : '';
+            if (!m || /\d/.test(token) || /[-–]$/.test(m[1])) { plain.push(n); continue; }
+            const prefix = m[1].trim();
+            add(`p\u0000${prefix}`, n, parseInt(m[2], 10), null);
+        }
+        const out = [];
+        for (const [key, g] of groups) {
+            const runs = runsOf(g.nums);
+            if (key.startsWith('d')) {
+                // a dashed run of three or more folds; the rest as typed
+                for (const [a, b] of runs) {
+                    if (b - a >= 2) { out.push(g.text([a, b])); continue; }
+                    for (let k = a; k <= b; k++) out.push(g.names[g.nums.indexOf(k)]);
+                }
+                continue;
+            }
+            // no two names here follow on: each is a name, not a run
+            if (!runs.some(([a, b]) => b > a)) { out.push(...g.names); continue; }
+            const prefix = key.slice(2);
             const text = runs.map(([a, b]) => (a === b ? `${a}` : `${a}-${b}`)).join(', ');
             out.push(prefix ? `${prefix} ${text}` : text);
         }
@@ -828,6 +920,7 @@ class _PullList {
         // The tail cache is a per-tick memo keyed by layer object; a build
         // that follows an edit in the same tick must not read stale names.
         this._circuitTailCache = null;
+        const boxLabels = this.distroBoxLabels();
 
         // The positions, keyed. The screens' own come first, in layer
         // order; a device location that matches none of them opens its
@@ -863,9 +956,20 @@ class _PullList {
             if (!byKey.has(key)) open({ name: text, key, groupId: null, location: text });
             return key;
         };
+        // Where each row was pulled, for the edits (applyPullSheetEdits):
+        // `_rid` ties a row to the copies on the hardware sheets, `_pos` and
+        // `_layer` say which position took it and which screen's walk made
+        // it (none for a gear row).
+        let nextRid = 0;
+        const rid = () => ++nextRid;
+        const posOfRid = new Map();
         const land = (key, r, layerId) => {
             const pos = byKey.get(key);
             if (!pos) return;
+            if (!r._rid) r._rid = rid();
+            r._pos = key;
+            r._layer = layerId == null ? null : layerId;
+            posOfRid.set(r._rid, key);
             pos.rows.push(r);
             if (layerId != null && !pos.layerIds.includes(layerId)) pos.layerIds.push(layerId);
         };
@@ -874,7 +978,7 @@ class _PullList {
             for (const layer of base.layers) {
                 const scr = this._pullScreenList(layer, {
                     settings, distroById, boxesSeen, directSeen, snakesSeen, fiberSeen, hw, saidOnce,
-                    distroFirstLayer, boxFirstLayer, procFirstLayer,
+                    distroFirstLayer, boxFirstLayer, procFirstLayer, rid, boxLabels,
                 });
                 byScreen[layer.id] = scr;
                 // Every row goes where the device that produced it sits;
@@ -1023,10 +1127,44 @@ class _PullList {
                         side: 'power' };
             if (!gearAt(r, this.pullLocationOf(d), distroFirstLayer.get(String(d.id)))) continue;
             hw('distro', d.id, d.name).rows.push({ ...r });
+            // Its FEEDER (2026-10-21, app-services.js): one row under the
+            // distro's name, where the distro sits - "400 A cam set" with
+            // its length, "no length" where none is typed.
+            const feeder = typeof this.pullFeederRow === 'function' ? this.pullFeederRow(d) : null;
+            if (feeder && gearAt(feeder, this.pullLocationOf(d), distroFirstLayer.get(String(d.id)))) {
+                hw('distro', d.id, d.name).rows.push({ ...feeder });
+            }
         }
 
         // A device location is a position only while rows land on it.
         const listed = positions.filter(p => p.memberIds.length || p.rows.length);
+        // Which screens' walks and which hardware sheets each position row
+        // was built from, counted per piece: what an edit on that row does
+        // to the screens' CABLES THIS SCREEN tables and the hardware pull
+        // lists (applyPullSheetEdits). `${positionKey}\n${rowKey}` ->
+        // { screens: Map(layerId -> qty), hw: Map(hwKey -> qty) }.
+        const shares = new Map();
+        const shareOf = (posKey, r) => {
+            const k = `${posKey}\n${this.pullRowKey(r)}`;
+            let s = shares.get(k);
+            if (!s) { s = { screens: new Map(), hw: new Map() }; shares.set(k, s); }
+            return s;
+        };
+        for (const p of listed) {
+            for (const r of this._pullExpandPieces(p.rows)) {
+                if (!r || !r.type || r._layer == null) continue;
+                const s = shareOf(p.key, r);
+                s.screens.set(r._layer, (s.screens.get(r._layer) || 0) + (Number(r.qty) || 0));
+            }
+        }
+        for (const [hwKey, h] of hardwareRows) {
+            for (const r of this._pullExpandPieces(h.rows)) {
+                const posKey = r && r._rid ? posOfRid.get(r._rid) : null;
+                if (!posKey || !r.type) continue;
+                const s = shareOf(posKey, r);
+                s.hw.set(hwKey, (s.hw.get(hwKey) || 0) + (Number(r.qty) || 0));
+            }
+        }
         listed.forEach(p => { p.rows = this._pullMergeRows(p.rows, true); });
         const totals = this._pullMergeRows(listed.flatMap(p => p.rows));
         const hardware = [...hardwareRows.values()].map(h => ({
@@ -1045,11 +1183,14 @@ class _PullList {
         // sheet lists as its own (2026-10-01: "separate them. if the data
         // or power splits then mention it on both"). The merged `rows` and
         // every total are untouched: each cable is still counted once.
+        // Each keeps, unlisted, the position that pulled it (`_pos`), so an
+        // edit on that position's row finds it.
         Object.values(byScreen).forEach(s => {
-            s.rowsOn = this._pullExpandPieces(s.rows).map(r => ({ ...strip(r), on: (r._on || []).slice() }));
+            s.rowsOn = this._pullExpandPieces(s.rows).map(r => this._pullTagPosition(
+                { ...strip(r), on: (r._on || []).slice() }, r._pos));
             s.rows = this._pullMergeRows(s.rows).map(strip);
         });
-        return {
+        const out = {
             positions: listed,
             totals: totals.map(strip),
             byScreen,
@@ -1059,6 +1200,16 @@ class _PullList {
             // breakout box's fiber trunk rides its own fiberType / fiberFt.
             unmodelled: [],
         };
+        // Unlisted, so neither the workbook POST nor a copy carries it.
+        Object.defineProperty(out, '_shares', { value: shares });
+        return out;
+    }
+
+    // `_pos` on a row, unlisted (it never reaches a paper or the server).
+    _pullTagPosition(row, posKey) {
+        Object.defineProperty(row, '_pos', { value: posKey == null ? null : posKey,
+                                             writable: true, configurable: true });
+        return row;
     }
 
     // One screen's share: its raw rows (merged later by the caller) and the
@@ -1102,6 +1253,8 @@ class _PullList {
             const r = { type, length: cell ? cell.text : length, qty, label: label || '',
                         notes: notes || '', side, _at: at || null, _on: on.slice() };
             if (cell && cell.pieces) r._pieces = cell.pieces.slice();
+            // ties the row to its copies on the hardware sheets
+            if (ctx.rid) r._rid = ctx.rid();
             rows.push(r);
             return r;
         };
@@ -1227,7 +1380,16 @@ class _PullList {
             if (!distroFirstLayer.has(String(box.distroId))) {
                 distroFirstLayer.set(String(box.distroId), layer.id);
             }
-            const boxLabel = `${distroName}${box.number}`;
+            // The box's own name, as the tray and the binder say it ("SR1",
+            // "DISTRO 1-1", or what somebody typed; "-1", "-2" where two
+            // boxes share it, distroBoxLabels) - never the distro's name
+            // glued to the number, which made DISTRO 1's box 1 read
+            // "DISTRO 11".
+            const boxLabel = (ctx.boxLabels && ctx.boxLabels.get(box.key))
+                || String(box.name || '').trim()
+                || (typeof this._deriveMultiName === 'function'
+                    ? this._deriveMultiName(distroName, box.number, null)
+                    : `${distroName}${box.number}`);
             on = boxOn.get(box.key) || [layer.id];
             if (box.kind === 'direct') {
                 // A DIRECT output (1.5): its one cable, distro to screen, in
@@ -1241,7 +1403,7 @@ class _PullList {
                                box.crowded ? `${box.crowded} circuits on a one-circuit output` : '']
                     .filter(Boolean).join(' · ');
                 const r = row(this.pullPowerConnectorName(box.cable),
-                              this.pullCableLength(box.homeRun, 'circuit'), 1, boxLabel, notes, at);
+                              this.pullCableLength(box.homeRun, 'direct'), 1, boxLabel, notes, at);
                 hw('distro', box.distroId, distroName).rows.push({ ...r });
                 continue;
             }
@@ -1249,7 +1411,7 @@ class _PullList {
                 || box.connectorId === 'l2130';
             const isHarting = box.connectorId === 'harting';
             const homeType = isL2130 ? 'L21-30' : (isHarting ? 'Harting 16E' : 'Multi');
-            const r = row(homeType, this.pullCableLength(box.homeRun, 'multi'), 1, boxLabel,
+            const r = row(homeType, this.pullCableLength(box.homeRun, this.pullHomeRunKind(box)), 1, boxLabel,
                           box.homeRun ? '' : 'no length', at);
             const breakoutType = isL2130
                 ? `L21-30 ${box.connector} Breakout`
@@ -1640,6 +1802,11 @@ class _PullList {
     // hidden rows dropped, added rows appended, totals recomputed. A key
     // no edit touches keeps the engine's totals row verbatim (its folded
     // labels); a touched key is rebuilt from the edited position rows.
+    //
+    // The edits reach the per-screen readings and the hardware pull lists
+    // too (owner, 2026-10-21) - the binder's CABLES THIS SCREEN tables and
+    // each distro's and processor's "Pull list" (_pullCarryEdits). Free
+    // rows have no screen and stay on the pull pages.
     applyPullSheetEdits(list) {
         const edits = this.getPullSheetEdits();
         const out = { ...list, positions: [], totals: (list.totals || []).slice() };
@@ -1647,6 +1814,9 @@ class _PullList {
         const totalKey = (r) => `${r && r.type != null ? r.type : ''}|${r && r.length != null ? r.length : ''}`;
         const touched = new Set();
         const touchedRows = [];
+        // What each engine-row edit does to the screens and the hardware:
+        // [{ posKey, row (the engine's), removed, qty }]
+        const carried = [];
         let any = false;
         for (const pos of list.positions || []) {
             const pe = edits.positions[this.pullPositionKey(pos)];
@@ -1657,9 +1827,13 @@ class _PullList {
                 if (!e) { rows.push({ ...r }); continue; }
                 any = true;
                 touched.add(totalKey(r));
+                const qty = this._pullQtyValue(e.qty);
+                if (e.removed || (qty !== null && qty !== r.qty)) {
+                    carried.push({ posKey: pos.key || this.pullPositionKey(pos), row: r,
+                                   removed: !!e.removed, qty });
+                }
                 if (e.removed) continue;
                 const row = { ...r };
-                const qty = this._pullQtyValue(e.qty);
                 if (qty !== null) row.qty = qty;
                 if (e.label !== undefined && e.label !== null) row.label = String(e.label);
                 if (e.notes !== undefined && e.notes !== null) row.notes = String(e.notes);
@@ -1705,7 +1879,113 @@ class _PullList {
             label: h.labels.join(', '), notes: h.notes.join('; '), side: h.side,
         })));
         out.totals = this._pullSortRows(totals);
+        if (carried.length) this._pullCarryEdits(list, out, carried);
         return out;
+    }
+
+    // An edit on a position row, carried to the screens and hardware sheets
+    // whose cables that row counts (buildPullList's `_shares`):
+    //   * HIDE takes the row's cables off every screen's table and every
+    //     hardware pull list it was counted on - each loses exactly what
+    //     it gave that row.
+    //   * A COUNT goes to a screen only where the row maps 1:1 - every
+    //     cable it counts came from that one screen's walk. Then the
+    //     screen's own row of that type and length moves by the
+    //     difference (it may also hold the same cable pulled at another
+    //     position, which keeps its count). A row counting several
+    //     screens' cables (a beach's Multi 100' x 4 from two walls) cannot
+    //     say whose cable the change is, so each screen keeps its own
+    //     count and the pull sheet's totals carry the edit. The hardware
+    //     pull lists follow the same rule, per distro or processor.
+    // The engine's byScreen and hardware are never written: the touched
+    // screens and sheets are copies.
+    _pullCarryEdits(list, out, carried) {
+        const shares = list && list._shares;
+        if (!shares) return;
+        const byScreen = { ...(list.byScreen || {}) };
+        const hardware = (list.hardware || []).slice();
+        const cloned = new Set();
+        const screen = (id) => {
+            const s = byScreen[id];
+            if (!s) return null;
+            if (!cloned.has(`s:${id}`)) {
+                cloned.add(`s:${id}`);
+                byScreen[id] = { ...s, rows: (s.rows || []).map(r => ({ ...r })),
+                                 rowsOn: (s.rowsOn || []).map(r => this._pullTagPosition({ ...r }, r._pos)) };
+            }
+            return byScreen[id];
+        };
+        const sheet = (hwKey) => {
+            const i = hardware.findIndex(h => `${h.kind}:${h.id}` === hwKey);
+            if (i < 0) return null;
+            if (!cloned.has(`h:${hwKey}`)) {
+                cloned.add(`h:${hwKey}`);
+                hardware[i] = { ...hardware[i], rows: (hardware[i].rows || []).map(r => ({ ...r })) };
+            }
+            return hardware[i];
+        };
+        const same = (a, b) => a.type === b.type && a.length === b.length;
+        // Move a merged row's count by `delta`; a row brought to nothing goes.
+        const moveRows = (rows, row, delta) => {
+            const i = rows.findIndex(r => same(r, row));
+            if (i < 0) return;
+            rows[i].qty = (Number(rows[i].qty) || 0) + delta;
+            if (rows[i].qty <= 0) rows.splice(i, 1);
+        };
+        // The same on the unmerged rows that position pulled: taken off the
+        // last first, added to the first.
+        const moveRowsOn = (rows, row, posKey, delta) => {
+            const hits = [];
+            rows.forEach((r, i) => {
+                if (same(r, row) && (r.split || '') === (row.split || '') && r._pos === posKey) hits.push(i);
+            });
+            if (!hits.length) return;
+            if (delta > 0) { rows[hits[0]].qty += delta; return; }
+            let left = -delta;
+            for (let k = hits.length - 1; k >= 0 && left > 0; k--) {
+                const r = rows[hits[k]];
+                const take = Math.min(left, Number(r.qty) || 0);
+                r.qty -= take;
+                left -= take;
+            }
+            for (let k = hits.length - 1; k >= 0; k--) if (rows[hits[k]].qty <= 0) rows.splice(hits[k], 1);
+        };
+        const sum = (m) => [...m.values()].reduce((a, b) => a + b, 0);
+        for (const c of carried) {
+            const share = shares.get(`${c.posKey}\n${this.pullRowKey(c.row)}`);
+            if (!share) continue;
+            const engineQty = Number(c.row.qty) || 0;
+            const oneTo = (m) => (m.size === 1 && sum(m) === engineQty ? [...m.keys()][0] : null);
+            if (c.removed) {
+                for (const [id, q] of share.screens) {
+                    const s = screen(id);
+                    if (!s) continue;
+                    moveRows(s.rows, c.row, -q);
+                    moveRowsOn(s.rowsOn, c.row, c.posKey, -q);
+                }
+                for (const [hwKey, q] of share.hw) {
+                    const h = sheet(hwKey);
+                    if (h) moveRows(h.rows, c.row, -q);
+                }
+                continue;
+            }
+            const delta = c.qty - engineQty;
+            const id = oneTo(share.screens);
+            if (id != null) {
+                const s = screen(id);
+                if (s) {
+                    moveRows(s.rows, c.row, delta);
+                    moveRowsOn(s.rowsOn, c.row, c.posKey, delta);
+                }
+            }
+            const hwKey = oneTo(share.hw);
+            if (hwKey != null) {
+                const h = sheet(hwKey);
+                if (h) moveRows(h.rows, c.row, delta);
+            }
+        }
+        out.byScreen = byScreen;
+        out.hardware = hardware;
     }
 
     // THE list both papers print: the engine's reading with the user's
