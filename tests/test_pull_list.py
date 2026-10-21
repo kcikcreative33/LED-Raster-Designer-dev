@@ -822,19 +822,20 @@ def test_a_boxs_fiber_is_one_row_and_the_workbook_writes_it(page):
     # its name, at the position of the first screen it delivers (no
     # location typed).
     # CENTER's socket rides the box now, and the box has no home run typed
-    # for it: one Cat6 row with "no length" (2026-10-21), never nothing.
-    no_len = ['CENTER', [['Cat6', '', 1, ids['centerPortLabel'], 'no length']]]
+    # for it: one row with "no length" (2026-10-21), never nothing - in
+    # etherCON, the CVT4K-S's own output, as its snake now reads.
+    no_len = ['CENTER', [['etherCON', '', 1, ids['centerPortLabel'], 'no length']]]
     assert out['typed'] == [['SR Beach', [['12 Tac Fiber', "250'", 1, 'CVT4K-S SR', ''],
-                                          ['Cat6 Snake', "100'", 1, 'SNAKE A', '2 channel'],
                                           ['CVT4K-S', 'EA', 1, 'SR', ''],
+                                          ['etherCON Snake', "100'", 1, 'SNAKE A', '2 channel'],
                                           ['H9', 'EA', 1, '', '']]],
                             no_len], out['typed']
     assert out['unmodelled'] == []
     assert out['boxes'] == [['CVT4K-S SR'], ['CVT4K-S SR'], ['CVT4K-S SR']]
     assert out['hardware'] == [[['12 Tac Fiber', "250'", 1, 'CVT4K-S SR'],
-                                ['Cat6', '', 1, ids['centerPortLabel']],
-                                ['Cat6 Snake', "100'", 1, 'SNAKE A'],
                                 ['CVT4K-S', 'EA', 1, 'SR'],
+                                ['etherCON', '', 1, ids['centerPortLabel']],
+                                ['etherCON Snake', "100'", 1, 'SNAKE A'],
                                 ['H9', 'EA', 1, '']]]
     assert out['status'] == 200
     import base64
@@ -843,12 +844,12 @@ def test_a_boxs_fiber_is_one_row_and_the_workbook_writes_it(page):
     col = pull_sheet.BLOCK_COLS[0]
     rows = [tuple(ws.cell(r, col + i).value for i in range(4)) for r in range(7, 30)]
     assert ('12 Tac Fiber', "250'", 1, 'CVT4K-S SR') in rows, rows
-    assert out['untyped'] == [['SR Beach', [['Cat6 Snake', "100'", 1, 'SNAKE A', '2 channel'],
-                                            ['CVT4K-S', 'EA', 1, 'SR', ''],
+    assert out['untyped'] == [['SR Beach', [['CVT4K-S', 'EA', 1, 'SR', ''],
+                                            ['etherCON Snake', "100'", 1, 'SNAKE A', '2 channel'],
                                             ['Fiber', "250'", 1, 'CVT4K-S SR', ''],
                                             ['H9', 'EA', 1, '', '']]], no_len]
-    assert out['noLength'] == [['SR Beach', [['Cat6 Snake', "100'", 1, 'SNAKE A', '2 channel'],
-                                             ['CVT4K-S', 'EA', 1, 'SR', ''],
+    assert out['noLength'] == [['SR Beach', [['CVT4K-S', 'EA', 1, 'SR', ''],
+                                             ['etherCON Snake', "100'", 1, 'SNAKE A', '2 channel'],
                                              ['H9', 'EA', 1, '', '']]],
                                no_len]
     # the box gone, CENTER's own cable reads again - and the snake that

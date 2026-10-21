@@ -86,6 +86,37 @@ def test_a_box_never_borrows_its_cards_connector(client, monkeypatch):
     assert _connectors(client, pid) == ('cat', 'ethercon')
 
 
+def test_the_catalog_states_each_units_data_outputs():
+    """Every unit whose copper outputs the manufacturer's spec sheet names
+    carries them: etherCON reads etherCON, plain RJ45 reads Cat6. Fiber
+    only, SFP and chassis units carry no copper word; a card keeps its own
+    (the H cards' RJ45, the fiber cards' fiber)."""
+    dev = {d['id']: d for d in catalog.load_catalog()['devices']}
+    word = lambda i: dev[i].get('connector')
+    for i in ('novastar-mx40-pro', 'novastar-mx30', 'novastar-mx20', 'novastar-cx40-pro',
+              'novastar-cx80-pro', 'novastar-mctrl4k', 'novastar-mctrl660-pro',
+              'novastar-mctrl-r5', 'novastar-novapro-uhd', 'novastar-novapro-uhd-jr',
+              'novastar-novapro-hd', 'novastar-cvt4k-s', 'novastar-cvt10-pro',
+              'brompton-sx40', 'brompton-s8', 'brompton-s4', 'brompton-m2', 'brompton-t1',
+              'brompton-xd', 'brompton-xd-t', 'megapixel-rs12'):
+        assert word(i) == 'ethercon', i
+    for i in ('novastar-ku20', 'novastar-vx400', 'novastar-vx400-pro', 'novastar-vx600',
+              'novastar-vx600-pro', 'novastar-vx1000', 'novastar-vx1000-pro',
+              'novastar-vx2000-pro', 'novastar-vx16s', 'novastar-vx6s', 'novastar-vx4s',
+              'novastar-mctrl660', 'novastar-mctrl700', 'novastar-mctrl600',
+              'novastar-mctrl300', 'novastar-msd300', 'novastar-cvt10', 'novastar-cvt8-5g',
+              'brompton-xd-s', 'megapixel-gsm4210p',
+              'novastar-card-h-20xrj45', 'novastar-card-h-16xrj45-2xfiber'):
+        assert word(i) == 'rj45', i
+    for i in ('novastar-h9', 'novastar-mx6000-pro', 'brompton-sq200', 'brompton-card-qd-s'):
+        assert word(i) is None, i
+    assert word('novastar-card-h-4xfiber') == 'fiber'
+    # the words print through the one table
+    assert catalog.data_port_connector(None, dev['novastar-mx40-pro'], None) == 'ethercon'
+    assert catalog.data_port_connector(dev['brompton-xd-s'], None, None, box=True) == 'cat'
+    assert catalog.data_port_connector(dev['brompton-xd'], None, None, box=True) == 'ethercon'
+
+
 def test_the_server_takes_an_ethercon_pick(client):
     """etherCON is in the connector list, so a port cable or a snake may
     store it; a pick outside the list is still refused."""
