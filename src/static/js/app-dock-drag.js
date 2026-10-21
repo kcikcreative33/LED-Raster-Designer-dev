@@ -142,6 +142,24 @@ class _DockDrag {
         if (window.canvasRenderer) window.canvasRenderer.render();
     }
 
+    // A distro's header bar dropped on a Service card puts the distro on
+    // that service (owner, 2026-10-20) - refused, saying why, when the
+    // systems differ. ONE 'Put Distro on Service' entry.
+    _dockDropOnService(payload, target) {
+        const d = this.getDistros().find(x => x.id === payload.distroId);
+        const s = this.serviceById(target.serviceId);
+        if (!d || !s) return;
+        const cur = this.distroService(d);
+        if (cur && cur.id === s.id) {
+            this._dockSay(`${d.name || d.id} is already on ${s.name || s.id}.`);
+            return;
+        }
+        if (this.setDistroService(d.id, s.id)) {
+            this._dockSay(`${d.name || d.id} is on ${this.serviceLabel(s)}.`);
+        }
+        this.renderHardwareDock();
+    }
+
     // ── the drag itself ───────────────────────────────────────────────────
 
     _dockWireDraggable(el, payload, key) {
@@ -295,6 +313,9 @@ class _DockDrag {
         } else {
             this._dockClearReorderMark();
         }
+        if (drag.payload.type === 'distro' && typeof this._dockMarkServiceDrop === 'function') {
+            this._dockMarkServiceDrop(target, drag.payload);
+        }
         if (drag.payload.type === 'plug' || drag.payload.output
                 || this._dockDropUnit(drag.payload)) {
             this._dockPlugPill(drag, ev, target);
@@ -321,6 +342,7 @@ class _DockDrag {
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
         this._dockClearReorderMark();
+        if (typeof this._dockMarkServiceDrop === 'function') this._dockMarkServiceDrop(null);
         const dock = document.getElementById('hardware-dock');
         if (dock) dock.classList.remove('hw-dock-drop-target');
         if (window.canvasRenderer) window.canvasRenderer.render();
@@ -351,6 +373,12 @@ class _DockDrag {
                     const br = body && body.getBoundingClientRect();
                     if (br && ev.clientX >= br.left && ev.clientX <= br.right
                             && ev.clientY >= br.top && ev.clientY <= br.bottom) {
+                        // A distro over a Service card goes ON that
+                        // service (2026-10-20, app-services.js) - the card
+                        // is not a gap to reorder into.
+                        const sid = t === 'distro' && typeof this._dockServiceAt === 'function'
+                            ? this._dockServiceAt(ev) : null;
+                        if (sid) return { kind: 'service', serviceId: sid };
                         return { kind: 'reorder',
                                  index: this._dockReorderIndex(ev) };
                     }
@@ -1168,6 +1196,10 @@ class _DockDrag {
                 return this._dockReorderDistros(payload.distroId,
                                                 target.index);
             }
+            return;
+        }
+        if (target && target.kind === 'service') {
+            if (payload.type === 'distro') return this._dockDropOnService(payload, target);
             return;
         }
         // A processor dropped on a SCREEN assigns the way its first card

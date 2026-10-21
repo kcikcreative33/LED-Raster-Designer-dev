@@ -2343,6 +2343,11 @@ class _Power {
         // app-distro-systems.js) - the old Voltage and 1φ/3φ selects
         // became the one system pick.
         this._buildDistroSupplySection(d, wrap, patch);
+        // SERVICE (2026-10-20, app-services.js): the house power this
+        // distro is fed from, once the show has one.
+        if (typeof this._buildDistroServiceRow === 'function') {
+            this._buildDistroServiceRow(d, wrap);
+        }
 
         if (Number(d.phase) === 3) {
             const ph = this.distroPhasingState(d);

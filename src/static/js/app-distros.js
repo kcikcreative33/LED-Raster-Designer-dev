@@ -29,12 +29,21 @@ class _Distros {
     // order, and the server merges whatever lands last - so an older payload
     // could drop a just-added distro. Chain them instead (same reason the
     // rack allocation pushes are queued).
+    // The services (app-services.js) ride the same push: a distro's
+    // serviceId and the service it names always land together. A show that
+    // never had a service sends no key for them.
     _persistDistros() {
-        const send = () => fetch('/api/project', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ distros: this.getDistros() })
-        }).catch(() => {});
+        const send = () => {
+            const body = { distros: this.getDistros() };
+            if (this.project && Array.isArray(this.project.services)) {
+                body.services = this.project.services;
+            }
+            return fetch('/api/project', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).catch(() => {});
+        };
         this._distroPushQueue = (this._distroPushQueue || Promise.resolve()).then(send);
         return this._distroPushQueue;
     }
@@ -90,6 +99,10 @@ class _Distros {
     updateDistro(id, patch = {}, action = 'Edit Distro') {
         const d = this.getDistros().find(x => x.id === id);
         if (!d) return null;
+        // A distro on a service keeps the service's system (2026-10-20):
+        // a new system is refused, saying why, until it comes off.
+        if (typeof this._serviceRefusesDistroPatch === 'function'
+                && this._serviceRefusesDistroPatch(d, patch)) return null;
         // A change to the face - its rows, its system, a preset laid on it,
         // a row removed - never leaves a multi on a one-circuit output
         // (owner, 2026-10-18): it asks first, take the multi off and apply,

@@ -197,8 +197,11 @@ class _HardwareDock {
         // before a single height is read.
         let slot = 0;
         const plan = cells.map(cell => {
-            const span = cell.classList.contains('hw-dock-span2') ? 2 : 1;
-            if (slot + span > n) slot = 0;
+            // A full-width row (the Power view's services strip) takes
+            // every track and starts the deal again under it.
+            const all = cell.classList.contains('hw-dock-span-all');
+            const span = all ? n : (cell.classList.contains('hw-dock-span2') ? 2 : 1);
+            if (all || slot + span > n) slot = 0;
             const col = slot;
             slot = (slot + span) % n;
             const gc = `${col + 1} / span ${span}`;
@@ -385,6 +388,11 @@ class _HardwareDock {
         if (addDistro) addDistro.addEventListener('click', () => {
             this.addDistro();
             this._restateNaming();
+        });
+        const addService = document.getElementById('power-service-add');
+        if (addService) addService.addEventListener('click', () => {
+            this.addService();
+            this.renderHardwareDock();
         });
         // The gear popover's teardown gestures, the menu idiom: click-away
         // and Escape, bound once at the document. A press on the popover's
@@ -2307,6 +2315,12 @@ class _HardwareDock {
                     text: `No circuits on ${cur.name} — ${why}`,
                 });
             }
+        }
+        // The services (app-services.js) lead the tray as one full-width
+        // row of cards, above the distro columns; nothing for a show with
+        // none.
+        if (typeof this._dockRenderServices === 'function') {
+            this._dockRenderServices(host);
         }
         const distros = this.getDistros ? this.getDistros() : [];
         if (!distros.length) {

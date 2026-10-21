@@ -2421,6 +2421,66 @@ button.hw-dock-typechip:focus-visible { outline: 1px solid var(--ps-accent, #ef3
    reclaims a folded unit's room). Restated flex because the unit base
    rule's row-flex basis would read as HEIGHT in the column context. */
 .hw-dock-col > .hw-dock-distro { flex: 0 0 auto; min-width: 0; }
+/* ── the SERVICES strip (2026-10-20, app-services.js) ─────────────────────
+   The house power several distros are fed from: one full-width row of the
+   tray grid above the distro columns (a .hw-dock-span-all cell - masonry
+   writes its span inline, this rule is the plain grid's), one card per
+   service. A card reads like a distro header that is not a handle: no
+   grip, a quiet frame, the size and the figures in the header's register,
+   then the summed LEGS line and the FEEDS line naming its distros. A
+   distro dragged over a card lights it in the accent, red where the drop
+   would be refused. */
+#hardware-dock-body > .hw-dock-span-all { grid-column: 1 / -1; }
+.hw-dock-services {
+    display: flex; flex-wrap: wrap; gap: 10px; min-width: 0;
+}
+.hw-dock-service {
+    flex: 1 1 320px; max-width: 640px; min-width: 0;
+    background: var(--ps-inset, #141414);
+    border: 1px dashed #6a6a6a; border-radius: 5px;
+    padding: 5px 7px 5px; position: relative;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 2px 5px rgba(0,0,0,0.45);
+    transition: border-color .12s, background .12s;
+}
+.hw-dock-service.hw-dock-svc-drop {
+    border: 1px solid var(--ps-accent, #ef3340);
+    background: var(--ps-panel, #2e2e2e);
+}
+.hw-dock-service.hw-dock-svc-drop-no { border: 1px solid #a03030; background: #1a1010; }
+.hw-dock-svc-head {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px;
+    min-width: 0; padding: 0 26px 3px 1px;
+}
+.hw-dock-svc-tag {
+    font: 700 9px var(--font-ps, sans-serif); letter-spacing: 0.6px;
+    color: var(--ps-faint, #969696); flex: 0 0 auto;
+}
+.hw-dock-svc-head > .hw-dock-name {
+    font-family: var(--font-ps, sans-serif); font-size: 13px; font-weight: 700;
+    color: var(--ps-text, #e6e6e6); flex: 0 1 auto; min-width: 4em; max-width: 220px;
+}
+.hw-dock-svc-size {
+    font: 10px monospace; color: var(--ps-dim, #c0c0c0);
+    white-space: nowrap; flex: 0 0 auto;
+}
+/* the gear holds the card's top right corner however the header wraps */
+.hw-dock-svc-head > .hw-dock-gear { position: absolute; top: 4px; right: 5px; }
+.hw-dock-service > .hw-dock-legs { margin: 1px 0 2px; }
+.hw-dock-svc-feeds {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 3px 5px;
+    padding: 1px 2px 0; font: 9px ui-monospace, Menlo, monospace;
+    color: #b8b8b8; min-width: 0;
+}
+.hw-dock-svc-chip {
+    padding: 0 5px; border: 1px solid #4a4a4a; border-radius: 3px;
+    background: var(--ps-dark, #1a1a1a); color: var(--ps-text, #e6e6e6);
+    white-space: nowrap; line-height: 1.5;
+}
+.hw-dock-svc-sum { white-space: nowrap; color: var(--ps-faint, #969696); }
+.hw-dock-svc-sum-over { color: #d8a13c; }
+.hw-dock-svc-empty { color: var(--ps-faint, #969696); font-style: italic; }
+#hw-gear-popover .hw-pop-svc-row { justify-content: space-between; }
+#hw-gear-popover .hw-pop-svc-name { font-size: 11px; }
 /* ── fold reflow, data side ──────────────────────────────────────────────
    2026-08-30 gave a folded card a natural width capped at 300px so its
    expanded neighbours grew into the room; 2026-09-09 retired it with the

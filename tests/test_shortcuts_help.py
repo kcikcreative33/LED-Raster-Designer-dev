@@ -140,6 +140,7 @@ GESTURE_PHRASES = [
     'Click a circuit chip',
     'redundancy pill',
     'Reorder the distros',
+    'onto a Service card',
     '≡ on a multi header',
     # Screens & Beaches panels
     'Shift+click a row',
@@ -221,6 +222,7 @@ HANDLER_MARKERS = [
     ('_prepareSnakeMenu', 'app-context-menu.js', 'Snake these N'),
     ('_dockArmDrag', 'app-dock-drag.js', 'Esc mid-drag'),
     ('_dockReorderIndex', 'app-dock-drag.js', 'Reorder the processors'),
+    ('_dockDropOnService', 'app-dock-drag.js', 'onto a Service card'),
     ('_dockBuildDataCableSheetButton', 'app-dock-cable-sheets.js',
      '≡ on a card or box header'),
     ('_dockBuildCableSheetButton', 'app-dock-cable-sheets.js',

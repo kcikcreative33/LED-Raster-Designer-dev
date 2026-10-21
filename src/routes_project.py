@@ -124,6 +124,9 @@ def save_project():
     # Beaches ride this route too (the distro tray's fire-and-forget POST
     # carries `distros`): repair the list and migrate a typed location.
     app._normalize_beaches(app.current_project)
+    # So do the services (the same push carries `services` once a show has
+    # one): unique ids, and no distro left on a service that is gone.
+    app._normalize_services(app.current_project)
     # Same funnel duty for the processor tree: a payload can carry a
     # pre-stocking SX40 through this route too, and a boxless one is a
     # legacy shape, never a choice. Idempotent like the pass above it.
@@ -267,6 +270,9 @@ def restore_project():
     # typed `location` becomes a beach of that name on load - see
     # _normalize_beaches. Idempotent like the pass above it.
     app._normalize_beaches(app.current_project)
+    # Services (2026-10-20): the same repair the save route runs - see
+    # _normalize_services. A file with no services is left as it came.
+    app._normalize_services(app.current_project)
     # A requires-distribution device saved before new_processor stocked its
     # default boxes arrives with an empty cvts list - a pre-stocking save,
     # not an arrangement. This funnel (file load, undo/redo) is where it is

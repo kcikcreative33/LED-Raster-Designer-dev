@@ -1544,6 +1544,58 @@ def _normalize_beaches(project):
     return project
 
 
+# ---- services (house power) -------------------------------------------------
+#
+# A SERVICE is the house power several distros are fed from (owner rulings,
+# 2026-10-20: "in situations where I choose 600A service and 400A and 200A
+# distros i then need to be able to use both on the same 600A"). The client
+# owns the model (app-services.js); it rides the distros' project POST:
+#     project['services']  -> [{id: 's1', name, ratingA, system, voltage,
+#                               phase, main100?}]   in tray order
+#     distro['serviceId']  -> 's1' | absent
+# A distro goes only on a service of its own system. A show with no services
+# carries no key for them, and this pass writes none.
+def _normalize_services(project):
+    """Repair the service model in place, idempotently.
+
+    Runs on the funnel _normalize_beaches does (file load, undo, redo, every
+    project POST):
+
+      1. ``services``, when present, is a list of dicts each carrying a
+         string id; anything else is dropped, and a second service with an
+         id already seen is dropped too.
+      2. a distro's ``serviceId`` that names no service, or names a service
+         of another system, is removed.
+
+    A project without a ``services`` key keeps not having one, so a file
+    saved before services round-trips unchanged.
+    """
+    if not isinstance(project, dict):
+        return project
+    by_id = {}
+    if 'services' in project:
+        raw = project.get('services')
+        kept = []
+        for svc in (raw if isinstance(raw, list) else []):
+            if not isinstance(svc, dict):
+                continue
+            sid = svc.get('id')
+            if not isinstance(sid, str) or not sid or sid in by_id:
+                continue
+            by_id[sid] = svc
+            kept.append(svc)
+        project['services'] = kept
+    distros = project.get('distros')
+    for d in (distros if isinstance(distros, list) else []):
+        if not isinstance(d, dict) or 'serviceId' not in d:
+            continue
+        sid = d.get('serviceId')
+        svc = by_id.get(sid) if _is_hashable(sid) else None
+        if svc is None or not d.get('system') or svc.get('system') != d.get('system'):
+            d.pop('serviceId', None)
+    return project
+
+
 def _is_hashable(value):
     """Can ``value`` be put in a set or used as a dict key?
 
