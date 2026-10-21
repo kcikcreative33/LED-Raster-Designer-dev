@@ -266,14 +266,14 @@ def test_the_distro_page_home_run_is_the_direct_outputs_one_cable(walls):
         'powerSocaLengths': {'1': '25'}}}})['WALL B']
     ev(pg, "B.powerCircuitCables = { [arg]: { ft: 10, connector: null } }; return null;", nums[0])
     cells = pg.evaluate(DISTRO_ROWS_JS)
-    pd5 = [c for c in cells if c[0] == 'PD 5']
+    pd5 = [c for c in cells if c[0] == 'PD5']
     assert len(pd5) == 1, cells
     assert pd5[0][2] == "10'", pd5
     pull = [r for r in pg.evaluate(ROWS_JS) if r[3] == 'PD5']
     assert [r[1] for r in pull] == ["10'"], pull
     # No circuit cable: the output's home run, as the tag and the sheet say.
     ev(pg, "B.powerCircuitCables = {}; return null;")
-    pd5 = [c for c in pg.evaluate(DISTRO_ROWS_JS) if c[0] == 'PD 5']
+    pd5 = [c for c in pg.evaluate(DISTRO_ROWS_JS) if c[0] == 'PD5']
     assert pd5[0][2] == "25'", pd5
     assert errors == [], errors
 
@@ -329,7 +329,7 @@ def test_the_distro_page_keeps_a_crowded_outputs_home_run(walls):
     """A crowded output has no one cable: its row reads the home run."""
     pg, _ = walls
     _crowd(pg, [10, 15, 20, 25, 30, 35])
-    pd4 = [c for c in pg.evaluate(DISTRO_ROWS_JS) if c[0] == 'PD 4']
+    pd4 = [c for c in pg.evaluate(DISTRO_ROWS_JS) if c[0] == 'PD4']
     assert len(pd4) == 1 and pd4[0][2] == "100'" and pd4[0][4] == '6', pd4
 
 

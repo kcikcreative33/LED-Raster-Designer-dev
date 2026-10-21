@@ -196,6 +196,55 @@ def test_a_box_is_labelled_by_its_own_name(seeded):
     assert errors == [], errors
 
 
+def test_only_a_name_two_boxes_share_takes_a_suffix(seeded):
+    """Owner, 2026-10-21: "should be only listing the distros by name, if
+    there happen to be 2 of the exact same name, then you can use a -1
+    etc". Each box is its own name on the pull sheet, SR's pull list and
+    the binder's distro table ("SR1", "SR2" - never "SR 1"); two boxes
+    typed the same name ("MAIN") are MAIN-1 and MAIN-2, in box order."""
+    pg, ids, errors = seeded
+    out = pg.evaluate("""(ids) => {
+        const app = window.app;
+        const caught = [];
+        const table = () => {
+            caught.length = 0;
+            const orig = app._bDistroBlocks;
+            app._bDistroBlocks = function (book, d, load, boxes) {
+                caught.push(...boxes.map(b => b.cells[0]));
+                return orig.apply(this, arguments);
+            };
+            try {
+                app.planBinder(Object.assign(app.readBinderOptions(),
+                    { scope: { kind: 'show' }, hardware: true, pull: false, cover: false }));
+            } finally { app._bDistroBlocks = orig; }
+            return caught.slice();
+        };
+        const labels = () => {
+            app._circuitTailCache = null;
+            const l = app.buildPullList();
+            const hw = l.hardware.find(h => h.kind === 'distro');
+            return { pull: l.positions[0].rows.filter(r => r.type === 'Multi').map(r => r.label),
+                     hw: hw.rows.filter(r => r.type === 'Multi').map(r => r.label), table: table() };
+        };
+        const plain = labels();
+        const a = app.project.layers.find(l => l.id === ids.a);
+        const b = app.project.layers.find(l => l.id === ids.b);
+        a.powerSocaNames = { 1: 'MAIN' };
+        b.powerSocaNames = { 1: 'MAIN' };
+        const twins = labels();
+        delete a.powerSocaNames; delete b.powerSocaNames;
+        app._circuitTailCache = null;
+        return { plain, twins };
+    }""", ids)
+    assert sorted(out['plain']['pull']) == ['SR1', 'SR2'], out
+    assert sorted(out['plain']['hw']) == ['SR1', 'SR2'], out
+    assert out['plain']['table'] == ['SR1', 'SR2'], out
+    assert sorted(out['twins']['pull']) == ['MAIN-1', 'MAIN-2'], out
+    assert sorted(out['twins']['hw']) == ['MAIN-1', 'MAIN-2'], out
+    assert out['twins']['table'] == ['MAIN-1', 'MAIN-2'], out
+    assert errors == [], errors
+
+
 def test_edits_reach_the_screens_and_the_hardware(seeded):
     """On SR Beach (WALL-A and WALL-B): hiding WALL-A's Multi 125' takes it
     off WALL-A's table and SR's pull list; WALL-A's Tru-1 10' x 2 set to 5

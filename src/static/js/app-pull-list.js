@@ -366,6 +366,51 @@ class _PullList {
         return seen;
     }
 
+    // Every distro box's label on paper (owner, 2026-10-21: "should be
+    // only listing the distros by name, if there happen to be 2 of the
+    // exact same name, then you can use a -1 etc"): the box's OWN name -
+    // the multi's name as the tray shows it ("SR1", "DISTRO 1-1", a typed
+    // "MAIN") - never the distro's name and the number glued on. Only
+    // where two boxes of the show carry exactly the same name does each
+    // take "-1", "-2" (distro tray order, then box number). The pull
+    // sheet, the distros' pull lists and the binder's distro tables all
+    // read this one map: `${distroId}|${number}` -> label.
+    distroBoxLabels() {
+        const distros = typeof this.getDistros === 'function' ? this.getDistros() : [];
+        const order = new Map(distros.map((d, i) => [d.id, i]));
+        const found = new Map();      // key -> { d, number, name }
+        for (const l of ((this.project && this.project.layers) || [])) {
+            if (!l || (l.type || 'screen') !== 'screen' || typeof this._powerNaming !== 'function') continue;
+            for (const rec of this._powerNaming(l).socas.values()) {
+                if (!rec || !rec.distroId || !order.has(rec.distroId)) continue;
+                const key = `${rec.distroId}|${rec.number}`;
+                if (found.has(key)) continue;
+                const d = distros[order.get(rec.distroId)];
+                const name = String(rec.name || '').trim()
+                    || (typeof this._deriveMultiName === 'function'
+                        ? this._deriveMultiName(String(d.name || '').trim(), rec.number, null)
+                        : `${d.name || ''}${rec.number}`);
+                found.set(key, { d: rec.distroId, number: Number(rec.number), name });
+            }
+        }
+        const keys = [...found.keys()].sort((a, b) => {
+            const x = found.get(a), y = found.get(b);
+            return (order.get(x.d) - order.get(y.d)) || (x.number - y.number);
+        });
+        const count = new Map();
+        for (const k of keys) count.set(found.get(k).name, (count.get(found.get(k).name) || 0) + 1);
+        const seen = new Map();
+        const out = new Map();
+        for (const k of keys) {
+            const { name } = found.get(k);
+            if (count.get(name) < 2) { out.set(k, name); continue; }
+            const i = (seen.get(name) || 0) + 1;
+            seen.set(name, i);
+            out.set(k, `${name}-${i}`);
+        }
+        return out;
+    }
+
     // What paper calls a breakout box (a CVT, an XD): its model and
     // the name somebody typed - "CVT4K-S SR" - the way a card is "H9 SR";
     // unnamed, the resolved title the dock wears ("CVT4K-S A").
@@ -849,6 +894,7 @@ class _PullList {
         // The tail cache is a per-tick memo keyed by layer object; a build
         // that follows an edit in the same tick must not read stale names.
         this._circuitTailCache = null;
+        const boxLabels = this.distroBoxLabels();
 
         // The positions, keyed. The screens' own come first, in layer
         // order; a device location that matches none of them opens its
@@ -906,7 +952,7 @@ class _PullList {
             for (const layer of base.layers) {
                 const scr = this._pullScreenList(layer, {
                     settings, distroById, boxesSeen, directSeen, snakesSeen, fiberSeen, hw, saidOnce,
-                    distroFirstLayer, boxFirstLayer, procFirstLayer, rid,
+                    distroFirstLayer, boxFirstLayer, procFirstLayer, rid, boxLabels,
                 });
                 byScreen[layer.id] = scr;
                 // Every row goes where the device that produced it sits;
@@ -1301,10 +1347,12 @@ class _PullList {
                 distroFirstLayer.set(String(box.distroId), layer.id);
             }
             // The box's own name, as the tray and the binder say it ("SR1",
-            // "DISTRO 1-1", or what somebody typed) - never the distro's
-            // name glued to the number, which made DISTRO 1's box 1 read
+            // "DISTRO 1-1", or what somebody typed; "-1", "-2" where two
+            // boxes share it, distroBoxLabels) - never the distro's name
+            // glued to the number, which made DISTRO 1's box 1 read
             // "DISTRO 11".
-            const boxLabel = String(box.name || '').trim()
+            const boxLabel = (ctx.boxLabels && ctx.boxLabels.get(box.key))
+                || String(box.name || '').trim()
                 || (typeof this._deriveMultiName === 'function'
                     ? this._deriveMultiName(distroName, box.number, null)
                     : `${distroName}${box.number}`);

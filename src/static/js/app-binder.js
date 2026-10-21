@@ -5891,6 +5891,8 @@ class _Binder {
         const boxes = [];
         const byType = new Map();       // type name -> how many on this distro
         let allCircuits = 0;
+        // each box by its own name, as the pull sheet says it (2026-10-21)
+        const labels = typeof this.distroBoxLabels === 'function' ? this.distroBoxLabels() : new Map();
         for (const number of [...numbers.keys()].sort((a, b) => a - b)) {
             const members = numbers.get(number) || [];
             const typed = this.distroBoxType(d, number, members).type;
@@ -5924,7 +5926,7 @@ class _Binder {
                 homeRun = one ? one.ft : null;
             }
             allCircuits += circuits;
-            boxes.push({ cells: [`${d.name} ${number}`, typed ? typed.name : '—',
+            boxes.push({ cells: [labels.get(`${d.id}|${number}`) || `${d.name} ${number}`, typed ? typed.name : '—',
                                  homeRun ? this.pullLengthText(homeRun,
                                      this.pullHomeRunKind(fbox || (typed ? { typeId: typed.id } : null))) : 'no length',
                                  names.join(' + '), String(circuits), this._bNum(amps, 1)] });
