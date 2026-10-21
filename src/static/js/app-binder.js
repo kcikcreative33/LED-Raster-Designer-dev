@@ -1246,6 +1246,12 @@ class _Binder {
         if (opts.pull) this._bPullSheets(book, positions);
         const hardware = [];
         if (opts.hardware) {
+            // The services first (2026-10-20): the house power, then the
+            // distros it feeds. Nothing for a show with none.
+            for (const s of (typeof this.getServices === 'function' ? this.getServices() : [])) {
+                const g = this._bServiceGroup(book, s);
+                if (g) hardware.push(g);
+            }
             for (const d of (typeof this.getDistros === 'function' ? this.getDistros() : [])) {
                 const g = this._bDistroGroup(book, d);
                 if (g) hardware.push(g);
@@ -5787,7 +5793,13 @@ class _Binder {
         const spec = {
             page: (gs) => {
                 const distros = list(gs, 'distro'), procs = list(gs, 'processor');
+                const services = list(gs, 'service');
                 const totals = gs.some(g => g.kind === 'totals');
+                if (services) {
+                    const one = gs.filter(g => g.kind === 'service').length === 1;
+                    return { kind: 'service', title: `${one ? 'Service' : 'Services'} - ${services}`,
+                             sheetTitle: `${one ? 'SERVICE' : 'SERVICES'} · ${services}`, subject: services };
+                }
                 if (distros) {
                     const one = gs.filter(g => g.kind === 'distro').length === 1;
                     return { kind: 'distro', title: `${one ? 'Distro' : 'Distros'} - ${distros}`,
@@ -5804,8 +5816,51 @@ class _Binder {
                          subject: 'All positions' };
             },
         };
+        this._bColumnSheets(book, spec, groups.filter(g => g.kind === 'service'));
         this._bColumnSheets(book, spec, groups.filter(g => g.kind === 'distro'));
-        this._bColumnSheets(book, spec, groups.filter(g => g.kind !== 'distro'));
+        this._bColumnSheets(book, spec, groups.filter(g => g.kind !== 'distro' && g.kind !== 'service'));
+    }
+
+    // A SERVICE's column (2026-10-20, app-services.js): its distros with
+    // their ratings and their leg loads, the leg totals as the service's
+    // last row, then the service's own block - its size, the ratings added
+    // up against it, its load against its limit (OVER named per leg) and
+    // its imbalance. House power is not pulled, so no pull list.
+    _bServiceGroup(book, s) {
+        const load = this.getServiceLoads().find(x => x.id === s.id);
+        if (!load) return null;
+        const names = load.legs ? (load.legs.names || []) : [];
+        const amps = (L) => names.length
+            ? names.map(k => this._bNum(L && L.legs ? L.legs[k].amps : 0, 1))
+            : [this._bNum(L ? L.amps : 0, 1)];
+        const rows = load.distros.map(({ distro: d, load: L }) => ({
+            cells: [d.name || d.id, `${this._bNum(d.ratingA, 0)} A`, ...amps(L)],
+        }));
+        if (rows.length) {
+            rows.push({ cells: ['total', `${this._bNum(load.ratingSum, 0)} A`,
+                                ...(names.length ? names.map(k => this._bNum(load.legs[k].amps, 1))
+                                    : [this._bNum(load.amps, 1)])] });
+        }
+        const legCols = names.length
+            ? names.map(k => ({ title: this.distroLegLabel(s, k), w: 0.6, align: 'right' }))
+            : [{ title: 'amps', w: 0.7, align: 'right' }];
+        const blocks = [];
+        blocks.push({ lines: this._bTableLines(book, {
+            title: this._bPlural(load.distros.length, 'distro'),
+            cols: [{ title: 'distro', w: 1.1 }, { title: 'rating', w: 0.7, align: 'right' }, ...legCols],
+            rows: rows.length ? rows : [{ cells: ['none', '', ...legCols.map(() => '')] }],
+            shrink: true,
+        }) });
+        const rule = this.distroMainLimit(s);
+        const pairs = [['Rating', `${this.serviceSizeText(s)}${rule.main100 ? ' · 100% rated' : ''}`]];
+        pairs.push(['Distros', `ratings ${this._bNum(load.ratingSum, 0)} A on ${this._bNum(load.ratingA, 0)} A`
+            + (load.ratingsOver ? ' · past the service' : '')]);
+        if (load.distros.length) {
+            pairs.push(['Load', this._bDistroLoadText(s, load)]);
+            if (load.legs) pairs.push(['Imbalance', `${this._bNum(load.imbalancePct, 1)}%`]);
+        }
+        blocks.push({ lines: this._bKvLines(book, 'Service', pairs) });
+        return { kind: 'service', name: s.name || s.id, blocks };
     }
 
     // A distro's column: its units, SERVICE, its pull list; null where it
@@ -5876,6 +5931,9 @@ class _Binder {
             shrink: true,
         }) });
         const pairs = [['Rating', this._bDistroRatingText(d)]];
+        // The service it is fed from (2026-10-20, app-services.js).
+        const svc = typeof this.distroService === 'function' ? this.distroService(d) : null;
+        if (svc) pairs.push(['Fed from', this.serviceLabel(svc)]);
         // The face (1.5): one line per output row, a paired row printed
         // ONCE with both connectors named.
         for (const line of this._bDistroFaceLines(d)) pairs.push(['Outputs', line]);
