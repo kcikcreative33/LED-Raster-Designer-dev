@@ -429,7 +429,7 @@ def test_positions_are_the_groups_and_the_rows_read_in_the_sheets_vocabulary(pag
     assert totals[('Edison → TRUE1 tail', 'EA')] == 2
     assert totals[('Distro', 'EA')] == 1 and totals[('Feeder', '')] == 1
     assert totals[('H9', 'EA')] == 1
-    assert len(out['totals']) == 19
+    assert len(out['totals']) == 20
     # EA sorts after every length; types are A-Z
     types = [r['type'] for r in out['totals']]
     assert types == sorted(types, key=str.lower)

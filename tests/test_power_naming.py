@@ -301,13 +301,13 @@ def test_a_direct_outputs_cable_names_both_ends_where_they_differ(page):
               'powerSocaDistro': {'1': 'd1'}, 'powerSocaNumber': {'1': 3},
               'powerSocaLengths': {'1': '25'}}})
     rows = pg.evaluate(ROWS_JS)
-    assert ['Edison → powerCON', "25'", 1, 'PD 3', ''] in rows, rows
-    assert ['TRUE1', "15'", 1, 'PD 5', ''] in rows, rows
+    assert ['Edison → powerCON', "25'", 1, 'PD3', ''] in rows, rows
+    assert ['TRUE1', "15'", 1, 'PD5', ''] in rows, rows
     # the circuit's own cable is that cable
     b1 = nums['WALL B'][0]
     ev(pg, "B.powerCircuitCables = { [arg]: { ft: 10, connector: null } }; return null;", b1)
     rows = pg.evaluate(ROWS_JS)
-    assert ['Edison → powerCON', "10'", 1, 'PD 3', ''] in rows, rows
+    assert ['Edison → powerCON', "10'", 1, 'PD3', ''] in rows, rows
     assert not [r for r in rows if r[0] in ('powerCON', 'Edison') or "'" in r[0]], rows
     tag = ev(pg, "const c = app.powerCircuitCable(B, arg); const d = app.directCircuitCable(B, arg);"
                  " return [c.name, c.text, d.text];", b1)
@@ -328,7 +328,7 @@ def test_a_direct_outputs_cable_names_both_ends_where_they_differ(page):
                 { scope: { kind: 'show' }, hardware: true, pull: false, cover: false }));
         } finally { app._bDistroBlocks = orig; }
         return caught.map(c => [c[0], c[1], c[2]]);""")
-    assert ['PD 3', 'Edison → powerCON', "10'"] in distro and ['PD 5', 'TRUE1', "15'"] in distro, distro
+    assert ['PD3', 'Edison → powerCON', "10'"] in distro and ['PD5', 'TRUE1', "15'"] in distro, distro
     # the cable sheet's blank pick says what it follows
     follows = ev(pg, """const d = app.getDistros()[0];
         return app.directCableType(app.cableConnectorName(app.boxTailConnector(d, 3, B)), B);""")

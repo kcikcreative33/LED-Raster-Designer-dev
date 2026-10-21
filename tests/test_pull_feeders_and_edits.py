@@ -189,7 +189,7 @@ def test_a_box_is_labelled_by_its_own_name(seeded):
     rows = _rows(out['positions'][0]['rows'])
     assert ('Multi', "125'", 1, 'DISTRO 1-1', '') in rows, rows
     assert ('Multi', "100'", 1, 'DISTRO 1-2', '') in rows, rows
-    assert ('Tru-1 Breakout', 'EA', 2, 'DISTRO 1-1, DISTRO 1-2', '') in rows, rows
+    assert ('TRUE1 Breakout', 'EA', 2, 'DISTRO 1-1, DISTRO 1-2', '') in rows, rows
     assert not [r for r in rows if 'DISTRO 11' in r[3] or 'DISTRO 12' in r[3]], rows
     hw = next(h for h in out['hardware'] if h['kind'] == 'distro')
     assert ('Multi', "125'", 1, 'DISTRO 1-1', '') in _rows(hw['rows'])
@@ -247,7 +247,7 @@ def test_only_a_name_two_boxes_share_takes_a_suffix(seeded):
 
 def test_edits_reach_the_screens_and_the_hardware(seeded):
     """On SR Beach (WALL-A and WALL-B): hiding WALL-A's Multi 125' takes it
-    off WALL-A's table and SR's pull list; WALL-A's Tru-1 10' x 2 set to 5
+    off WALL-A's table and SR's pull list; WALL-A's TRUE1 10' x 2 set to 5
     is WALL-A's alone, so its table says 5; the Breakout x 2 (one from each
     wall) set to 3 leaves both walls' tables as they were but SR's pull
     list, the one sheet both came from, says 3. A free row is on the pull
@@ -258,8 +258,8 @@ def test_edits_reach_the_screens_and_the_hardware(seeded):
         app._circuitTailCache = null;
         const engine = JSON.stringify(app.buildPullList());
         app.removePullSheetRow('g1', "Multi|125'");
-        app.setPullSheetRowEdit('g1', "Tru-1|10'", { qty: 5 });
-        app.setPullSheetRowEdit('g1', 'Tru-1 Breakout|EA', { qty: 3 });
+        app.setPullSheetRowEdit('g1', "TRUE1|10'", { qty: 5 });
+        app.setPullSheetRowEdit('g1', 'TRUE1 Breakout|EA', { qty: 3 });
         app.addPullSheetRow('g1', { type: 'Spare Widget', length: 'EA', qty: 2 });
         app._circuitTailCache = null;
         const sheet = JSON.parse(JSON.stringify(app.buildPullSheet()));
@@ -271,14 +271,14 @@ def test_edits_reach_the_screens_and_the_hardware(seeded):
         app._circuitTailCache = null;
         return {
             same: JSON.stringify(app.buildPullList()) === engine,
-            a: { multi: row(a.rows, 'Multi', "125'"), tru: row(a.rows, 'Tru-1', "10'"),
-                 brk: row(a.rows, 'Tru-1 Breakout', 'EA'),
-                 onMulti: sum(a.rowsOn, 'Multi', "125'"), onTru: sum(a.rowsOn, 'Tru-1', "10'"),
+            a: { multi: row(a.rows, 'Multi', "125'"), tru: row(a.rows, 'TRUE1', "10'"),
+                 brk: row(a.rows, 'TRUE1 Breakout', 'EA'),
+                 onMulti: sum(a.rowsOn, 'Multi', "125'"), onTru: sum(a.rowsOn, 'TRUE1', "10'"),
                  widget: row(a.rows, 'Spare Widget', 'EA') },
-            b: { multi: row(b.rows, 'Multi', "100'"), brk: row(b.rows, 'Tru-1 Breakout', 'EA') },
+            b: { multi: row(b.rows, 'Multi', "100'"), brk: row(b.rows, 'TRUE1 Breakout', 'EA') },
             sr: { m125: row(sr.rows, 'Multi', "125'"), m100: row(sr.rows, 'Multi', "100'"),
-                  brk: row(sr.rows, 'Tru-1 Breakout', 'EA') },
-            totals: { brk: row(sheet.totals, 'Tru-1 Breakout', 'EA'), tru: row(sheet.totals, 'Tru-1', "10'"),
+                  brk: row(sr.rows, 'TRUE1 Breakout', 'EA') },
+            totals: { brk: row(sheet.totals, 'TRUE1 Breakout', 'EA'), tru: row(sheet.totals, 'TRUE1', "10'"),
                       widget: row(sheet.totals, 'Spare Widget', 'EA'), m125: row(sheet.totals, 'Multi', "125'") },
         };
     }""", ids)
@@ -299,7 +299,7 @@ def test_edits_reach_the_screens_and_the_hardware(seeded):
         const rows = app._bSubjectRows(book, { kind: 'screen', layers: [wallA] }, 'power');
         return rows.map(r => [r.type, r.length, r.qty]);
     }""", ids)
-    assert ['Tru-1', "10'", 5] in texts and not [t for t in texts if t[0] == 'Multi'], texts
+    assert ['TRUE1', "10'", 5] in texts and not [t for t in texts if t[0] == 'Multi'], texts
     assert errors == [], errors
 
 
