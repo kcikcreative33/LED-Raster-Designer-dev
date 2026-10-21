@@ -17,6 +17,27 @@
  *   h - short heading, d - one or two plain sentences. No markup, no emoji.
  */
 window.WHATS_NEW_CONTENT = {
+    '1.5.3': {
+        title: '2fers and 3fers in custom mode, the cable you stock, and house power as a service',
+        items: [
+            { h: '2fers and 3fers in custom mode and groups',
+              d: 'With Share circuits via splitters on, a fill in custom mode makes 2fers and 3fers one run per column, the same as automatic mode, and a group shares them as one wall. The 3fer Screen button splits a circuit that spans three columns into its own three legs and never builds an OVER.' },
+            { h: 'Right-click to 3fer a circuit',
+              d: 'Right-click a circuit and pick 3fer it to split it into one leg per column on that same circuit, or 2fer it and 4fer it for two and four columns. The menu says what it does now: Un-share is Remove 3fer, and the tray\'s Clear multi and Clear circuit are Unplug multi and Unplug circuit.' },
+            { h: 'Cable stock',
+              d: 'In Preferences > Cable stock, type the lengths you own, like 25, 50 and 100. A 125 ft run then reads 100\'+25\' on the map, the pull sheet and the binder, and you can save the list as a preset for each shop.' },
+            { h: 'House power as a service',
+              d: 'Add the house service in the Hardware tray, say 600 A, and drag your distros onto its card. It adds up their legs against the service with the 80% rule, and the binder prints a Service sheet.' },
+            { h: 'A tidier distro card',
+              d: 'The OUTPUTS row shows one chip per connector type, like Socapex 208V x 3, and dragging it hands out the next free output. Grab the whole header bar to drag the distro onto a screen.' },
+            { h: 'Redraws leave other circuits alone',
+              d: 'Redrawing a circuit or a data port on an automatic screen can\'t take a cabinet another one already feeds. It tells you which circuit or port has it.' },
+            { h: 'Half-size cabinets draw half the watts',
+              d: 'A half cabinet now counts half the watts of a full one, unless the panel library lists its own. It used to count 65%, so a wall with a row of half cabinets read a few percent heavy.' },
+            { h: 'See it in the app',
+              d: 'Show me plays the new Advanced Guide steps one at a time, right in the app, and puts your show back when you\'re done. Help > What\'s New opens this window any time.' }
+        ]
+    },
     '1.5': {
         title: 'Distros built from their outputs, cable lengths in meters, and custom mode that stays on',
         items: [
