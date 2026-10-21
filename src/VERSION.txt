@@ -5,8 +5,9 @@ v1.5.3 - October 19, 2026
 ----------------------------
 
 2fers and 3fers now work the way you'd expect in custom mode and across a
-group, the pull sheet can count the cable lengths you actually stock, and
-What's New can walk you through what changed after an update.
+group, the pull sheet can count the cable lengths you actually stock,
+several distros can share one house service, and What's New can walk you
+through what changed after an update.
 
 WHAT'S NEW, SHOWN TO YOU
 
@@ -29,6 +30,16 @@ sheet counts the pieces. A length the stock can't make exactly uses the
 pieces with the least extra cable. Save the lists as a preset for each shop
 you work with, load one into any show, and pick the one new shows start
 with.
+
+SERVICES
+
+Add the house power as a service (say 600 A) in the Hardware tray and
+drag your distros onto it, a 400 A and a 200 A on the same 600 A. The
+service card adds up the legs of everything on it against the service
+with the 80% rule, warns when the distros' ratings add up past the
+service, and shows the phase balance across all of them. The binder
+prints a Service sheet, and each distro sheet says which service feeds
+it.
 
 FIXES
 
