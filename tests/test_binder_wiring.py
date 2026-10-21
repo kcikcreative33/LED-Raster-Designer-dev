@@ -823,8 +823,8 @@ def test_each_side_is_a_sheet_behind_its_own_map_and_runs_its_port_and_its_circu
     assert pw['plan'][:5] == [['overview', '1.1', 'Overview', 1],
                               ['power', '2.1', 'WALL-A - Power - Front View', 2], ['wiring', '2.2', 'WALL-A - Power Wiring', 3],
                               ['data', '2.3', 'WALL-A - Data - Front View', 4], ['wiring', '2.4', 'WALL-A - Data Wiring', 5]]
-    for out, sheet_title, number, view in ((pw, 'WALL-A · POWER WIRING', '2.2', 3),
-                                           (dw, 'WALL-A · DATA WIRING', '2.4', 5)):
+    for out, sheet_title, number, view in ((pw, 'WALL-A · POWER WIRING · FRONT VIEW', '2.2', 3),
+                                           (dw, 'WALL-A · DATA WIRING · FRONT VIEW', '2.4', 5)):
         assert out['width'] == W * SCALE and out['height'] == H * SCALE
         _title_block(out['texts'], sheet_title, number)
         assert out['page']['view'] == view and out['page']['sheetTitle'] == sheet_title
@@ -1202,10 +1202,10 @@ def test_smoke_live_show_b_sr_main(page):
         [['2.1', 'SR - MAIN - Power - Front View'], ['2.2', 'SR - MAIN - Power Wiring'],
          ['2.3', 'SR - MAIN - Data - Front View'], ['2.4', 'SR - MAIN - Data Wiring']]
     assert len(plan) == 20 and [p[3] for p in plan][:17] == list(range(1, 18)) and [p[3] for p in plan][17:] == [None] * 3
-    _title_block(pw['texts'], 'SR - MAIN · POWER WIRING', '2.2', show=project['name'])
-    _title_block(dw['texts'], 'SR - MAIN · DATA WIRING', '2.4', show=project['name'])
-    assert pw['bubble']['number'] == 3 and pw['bubble']['name'] == 'SR - MAIN · POWER WIRING'
-    assert dw['bubble']['number'] == 5 and dw['bubble']['name'] == 'SR - MAIN · DATA WIRING'
+    _title_block(pw['texts'], 'SR - MAIN · POWER WIRING · FRONT VIEW', '2.2', show=project['name'])
+    _title_block(dw['texts'], 'SR - MAIN · DATA WIRING · FRONT VIEW', '2.4', show=project['name'])
+    assert pw['bubble']['number'] == 3 and pw['bubble']['name'] == 'SR - MAIN · POWER WIRING · FRONT VIEW'
+    assert dw['bubble']['number'] == 5 and dw['bubble']['name'] == 'SR - MAIN · DATA WIRING · FRONT VIEW'
     pwr = _one_side(pw, 'power')
     sig = _one_side(dw, 'signal')
     for h in (pwr, sig):
@@ -1333,8 +1333,8 @@ def test_smoke_live_show_b_sr_main(page):
     ov = pg.evaluate("(o) => window.app.renderBinderPage(o, 0).texts", opts)
     c = ov.index('CONTENTS')
     listed = [(ov[c + 3 + 2 * n], ov[c + 4 + 2 * n]) for n in range(len(plan))]
-    assert listed[1:5] == [('2.1', 'SR - MAIN · POWER · FRONT VIEW'), ('2.2', 'SR - MAIN · POWER WIRING'),
-                           ('2.3', 'SR - MAIN · DATA · FRONT VIEW'), ('2.4', 'SR - MAIN · DATA WIRING')]
+    assert listed[1:5] == [('2.1', 'SR - MAIN · POWER · FRONT VIEW'), ('2.2', 'SR - MAIN · POWER WIRING · FRONT VIEW'),
+                           ('2.3', 'SR - MAIN · DATA · FRONT VIEW'), ('2.4', 'SR - MAIN · DATA WIRING · FRONT VIEW')]
     # the words
     for out in (pw, dw):
         assert not [t for t in out['texts'] if BOX_WORD.search(t) and 'breakout box' not in t.lower()]

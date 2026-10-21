@@ -194,7 +194,7 @@ def _facts(sheet):
     ops = sheet['ops']
     s = next(i for i, o in enumerate(ops) if o['text'] == 'FACTS')
     left = ops[s]['x']
-    keys = ('Screen', 'Load', 'Wall load', 'Circuits', 'Fed by')
+    keys = ('Screen', 'Load', 'Wall load', 'Circuits', 'Service', 'Distro')
     out = []
     for o in ops[s + 1:]:
         if abs(o['x'] - left) < 0.5:

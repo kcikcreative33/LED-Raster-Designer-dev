@@ -32,8 +32,8 @@
 //        side's two sheets
 //   3.n  the PULL sheets - positions side by side, each position's
 //        sections flowing across the sheet in columns
-//   4.n  hardware - the distros side by side, then the processors with
-//        the show's pull list beside them where it fits
+//   4.n  hardware - the services, then the distros side by side, then
+//        the processors with the show's pull list beside them where it fits
 // A sheet whose tables do not fit continues on the next number of its
 // series, "(cont.)"; the map never splits.
 //
@@ -239,7 +239,8 @@ const PERSPECTIVE_KEYS = ['data_flow_perspective', 'power_perspective'];
 const SCREEN_ORDERS = ['alpha', 'layers', 'layers-up', 'data', 'power'];
 // The logo is stored no larger than this on its long side.
 const LOGO_MAX_PX = 1200;
-const SERIES = { overview: 1, power: 2, data: 2, wiring: 2, pull: 3, distro: 4, processor: 4, totals: 4 };
+const SERIES = { overview: 1, power: 2, data: 2, wiring: 2, pull: 3,
+                 service: 4, distro: 4, processor: 4, totals: 4 };
 
 class _Binder {
 
@@ -4417,11 +4418,18 @@ class _Binder {
 
     // ---- the screen sheets --------------------------------------------------
 
+    // The side the set's maps are drawn from, as a sheet names it: "Front
+    // View" or "Rear View" (book.meta.view).
+    _bViewName(book) {
+        return book.meta.view === 'rear' ? 'Rear View' : 'Front View';
+    }
+
     // Every screen sheet names the side its map is drawn from - the set's
     // one View choice: "WALL-A · POWER · REAR VIEW" as the view heading,
     // the title block's sheet title and the CONTENTS line alike, the plan
-    // title "WALL-A - Power - Rear View". The wiring sheets keep their own
-    // titles (app-binder-wiring.js); the overview stays OVERVIEW.
+    // title "WALL-A - Power - Rear View". The wiring sheets, drawn from the
+    // same side, name it the same way ("WALL-A · POWER WIRING · REAR
+    // VIEW", app-binder-wiring.js); the overview stays OVERVIEW.
     // A group printed as one names the GROUP ("WALL · DATA · FRONT VIEW") and
     // a member printed by screens names the member; `target` is a screen or
     // a sheet subject (_bSubject).
@@ -4430,9 +4438,8 @@ class _Binder {
         const layer = s.layers[0];
         const scr = book.list.byScreen[layer.id];
         const word = view === 'power' ? 'POWER' : 'DATA';
-        const rear = book.meta.view === 'rear';
-        const title = `${s.name} - ${view === 'power' ? 'Power' : 'Data'} - ${rear ? 'Rear' : 'Front'} View`;
-        const sheetTitle = `${s.name} · ${word} · ${rear ? 'REAR' : 'FRONT'} VIEW`;
+        const title = `${s.name} - ${view === 'power' ? 'Power' : 'Data'} - ${this._bViewName(book)}`;
+        const sheetTitle = `${s.name} · ${word} · ${this._bViewName(book).toUpperCase()}`;
         const blocks = view === 'power'
             ? this._bPowerBlocks(book, s, scr)
             : this._bDataBlocks(book, s, scr);
@@ -4578,33 +4585,44 @@ class _Binder {
         const loads = (typeof this.getDistroLoads === 'function') ? this.getDistroLoads() : [];
         // A member's sheet reads the amps of the circuits it lists; where
         // one of them carries another member's panels too, those are the
-        // circuits' amps, not the member's, and the row says so.
+        // circuits' amps, not the member's.
         const listed = s.kind === 'member'
             ? new Set(units.flatMap(u => (u.box.circuits || []).map(c => `${u.carrier.id}:${c.num}`))) : null;
-        const whose = s.kind === 'member' && units.some(u => u.also.size) ? 'these circuits' : 'this screen';
-        // One FED BY row per distro: the service as it is, then THIS
-        // SCREEN's amps on its legs - not the service's whole legs, which
-        // count every screen it feeds (the user, 2026-09-15, on SR - MAIN
-        // reading SR's 301/311/311 A: "it should be what is calculated
-        // per screen"). The hardware sheet keeps the whole service.
-        const fed = distroIds.map(id => {
+        // What feeds the screen (the user, 2026-10-21): a SERVICE row for
+        // the house power a distro is on - "VX 200 · 200 A · 120/208V 3φ",
+        // once for every distro on it - then a DISTRO row for each of
+        // those distros; a distro on no service names its own system
+        // instead. A distro row carries THIS SCREEN's amps on each leg -
+        // not the distro's whole legs, which count every screen it feeds
+        // (the user, 2026-09-15, on SR - MAIN reading SR's 301/311/311 A:
+        // "it should be what is calculated per screen"). The hardware
+        // sheet keeps the whole distro.
+        const feeds = [];
+        for (const id of distroIds) {
             const d = loads.find(x => x.id === id);
-            if (!d) return null;
+            if (!d) continue;
             const rec = this.getDistros().find(x => x.id === id) || d;
-            let line = `${d.name} · ${this._bDistroRatingText(rec)}`;
+            const svc = typeof this.distroService === 'function' ? this.distroService(rec) : null;
+            let feed = svc && feeds.find(f => f.svc === svc);
+            if (!feed) feeds.push(feed = { svc, rows: [] });
+            const parts = [d.name, `${rec.ratingA} A`, svc ? null : this.distroSystemName(rec),
+                           rec.breakers100 && this.distroRegion(rec) === 'us' ? '100% rated breakers' : null];
             const legs = grouped ? this._bSubjectLegsOn(s.carriers, id, listed) : this._bScreenLegsOn(layer, id);
             if (legs) {
                 // a leg's letter and its figure stay on one line where
                 // the row wraps (no-break spaces; the KV rows wrap at
                 // plain spaces only). The letters are the region's: X/Y/Z
-                // in North America, L1/L2/L3 on an EU distro (1.5).
-                line += ` · ${whose} on its legs `
-                    + this.distroLegNames(rec).map(k =>
-                        `${this.distroLegLabel(rec, k)} ${this._bNum(legs[k], 1)}`).join(' ')
-                    + ' A';
+                // in North America, L1/L2/L3 on an EU distro (1.5). The
+                // sheet is the screen's, so the legs need no "this
+                // screen" (the user, 2026-10-21).
+                parts.push(this.distroLegNames(rec).map(k =>
+                    `${this.distroLegLabel(rec, k)} ${this._bNum(legs[k], 1)}`).join(' · ') + ' A');
             }
-            return line;
-        }).filter(Boolean);
+            feed.rows.push(['Distro', parts.filter(Boolean).join(' · ')]);
+        }
+        const fed = feeds.flatMap(f => [
+            ...(f.svc ? [['Service', `${f.svc.name || f.svc.id} · ${this.serviceSizeText(f.svc)}`]] : []),
+            ...f.rows]);
         // The sheet is titled for THIS screen, so its Load is this
         // screen's own panels. Where its circuits also carry a group
         // peer's panels (a wall routed as one, every circuit on its first
@@ -4630,7 +4648,7 @@ class _Binder {
             ...wall,
             ['Circuits', [`${circuits.length} at ${f.voltage} V / ${parseFloat(layer.powerAmperage) || 0} A`, each]
                 .filter(Boolean).join(' · ')],
-            ...(fed.length ? fed.map(t => ['Fed by', t]) : [['Fed by', 'no distro']]),
+            ...(fed.length ? fed : [['Distro', 'none']]),
         ]) });
         // Gangs, only when the sheet's circuits have any.
         const shared = [];

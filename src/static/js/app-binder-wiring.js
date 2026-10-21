@@ -122,9 +122,10 @@
 // simply the same path stroked white first (the recorder knows rects,
 // lines, text and images, nothing else).
 //
-// One view per sheet: "n  SR - MAIN · DATA WIRING", its bubble at the
-// foot. Every figure is read from the same authorities the
-// Power and Data sheets read - _pullPortRuns, _bPortHome,
+// One view per sheet: "n  SR - MAIN · DATA WIRING · FRONT VIEW", its
+// bubble at the foot, the view named as the map sheet names it. Every
+// figure is read from the same authorities the Power and Data sheets
+// read - _pullPortRuns, _bPortHome,
 // getPortLabelText, the pull list's byScreen units, screenCircuits,
 // getDistroOutputTypes; nothing is recomputed here.
 import { LEDRasterApp } from './app-core.js';
@@ -230,7 +231,8 @@ class _BinderWiring {
         const side = power ? 'power' : 'signal';
         const scr = book.list.byScreen[layer.id] || {};
         const title = `${subject.name} - ${power ? 'Power' : 'Data'} Wiring`;
-        const sheetTitle = `${subject.name} · ${power ? 'POWER' : 'DATA'} WIRING`;
+        // the side the wall is drawn from, named as its map sheet names it
+        const sheetTitle = `${subject.name} · ${power ? 'POWER' : 'DATA'} WIRING · ${this._bViewName(book).toUpperCase()}`;
         const area = this._bwArea(book);
         const plan = this._bwPlanHalf(book, subject, scr, side, area.half);
         const view = ++book.views;

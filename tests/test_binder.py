@@ -548,8 +548,8 @@ def test_the_sheets_come_in_series_by_subject(page):
     assert all((p['w'], p['h'], p['sheet']) == (W, H, 'tabloid') for p in full), full
     assert [p['view'] for p in full] == list(range(1, 14)) + [None, None, None]
     assert all(p['sheetTitle'] == p['sheetTitle'].upper() for p in full)
-    assert [p['sheetTitle'] for p in full][:6] == ['OVERVIEW', 'WALL-A · POWER · FRONT VIEW', 'WALL-A · POWER WIRING',
-                                                   'WALL-A · DATA · FRONT VIEW', 'WALL-A · DATA WIRING', 'WALL-B · POWER · FRONT VIEW']
+    assert [p['sheetTitle'] for p in full][:6] == ['OVERVIEW', 'WALL-A · POWER · FRONT VIEW', 'WALL-A · POWER WIRING · FRONT VIEW',
+                                                   'WALL-A · DATA · FRONT VIEW', 'WALL-A · DATA WIRING · FRONT VIEW', 'WALL-B · POWER · FRONT VIEW']
     assert [p['sheetTitle'] for p in full][-3:] == ['PULL · SR BEACH, CENTER', 'DISTRO · SR', 'PROCESSOR · H9 · PULL LIST']
     assert [p['names'] for p in full][-3:] == [['SR Beach', 'CENTER'], ['SR'], ['H9', 'All positions']]
     assert ids['errors'] == []
@@ -964,7 +964,8 @@ def _restore_keys(pg, was):
 def test_a_rear_export_names_the_side_on_every_screen_sheet_and_leaves_the_toggles_alone(page):
     """View: Rear. Every screen sheet's view heading, its title block's
     sheet title and its CONTENTS line read "· REAR VIEW" and its plan
-    title "- Rear View"; the overview stays OVERVIEW and reads no side at
+    title "- Rear View"; every wiring sheet's title the same ("· POWER
+    WIRING · REAR VIEW", 2026-10-21); the overview stays OVERVIEW and reads no side at
     all. The renderer painted every Power and Data map - the wiring
     sheets' walls too - with every canvas's two perspective keys and the
     project root's pair at 'back', the overview's show map with every one
@@ -997,6 +998,15 @@ def test_a_rear_export_names_the_side_on_every_screen_sheet_and_leaves_the_toggl
             assert sheet_title.endswith(' · REAR VIEW'), sheet_title
             assert sheet_title in texts and texts.count(sheet_title) >= (2 if TITLE_BLOCK else 1), (sheet_title, texts[:60])   # the block and the bubble
             assert not [t for t in texts if 'FRONT VIEW' in t], texts[:60]
+        # the wiring sheets, drawn from the same side, name it the same way
+        # in the block, under the drawing and in the CONTENTS (2026-10-21)
+        wiring = [i for i, k in enumerate(rear['kinds']) if k == 'wiring']
+        assert len(wiring) == 6, rear['kinds']
+        for i in wiring:
+            sheet_title, texts = rear['sheetTitles'][i], rear['texts'][i]
+            assert sheet_title.endswith(' WIRING · REAR VIEW'), sheet_title
+            assert texts.count(sheet_title) >= (2 if TITLE_BLOCK else 1), (sheet_title, texts[:60])
+            assert not [t for t in texts if 'FRONT VIEW' in t], texts[:60]
         assert rear['titles'] == [t.replace(' - Front View', ' - Rear View') for t in [p[2] for p in PLAN]]
         assert rear['sheetTitles'][0] == 'OVERVIEW' and rear['names'][0] == 'Overview'
         overview = rear['texts'][0]
@@ -1005,7 +1015,7 @@ def test_a_rear_export_names_the_side_on_every_screen_sheet_and_leaves_the_toggl
         c = overview.index('CONTENTS')
         listed = [overview[c + 4 + 2 * n] for n in range(len(PLAN))]
         assert listed == rear['sheetTitles'], listed
-        assert 'WALL-A · POWER · REAR VIEW' in listed and 'WALL-A · POWER WIRING' in listed
+        assert 'WALL-A · POWER · REAR VIEW' in listed and 'WALL-A · POWER WIRING · REAR VIEW' in listed
         # the paints: every map from the back, the overview from the front
         # (the binder's own paints; the workspace's live canvas may paint
         # too, between the sheets, and reads its own toggles)
@@ -1534,7 +1544,60 @@ def test_a_sheet_whose_tables_do_not_fit_continues_on_the_next_number(page):
     assert listed == [(p[1], p[3]) for p in plan], listed
 
 
-PULL_SPREAD_JS = """([opts, n]) => {
+SERVICE_SET_JS = """(opts) => {
+    const app = window.app;
+    const d = app.getDistros()[0];
+    const had = 'services' in app.project, was = d.serviceId;
+    app.project.services = [{ id: 'svc-num', name: 'HOUSE', ratingA: 400, system: d.system,
+                              voltage: d.voltage, phase: d.phase }];
+    d.serviceId = 'svc-num';
+    try {
+        const plan = app.planBinder(opts);
+        const pages = plan.map((p, i) => app.renderBinderPage(opts, i).texts);
+        const k = plan.findIndex(p => p.title === 'WALL-A - Power - Front View');
+        return { system: d.system, plan: plan.map(p => [p.kind, p.number, p.sheetTitle]), pages,
+                 power: k < 0 ? null : { textInfo: app.renderBinderPage(opts, k).textInfo },
+                 systemName: app.distroSystemName(d) };
+    } finally {
+        if (had) app.project.services = []; else delete app.project.services;
+        if (was === undefined) delete d.serviceId; else d.serviceId = was;
+    }
+}"""
+
+
+def test_the_service_sheet_numbers_in_sequence_with_the_hardware(page):
+    """A show with a service, a distro on it and a processor: the Service
+    sheet prints first in the hardware and takes 4.1, the distro 4.2, the
+    processor and the pull list 4.3 - the CONTENTS in ascending order, in
+    plan order, every sheet's title block carrying its CONTENTS number. It
+    used to print as 5.1 between 3.1 and 4.1 (2026-10-21). The screen's
+    Power sheet names the service in a SERVICE row over its DISTRO row,
+    the distro's system said once, on the service."""
+    pg, ids = page
+    out = pg.evaluate(SERVICE_SET_JS, json.loads(_SHOW_JSON))
+    plan = out['plan']
+    assert plan[-4:] == [['pull', '3.1', 'PULL · SR BEACH, CENTER'], ['service', '4.1', 'SERVICE · HOUSE'],
+                         ['distro', '4.2', 'DISTRO · SR'], ['processor', '4.3', 'PROCESSOR · H9 · PULL LIST']], \
+        (out['system'], plan)
+    key = [tuple(int(n) for n in p[1].split('.')) for p in plan]
+    assert key == sorted(key) and len(set(key)) == len(key), plan
+    ov = out['pages'][0]
+    c = ov.index('CONTENTS')
+    listed = [(ov[c + 3 + 2 * n], ov[c + 4 + 2 * n]) for n in range(len(plan))]
+    assert listed == [(p[1], p[2]) for p in plan], listed
+    for (kind, number, sheet_title), texts in zip(plan, out['pages']):
+        _title_block(texts, sheet_title, number)
+    power = out['power']
+    assert power, plan
+    assert _kv_values(power, 'Service') == ['HOUSE · 400 A · ' + out['systemName']], power
+    fed = _kv_values(power, 'Distro')
+    assert len(fed) == 1 and re.match(r'SR · 400 A · X\s[\d.]+ · Y\s[\d.]+ · Z\s[\d.]+\sA$', fed[0]), fed
+    keys = [t['text'] for t in power['textInfo'] if t['weight'] == 700]
+    assert keys.index('Distro') == keys.index('Service') + 1, keys
+    assert ids['errors'] == []
+
+
+PULL_SPREAD_JS ="""([opts, n]) => {
     const app = window.app;
     const real = app.buildPullSheet;
     // the show's positions cut to `n` - one, the sheet a small show prints
@@ -2796,18 +2859,20 @@ def test_the_title_block_switch_is_a_preference_the_dialog_reflects(page):
 # ── the smoke: the user's own show ───────────────────────────────────────
 
 
-# A Power sheet's FED BY row: "SR · 400 A 208 V 3φ · this screen on its
-# legs X a Y b Z c A" - the service as it is, then THIS SCREEN's amps on
-# its legs. It used to print the service's whole legs, every screen the
-# distro feeds summed (the user, 2026-09-15, on SR - MAIN reading SR's
-# 301 / 311 / 311 A beside the screen's own 252 A: "it should be what is
-# calculated per screen"). The hardware sheet's LEGS row keeps the whole
-# service. The figures are the engine's own attribution (boxFeedLegAmps -
-# a 208 V circuit on its leg pair, a 110 V circuit on one leg, as phasors)
-# run over the one screen's multis; nothing here re-derives them.
+# A Power sheet's DISTRO row: "SR · 400 A · 120/208V 3φ · X a · Y b · Z c
+# A" - the distro as it is (its system named where it is on no service),
+# then THIS SCREEN's amps on each leg; the sheet is the screen's, so no
+# "this screen on its legs" (the user, 2026-10-21: "just put the XYZ of
+# each leg"). It used to print the distro's whole legs, every screen it
+# feeds summed (the user, 2026-09-15, on SR - MAIN reading SR's 301 / 311
+# / 311 A beside the screen's own 252 A: "it should be what is calculated
+# per screen"). The hardware sheet's LEGS row keeps the whole distro. The
+# figures are the engine's own attribution (boxFeedLegAmps - a 208 V
+# circuit on its leg pair, a 110 V circuit on one leg, as phasors) run
+# over the one screen's multis; nothing here re-derives them.
 # a leg's letter is tied to its figure with a no-break space, so a wrap
 # never parts them; \s takes either
-FED_BY_LEGS = re.compile(r'legs X\s([\d.]+) Y\s([\d.]+) Z\s([\d.]+)\sA')
+DISTRO_LEGS = re.compile(r'· X\s([\d.]+) · Y\s([\d.]+) · Z\s([\d.]+)\sA')
 SERVICE_LEGS = re.compile(r'X ([\d.]+) · Y ([\d.]+) · Z ([\d.]+) A')
 
 
@@ -2861,13 +2926,13 @@ LEGS_JS = """([distroId, layerIds]) => {
 
 
 def test_a_screens_fed_by_legs_are_its_own(page):
-    """WALL-A and WALL-B both on SR (3φ): each Power sheet's FED BY row
+    """WALL-A and WALL-B both on SR (3φ): each Power sheet's DISTRO row
     names SR and carries THAT screen's legs - the engine's attribution
     over its own multis, to the tenth - and the two differ (250 W panels
     against 200 W); neither is the service's whole legs. The hardware
     sheet's LEGS row is still the whole service: the engine's walk over
     both screens, which is what getDistroLoads reports - at the head of
-    its one Load line. CENTER, on no
+    its one Load line. SR is on no service: no SERVICE row. CENTER, on no
     distro, still says so."""
     pg, ids = page
     legs = pg.evaluate(LEGS_JS, [ids['distroId'], [ids['a'], ids['b']]])
@@ -2876,17 +2941,19 @@ def test_a_screens_fed_by_legs_are_its_own(page):
     assert a_want != b_want, legs
     assert sum(a_want) > 0 and sum(b_want) > 0, legs
     for title, want in (('WALL-A - Power - Front View', a_want), ('WALL-B - Power - Front View', b_want)):
-        fed = _kv_values(_render(pg, SHOW, title), 'Fed by')
-        assert len(fed) == 1, (title, fed)
-        assert fed[0].startswith('SR · 400 A 208 V 3φ · this screen on its legs X'), fed
-        assert _legs_of(fed[0], FED_BY_LEGS) == want, (title, fed, want)
+        out = _render(pg, SHOW, title)
+        fed = _kv_values(out, 'Distro')
+        assert len(fed) == 1 and _kv_values(out, 'Service') == [] and _kv_values(out, 'Fed by') == [], (title, fed)
+        assert fed[0].startswith('SR · 400 A · 120/208V 3φ · X'), fed
+        assert 'legs' not in fed[0] and 'screen' not in fed[0], fed
+        assert _legs_of(fed[0], DISTRO_LEGS) == want, (title, fed, want)
     whole = _rounded(legs['whole'])
     assert whole not in (a_want, b_want), (whole, a_want, b_want)
     assert whole == _rounded(legs['all']), legs
     # the service's legs lead its one Load line (2026-10-18)
     hw = _kv_values(_render(pg, SHOW, DISTRO), 'Load')
     assert len(hw) == 1 and _legs_of(hw[0], SERVICE_LEGS) == whole, (hw, whole)
-    assert _kv_values(_render(pg, SHOW, 'CENTER - Power - Front View'), 'Fed by') == ['no distro']
+    assert _kv_values(_render(pg, SHOW, 'CENTER - Power - Front View'), 'Distro') == ['none']
     assert ids['errors'] == []
 
 
@@ -3159,8 +3226,8 @@ def test_smoke_live_show_b(page):
     c = ov.index('CONTENTS')
     listed = [(ov[c + 3 + 2 * n], ov[c + 4 + 2 * n]) for n in range(len(plan))]
     assert [n for n, _t in listed] == [n for n, _t in plan]
-    assert listed[1:5] == [('2.1', 'SR - MAIN · POWER · FRONT VIEW'), ('2.2', 'SR - MAIN · POWER WIRING'),
-                           ('2.3', 'SR - MAIN · DATA · FRONT VIEW'), ('2.4', 'SR - MAIN · DATA WIRING')], listed[1:5]
+    assert listed[1:5] == [('2.1', 'SR - MAIN · POWER · FRONT VIEW'), ('2.2', 'SR - MAIN · POWER WIRING · FRONT VIEW'),
+                           ('2.3', 'SR - MAIN · DATA · FRONT VIEW'), ('2.4', 'SR - MAIN · DATA WIRING · FRONT VIEW')], listed[1:5]
     assert listed[-3:] == [('3.1', 'PULL · SR, SL'), ('4.1', 'DISTROS · SR, SL'),
                            ('4.2', 'PROCESSOR · H9 · PULL LIST')], listed[-3:]
     # no sheet says box, none says breakout as the generic noun, none Palette
@@ -3228,9 +3295,10 @@ def test_live_show_b_screens_carry_their_own_legs(page):
     assert main_want != ret_want and whole not in (main_want, ret_want), (main_want, ret_want, whole)
     assert all(r < m < w for r, m, w in zip(ret_want, main_want, whole)), (ret_want, main_want, whole)
     for title, want in (('SR - MAIN - Power - Front View', main_want), ('SR - Return - Power - Front View', ret_want)):
-        fed = _kv_values(_render(pg, SHOW, title), 'Fed by')
-        assert len(fed) == 1 and fed[0].startswith('SR · 400 A 208 V 3φ · this screen on its legs X'), (title, fed)
-        assert _legs_of(fed[0], FED_BY_LEGS) == want, (title, fed, want)
+        fed = _kv_values(_render(pg, SHOW, title), 'Distro')
+        assert len(fed) == 1 and fed[0].startswith('SR · 400 A · 120/208V 3φ · X'), (title, fed)
+        assert 'legs' not in fed[0] and 'screen' not in fed[0], (title, fed)
+        assert _legs_of(fed[0], DISTRO_LEGS) == want, (title, fed, want)
     hw = _kv_values(_render(pg, SHOW, 'Distros - SR, SL'), 'Load')      # SR's block first (names: SR, SL)
     assert len(hw) == 2 and _legs_of(hw[0], SERVICE_LEGS) == whole == _rounded(legs['all']), (hw, whole)
     assert ids['errors'] == []
@@ -3527,8 +3595,8 @@ def test_the_screens_run_in_the_order_the_project_keeps(page):
     k = ov.index('CONTENTS')
     listed = [(ov[k + 3 + 2 * n], ov[k + 4 + 2 * n]) for n in range(len(beached['titles']))]
     assert listed == [tuple(t) for t in beached['titles']], listed
-    assert listed[1:5] == [('2.1', 'C - Z · POWER · FRONT VIEW'), ('2.2', 'C - Z · POWER WIRING'),
-                           ('2.3', 'C - Z · DATA · FRONT VIEW'), ('2.4', 'C - Z · DATA WIRING')], listed
+    assert listed[1:5] == [('2.1', 'C - Z · POWER · FRONT VIEW'), ('2.2', 'C - Z · POWER WIRING · FRONT VIEW'),
+                           ('2.3', 'C - Z · DATA · FRONT VIEW'), ('2.4', 'C - Z · DATA WIRING · FRONT VIEW')], listed
     # the dialog's select: one undo entry, the same POST as the other
     # fields, read back from a loaded file; a stray value reads as alpha
     out = pg.evaluate("""async () => {
