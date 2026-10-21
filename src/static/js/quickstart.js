@@ -128,6 +128,7 @@
         return (a && typeof a.getShowSnakes === 'function' ? a.getShowSnakes() : [])[0] || null;
     }
     function beach() { var a = A(); return (a && a.getBeaches ? a.getBeaches() : [])[0] || null; }
+    function service() { var a = A(); return (a && a.getServices ? a.getServices() : [])[0] || null; }
     // A screen's row in the Screens panel (app-layers-panel.js renderLayers).
     function layerRow(l) { return '#layers-list .layer-item[data-layer-id="' + l.id + '"]'; }
     // The add-to-selection key: ⌘ on a Mac, Ctrl elsewhere (index.html
@@ -2346,6 +2347,7 @@
             proj.cableUnit = 'ft';
             proj.layers = []; proj.groups = []; proj.processors = []; proj.distros = [];
             proj.beaches = []; proj.snakes = [];
+            delete proj.services;
             delete proj.fiberCables;
             delete proj.port_assignments;
             delete proj.binder;
@@ -3990,6 +3992,56 @@
             },
             after: function () { var m = $('#balance-modal'); if (m) m.remove(); }
         },
+        // Services (1.5.3, app-services.js): the house power several
+        // distros are fed from. One step adds the Service card, the next
+        // drags the distro's header bar onto it.
+        addService: {
+            since: '1.5.3',
+            target: '#power-service-add', place: 'top', title: 'Add a service',
+            body: 'Add service puts a Service card above the distros: the house power they are fed from, 600 A per leg to start, with its rating and system behind its &#9881;.',
+            before: function () { switchView('power'); closePopover(); },
+            act: function (t) {
+                return t.click('#power-service-add').then(function () {
+                    return t.wait(function () { return service() && $('[data-lrd-service]'); });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('no Service card came up');
+                    return t.pause(PACE.rest);
+                });
+            },
+            check: function () {
+                var s = service();
+                return s && $('[data-lrd-service="' + s.id + '"]')
+                    ? A().serviceLabel(s) + ' is in the tray, feeding nothing yet.' : null;
+            }
+        },
+        serviceDistro: {
+            since: '1.5.3',
+            target: function () { var d = distro(); return d ? '[data-lrd-distro="' + d.id + '"] > .hw-dock-head-row' : '[data-lrd-distro] > .hw-dock-head-row'; },
+            place: 'top', title: 'Put the distro on the service',
+            avoid: [function () { var s = service(); return s ? '[data-lrd-service="' + s.id + '"]' : null; }],
+            body: 'Drag the distro&rsquo;s header bar onto the Service card. The card adds up its distros&rsquo; leg loads against the service, held to 80% of its rating unless it is 100% rated.',
+            before: function () { switchView('power'); closePopover(); },
+            act: function (t) {
+                var d = distro(), s = service();
+                if (!d || !s) throw new Error('there is no distro or no service to put it on');
+                return t.drag('[data-lrd-distro="' + d.id + '"] > .hw-dock-head-row', '[data-lrd-service="' + s.id + '"]').then(function () {
+                    return t.wait(function () {
+                        var q = distro();
+                        return q && q.serviceId === s.id && $('[data-lrd-service="' + s.id + '"] [data-lrd-svc-distro="' + d.id + '"]');
+                    });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the distro did not go on the service');
+                    return t.pause(PACE.rest);
+                });
+            },
+            check: function () {
+                var d = distro(), s = service();
+                if (!d || !s || d.serviceId !== s.id) return null;
+                var u = $('[data-lrd-service="' + s.id + '"] .hw-dock-unit-use');
+                return (d.name || 'The distro') + ' is on ' + (s.name || 'the service')
+                    + (u ? ': its busiest leg reads ' + u.textContent.trim() + '.' : '.');
+            }
+        },
         // Distros built from their outputs (1.5, app-distro-systems.js
         // _buildDistroOutputRows): a preset lays the system, input, rating,
         // output rows and Type on the distro in one undo step. They run
@@ -4506,6 +4558,7 @@
                     'dropMulti', 'clearCircuit', 'clearMultiByMenu', 'dropMultiAgain',
                     'multiCableSheet', 'powerJumpers', 'cableUnit', 'cableStock', 'cableStockPieces', 'powerCableTags',
                     'powerColumns', 'splitters', 'takeOver', 'customPower', 'customDraw', 'sweepShare', 'balance',
+                    'addService', 'serviceDistro',
                     'addBeach', 'screenBeach', 'addScreen', 'beachByMenu', 'crossScreens', 'groupScreens',
                     'exportBinder', 'screenOrder', 'wiringTick', 'titleBlock', 'fileExports', 'preferences',
                     'helpMenu', 'outroAdvanced']

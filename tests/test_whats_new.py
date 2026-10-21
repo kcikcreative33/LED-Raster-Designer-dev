@@ -238,7 +238,8 @@ def test_new_steps_filter_by_since(page):
                 and _pad(_v(after)) < _pad(_v(s)) <= _pad(_v(up_to))]
         assert _new_steps(page, after, up_to) == want, (after, up_to)
     assert _new_steps(page, '1.5.2', '1.5.3') == [
-        'cableStock', 'cableStockPieces', 'takeOver', 'customPower', 'customDraw', 'sweepShare']
+        'cableStock', 'cableStockPieces', 'takeOver', 'customPower', 'customDraw', 'sweepShare',
+        'addService', 'serviceDistro']
     # A step is never newer than the running version.
     assert not set(_new_steps(page, '1.5.2', '1.5.2'))
     assert _new_steps(page, 'junk', '1.5.3') == []
