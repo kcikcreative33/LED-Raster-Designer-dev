@@ -2407,7 +2407,7 @@ def test_the_data_sheet_prints_the_return_end_and_the_processor_once(page):
     Backup · 1 channel snake · 150'") and each end's HOME RUN is its own
     extension ("+25'" on the backup's socket, 2026-09-07: "i have no way of
     putting lengths for redundancy cables"), never cut to "…"; Cables this screen lists the
-    backup's snake, the extension and the extension's `Ether-con Barrel`
+    backup's snake, the extension and the extension's `Cat6 Barrel`
     (one per extension, 2026-09-07); the processor sheet lists the
     extension as an `ext` row under its snake."""
     pg, ids = page
@@ -2467,11 +2467,12 @@ def test_the_data_sheet_prints_the_return_end_and_the_processor_once(page):
         assert 'PX' not in texts
         assert not [t for t in texts if t.startswith('slot ') or t.endswith('…')]
         cables = texts[texts.index('CABLES THIS SCREEN'):texts.index('Screen')]
-        assert ['Ether-con', "25'", '1'] == cables[cables.index('Ether-con'):cables.index('Ether-con') + 3], cables
-        k = cables.index('Ether-con Barrel')
-        assert cables[k:k + 3] == ['Ether-con Barrel', 'EA', '1'], cables
-        assert cables.count('Ether-con Barrel') == 1, cables
-        assert cables.count('Ether-con Snake') == 2, cables
+        k = cables.index('Cat6 Extension')
+        assert ['Cat6 Extension', "25'", '1'] == cables[k:k + 3], cables
+        k = cables.index('Cat6 Barrel')
+        assert cables[k:k + 3] == ['Cat6 Barrel', 'EA', '1'], cables
+        assert cables.count('Cat6 Barrel') == 1, cables
+        assert cables.count('Cat6 Snake') == 2, cables
         assert "150'" in cables and "100'" in cables, cables
         # the Facts say how many ports, never a px-per-port ceiling
         assert texts[texts.index('Ports') + 1] == '1 port' and not [t for t in texts if 'px/port' in t]
@@ -3206,8 +3207,8 @@ def test_smoke_live_show_b(page):
     assert [data[data.index(f'SR A-{n}') + 1] for n in (1, 2, 3, 4)] == ["+10'", '—', "+25'", "+25'"], data
     assert [data[data.index(f'SR A-{n}') + 3] for n in (1, 2, 3, 4)] == ["+10'", '—', "+10'", "+75'"], data
     cables = data[data.index('CABLES THIS SCREEN'):data.index('FACTS')]
-    k = cables.index('Ether-con Barrel')
-    assert cables[k:k + 3] == ['Ether-con Barrel', 'EA', '6'], cables
+    k = cables.index('Cat6 Barrel')
+    assert cables[k:k + 3] == ['Cat6 Barrel', 'EA', '6'], cables
     # the processor once, the redundancy in the bar's words
     assert data[data.index('Processor') + 1] == 'H9' and 'H9 · H9' not in data
     assert data[data.index('Redundancy') + 1] == 'Per card'

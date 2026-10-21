@@ -223,7 +223,8 @@ def test_an_sx40_lists_its_backup_output_by_output(page):
         ['WALL SR BU · trunk A', 'TAC B (TAC 12 · ST)', '1 Blue · 2 Orange', 'X2 on XD A', '2 Orange · 1 Blue'],
         ['WALL SR · trunk B', 'TAC A', '3 Green · 4 Brown', 'X1 on XD B', '4 Brown · 3 Green'],
         ['WALL SR BU · trunk B', "Cat6 150' (Cat6 runs 100 ft max at 10G)", 'copper', 'X2 on XD B', 'copper'],
-        ['WALL SR · trunk C', f'{duo} (opticalCON DUO)', '1 Blue · 2 Orange', 'X1 on XD C',
+        # the DUO has no length: flagged here as on every surface (2026-10-21)
+        ['WALL SR · trunk C', f'{duo} (opticalCON DUO) · no length', '1 Blue · 2 Orange', 'X1 on XD C',
          '1 Blue · 2 Orange · crosses inside'],
         ['WALL SR BU · trunk C', 'no fiber picked', '', 'X2 on XD C', ''],
         ['trunk D', 'not used', '', '', ''],

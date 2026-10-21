@@ -659,13 +659,18 @@ class _CrossLayerPaths {
 
     // Hidden panels are dropped HERE rather than by each caller, matching the
     // read-time `.filter(p => p && !p.hidden)` every path consumer already ran
-    // before a step could name a peer.
-    getResolvedPathPanels(ownerLayer, path) {
+    // before a step could name a peer. A DATA path (`kind` 'data') drops a
+    // legacy blank as well (isPanelDataDark): a blank carries no pixels and
+    // takes no port, on a hand-drawn path exactly as on the automatic walk.
+    // Power reads `hidden` alone.
+    getResolvedPathPanels(ownerLayer, path, kind = null) {
         if (!ownerLayer || !Array.isArray(path)) return [];
+        const dark = kind === 'data' && typeof this.isPanelDataDark === 'function'
+            ? (p) => this.isPanelDataDark(p) : (p) => !!p.hidden;
         const out = [];
         path.forEach(entry => {
             const resolved = this.resolvePathEntry(ownerLayer, entry);
-            if (resolved && !resolved.panel.hidden) out.push(resolved);
+            if (resolved && !dark(resolved.panel)) out.push(resolved);
         });
         return out;
     }

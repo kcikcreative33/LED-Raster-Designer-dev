@@ -3460,7 +3460,7 @@ class _HardwareDock {
                     const n = parseInt(numStr, 10);
                     // each step on the screen it names (group peers too)
                     byPort.set(n, this.getResolvedPathPanels(
-                        layer, layer.customPortPaths[numStr] || [])
+                        layer, layer.customPortPaths[numStr] || [], 'data')
                         .map(r => r.panel));
                 });
             } else {

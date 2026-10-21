@@ -1079,11 +1079,11 @@ def _client_edits(pg):
         return out; }"""))
 
 
-# W and X on beach SL, V loose: W's own runs print as SL's 25' and 75'
-# Ether-con, and SL's 6' Data Jump is W's AND X's.
-W_ROW = ('beach:b1', "Ether-con|25'", 'W run')
+# W and X on beach SL, V loose: W's own runs print as SL's 25' extension and 75'
+# Cat6 (V's 50' an extension too), and SL's 6' Data Jump is W's AND X's.
+W_ROW = ('beach:b1', "Cat6 Extension|25'", 'W run')
 SHARED_ROW = ('beach:b1', "Data Jump|6'", 'both walls')
-V_ROW = ('layer:2', "Ether-con|50'", 'spare')
+V_ROW = ('layer:2', "Cat6 Extension|50'", 'spare')
 
 
 def _beach_with_edits(pg):
@@ -1151,7 +1151,7 @@ def test_every_delete_path_drops_the_gone_rows_edits_and_undo_restores_them(page
     ids = _shared(pg, **({'multi': {}, 'group': {'group': True},
                           'canvas': {'canvas': True}}[how]))
     pk = {'multi': 'layer:1', 'group': 'g1', 'canvas': 'layer:1'}[how]
-    _edit_rows(pg, [(pk, "Ether-con|25'", 'W run'), V_ROW])
+    _edit_rows(pg, [(pk, "Cat6 Extension|25'", 'W run'), V_ROW])
     full = _srv_edits()
     steps = pg.evaluate("() => window.app.historyIndex")
     if how == 'multi':
