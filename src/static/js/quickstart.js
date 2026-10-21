@@ -1252,22 +1252,61 @@
     // What every gesture does before it aims: a tray element is revealed
     // (revealInTray), a canvas point is guarded (guardCanvasPoint), and a
     // point that knows how to re-measure itself (`again`) is measured now.
+    // A target that is not on the page yet, or not laid out yet, is waited
+    // for (up to 2.5 s) before the gesture gives up: on a slow machine the
+    // tray or a sheet is still being drawn when the step reaches for it.
+    // Behind the shade (What's New's fallback, Go to) every pace is zero,
+    // and CI's slower runners failed "<input> has no size" and "moveTo:
+    // nothing at [data-lrd-field^=power-soca-length-1-]" there - the steps
+    // after it then found no distro (2026-10-21).
+    // An element the tray rebuilt away under the step (a save restates the
+    // tray) is found again by the name it was drawn with - its field, its
+    // tray tile, its popover, its id: a detached copy never gains a size,
+    // so the gesture would wait on it for nothing. ("The snake's home run"
+    // hovered its length field, and "Add a breakout box" moved to the new
+    // box's header, just after a save redrew the tray.)
+    var RELIVE_ATTRS = ['data-lrd-field', 'data-hwdock', 'data-hwpop', 'data-lrd-distro', 'data-lrd-service'];
+    function relive(el) {
+        if (!el || el.nodeType !== 1 || el.isConnected) return el;
+        var esc = function (v) { return window.CSS && CSS.escape ? CSS.escape(v) : String(v).replace(/"/g, '\\"'); };
+        for (var i = 0; i < RELIVE_ATTRS.length; i++) {
+            var v = el.getAttribute(RELIVE_ATTRS[i]);
+            if (v) return $('[' + RELIVE_ATTRS[i] + '="' + esc(v) + '"]') || el;
+        }
+        if (el.id) return document.getElementById(el.id) || el;
+        return el;
+    }
     function prepare(target) {
         if (!target) return Promise.resolve(null);
         if (typeof target.again === 'function') target = target.again();
-        var el = typeof target === 'string' ? $(target) : (target.nodeType === 1 ? target : null);
-        var chain;
-        if (el && dock() && dock().contains(el)) chain = revealInTray(el);
-        else {
-            // A sidebar element: the panel opened and every fold above it
-            // undone now - a fold the person made while watching cannot
-            // send the hand to a field that has no size.
-            if (el) revealInSidebar(el);
-            chain = Promise.resolve();
-        }
-        return chain.then(function () {
+        target = relive(target);
+        var find = function () {
+            return typeof target === 'string' ? $(target) : (target.nodeType === 1 ? target : null);
+        };
+        var appear = (typeof target === 'string' && !$(target)) ? T.wait(find, 2500) : Promise.resolve(find());
+        return appear.then(function (el) {
+            var chain;
+            if (el && dock() && dock().contains(el)) chain = revealInTray(el);
+            else {
+                // A sidebar element: the panel opened and every fold above it
+                // undone now - a fold the person made while watching cannot
+                // send the hand to a field that has no size.
+                if (el) revealInSidebar(el);
+                chain = Promise.resolve();
+            }
+            return chain;
+        }).then(function () {
             var p = resolve(target);
-            if (p && p.el && p.empty) throw new Error(describe(target) + ' has no size');
+            if (p && p.el && p.empty) {
+                return T.wait(function () {
+                    target = relive(target);
+                    var q = resolve(target);
+                    return q && !q.empty ? q : null;
+                }, 2500).then(function (q) {
+                    if (!q) throw new Error(describe(target) + ' has no size');
+                    return guardCanvasPoint(q);
+                });
+            }
             return guardCanvasPoint(p);
         });
     }
