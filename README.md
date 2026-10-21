@@ -1,4 +1,4 @@
-# LED Raster Designer v1.5.3
+# LED Raster Designer v1.5.4
 
 LED Raster Designer is a free app for planning LED video walls for live
 events, concerts, broadcast and installs. You lay out the cabinets, wire
@@ -106,7 +106,7 @@ when you're done.
 
 ### Power
 
-- Build a distro from the outputs it really has: Socapex, L21-30, True1,
+- Build a distro from the outputs it really has: Socapex, L21-30, TRUE1,
   powerCON, Edison and CEE, on US or EU power. Start from a preset or build
   your own.
 - Every circuit is checked against its breaker, and US distros follow the
@@ -121,6 +121,9 @@ when you're done.
   circuit or port. Snake data ports under one home run.
 - Jumper lengths for every screen, with long jumpers measured and rounded up
   to stock lengths.
+- Tell a show the cable lengths you stock and a long run reads as the pieces
+  you'll pull, like 100'+25'.
+- Every distro gets a feeder, with its length and what it's fed from.
 
 ### Paperwork
 
@@ -132,7 +135,7 @@ Everything saves straight to a file, with no print dialogs.
 | **PNG / PDF / PSD** | Any of the five views, per canvas. One PNG per view, one PDF with a page per view, one PSD with a layer per screen, or with each screen's panels, borders, cabinet ids, data, power and name as separate layers in a group per screen. |
 | **SVG** | Any view as vector artwork: labels as real text, cabinets and runs as shapes, grouped per screen and per element. Opens in Illustrator with everything editable, and in Photoshop as a smart object. |
 | **Resolume XML** | Advanced Output screens, one per canvas, sized to its raster. |
-| **Pull Sheet** | A filled copy of the shop's pull-sheet workbook: one block per beach, multis with their home runs, True1 by length, 2fers and 3fers, breakouts, snakes, extensions, barrels and jumpers. File > Pull Sheet edits the list in the app first. |
+| **Pull Sheet** | A filled copy of the shop's pull-sheet workbook: one block per beach, multis with their home runs, TRUE1 or powerCON cables by length, Cat6 or etherCON data, feeders, 2fers and 3fers, breakouts, snakes, extensions, barrels and jumpers. File > Pull Sheet edits the list in the app first. |
 | **Binder** | One PDF as numbered sheets: overview, a Power and a Data sheet per screen with the wall, its circuits, ports, cables and facts, pull sheets, hardware. Tabloid by default, or Letter, ARCH C, ARCH D, A4, A3. Every sheet carries a border and a title block with your logo and a revision log. Tick Wiring and each map gets a wiring sheet behind it, every run drawn port to socket. Real text in the PDF, so it is sharp and searchable. Right-click a screen for Export this screen. |
 
 ### Preferences

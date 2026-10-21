@@ -384,6 +384,42 @@ def test_the_dialog_fits_1440_by_900_with_nothing_clipped(page):
         assert d['clipped'] == [], (key, d['clipped'])
         heights.add(round(d['body']['height']))
     assert len(heights) == 1, f'the body must keep one height across the tabs: {heights}'
+    # Cable stock with a list for each kind: seven rows instead of one, and
+    # "New shows start with" still inside the body (2026-10-22).
+    _tab(pg, 'stock')
+    was = _read(pg, 'pref-cable-stock-per-kind')
+    pg.locator('#pref-cable-stock-per-kind').check()
+    try:
+        d = pg.evaluate(DIALOG_JS)
+        assert d['body']['sh'] <= d['body']['ch'] + 1, ('stock, a list each', d['body'])
+        assert d['clipped'] == [], ('stock, a list each', d['clipped'])
+        assert pg.locator('#pref-cable-stock-default').is_visible()
+        assert pg.locator('#pref-cable-stock-feeder-ft').is_visible()
+    finally:
+        if not was:
+            pg.locator('#pref-cable-stock-per-kind').uncheck()
+    pg.locator('#preferences-cancel').click()
+
+
+def test_the_power_jumper_names_have_a_row_of_their_own(page):
+    """Pull sheet & cables: the TRUE1 and powerCON jumper names sit on
+    their own labelled row, each with its caption, wide enough to read a
+    name ("TRUE1 Power Jump"), not squeezed in beside the lengths."""
+    pg, ids = page
+    _open(pg)
+    _tab(pg, 'pull')
+    rows = pg.evaluate("""() => ['pref-pull-power-jump-name-true1', 'pref-pull-power-jump-name-powercon',
+                                  'pref-pull-power-jump-length'].map(id => {
+        const el = document.getElementById(id);
+        const row = el.closest('.pm-row');
+        const prev = el.previousElementSibling;
+        return { row: row.querySelector('label').textContent.trim(),
+                 caption: prev && prev.tagName === 'SPAN' ? prev.textContent.trim() : null,
+                 width: Math.round(el.getBoundingClientRect().width) };
+    })""")
+    assert [r['row'] for r in rows] == ['Power jumper names', 'Power jumper names', 'Power jumper'], rows
+    assert [r['caption'] for r in rows[:2]] == ['TRUE1', 'powerCON'], rows
+    assert all(r['width'] >= 150 for r in rows[:2]), rows
     pg.locator('#preferences-cancel').click()
 
 
@@ -680,7 +716,7 @@ def test_the_breakout_preference_is_gated_by_the_voltage_preference(page):
         st = pg.evaluate(read)
         assert st['visible'] and st['underVoltage'], st
         assert st['value'] == 'l2130-true1', st
-        assert st['opts']['soca-edison'] == [True, 'Not available at 208V — Edison is for screens up to 120V.'], st
+        assert st['opts']['soca-edison'] == [True, 'Not available at 208V: Edison is for screens up to 120V.'], st
         assert st['opts']['l2130-powercon'][0] is False and st['opts']['soca-l620'][0] is False, st
         # 110 V: the L21-30 pick snaps to Edison, the class default
         _set(pg, 'pref-power-voltage-select', '110')
@@ -688,9 +724,9 @@ def test_the_breakout_preference_is_gated_by_the_voltage_preference(page):
         assert st['value'] == 'soca-edison', st
         for gone in ('soca-l620', 'l2130-true1', 'l2130-powercon'):
             assert st['opts'][gone][0] is True, (gone, st)
-        assert st['opts']['l2130-true1'][1] == 'Not available at 110V — L21-30 is 208V only.', st
+        assert st['opts']['l2130-true1'][1] == 'Not available at 110V: L21-30 is 208V only.', st
         assert st['opts']['soca-l620'][1] == \
-            'Not available at 110V — a screen up to 120V runs Multi → TRUE1, powerCON or Edison.', st
+            'Not available at 110V: a screen up to 120V runs Multi → TRUE1, powerCON or Edison.', st
         for ok in ('soca-true1', 'soca-powercon', 'soca-edison'):
             assert st['opts'][ok] == [False, ''], (ok, st)
         # a custom 121 V (committed on change, never per keystroke - see

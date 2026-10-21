@@ -4,8 +4,9 @@
  * Keyed by MAJOR.MINOR ("0.12", "1.0", ...). One entry per feature release.
  * A patch release (0.12.1 -> 0.12.2) re-opens the window only when it added
  * Advanced Guide steps (a step's `since`, quickstart.js); it may carry an
- * entry of its own keyed by the full version ("1.5.3"), and without one the
- * window lists the new steps' titles. This is NOT the changelog: VERSION.txt
+ * entry of its own keyed by the full version ("1.5.4"), and without one the
+ * window lists the new steps' titles. An update that skips a patch shows
+ * every patch entry since the version last run, newest first. This is NOT the changelog: VERSION.txt
  * is the full record; each entry here is 4-8 short items a person can read
  * in a minute.
  *
@@ -17,11 +18,32 @@
  *   h - short heading, d - one or two plain sentences. No markup, no emoji.
  */
 window.WHATS_NEW_CONTENT = {
+    '1.5.4': {
+        title: 'Every cable named by its connector, a panel input for each screen, and a feeder for every distro',
+        items: [
+            { h: 'TRUE1 or powerCON, Cat6 or etherCON',
+              d: 'The pull sheet and the binder say exactly which cable to pull. Power reads TRUE1 or powerCON from each screen\'s breakout, and data reads Cat6 or etherCON from each box\'s own outputs.' },
+            { h: 'A panel input for Edison and L6-20 screens',
+              d: 'An Edison or L6-20 breakout now asks which connector your panels take, TRUE1 or powerCON, and the jumpers and splitters follow it. Each circuit gets one Edison → TRUE1 or L6-20 → powerCON cable, with the 2fers at the panels.' },
+            { h: 'A feeder for every distro',
+              d: 'Open a distro\'s gear, type its feeder length and pick whether it\'s fed from the service or thru another distro. A cam input lists a 400 A cam set with 5-wire, and the feeder is on the pull sheet even before you type a length.' },
+            { h: 'A stock list for each kind of cable',
+              d: 'In Preferences > Cable stock, tick A list for each kind of cable to give multis, data, power, L21-30 and Harting home runs, direct-output cables and feeders their own lengths. Shows and presets from before keep the lists they had.' },
+            { h: 'A name for each power jumper',
+              d: 'Preferences and the Export dialog have a name for the TRUE1 jumper and one for the powerCON jumper, so a show with both lists each one by its own name. A jumper name you changed before carries over to TRUE1.' },
+            { h: 'Boxes and snakes by their own names',
+              d: 'Distro boxes are listed by their own names everywhere, with -1 and -2 only when two share a name. Snakes are labelled by their ports, and two snakes are never merged into one row.' },
+            { h: 'Check paperwork you\'ve already ordered from',
+              d: 'powerCON screens listed TRUE1 jumpers, Edison screens had the wrong cables and splitters, and blank cabinets on a drawn run counted jumpers. If you ordered cable from a 1.5.3 pull sheet, export it again and compare.' },
+            { h: '2fers and 3fers in custom mode',
+              d: 'Share with next run no longer joins wide circuits, Clear Circuit clears a whole custom 3fer, and custom 2fers and 3fers show their circuit numbers. Picking 2fer this screen or 3fer this screen turns Share circuits on for you.' }
+        ]
+    },
     '1.5.3': {
         title: '2fers and 3fers in custom mode, the cable you stock, and house power as a service',
         items: [
             { h: '2fers and 3fers in custom mode and groups',
-              d: 'With Share circuits via splitters on, a fill in custom mode makes 2fers and 3fers one run per column, the same as automatic mode, and a group shares them as one wall. The 3fer Screen button splits a circuit that spans three columns into its own three legs and never builds an OVER.' },
+              d: 'With Share circuits via splitters on, a fill in custom mode makes 2fers and 3fers one run per column, the same as automatic mode, and a group shares them as one wall. Right-click the screen and pick 3fer this screen: a circuit that spans three columns splits into its own three legs, and it never builds an OVER.' },
             { h: 'Right-click to 3fer a circuit',
               d: 'Right-click a circuit and pick 3fer it to split it into one leg per column on that same circuit, or 2fer it and 4fer it for two and four columns. The menu says what it does now: Un-share is Remove 3fer, and the tray\'s Clear multi and Clear circuit are Unplug multi and Unplug circuit.' },
             { h: 'Cable stock',
@@ -42,7 +64,7 @@ window.WHATS_NEW_CONTENT = {
         title: 'Distros built from their outputs, cable lengths in meters, and custom mode that stays on',
         items: [
             { h: 'Distros built from their outputs',
-              d: 'Pick a power system, an input and amps per leg, then list the outputs: Socapex, L21-30, or True1, powerCON, Edison and CEE outlets straight off the distro face. Start from a preset of a common US or EU distro, or save your own.' },
+              d: 'Pick a power system, an input and amps per leg, then list the outputs: Socapex, L21-30, or TRUE1, powerCON, Edison and CEE outlets straight off the distro face. Start from a preset of a common US or EU distro, or save your own.' },
             { h: 'Every circuit checked against its breaker',
               d: 'US distros hold circuits to 80% of the breaker unless the breakers are 100% rated, and the distro to 80% of its rating unless the main is. Accept overload turns a red OVER amber, and the binder\'s Load line shows every leg and the 3-phase total.' },
             { h: 'Feet or meters',
@@ -81,14 +103,14 @@ window.WHATS_NEW_CONTENT = {
         ]
     },
     '1.3': {
-        title: 'A default for every screen color, True1 and powerCON on 120V, whole-row fills, a rear view binder',
+        title: 'A default for every screen color, TRUE1 and powerCON on 120V, whole-row fills, a rear view binder',
         items: [
             { h: 'A default for every screen color',
               d: 'Preferences has a labeled color for every mark a screen draws, on the Look, Data and Power tabs. A new screen takes them all and keeps them; existing screens are not touched.' },
-            { h: 'True1 and powerCON on 110V and 120V',
-              d: 'A screen at or below 120V can be set to Multi → True1 or Multi → powerCON as well as Edison, and a Multi 120 output feeds any of the three.' },
+            { h: 'TRUE1 and powerCON on 110V and 120V',
+              d: 'A screen at or below 120V can be set to Multi → TRUE1 or Multi → powerCON as well as Edison, and a Multi 120 output feeds any of the three.' },
             { h: 'Every screen carries a breakout',
-              d: 'The Preferences breakout is the default when the voltage allows it; otherwise Edison at or below 120V and True1 above. Edison is not offered above 120V and L21-30 stays 208V only.' },
+              d: 'The Preferences breakout is the default when the voltage allows it; otherwise Edison at or below 120V and TRUE1 above. Edison is not offered above 120V and L21-30 stays 208V only.' },
             { h: 'Apply Pattern fills whole rows',
               d: 'In custom mode on an Organized screen a circuit or port takes another row or column only when all of it fits, so a run never starts in the middle of a row; Max Capacity and Maximize Power Use pack each run full. The marquee clears when the fill lands.' },
             { h: 'Deleting a canvas keeps shown screens',

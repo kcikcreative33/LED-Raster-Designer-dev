@@ -2339,16 +2339,16 @@ def test_the_breakout_select_gates_on_the_screen_voltage(page):
     assert out['shown230'] == 'soca-true1', out
     t230 = {o['id']: o['title'] for o in out['at230']}
     assert t230['soca-edison'] == \
-        'Not available at 230V — Edison is for screens up to 120V.', t230
+        'Not available at 230V: Edison is for screens up to 120V.', t230
     assert t230['l2130-true1'] == \
-        'Not available at 230V — L21-30 is 208V only.', t230
+        'Not available at 230V: L21-30 is 208V only.', t230
     blank = {o['id']: o['disabled'] for o in out['atBlank']}
     assert blank == {'soca-true1': False, 'soca-powercon': False,
                      'soca-edison': False, 'soca-l620': False,
                      'l2130-true1': True, 'l2130-powercon': True}, out
     tblank = {o['id']: o['title'] for o in out['atBlank']}
     assert tblank['l2130-powercon'] == \
-        'Not available until a voltage is set — L21-30 is 208V only.', tblank
+        'Not available until a voltage is set: L21-30 is 208V only.', tblank
     for o in out['atBlank'] + out['at230'] + out['at208']:
         assert 'null' not in o['title'] and ' V.' not in o['title'], o
 

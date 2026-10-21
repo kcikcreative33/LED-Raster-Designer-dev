@@ -3293,6 +3293,42 @@
                 return (w.name || 'The screen') + ' takes 2 ft vertical and 3 ft horizontal power jumpers.';
             }
         },
+        // One power jumper name per connector (1.5.4, app-pull-list.js
+        // pullPowerJumpName): the show's names live in the Export dialog's
+        // Pull Sheet section (project.pullSheet, one undo step each); the
+        // Preferences hold the names a new show starts with. The wall is
+        // TRUE1 here, so the TRUE1 name is the one its rows print.
+        jumperNames: {
+            since: '1.5.4',
+            exportStep: true,
+            target: '#export-pull-sheet-power-jump-name-true1', place: 'left', title: 'A name for each jumper',
+            avoid: ['#export-pull-sheet-power-jump-name-true1', '#export-pull-sheet-power-jump-name-powercon'],
+            body: 'The pull sheet names TRUE1 and powerCON jumpers apart. Type what your shop calls them in the Export dialog; Preferences holds the names a new show starts with.',
+            before: function () {
+                switchView('power');
+                var a = A();
+                if (!exportOpen() || ($('#export-format') && $('#export-format').value !== 'pull-sheet')) {
+                    a.openExportModal('pull-sheet');
+                }
+            },
+            act: function (t) {
+                return t.type('#export-pull-sheet-power-jump-name-true1', 'TRUE1 Jumper').then(function () {
+                    return t.wait(function () {
+                        return A().getPullSheetSettings().powerJumpNameTrue1 === 'TRUE1 Jumper';
+                    });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the show did not take the jumper name');
+                    return t.pause(PACE.rest);
+                });
+            },
+            check: function () {
+                var s = A().getPullSheetSettings();
+                if (s.powerJumpNameTrue1 !== 'TRUE1 Jumper') return null;
+                return 'TRUE1 jumpers print as TRUE1 Jumper, one row per length; a powerCON screen\'s print as '
+                    + s.powerJumpNamePowercon + '.';
+            },
+            after: function () { closeExport(); }
+        },
         panelWatts: {
             target: '#power-panel-watts', place: 'right', title: 'Power view and the math',
             avoid: ['[data-mode="power"]', '#power-panel-watts'],
@@ -3309,6 +3345,39 @@
                 if (!w || Number(w.panelWatts) !== 200) return null;
                 var req = $('#power-circuits-required') ? $('#power-circuits-required').textContent.trim() : '?';
                 return '200 W per cabinet at 208 V, 20 A. Circuits required: ' + req + '.';
+            }
+        },
+        // The panel input (1.5.4, app-power.js panelInput): a TRUE1 or
+        // powerCON breakout IS the panels' connector; an Edison or L6-20
+        // one leaves it to the screen. The demo wall is 208V, so the L6-20
+        // breakout is the one that offers the choice. The breakout step
+        // after it puts the wall on Multi to TRUE1 for the rest of the tour.
+        panelInput: {
+            since: '1.5.4',
+            target: '#power-breakout-type', place: 'right', title: 'The panel input',
+            avoid: ['#power-breakout-type', '#power-panel-input'],
+            body: 'Pick Multi to L6-20 and Panel input appears: the connector your panels take. Pick powerCON and the cables, jumpers and splitters all say powerCON.',
+            before: function () { switchView('power'); },
+            act: function (t) {
+                return t.select('#power-breakout-type', 'soca-l620').then(function () {
+                    return t.wait(function () {
+                        var w = wall(), row = $('#power-panel-input-row');
+                        return w && w.powerBreakoutType === 'soca-l620' && row && row.style.display !== 'none';
+                    });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the Panel input did not come up');
+                    return t.select('#power-panel-input', 'powercon');
+                }).then(function () {
+                    return t.wait(function () { var w = wall(); return w && w.powerPanelInput === 'powercon'; });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the screen did not take powerCON');
+                    return t.pause(PACE.rest);
+                });
+            },
+            check: function () {
+                var w = wall();
+                if (!w || w.powerBreakoutType !== 'soca-l620' || A().panelInput(w).id !== 'powercon') return null;
+                return (w.name || 'The screen') + ' takes powerCON at the panels: each circuit gets an L6-20 → powerCON cable, and its jumpers and splitters are powerCON.';
             }
         },
         breakoutType: {
@@ -3745,6 +3814,57 @@
                 return 'The 125 ft home run is written ' + a.cableStockText(125, 'multi') + ': the pull sheet lists one 100 ft and one 25 ft multi.';
             }
         },
+        // A list per kind (1.5.4, app-cable-stock.js): multis, data, power,
+        // L21-30 and Harting home runs, direct-output cables and feeders.
+        // The kinds' lists are kept apart from the one shared list, so the
+        // multis get theirs again and the feeders a list of their own; the
+        // Feeder step types a length this list makes. Save is pressed the
+        // way the Cable stock step presses it.
+        cableStockPerKind: {
+            since: '1.5.4',
+            target: '#pref-cable-stock-per-kind', place: 'bottom', title: 'A list for each kind of cable',
+            avoid: ['#pref-cable-stock-per-kind', '#pref-cable-stock-multi-ft', '#pref-cable-stock-feeder-ft', '#preferences-save'],
+            body: 'Tick A list for each kind of cable and each kind gets its own lengths. Here the multis keep 25, 50 and 100, and the feeders come in 50 and 100.',
+            before: function () {
+                switchView('power');
+                var a = A();
+                a.openPreferencesModal();
+                a.showPreferencesTab('stock');
+            },
+            act: function (t) {
+                return t.click('#pref-cable-stock-per-kind').then(function () {
+                    return t.wait(function () {
+                        var c = $('#pref-cable-stock-per-kind'), f = $('#pref-cable-stock-feeder-ft');
+                        return c && c.checked && f && f.offsetParent !== null;
+                    });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the lists for each kind did not come up');
+                    return t.type('#pref-cable-stock-multi-ft', '25, 50, 100');
+                }).then(function () {
+                    return t.type('#pref-cable-stock-feeder-ft', '50, 100');
+                }).then(function () {
+                    return t.hover('#preferences-save');
+                }).then(function (p) {
+                    press(true);
+                    ripple(p.x, p.y);
+                    return t.pause(90);
+                }).then(function () {
+                    press(false);
+                    A().applyCableStockPreferences();
+                    return t.wait(function () { return A().cableStockList('feeder', 'ft').join(',') === '50,100'; });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the show did not take the lists');
+                    return t.pause(PACE.rest);
+                });
+            },
+            check: function () {
+                var a = A();
+                if (a.cableStockList('feeder', 'ft').join(',') !== '50,100'
+                        || a.cableStockList('multi', 'ft').join(',') !== '25,50,100') return null;
+                return 'Multis come in 25, 50 and 100 ft, feeders in 50 and 100 ft: a 150 ft feeder is written ' + a.cableStockText(150, 'feeder') + '.';
+            },
+            after: function () { closePrefs(); }
+        },
         powerCableTags: {
             target: '#show-power-cable-tags', place: 'right', title: 'Show Cable Tags (power)',
             body: 'Tick it and each circuit&rsquo;s cable prints as a gold tag beside its label on the wall and in the export.',
@@ -3793,7 +3913,7 @@
         splitters: {
             target: '#power-splitters-enabled', place: 'right', title: 'Share runs through 3fers',
             avoid: ['#power-splitters-enabled', '#main-canvas'],
-            body: 'Tick Share circuits via splitters and each column, or each row on a wall cabled across, becomes a run of its own, with neighbours sharing one circuit through a 2fer or 3fer while the load fits.',
+            body: 'Tick Share circuits via splitters and each column, or each row on a wall cabled across, becomes a run of its own, with neighbors sharing one circuit through a 2fer or 3fer while the load fits.',
             before: function () { switchView('power'); },
             act: function (t) {
                 return t.click('#power-splitters-enabled').then(function () {
@@ -3894,7 +4014,7 @@
             since: '1.5.3',
             target: '.power-flow-pattern-btn[data-pattern="tl-v"]', place: 'right', title: 'Draw the circuits',
             avoid: ['.power-flow-pattern-btn[data-pattern="tl-v"]', '#main-canvas'],
-            body: 'Drag across the cabinets, then press Top-left, vertical first. With sharing on you get what automatic mode makes: a run per column (or per row on a wall cabled across), neighbours sharing a 3fer while the load fits.',
+            body: 'Drag across the cabinets, then press Top-left, vertical first. With sharing on you get what automatic mode makes: a run per column (or per row on a wall cabled across), neighbors sharing a 3fer while the load fits.',
             before: function () { switchView('power'); },
             act: function (t) {
                 var w = wall();
@@ -4112,6 +4232,52 @@
                 return (d.name || 'The distro') + ' is on ' + (s.name || 'the service')
                     + (u ? ': its busiest leg reads ' + u.textContent.trim() + '.' : '.');
             }
+        },
+        // The feeder (1.5.4, app-services.js _buildDistroFeederRow): the
+        // cable that powers the distro, behind its gear. A length, written
+        // from the feeders' stock list, and where it is fed from: the
+        // service, or thru another distro. It is always on the pull sheet,
+        // "no length" until one is typed.
+        feederLength: {
+            since: '1.5.4',
+            target: function () { var d = distro(); return d ? '[data-hwpop="distro-' + d.id + '"]' : '#hardware-dock-body .hw-dock-gear'; },
+            place: 'top', title: 'The distro&rsquo;s feeder',
+            avoid: [function () { var d = distro(); return d ? '[data-lrd-field="distro-feeder-ft-' + d.id + '"]' : null; },
+                    function () { var d = distro(); return d ? '[data-lrd-field="distro-feeder-from-' + d.id + '"]' : null; }],
+            body: 'Open the distro&rsquo;s &#9881; and type its Feeder length. Beside it you pick where it&rsquo;s fed from: the service, or thru another distro.',
+            before: function () { switchView('power'); closePopover(); },
+            act: function (t) {
+                var d = distro();
+                if (!d) throw new Error('there is no distro to feed');
+                return t.click('[data-hwpop="distro-' + d.id + '"]').then(function () {
+                    return t.wait(popover);
+                }).then(function (pop) {
+                    if (!pop) throw new Error('the distro\'s gear popover did not open');
+                    return t.spot(pop).then(function () { return t.pause(900); });
+                }).then(function () {
+                    return t.type('[data-lrd-field="distro-feeder-ft-' + d.id + '"]', '150');
+                }).then(function () {
+                    return t.wait(function () { var q = distro(); return q && q.feeder && Number(q.feeder.ft) === 150; });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the feeder did not take 150');
+                    return t.wait(function () { return $('[data-lrd-field="distro-feeder-from-' + d.id + '"]'); });
+                }).then(function (sel) {
+                    if (!sel) throw new Error('the fed-from choice did not come up');
+                    return t.hover('[data-lrd-field="distro-feeder-from-' + d.id + '"]');
+                }).then(function () {
+                    return t.pause(PACE.acted);
+                });
+            },
+            check: function () {
+                var d = distro(), a = A();
+                if (!d || !d.feeder || Number(d.feeder.ft) !== 150) return null;
+                var f = a.distroFeeder(d);
+                var from = f.from ? 'thru ' + (f.from.name || f.from.id)
+                    : 'from ' + (f.service ? f.service.name || 'the service' : 'the service');
+                return (d.name || 'The distro') + '\'s feeder: ' + a.feederText(d) + ', fed ' + from
+                    + '. The pull sheet lists it where the distro sits.';
+            },
+            after: function () { closePopover(); }
         },
         // Distros built from their outputs (1.5, app-distro-systems.js
         // _buildDistroOutputRows): a preset lays the system, input, rating,
@@ -4624,12 +4790,14 @@
                     'nameProcessor', 'redundancy', 'backupProcessor', 'dropProcessor', 'releasePort', 'attachmentFlag', 'pinPort',
                     'clearPortByMenu', 'clearCard', 'dropProcessorAgain',
                     'snakePorts', 'cableSheet', 'snakeHomeRun', 'loosePortLength', 'dataJumpers', 'dataCableTags',
-                    'overrideRun', 'addBreakoutBox', 'boxFiber', 'fiberStrands', 'panelWatts', 'breakoutType', 'addDistro', 'nameDistro',
+                    'overrideRun', 'addBreakoutBox', 'boxFiber', 'fiberStrands', 'panelWatts', 'panelInput', 'breakoutType',
+                    'addDistro', 'nameDistro',
                     'distroPhase', 'distroRating', 'distroMain', 'distroPreset', 'distroRows',
                     'dropMulti', 'clearCircuit', 'clearMultiByMenu', 'dropMultiAgain',
-                    'multiCableSheet', 'powerJumpers', 'cableUnit', 'cableStock', 'cableStockPieces', 'powerCableTags',
+                    'multiCableSheet', 'powerJumpers', 'jumperNames', 'cableUnit', 'cableStock', 'cableStockPieces',
+                    'cableStockPerKind', 'powerCableTags',
                     'powerColumns', 'splitters', 'takeOver', 'customPower', 'customDraw', 'sweepShare', 'balance',
-                    'addService', 'serviceRating', 'serviceDistro',
+                    'addService', 'serviceRating', 'serviceDistro', 'feederLength',
                     'addBeach', 'screenBeach', 'addScreen', 'beachByMenu', 'crossScreens', 'groupScreens',
                     'exportBinder', 'screenOrder', 'wiringTick', 'titleBlock', 'fileExports', 'preferences',
                     'helpMenu', 'outroAdvanced']

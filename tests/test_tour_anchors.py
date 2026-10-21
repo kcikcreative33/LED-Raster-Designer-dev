@@ -173,6 +173,13 @@ QUICKSTART_JS = os.path.join(os.path.dirname(__file__), '..', 'src', 'static',
 #                      Wiring are sheets of their own (2026-09-12)
 #   N-way            - a snake is an "N channel snake" (2026-09-12)
 #   Halves           - the port shape reads OPT Split / Split (2026-09-11)
+#   Tru-1, True1     - the connector is TRUE1, capitals, as Neutrik
+#                      spells it (owner ruling, 2026-10-21)
+#   Ether-con        - the data connector is etherCON (2026-10-21)
+#   Data Cable       - a data run is Cat6 or etherCON by its connector
+#                      (2026-10-21)
+#   tail             - also the Edison adapter: "Edison → TRUE1 cable"
+#                      (2026-10-21); the tails? rule below catches it
 #
 # The tray's circuit chips carry the app's own `tail-<distro>-<n>-<t>` key
 # (app-dock.js _dockBuildCircuitChip), and a demonstrating step drags one
@@ -185,6 +192,13 @@ RETIRED_WORDING = [
     (r'-way\b', 'a snake is an N channel snake, never N-way'),
     (r'\bhalves\b', 'the port shape is OPT Split / Split, never Halves'),
     (r'\bgangs?\b|un-gang', 'shared circuits, never gangs (Matt, 2026-09-15)'),
+    # Case matters for these three: TRUE1 is right, True1 is not, and a
+    # lower-case "data cable" in a sentence is plain English. The ids
+    # ('soca-true1', 'true1') are lower case and a camelCase key
+    # (powerJumpNameTrue1) has no word boundary, so neither matches.
+    (r'(?-i:\bTrue1\b)|\bTru-1\b', 'the connector is TRUE1, never True1 or Tru-1'),
+    (r'\bEther-con\b', 'the data connector is etherCON, never Ether-con'),
+    (r'(?-i:\bData Cable\b)', 'a data run is Cat6 or etherCON, never Data Cable'),
 ]
 
 
@@ -213,10 +227,14 @@ def test_retired_wording_guard_catches_each_word():
     step body, is caught - so a silently broken pattern cannot pass."""
     for sample in ('one Signal + Power sheet', 'a 4-way snake',
                    'Halves the ports', 'circuits, not tails',
-                   'Gang runs through a 2fer', 'Undo un-gangs it'):
+                   'Gang runs through a 2fer', 'Undo un-gangs it',
+                   'Multi to True1', 'a Tru-1 Power Jump', 'an Ether-con run',
+                   'one Data Cable per port', 'one Edison tail per circuit'):
         assert _retired_wording_hits(sample), sample
     assert not _retired_wording_hits(
         'SNAKE A · 4 channel; OPT Split; Power Wiring and Data Wiring')
+    assert not _retired_wording_hits(
+        "Multi to TRUE1, 'soca-true1', powerJumpNameTrue1, powerCON, etherCON, Cat6, the data cable")
 
 
 def test_tour_registry_exposes_all_tours(page):

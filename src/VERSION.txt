@@ -1,6 +1,111 @@
 LED RASTER DESIGNER - VERSION HISTORY
 =====================================
 
+v1.5.4 - October 21, 2026
+----------------------------
+
+The pull sheet and the binder now say exactly which cable to pull: TRUE1
+or powerCON for power, Cat6 or etherCON for data, and every distro gets a
+row for its feeder. Edison and L6-20 screens pick the connector their
+panels take, and each kind of cable can have its own stock list. Three of
+the fixes below change counts on the pull sheet, so check any show you've
+already ordered cable from.
+
+POWER CABLES NAME THEIR CONNECTOR
+
+Power cables are spelled the way Neutrik spells them, TRUE1 and powerCON,
+on the map, in the tray, on the pull sheet and in the binder. A screen's
+jumpers follow its own breakout, so a show with TRUE1 screens and powerCON
+screens lists both. Preferences > Pull sheet & cables and the Export
+dialog have a name for each jumper, and a power jumper name you'd changed
+before carries over to TRUE1.
+
+THE PANEL INPUT
+
+An Edison or L6-20 breakout doesn't say what your panels take, so those
+screens now have a Panel input under Breakout: TRUE1 or powerCON. The
+jumpers and splitters follow it, each circuit gets one Edison → TRUE1
+cable (or L6-20 → powerCON), and the 2fers and 3fers sit at the panels.
+
+DATA CABLES NAME THEIR CONNECTOR
+
+Data runs read etherCON where the box's output is etherCON and Cat6 where
+it's plain RJ45, on the pull sheet, in the binder, on the map tags and the
+tray's chips. The catalog now says which one each processor and breakout
+box has, from the maker's spec sheet, and a box always uses its own
+connector, never its card's.
+
+FEEDERS
+
+Every distro has a Feeder behind its gear: a length, and whether it's fed
+from the service or thru another distro. A cam input lists a 400 A cam set
+with 5-wire in Notes, and an L21-30 input lists an L21-30 feeder. The
+feeder is always on the pull sheet, with no length until you type one, and
+the binder says what each distro is fed from.
+
+A distro you feed thru is listed even with nothing plugged into it, and
+the load of a distro fed thru another counts on the service.
+
+A STOCK LIST FOR EACH KIND OF CABLE
+
+Tick A list for each kind of cable in Preferences > Cable stock and you
+get lists for L21-30 and Harting home runs, direct-output cables and
+feeders, as well as multis, data and power. Older shows and presets read
+the new lists from the ones those cables used before.
+
+FIXES
+
+- FIX (IMPORTANT): powerCON screens listed their jumpers as TRUE1 power
+  jumpers. They list powerCON jumpers now, under the powerCON jumper name.
+- FIX (IMPORTANT): Edison screens listed the wrong cables and splitters.
+  Each circuit now gets one Edison → TRUE1 cable (or Edison → powerCON),
+  and the splitters at the panels are the panels' own connector.
+- FIX (IMPORTANT): Blank cabinets on a hand-drawn run counted jumpers.
+  They count nothing now, on power and data.
+- FIX: A placed data port with no home run typed is still listed on the
+  pull sheet, with no length.
+- FIX: When the cable stock makes a run from more than one piece, the pull
+  sheet adds a barrel for each join on data (one per channel on a snake)
+  and a powerCON Coupler on powerCON. TRUE1 cables and multis need none.
+- FIX: A direct output's cable names both ends, like CEE 16A → TRUE1, or
+  just TRUE1 when the outlet already is one.
+- FIX: A multi shared by screens with different breakouts lists a breakout
+  for each connector, and the binder's band names the connector.
+- FIX: Distro boxes are listed by their own names everywhere (SR1,
+  DISTRO 1-1, or the name you typed), with -1 and -2 only when two boxes
+  share a name.
+- FIX: A single name is never split, so SR 13x5 stays SR 13x5, and a run
+  of names folds into one, like SR-1 … SR-6.
+- FIX: Rows you hide and counts you change on the pull sheet reach the
+  binder's cable tables for each screen and the distro and processor pull
+  lists.
+- FIX: Snakes are labelled by their ports, with the snake's name and size
+  in Notes (SNAKE A · 4 channel), and an extension by its port. Two snakes
+  are never merged into one row.
+- FIX: The exported workbook's GEAR LIST lists only the connectors the
+  show uses, spelled etherCON and TRUE1.
+- FIX: A fiber cable with no length is flagged in the binder's cable
+  tables, strand maps and fiber connections.
+- FIX: The QD-S input fiber is listed where its boxes are, and with the
+  screen's cables.
+- FIX: A custom Share with next run no longer joins a wide circuit, or a
+  circuit already on a 2fer or 3fer.
+- FIX: Clear Circuit clears a whole custom 3fer, not just one leg of it.
+- FIX: Locked screens keep their settings when you group them.
+- FIX: On a custom wall, a 2fer or 3fer shows its circuit number in the
+  field and in messages.
+- FIX: Picking 2fer this screen or 3fer this screen ticks Share circuits
+  via splitters for you.
+- FIX: Sharing a whole screen or a selection from the right-click menu
+  keeps to the screen's splitter size.
+- FIX: Every distro's rating reads the same way, like
+  400 A service · 120/208V 3φ.
+- FIX: The binder's tables no longer cut off names or overlap.
+- FIX: Pull sheet edits saved in an older version follow their rows when
+  the rows are renamed.
+- FIX: The tray's chips on direct outputs name the same cable as the
+  paperwork.
+
 v1.5.3 - October 21, 2026
 ----------------------------
 
