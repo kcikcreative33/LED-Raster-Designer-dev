@@ -227,6 +227,180 @@ class _Services {
         return true;
     }
 
+    // ---- the feeder ---------------------------------------------------------
+    //
+    // FEEDERS (owner rulings, 2026-10-21): the cable that powers a distro,
+    // set per distro behind its gear and listed on the pull sheet.
+    //   * A length (blank prints a "no length" row, the way a multi does)
+    //     and where it is FED FROM: the service - the distro's own, or the
+    //     house when it is on none; distros sharing a service each run
+    //     their own cams from it - or another distro (cam thru, a daisy
+    //     chain from that distro).
+    //   * The row follows the distro's INPUT: a cam input is ONE row per
+    //     set, "400 A cam set", its length, qty 1, "5-wire" in Notes; any
+    //     other input is "<input> feeder" ("L21-30 feeder", "Powerlock
+    //     400 A feeder"); a distro with no input picked is "Feeder". It is
+    //     pulled where the distro sits, under the distro's name, and is on
+    //     the distro's own pull list in the binder.
+    //   * Its length is written from the show's cable stock ('feeder',
+    //     app-cable-units.js).
+    // Stored on the distro, only once somebody sets it:
+    //     distro['feeder'] -> { ft?: number, from?: '<distro id>' }
+    // no `from` is the service. A `from` naming no distro (it was removed)
+    // or the distro itself reads as the service; the server's funnel
+    // (app.py _normalize_services) clears it.
+
+    // The distro's feeder as read: { ft (null for none), from (the feeding
+    // distro, or null for the service), service (its service, or null),
+    // input (its input record, or null), stored (whether it has one) }.
+    distroFeeder(d) {
+        const rec = d && d.feeder && typeof d.feeder === 'object' ? d.feeder : null;
+        const all = typeof this.getDistros === 'function' ? this.getDistros() : [];
+        const from = rec && rec.from && rec.from !== d.id ? all.find(x => x.id === rec.from) || null : null;
+        const input = d && d.input && typeof this.distroInputs === 'function'
+            ? this.distroInputs().find(i => i.id === d.input) || null : null;
+        return {
+            ft: rec ? this.parseCableLength(rec.ft) : null,
+            from,
+            service: this.distroService(d),
+            input,
+            stored: !!rec,
+        };
+    }
+
+    // The feeder's type and the note it carries, from the distro's input.
+    feederTypeOf(d) {
+        const input = this.distroFeeder(d).input;
+        if (input && /^cam\d+$/.test(input.id)) return { type: `${input.name} cam set`, notes: '5-wire', cam: true };
+        if (input) return { type: `${input.name} feeder`, notes: '', cam: false };
+        return { type: 'Feeder', notes: '', cam: false };
+    }
+
+    // The feeder's pull-sheet row (buildPullList lands it where the
+    // distro sits): { type, length, qty: 1, label, notes, side }, the
+    // stock pieces riding along for the sheet to count.
+    pullFeederRow(d) {
+        if (!d) return null;
+        const f = this.distroFeeder(d);
+        const t = this.feederTypeOf(d);
+        const cell = this.pullCableLength(f.ft, 'feeder');
+        const r = { type: t.type, length: cell.text, qty: 1, label: d.name || '',
+                    notes: [t.notes, f.ft ? '' : 'no length'].filter(Boolean).join(' · '),
+                    side: 'power' };
+        if (cell.pieces) r._pieces = cell.pieces.slice();
+        return r;
+    }
+
+    // Where the feeder comes from, as the binder says it: the feeding
+    // distro ("SR, cam thru"), the service's label, or null for the house.
+    feederSourceText(d) {
+        const f = this.distroFeeder(d);
+        if (f.from) return `${f.from.name || f.from.id}, ${this.feederTypeOf(d).cam ? 'cam thru' : 'daisy chain'}`;
+        return f.service ? this.serviceLabel(f.service) : null;
+    }
+
+    // The feeder in a few words: "400 A cam set 100'" ("... no length").
+    feederText(d) {
+        const f = this.distroFeeder(d);
+        const t = this.feederTypeOf(d);
+        return f.ft ? `${t.type} ${this.cableStockText(f.ft, 'feeder')}` : `${t.type}, no length`;
+    }
+
+    // The distros `d` can be fed from: every other distro whose own chain
+    // of feeders does not lead back to `d`.
+    feederSources(d) {
+        const all = typeof this.getDistros === 'function' ? this.getDistros() : [];
+        const feeds = (x, seen = new Set()) => {
+            for (let cur = x; cur && !seen.has(cur.id); ) {
+                if (cur.id === d.id) return true;
+                seen.add(cur.id);
+                const f = cur.feeder && cur.feeder.from;
+                cur = f ? all.find(y => y.id === f) : null;
+            }
+            return false;
+        };
+        return all.filter(x => x.id !== d.id && !feeds(x));
+    }
+
+    // Set the feeder: `patch` { ft?, from? } - a blank length forgets it,
+    // `from` null (or 'service') is the service. One 'Set Distro Feeder'
+    // entry when something changed; a feeder emptied of both forgets the
+    // key, so an untouched distro saves as it always did. Returns whether
+    // it changed.
+    setDistroFeeder(distroId, patch = {}) {
+        const d = (typeof this.getDistros === 'function' ? this.getDistros() : []).find(x => x.id === distroId);
+        if (!d || !patch) return false;
+        const before = JSON.stringify(d.feeder || null);
+        const next = { ...(d.feeder && typeof d.feeder === 'object' ? d.feeder : {}) };
+        if (patch.ft !== undefined) {
+            const ft = this.parseCableLength(patch.ft);
+            if (ft === null) delete next.ft; else next.ft = ft;
+        }
+        if (patch.from !== undefined) {
+            const id = patch.from && patch.from !== 'service' ? String(patch.from) : null;
+            if (id && this.feederSources(d).some(x => x.id === id)) next.from = id;
+            else delete next.from;
+        }
+        if (Object.keys(next).length) d.feeder = next; else delete d.feeder;
+        if (JSON.stringify(d.feeder || null) === before) return false;
+        this.saveState('Set Distro Feeder');
+        this._persistDistros();
+        return true;
+    }
+
+    // The distro gear's FEEDER row: its length and where it is fed from.
+    _buildDistroFeederRow(d, wrap) {
+        const r = this._distroGearRow();
+        r.classList.add('hw-pop-supply', 'hw-pop-feeder');
+        r.appendChild(this._distroGearCap('Feeder'));
+        const t = this.feederTypeOf(d);
+        const len = document.createElement('input');
+        len.type = 'text';
+        len.className = 'hw-pop-feeder-ft';
+        len.dataset.lrdField = `distro-feeder-ft-${d.id}`;
+        len.value = d.feeder && d.feeder.ft != null ? String(d.feeder.ft) : '';
+        len.placeholder = this.cableUnit() === 'm' ? '30' : '100';
+        len.style.width = '56px';
+        len.title = `The length of this distro's ${t.type}, in ${this.cableUnitWord()}. `
+            + 'It goes on the pull sheet where the distro sits; blank lists it with no length.'
+            + this.cableStockHint(d.feeder && d.feeder.ft, 'feeder');
+        len.addEventListener('change', () => {
+            this.setDistroFeeder(d.id, { ft: len.value });
+            if (typeof this.renderHardwareDock === 'function') this.renderHardwareDock();
+        });
+        r.appendChild(len);
+        const unit = document.createElement('small');
+        unit.textContent = this.cableUnitAbbr();
+        unit.style.color = 'var(--ps-faint, #969696)';
+        r.appendChild(unit);
+        const sel = document.createElement('select');
+        sel.className = 'info-select';
+        sel.dataset.lrdField = `distro-feeder-from-${d.id}`;
+        sel.style.flex = '1 1 0';
+        sel.style.minWidth = '0';
+        sel.title = 'Where the feeder comes from: the service (each distro on a service runs its '
+            + 'own feeder from it), or another distro it is fed thru from.';
+        const f = this.distroFeeder(d);
+        const svc = document.createElement('option');
+        svc.value = '';
+        svc.textContent = f.service ? `from ${f.service.name || f.service.id}` : 'from the service';
+        if (!f.from) svc.selected = true;
+        sel.appendChild(svc);
+        this.feederSources(d).forEach(x => {
+            const opt = document.createElement('option');
+            opt.value = x.id;
+            opt.textContent = `thru ${x.name || x.id}`;
+            if (f.from && f.from.id === x.id) opt.selected = true;
+            sel.appendChild(opt);
+        });
+        sel.addEventListener('change', () => {
+            this.setDistroFeeder(d.id, { from: sel.value || null });
+            if (typeof this.renderHardwareDock === 'function') this.renderHardwareDock();
+        });
+        r.appendChild(sel);
+        wrap.appendChild(r);
+    }
+
     // ---- the checks ----------------------------------------------------------
 
     // One record per service, off the distros' own roll-up (getDistroLoads)

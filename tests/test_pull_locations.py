@@ -198,8 +198,9 @@ def test_a_distro_at_its_own_beach_pulls_the_power_rows_there(page):
     assert dimmer['memberIds'] == [] and dimmer['layerIds'] == [ids['a'], ids['b']]
     assert _rows(dimmer['rows']) == [
         ('Distro', 'EA', 1, 'SR', ''),
-        ('Multi', "100'", 1, 'SR 2', ''),
-        ('Multi', "125'", 1, 'SR 1', ''),
+        ('Feeder', '', 1, 'SR', 'no length'),
+        ('Multi', "100'", 1, 'SR2', ''),
+        ('Multi', "125'", 1, 'SR1', ''),
         ('Tru-1', "6'", 1, 'SR2-1', ''),
         ('Tru-1', "10'", 2, 'SR1-1, SR1-2', ''),
         ('Tru-1 Breakout', 'EA', 2, 'SR 1-2', ''),
@@ -305,7 +306,7 @@ def test_the_workbook_and_the_binder_take_a_device_location(page):
     col = pull_sheet.BLOCK_COLS[2]
     rows = [tuple(ws.cell(r, col + i).value for i in range(4)) for r in range(7, 20)]
     assert ('Distro', 'EA', 1, 'SR') in rows, rows
-    assert ('Multi', "125'", 1, 'SR 1') in rows, rows
+    assert ('Multi', "125'", 1, 'SR1') in rows, rows
     # the positions side by side on one pull sheet, in position order, the
     # device location last
     pulls = [t for t in out['plan'] if t.startswith('Pull - ')]
@@ -429,8 +430,9 @@ def test_a_box_at_its_beach_pulls_its_ports_rows_and_two_boxes_list_once(page):
     assert all(r['side'] == 'data' for r in sl['rows'])
     assert _rows(pos['SR Beach']['rows']) == [
         ('Distro', 'EA', 1, 'SR', ''),
-        ('Multi', "100'", 1, 'SR 2', ''),
-        ('Multi', "125'", 1, 'SR 1', ''),
+        ('Feeder', '', 1, 'SR', 'no length'),
+        ('Multi', "100'", 1, 'SR2', ''),
+        ('Multi', "125'", 1, 'SR1', ''),
         ('Tru-1', "6'", 1, 'SR2-1', ''),
         ('Tru-1', "10'", 2, 'SR1-1, SR1-2', ''),
         ('Tru-1 Breakout', 'EA', 2, 'SR 1-2', ''),

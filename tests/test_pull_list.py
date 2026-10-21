@@ -376,16 +376,18 @@ def test_positions_are_the_groups_and_the_rows_read_in_the_sheets_vocabulary(pag
     # 9 x 1' + 1 x 2', WALL-B 10 x 6'. Each length is its own row.
     # The distro itself is on the sheet (2026-09-07): two boxes in use on
     # SR is a "Distro" (no Type typed), pulled where SR sits - no location typed, so with
-    # the first screen it feeds.
+    # the first screen it feeds. Its feeder beside it (2026-10-21): no
+    # input picked, so "Feeder", and no length typed.
     assert sr == [
         ('Data Jump', "1'", 9, 'WALL-A', ''),
         ('Data Jump', "2'", 2, 'WALL-A', ''),
         ('Data Jump', "6'", 11, 'WALL-B', ''),
         ('Distro', 'EA', 1, 'SR', ''),
         ('Ether-con Snake', "100'", 1, 'SNAKE A', '2 channel'),
+        ('Feeder', '', 1, 'SR', 'no length'),
         ('H9', 'EA', 1, '', ''),
-        ('Multi', "100'", 1, 'SR 2', ''),
-        ('Multi', "125'", 1, 'SR 1', ''),
+        ('Multi', "100'", 1, 'SR2', ''),
+        ('Multi', "125'", 1, 'SR1', ''),
         ('Tru-1', "6'", 1, 'SR2-1', ''),
         ('Tru-1', "10'", 2, 'SR1-1, SR1-2', ''),
         ('Tru-1 Breakout', 'EA', 2, 'SR 1-2', ''),
@@ -416,9 +418,9 @@ def test_positions_are_the_groups_and_the_rows_read_in_the_sheets_vocabulary(pag
     assert totals[('Tru-1', "10'")] == 2 and totals[('Tru-1', "6'")] == 1
     assert totals[('Multi', "125'")] == 1 and totals[('Multi', "100'")] == 1
     assert totals[('Tru-1 Breakout', 'EA')] == 2 and totals[('Edison 2fer', 'EA')] == 1
-    assert totals[('Distro', 'EA')] == 1
+    assert totals[('Distro', 'EA')] == 1 and totals[('Feeder', '')] == 1
     assert totals[('H9', 'EA')] == 1
-    assert len(out['totals']) == 18
+    assert len(out['totals']) == 19
     # EA sorts after every length; types are A-Z
     types = [r['type'] for r in out['totals']]
     assert types == sorted(types, key=str.lower)
@@ -457,7 +459,8 @@ def test_the_per_screen_readings_the_packet_will_print(page):
     kinds = {(h['kind'], h['name']): _rows(h['rows']) for h in out['hardware']}
     assert kinds[('distro', 'SR')] == [
         ('Distro', 'EA', 1, 'SR', ''),
-        ('Multi', "100'", 1, 'SR 2', ''), ('Multi', "125'", 1, 'SR 1', ''),
+        ('Feeder', '', 1, 'SR', 'no length'),
+        ('Multi', "100'", 1, 'SR2', ''), ('Multi', "125'", 1, 'SR1', ''),
         ('Tru-1 Breakout', 'EA', 2, 'SR 1-2', '')]
     proc_rows = next(v for (k, n), v in kinds.items() if k == 'processor')
     assert proc_rows == [('Ether-con', "50'", 1, ids['centerPortLabel'], ''),
@@ -759,7 +762,7 @@ def test_a_box_without_a_length_says_so_and_a_hidden_screen_is_off_the_list(page
                 multis: hidden.positions[0].rows.filter(r => r.type === 'Multi').length};
     }""", ids)
     # a blank length sorts after the numbers and before EA
-    assert out['noLen'] == [["125'", 1, 'SR 1', ''], ['', 1, 'SR 2', 'no length']]
+    assert out['noLen'] == [["125'", 1, 'SR1', ''], ['', 1, 'SR2', 'no length']]
     assert out['names'] == ['SR Beach', 'CENTER']
     assert out['srLayers'] == [ids['a']] and out['multis'] == 1
 

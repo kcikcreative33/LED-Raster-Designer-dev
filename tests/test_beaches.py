@@ -459,7 +459,7 @@ def test_positions_are_the_beaches_in_order_then_the_loose_screens(page):
     assert pos[2]['memberIds'] == [ids['names']['SPARE']]
     # the SR rows are WALL-A's and WALL-B's, at SR - the group's old key g1
     # is not a position any more
-    assert ('Multi', "125'", 1, 'SR 1', '') in _rows(pos[0]['rows'])
+    assert ('Multi', "125'", 1, 'SR1', '') in _rows(pos[0]['rows'])
     assert pos[0]['layerIds'] == [ids['a'], ids['b']]
     assert pg.evaluate("() => window.app.pullKnownLocations()") == ['SR', 'SL']
     # reorder: SL first
@@ -498,7 +498,7 @@ def test_a_group_named_like_a_beach_folds_into_it(page):
     assert [(p['name'], p['key']) for p in pos] == [
         ('sr beach', 'beach:b1'), ('SL', 'beach:b2'), ('SPARE', f"layer:{ids['names']['SPARE']}")]
     assert pos[0]['memberIds'] == [ids['a'], ids['b']]
-    assert ('Multi', "125'", 1, 'SR 1', '') in _rows(pos[0]['rows'])
+    assert ('Multi', "125'", 1, 'SR1', '') in _rows(pos[0]['rows'])
     pg.evaluate("async () => { await window.app.renameBeach('b1', 'SR'); }")
     pg.wait_for_timeout(500)
     pos = pg.evaluate(POS_JS)
@@ -556,7 +556,7 @@ def test_the_distro_picker_pulls_the_power_rows_to_its_beach(page):
     pos = {p['name']: p for p in out['positions']}
     assert [p['name'] for p in out['positions']] == ['SR', 'SL', 'SPARE']
     sl_rows = _rows(pos['SL']['rows'])
-    for row in [('Distro', 'EA', 1, 'SR', ''), ('Multi', "100'", 1, 'SR 2', ''), ('Multi', "125'", 1, 'SR 1', ''),
+    for row in [('Distro', 'EA', 1, 'SR', ''), ('Multi', "100'", 1, 'SR2', ''), ('Multi', "125'", 1, 'SR1', ''),
                 ('Tru-1 Breakout', 'EA', 2, 'SR 1-2', '')]:
         assert row in sl_rows, (row, sl_rows)
     # the walls' power jumpers beside CENTER's and LEFT's own, at SL - one
@@ -711,7 +711,7 @@ def test_the_beaches_line_renames_and_removes(page):
     assert cleared == [None, None, None]
     pos = pg.evaluate(POS_JS)
     assert [p['name'] for p in pos] == ['SR', 'CENTER', 'LEFT', 'SPARE']
-    assert ('Multi', "125'", 1, 'SR 1', '') in _rows(pos[0]['rows'])
+    assert ('Multi', "125'", 1, 'SR1', '') in _rows(pos[0]['rows'])
     # undo brings the beach and its pointers back
     pg.evaluate('() => window.app.undo()')
     pg.wait_for_timeout(900)

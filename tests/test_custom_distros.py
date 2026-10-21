@@ -667,7 +667,7 @@ def test_a_direct_output_cable_is_on_the_pull_sheet_in_the_shows_unit(seeded):
             const tag = app.directOutputCable(B, app.screenCircuits(B)[0].num);
             return { rows: rows.map(r => [r.type, r.length, r.qty, r.label, r.notes]),
                      hw: hw.map(r => [r.type, r.length, r.label, r.notes]), tag: tag && tag.text };""")
-        assert ['Schuko', want, 1, 'SL 2', ''] in out['rows'], out
+        assert ['Schuko', want, 1, 'SL2', ''] in out['rows'], out
         assert not [r for r in out['rows'] if 'Breakout' in r[0] or r[0] == 'Multi'], out
         assert ['Distro', 'EA', 'SL', '1 direct output'] in out['hw'], out
         assert out['tag'] == f'{want} Schuko', out

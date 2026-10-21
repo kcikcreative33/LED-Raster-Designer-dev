@@ -1153,8 +1153,9 @@ class _Binder {
 
     _binderBook(opts, run) {
         // The edited list: the pull sheets and the totals sheet print what
-        // the user's pull-sheet edits say; the per-screen readings
-        // (byScreen, hardware) are the show's own.
+        // the user's pull-sheet edits say, and so do the per-screen CABLES
+        // THIS SCREEN tables and the hardware pull lists - a hidden row and
+        // a changed count reach them (app-pull-list.js _pullCarryEdits).
         const list = this.buildPullSheet();
         const settings = list.settings || this.getPullSheetSettings();
         const layers = new Map((this.project.layers || []).map(l => [String(l.id), l]));
@@ -5924,7 +5925,8 @@ class _Binder {
             }
             allCircuits += circuits;
             boxes.push({ cells: [`${d.name} ${number}`, typed ? typed.name : '—',
-                                 homeRun ? this.pullLengthText(homeRun, this.pullHomeRunKind(fbox)) : 'no length',
+                                 homeRun ? this.pullLengthText(homeRun,
+                                     this.pullHomeRunKind(fbox || (typed ? { typeId: typed.id } : null))) : 'no length',
                                  names.join(' + '), String(circuits), this._bNum(amps, 1)] });
         }
         // The table is named by what it lists - "4 Multi 208 · 1 L21-30" -
@@ -5950,8 +5952,15 @@ class _Binder {
         }) });
         const pairs = [['Rating', this._bDistroRatingText(d)]];
         // The service it is fed from (2026-10-20, app-services.js).
+        // Its feeder once one is set (2026-10-21): where from - the service
+        // or the distro it is fed thru from - and the cable, "400 A cam set
+        // 100'".
         const svc = typeof this.distroService === 'function' ? this.distroService(d) : null;
-        if (svc) pairs.push(['Fed from', this.serviceLabel(svc)]);
+        const feeder = typeof this.distroFeeder === 'function' ? this.distroFeeder(d) : null;
+        if (feeder && feeder.stored) {
+            const from = this.feederSourceText(d);
+            pairs.push([from ? 'Fed from' : 'Feeder', [from, this.feederText(d)].filter(Boolean).join(' · ')]);
+        } else if (svc) pairs.push(['Fed from', this.serviceLabel(svc)]);
         // The face (1.5): one line per output row, a paired row printed
         // ONCE with both connectors named.
         for (const line of this._bDistroFaceLines(d)) pairs.push(['Outputs', line]);

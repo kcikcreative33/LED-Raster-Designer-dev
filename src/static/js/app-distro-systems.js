@@ -806,7 +806,8 @@ class _DistroSystems {
         const ft = this.parseCableLength((layer.powerSocaLengths || {})[box.idx]);
         if (ft === null) return null;
         const name = fbox.conn.cable;
-        return { ft, name, text: this.cableText(ft, name, 'circuit') };
+        // written from the direct-output cables' own stock (2026-10-21)
+        return { ft, name, text: this.cableText(ft, name, 'direct') };
     }
 
     // How many circuits sit on the DIRECT output that circuit `circuitNum`
@@ -836,8 +837,11 @@ class _DistroSystems {
     // pull sheet, the binder's captions and its Distro page all read this.
     directCircuitCable(layer, circuitNum) {
         if (this.directOutputCircuitCount(layer, circuitNum) !== 1) return null;
-        return this.powerCircuitCable(layer, circuitNum)
-            || this.directOutputCable(layer, circuitNum);
+        // The circuit's own cable IS the output's cable here, so it is
+        // written from the direct-output stock too (2026-10-21).
+        const own = this.powerCircuitCable(layer, circuitNum);
+        if (own) return { ...own, text: this.cableText(own.ft, own.name, 'direct') };
+        return this.directOutputCable(layer, circuitNum);
     }
 
     // ---- legs ------------------------------------------------------------
