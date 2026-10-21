@@ -208,8 +208,11 @@ class _DockCableSheets {
         // by length and connector. A flat readout, not a control.
         const counts = new Map();
         held.forEach(({ layer, circuit }) => {
-            const c = this.powerCircuitCable(layer, circuit);
-            if (!c) return;
+            const own = this.powerCircuitCable(layer, circuit);
+            if (!own) return;
+            // a circuit alone on a direct output: its cable is the output's
+            // one cable, from the direct-output stock (directCircuitCable)
+            const c = this.directCircuitCable(layer, circuit) || own;
             counts.set(c.text, (counts.get(c.text) || 0) + 1);
         });
         const tot = document.createElement('tr');

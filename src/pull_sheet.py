@@ -12,7 +12,8 @@ contract this module writes to, nothing is invented here:
                POSITION" copy-me block. B2 show, B3 engineer, E2 date, E3
                rev.
   GEAR LIST    A4:A… cable types, B4:B… lengths ("6'", "25'", "EA") - the
-               source of both dropdowns on the Pull Sheet.
+               source of both dropdowns on the Pull Sheet. The copy lists
+               only the connectors the show uses (GEAR_CONNECTORS).
   Spares, TOTALS, calc (hidden)
                formula-built: calc scans the six blocks × rows 7-66 through
                INDIRECT() string literals, so SIX positions of SIXTY rows is
@@ -276,6 +277,39 @@ def connector_spelling(text):
     return _OLD_ETHERCON.sub('etherCON', true1_spelling(text))
 
 
+# The connectors whose families the GEAR LIST lists only when the show uses
+# them (owner, 2026-10-21): a powerCON / Cat6 show has no TRUE1 or etherCON
+# entries, a show with both lists both. A template entry that names one of
+# these connectors (the bare cable, its Breakout, 2fer, 3fer, Power Jump,
+# Snake, Barrel, Extension, Coupler) is dropped from the copy unless every
+# connector it names is one a written row names; an entry that names none
+# (Multi, a processor, Shackle) always stays.
+GEAR_CONNECTORS = ('TRUE1', 'powerCON', 'etherCON', 'Cat6')
+_GEAR_CONNECTOR_RES = {c: re.compile(r'(?<![A-Za-z0-9])' + re.escape(c) + r'(?![A-Za-z0-9])', re.I)
+                       for c in GEAR_CONNECTORS}
+
+
+def gear_connectors(text):
+    """The GEAR_CONNECTORS `text` names, whole words, case aside ("TRUE1
+    2fer" names TRUE1; "Cat6A" names none)."""
+    if not isinstance(text, str):
+        return set()
+    return {c for c, rx in _GEAR_CONNECTOR_RES.items() if rx.search(text)}
+
+
+def _drop_unused_connectors(ws, used):
+    """The GEAR LIST cable types without the template entries of connectors
+    the show does not use (GEAR_CONNECTORS), the rest closed up in order so
+    the dropdown has no gaps. The cells keep their styling."""
+    have, _ = _gear_column(ws, GEAR_TYPE_COL, GEAR_TYPE_LAST_ROW)
+    keep = [v for v in have if gear_connectors(v) <= used]
+    if keep == have:
+        return
+    for i, r in enumerate(range(GEAR_FIRST_ROW, GEAR_TYPE_LAST_ROW + 1)):
+        cell = ws.cell(r, GEAR_TYPE_COL)
+        cell.value = keep[i] if i < len(keep) else None
+
+
 def _true1_workbook(wb):
     """The GEAR LIST cable types and the READ ME in the app's spelling
     (connector_spelling)."""
@@ -498,6 +532,11 @@ def build_workbook(pull_list, meta=None, template_path=TEMPLATE_PATH):
     if meta.get('cable_unit') == 'm':
         _metric_workbook(wb)
     _true1_workbook(wb)
+    used = set()
+    for pos in positions:
+        for r in pos['rows']:
+            used |= gear_connectors(r['type'])
+    _drop_unused_connectors(gear, used)
     _add_gear(gear, GEAR_TYPE_COL, GEAR_TYPE_LAST_ROW, list(dict.fromkeys(types)), warnings, 'Cable Type')
     _add_gear(gear, GEAR_LENGTH_COL, GEAR_LENGTH_LAST_ROW, list(dict.fromkeys(lengths)), warnings, 'Length')
 

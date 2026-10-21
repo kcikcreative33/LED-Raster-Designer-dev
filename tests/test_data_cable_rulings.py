@@ -389,6 +389,25 @@ def test_a_free_rows_side_reads_data_words_as_data(page):
     assert {t: s for t, s in sides.items() if s == 'data'} == {t: 'data' for t in data}, sides
 
 
+def test_a_free_rows_side_reads_whole_words_and_power_words_first(page):
+    """Whole words only: "tac" inside Contactor / Stacking / Attachment /
+    Stack is no TAC; "Optical isolator" is no data; a power word wins
+    ("Socapex Snake", "Camlok Barrel"); a catalog model counts only as the
+    whole name or its head before an equipment word ("S4 rack"), never
+    before anything else ("S4 Spanset", "T1 Tape", "M2 bolt")."""
+    pg, _ids = page
+    power = ['Contactor', 'Stacking plate', 'Attachment', 'Ground Stack', 'Optical isolator',
+             'Socapex Snake', 'Camlok Barrel', 'S4 Spanset', 'T1 Tape', 'M2 bolt', 'S40 bracket',
+             'Edison → TRUE1 tail', 'CEE 16A → powerCON', '400 A cam set', 'Absen TRUE1 Long Power Jump']
+    data = ['TAC 12', '12 Tac Fiber', 'opticalCON QUAD', 'MTP 24', '12G SDI', 'Ethernet',
+            'Absen Long Data Jump', '16 port sending card + 2 OPT', '10G Single-Mode SFP',
+            'S4', 'S4 rack', 'H9 spare (2)', 'XD rack', 'CVT Rack', 'Cat6 Snake']
+    sides = pg.evaluate("(types) => Object.fromEntries(types.map(t => [t, window.app.pullGuessSide(t)]))",
+                        power + data)
+    assert {t: sides[t] for t in power} == {t: 'power' for t in power}, sides
+    assert {t: sides[t] for t in data} == {t: 'data' for t in data}, sides
+
+
 def test_a_fiber_cable_with_no_length_is_flagged_on_every_surface(page):
     """A TAC with no length on a CVT4K-S's link: the pull row says "no
     length" (as before), and so do the binder's CABLES THIS SCREEN, the
