@@ -1,7 +1,7 @@
 """Where a power head's cable tags hang: by the way its run leaves the disc.
 
 The owner's ruling (2026-09-25), chosen from rendered options on his show:
-the POWER map's cable tag (the circuit's cable, "10' True1") and the
+the POWER map's cable tag (the circuit's cable, "10' TRUE1") and the
 splitter pill stacked with it ("3fer" / "2fer") go by the direction the
 circuit's run LEAVES its label disc -
 
@@ -11,7 +11,7 @@ circuit's run LEAVES its label disc -
   - a circuit of one cabinet has no step        -> ABOVE;
 
 centred on the disc's x, the tag first and the pill beneath it, the pill
-CENTRED under the tag ("3fer etc needs to be centered under the True1
+CENTRED under the tag ("3fer etc needs to be centered under the TRUE1
 extension") - so above the disc the column reads tag, pill, disc and under
 it disc, tag, pill. The direction is the run's first step AS DRAWN: on a
 rotated screen "down" is down on the sheet. When the preferred spot would
@@ -266,8 +266,8 @@ def test_the_tags_hang_by_the_way_the_run_leaves_its_disc(page, pattern, step, w
     one = [h for h in heads if _cx(h[0]) >= 120 + 800]
     # the fixture: two shared heads on the wall, each with its tag and pill
     assert sorted((t['text'], p and p['text']) for _, t, p in wall) == [
-        ("10' True1", '3fer'), ("25' True1", '2fer')], [(d['text'], t['text'], p and p['text']) for d, t, p in wall]
-    assert [(t['text'], p) for _, t, p in one] == [("10' True1", None)], one
+        ("10' TRUE1", '3fer'), ("25' TRUE1", '2fer')], [(d['text'], t['text'], p and p['text']) for d, t, p in wall]
+    assert [(t['text'], p) for _, t, p in one] == [("10' TRUE1", None)], one
     bad = _faults(_wall_boxes(boxes, wall), want)
     bad += _faults(_wall_boxes(boxes, one), 'above')
     assert not bad, '\n'.join([''] + bad)

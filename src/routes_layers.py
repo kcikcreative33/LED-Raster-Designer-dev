@@ -95,6 +95,8 @@ def add_layer():
         'powerSocaLengths', 'powerSocaPhaseOffset',
         'powerSocaPhasePos', 'powerBreakoutType', 'showSocaBrackets',
         'powerSocaDistro',
+        # The panel input of an Edison / L6-20 screen ('true1' / 'powercon').
+        'powerPanelInput',
         # Multi names ({socaIndex: 'SL1'}), the numbers pinned onto multis
         # ({socaIndex: 3} - two multis pinned to one number on one distro are
         # one physical soca), and the stamp saying the per-multi stores above
@@ -417,6 +419,9 @@ def update_layer(layer_id):
                 # soca-l620), and the power-map bracket toggle.
                 'powerSocaLengths', 'powerSocaPhaseOffset', 'powerSocaPhasePos',
                 'powerBreakoutType', 'showSocaBrackets',
+                # The panel input an Edison / L6-20 screen's tails, jumpers
+                # and splitters are ('true1' / 'powercon'; absent is TRUE1).
+                'powerPanelInput',
                 # Production suite: power splitters (circuit sharing) -
                 # {enabled, maxWays, manual: {merge, split}}. Must be listed
                 # or every per-layer PUT drops the packing toggle and the

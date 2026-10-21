@@ -85,20 +85,27 @@ from conftest import private_fixture, private_fixture_missing  # noqa: E402
 SCRATCH_FIXTURE = private_fixture('live-show-b.json', 'LRD_PULL_SMOKE_JSON')
 
 BOX_WORD = re.compile(r'\b(box|boxes)\b', re.I)
-# The band over a multi's circuits: "SR1 · Multi 208 · 125' · 6 circuits" -
-# name · type · length · count (no "home run": the length IS the home run,
+# The band over a multi's circuits: "SR1 · Multi 208 TRUE1 breakout · 125'
+# · 6 circuits" - name · type and the connector it breaks out to
+# (2026-10-21) · length · count (no "home run": the length IS the home run,
 # user 2026-09-08).
-BAND = re.compile(r"^.+ · (Multi (208|120)|L21-30|no distro) · .+ · \d+ circuits?( · .*)?$")
+BAND = re.compile(r"^.+ · ((Multi (208|120)|L21-30) (TRUE1|powerCON|Edison|L6-20) breakout|no distro)"
+                  r" · .+ · \d+ circuits?( · .*)?$")
 def _bands(texts):
     return [t for t in texts if BAND.match(t)]
 # "breakout" as the generic noun for the power unit is gone (2026-09-07);
-# the pull list's "Tru-1 Breakout" CABLE row and the data side's "breakout
+# the pull list's "TRUE1 Breakout" CABLE row and the data side's "breakout
 # box" keep their names - and the Power Wiring sheet's block for a multi
 # IS its breakout, the fan-out, named by type ("Multi 208 breakout", user
 # 2026-09-08: "it is a breakout also known as a fan out / but i like the
 # first option").
 BREAKOUT_WORD = re.compile(r'\bbreakouts?\b', re.I)
-POWER_BREAKOUT = re.compile(r'\b(Multi (208|120)|L21-30) breakout\b')
+POWER_BREAKOUT = re.compile(r'\b(Multi (208|120)|L21-30)( (TRUE1|powerCON|Edison|L6-20))? breakout\b')
+# the pull list's breakout CABLE row, one per connector ("TRUE1 Breakout")
+BREAKOUT_CABLE = re.compile(r'\b(TRUE1|powerCON|Edison|L6-20) Breakout\b')
+# the pull list's tail CABLE row off an Edison / L6-20 breakout
+# (2026-10-21): "Edison → TRUE1 tail", the one place a sheet says tail
+TAIL_CABLE = re.compile(r'\b(Edison|L6-20) → (TRUE1|powerCON) tail\b')
 
 
 # The Fiber connections table's own headings say BREAKOUT for the end of a
@@ -109,7 +116,7 @@ FIBER_BREAKOUT_HEADS = {'BREAKOUT', 'AT THE BREAKOUT'}
 
 def _generic_breakout(texts):
     return [t for t in texts if BREAKOUT_WORD.search(t)
-            and 'breakout box' not in t.lower() and 'Tru-1 Breakout' not in t
+            and 'breakout box' not in t.lower() and not BREAKOUT_CABLE.search(t)
             and not POWER_BREAKOUT.search(t) and t not in FIBER_BREAKOUT_HEADS]
 
 
@@ -240,8 +247,11 @@ def test_the_menu_items_the_format_option_and_the_section_are_served(client):
     assert not [l for l in literals if re.search(r'\btails?\b', l)], [l for l in literals if 'tail' in l]
     # "Multi" may name a CABLE (the GEAR LIST's word); it never names the unit
     assert not [l for l in literals if 'Multi' in l], [l for l in literals if 'Multi' in l]
+    # the power band names a multi's breakout by its type and connector
+    # (2026-10-21, _bBoxTypeText)
+    band_type = {'`${box.type} ${box.connector} breakout`', '`${box.type} breakout`'}
     generic = [l for l in literals if BREAKOUT_WORD.search(l) and 'breakout box' not in l.lower()
-               and l.strip("'").upper() not in FIBER_BREAKOUT_HEADS]
+               and l.strip("'").upper() not in FIBER_BREAKOUT_HEADS and l not in band_type]
     assert not generic, generic
     assert not [l for l in literals if 'Palette' in l], [l for l in literals if 'Palette' in l]
     # the wiring sheet's own strings the same - save the power block's
@@ -571,7 +581,7 @@ def test_the_power_sheet_carries_its_title_block_and_says_home_run_once_per_box(
     bands = _bands(texts)
     # the type is Multi, and the length stands alone - "125' home run"
     # said it twice (user, 2026-09-08)
-    assert bands == ["SR1 · Multi 208 · 125' · 2 circuits"], texts
+    assert bands == ["SR1 · Multi 208 TRUE1 breakout · 125' · 2 circuits"], texts
     assert not [t for t in texts if 'home run' in t.lower()], [t for t in texts if 'home run' in t.lower()]
     # "Multi" alone is a cable row, never a heading
     assert not any(t.strip() == 'MULTI' for t in texts), [t for t in texts if t.strip() == 'MULTI']
@@ -582,13 +592,13 @@ def test_the_power_sheet_carries_its_title_block_and_says_home_run_once_per_box(
     # · AMPS · CABLE - the band above the headings (2026-09-26: "same with
     # distros") - the cable typed on each, the cables table, the facts
     i = texts.index('CIRCUITS')
-    assert texts[i + 1:i + 7] == ["SR1 · Multi 208 · 125' · 2 circuits",
+    assert texts[i + 1:i + 7] == ["SR1 · Multi 208 TRUE1 breakout · 125' · 2 circuits",
                                   'CIRCUIT', 'NO.', 'PANELS', 'AMPS', 'CABLE'], texts[i:i + 8]
     assert 'SR1-1' in texts and 'SR1-2' in texts
-    assert texts.count("10' True1") >= 2
+    assert texts.count("10' TRUE1") >= 2
     assert 'CABLES THIS SCREEN' in texts and 'FACTS' in texts
     assert 'Multi' in texts and "125'" in texts      # the breakout's cable, in the GEAR LIST's word
-    assert 'Tru-1 Breakout' in texts
+    assert 'TRUE1 Breakout' in texts
     assert 'SHARED CIRCUITS' not in texts
     assert not [t for t in texts if 'Palette' in t]
     # the view bubble under the map: view 2, the sheet's name
@@ -606,7 +616,9 @@ def test_shared_circuits_are_listed_only_where_a_screen_has_them(page):
     i = ganged.index('SHARED CIRCUITS')
     assert ganged[i:i + 7] == ['SHARED CIRCUITS', 'CIRCUIT', 'SPLITTER', 'AMPS', ganged[i + 4], '2fer', ganged[i + 6]]
     assert ganged[i + 4].endswith('1') or ganged[i + 4]   # the shared circuit's label
-    assert 'Edison 2fer' in ganged
+    # the splitter is on the panels' side: CENTER's Edison breakout feeds
+    # TRUE1 panels (2026-10-21)
+    assert 'TRUE1 2fer' in ganged
 
 
 def test_the_rulers_number_every_fifth_column_and_the_ends_in_bold(page):
@@ -638,14 +650,14 @@ def test_the_printer_sheet_has_no_colour_and_a_dash_per_circuit(page):
 def test_cable_tags_follow_the_screens_switch(page):
     pg, ids = page
     on = _render(pg, SHOW, 'WALL-A - Power - Front View')['mapTexts']
-    assert "10' True1" in on and _on_map(on, 'SR1-1'), on
+    assert "10' TRUE1" in on and _on_map(on, 'SR1-1'), on
     off = _render(pg, SHOW, 'WALL-B - Power - Front View')['mapTexts']
-    assert _on_map(off, 'SR2-1') and "6' True1" not in off, off
+    assert _on_map(off, 'SR2-1') and "6' TRUE1" not in off, off
     # flip WALL-A off, and the tag leaves the map
     pg.evaluate("(id) => { window.app.project.layers.find(l => l.id === id).showPowerCableTags = false; }", ids['a'])
     try:
         flipped = _render(pg, SHOW, 'WALL-A - Power - Front View')['mapTexts']
-        assert "10' True1" not in flipped and _on_map(flipped, 'SR1-1'), flipped
+        assert "10' TRUE1" not in flipped and _on_map(flipped, 'SR1-1'), flipped
     finally:
         pg.evaluate("(id) => { window.app.project.layers.find(l => l.id === id).showPowerCableTags = true; }", ids['a'])
 
@@ -1239,7 +1251,7 @@ def test_the_map_carries_no_screen_name_plate_but_the_export_still_does(page):
 def test_no_sheet_says_box_breakout_or_palette(page):
     """No sheet text says box ("I dont like calling them boxes"), none
     says breakout as the generic noun ("no need to call it a breakout") -
-    save a data-side breakout box's own name and the pull list's "Tru-1
+    save a data-side breakout box's own name and the pull list's "TRUE1
     Breakout" cable row - and none says Palette. The distro sheet names
     its table by what it lists: "2 Multi 208", the units by type."""
     pg, ids = page
@@ -1251,7 +1263,7 @@ def test_no_sheet_says_box_breakout_or_palette(page):
         assert not boxy, (idx, boxy)
         assert not _generic_breakout(texts), (idx, _generic_breakout(texts))
         assert not [t for t in texts if 'palette' in t.lower()], (idx, texts)
-        assert not [t for t in texts if re.search(r'\btails?\b', t.lower())], (idx, texts)
+        assert not [t for t in texts if re.search(r'\btails?\b', t.lower()) and not TAIL_CABLE.search(t)], (idx, texts)
     distro = _render(pg, SHOW, DISTRO)['texts']
     i = distro.index('2 MULTI 208')
     assert distro[i + 1] == 'NAME' and distro[i + 2] == 'TYPE' and 'SR 1' in distro and 'SR 2' in distro
@@ -3103,10 +3115,10 @@ def test_smoke_live_show_b(page):
     assert 'CIRCUITS' in texts and 'FACTS' in texts and 'CABLES THIS SCREEN' in texts
     bands = _bands(texts)
     assert bands == [
-        "SR1 · Multi 208 · 125' · 6 circuits",
-        "SR2 · Multi 208 · 100' · 5 circuits",
-        "SR3 · Multi 208 · 125' · 6 circuits",
-        "SR4 · Multi 208 · 100' · 5 circuits",
+        "SR1 · Multi 208 TRUE1 breakout · 125' · 6 circuits",
+        "SR2 · Multi 208 TRUE1 breakout · 100' · 5 circuits",
+        "SR3 · Multi 208 TRUE1 breakout · 125' · 6 circuits",
+        "SR4 · Multi 208 TRUE1 breakout · 100' · 5 circuits",
     ]
     assert not [t for t in texts if 'home run' in t.lower()]
     assert len([t for t in texts if re.fullmatch(r'SR[1-4]-\d', t)]) == 22
@@ -3118,7 +3130,7 @@ def test_smoke_live_show_b(page):
     assert ["SR1 · 125'", "SR2 · 100'", "SR3 · 125'", "SR4 · 100'"] == [t for t in main['texts'] if re.fullmatch(r"SR\d · \d+'", t)]
     # the map: every label, and the typed cables as tags (the screen's switch is on);
     # no screen-name plate over them - the title block names the screen
-    assert _on_map(main['mapTexts'], 'SR1-1') and "10' True1" in main['mapTexts'], main['mapTexts'][:20]
+    assert _on_map(main['mapTexts'], 'SR1-1') and "10' TRUE1" in main['mapTexts'], main['mapTexts'][:20]
     assert not _on_map(main['mapTexts'], 'SR - MAIN')
     # the band rule: every band is followed straight by its headings and
     # then its first circuit (2026-09-26: the band above the headings)
@@ -3159,7 +3171,7 @@ def test_smoke_live_show_b(page):
     i = ret.index('SHARED CIRCUITS')
     assert ret[i + 4:i + 4 + 15:3] == ['SR5-1', 'SR5-2', 'SR5-3', 'SR5-4', 'SR5-5']
     assert ret.count('2fer') == 5
-    assert "SR5 · Multi 208 · 125' · 6 circuits" in ret
+    assert "SR5 · Multi 208 TRUE1 breakout · 125' · 6 circuits" in ret
     dpage = _render(pg, SHOW, 'SR - MAIN - Data - Front View')
     assert not _on_map(dpage['mapTexts'], 'SR - MAIN')
     _title_block(dpage['texts'], 'SR - MAIN · DATA · FRONT VIEW', '2.3', show=project['name'])
@@ -3405,7 +3417,7 @@ def test_the_fill_picks_the_layout_that_covers_most(page):
     # the bands and the rows say what the wall is
     texts = tabloid['texts']
     bands = _bands(texts)
-    assert bands == ["SR1 · Multi 208 · 125' · 6 circuits", "SR2 · Multi 208 · 100' · 3 circuits"], bands
+    assert bands == ["SR1 · Multi 208 TRUE1 breakout · 125' · 6 circuits", "SR2 · Multi 208 TRUE1 breakout · 100' · 3 circuits"], bands
     assert len([t for t in texts if re.fullmatch(r'SR[12]-\d', t)]) == 9
     # the record: the tables' text at base x s, the rulers and brackets at
     # their own sizes, the title block at its own

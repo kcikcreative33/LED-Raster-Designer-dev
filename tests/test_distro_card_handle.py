@@ -210,7 +210,7 @@ def test_types_sum_per_type_and_flow_beside_the_caption(page):
         out = chips(pg, 'd1')
         assert [(c['name'], c['sub']) for c in out] == [
             ('Socapex 208V', '× 2'), ('L21-30 208V', '× 1'), ('Edison', '× 6'),
-            ('True1 208V', '× 6 · paired')], out
+            ('TRUE1 208V', '× 6 · paired')], out
         assert out[0]['group'] == ['face:r1', 'face:r3'], out
         assert out[2]['group'] == ['face:r4', 'face:r5'], out
         tops = pg.evaluate("""() => [...document.querySelectorAll(

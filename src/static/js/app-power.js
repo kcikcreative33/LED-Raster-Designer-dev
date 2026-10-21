@@ -1302,7 +1302,7 @@ class _Power {
     // reads the size through socaBoxSize below, never the literal 6.
     getPowerBreakoutTypes() {
         return [
-            { id: 'soca-true1', name: 'Multi → True1', connector: 'True1', boxSize: 6, breakoutItem: 'Multi breakouts → True1' },
+            { id: 'soca-true1', name: 'Multi → TRUE1', connector: 'TRUE1', boxSize: 6, breakoutItem: 'Multi breakouts → TRUE1' },
             { id: 'soca-powercon', name: 'Multi → powerCON', connector: 'powerCON', boxSize: 6, breakoutItem: 'Multi breakouts → powerCON' },
             { id: 'soca-edison', name: 'Multi → Edison (110V)', connector: 'Edison', boxSize: 6, breakoutItem: 'Multi breakouts → Edison', tailItem: 'Edison → panels' },
             { id: 'soca-l620', name: 'Multi → L6-20', connector: 'L6-20', boxSize: 6, breakoutItem: 'Multi breakouts → L6-20', tailItem: 'L6-20 → panels' },
@@ -1311,7 +1311,7 @@ class _Power {
             // True1 or powerCON - a leg-PAIR circuit per tail, never a
             // 6-circuit soca. It hangs on a distro number like a multi
             // does, with 3 tails.
-            { id: 'l2130-true1', name: 'L21-30 (3 × 208V) → True1', connector: 'True1', boxSize: 3, feedLegA: 30, breakoutItem: 'L21-30 breakouts → True1' },
+            { id: 'l2130-true1', name: 'L21-30 (3 × 208V) → TRUE1', connector: 'TRUE1', boxSize: 3, feedLegA: 30, breakoutItem: 'L21-30 breakouts → TRUE1' },
             { id: 'l2130-powercon', name: 'L21-30 (3 × 208V) → powerCON', connector: 'powerCON', boxSize: 3, feedLegA: 30, breakoutItem: 'L21-30 breakouts → powerCON' }
         ];
     }
@@ -1362,6 +1362,44 @@ class _Power {
         const stored = types.find(t => t.id === (layer && layer.powerBreakoutType));
         if (stored && this._breakoutEligible(stored, layer.powerVoltage)) return stored;
         return this._preferredBreakoutFor(layer && layer.powerVoltage);
+    }
+
+    // ---- the panel input --------------------------------------------------
+    //
+    // Panels take power in on TRUE1 or powerCON and nothing else (owner,
+    // 2026-10-21). A TRUE1 or powerCON breakout IS the panel input; an
+    // Edison or L6-20 breakout is not, so those screens carry their own
+    // choice, layer.powerPanelInput ('true1' / 'powercon'; absent reads
+    // TRUE1, so a show from before it reads as it always did). The
+    // jumpers, the splitters and the tails follow it.
+    getPanelInputTypes() {
+        return [{ id: 'true1', name: 'TRUE1' }, { id: 'powercon', name: 'powerCON' }];
+    }
+
+    // Whether a breakout leaves the panel input to the screen.
+    breakoutHasPanelInputChoice(bt) {
+        const id = bt && bt.id;
+        return id === 'soca-edison' || id === 'soca-l620';
+    }
+
+    // The panel input in force on a screen: { id, name }.
+    panelInput(layer) {
+        const types = this.getPanelInputTypes();
+        const bt = layer ? this.getPowerBreakout(layer) : null;
+        if (bt && !this.breakoutHasPanelInputChoice(bt)) {
+            const own = types.find(t => t.id === this._cableConnectorId(bt.connector));
+            if (own) return own;
+        }
+        return types.find(t => t.id === (layer && layer.powerPanelInput)) || types[0];
+    }
+
+    // The type of a cable that runs straight to the panels off a distro
+    // outlet (a direct output): the panel input alone where the plug is
+    // already that, else both ends, "CEE 16A → TRUE1".
+    directCableType(plugName, layer) {
+        const input = this.panelInput(layer).name;
+        const plug = String(plugName || '').trim();
+        return !plug || plug === input ? input : `${plug} → ${input}`;
     }
 
     // The store's normalizer (user ruling, 2026-09-22: a screen always
@@ -1468,7 +1506,7 @@ class _Power {
         const id = String(type && type.id);
         if (id.startsWith('l2130-')) return `Not available ${at} — L21-30 is 208V only.`;
         if (id === 'soca-edison') return `Not available ${at} — Edison is for screens up to 120V.`;
-        return `Not available ${at} — a screen up to 120V runs Multi → True1, powerCON or Edison.`;
+        return `Not available ${at} — a screen up to 120V runs Multi → TRUE1, powerCON or Edison.`;
     }
 
     // The voltage CLASS a screen belongs to for distro matching, as a
@@ -1576,10 +1614,10 @@ class _Power {
             };
         };
         return [
-            { id: 'soca208', name: 'Multi 208', sub: 'True1 / powerCON',
+            { id: 'soca208', name: 'Multi 208', sub: 'TRUE1 / powerCON',
               glyph: 'soca', faces: ['true1', 'powercon'], volts: [208],
               breakouts: ['soca-true1', 'soca-powercon'], badge: 'MULTI 208' },
-            { id: 'soca120', name: 'Multi 120', sub: 'Edison / True1 / powerCON',
+            { id: 'soca120', name: 'Multi 120', sub: 'Edison / TRUE1 / powerCON',
               glyph: 'soca', faces: ['edison', 'true1', 'powercon'], volts: [110, 120],
               breakouts: ['soca-edison', 'soca-true1', 'soca-powercon'], badge: 'MULTI 120' },
             // voltsExact: the L21-30 is documented at 208V and nowhere
@@ -1800,18 +1838,22 @@ class _Power {
     // cables with its label overrides: cables are programming.
 
     // The connectors a cable can be typed as - the breakout table's own
-    // connector names, once each, in table order. Ids are the plug chips'
-    // face ids (true1 / powercon / edison / l620), so the select's value
-    // and the OUTPUTS row's faces name the same thing.
+    // connector names, then every distro face connector's cable (CEE 16A,
+    // Schuko, stage pin...), once each, in table order. Ids are the plug
+    // chips' face ids (true1 / powercon / edison / l620), so the select's
+    // value and the OUTPUTS row's faces name the same thing.
     getPowerCableConnectors() {
         const seen = new Set();
         const out = [];
-        this.getPowerBreakoutTypes().forEach(bt => {
-            const id = this._cableConnectorId(bt.connector);
+        const add = (name) => {
+            const id = this._cableConnectorId(name);
             if (!id || seen.has(id)) return;
             seen.add(id);
-            out.push({ id, name: bt.connector });
-        });
+            out.push({ id, name });
+        };
+        this.getPowerBreakoutTypes().forEach(bt => add(bt.connector));
+        const face = typeof this.distroConnectors === 'function' ? this.distroConnectors() : [];
+        face.forEach(c => { if (c && c.kind === 'direct') add(c.cable); });
         return out;
     }
 
@@ -1833,7 +1875,8 @@ class _Power {
     // Edison on a spare Multi 120 (its list leads with Edison), True1 on
     // a spare Multi 208 or L21-30 - never the breakout catalog's order,
     // which would read True1 for every spare. Off any distro the screen's
-    // own breakout is the whole answer. Returns a connector id.
+    // own breakout is the whole answer. A DIRECT output has no breakout:
+    // its tail is the outlet itself. Returns a connector id.
     boxTailConnector(d, number, layer) {
         const bts = this.getPowerBreakoutTypes();
         const own = layer ? this.getPowerBreakout(layer) : null;
@@ -1841,6 +1884,9 @@ class _Power {
             return this._cableConnectorId((own || bts[0]).connector);
         }
         const type = this.distroBoxType(d, number).type;
+        if (type && type.face && type.kind === 'direct' && type.cable) {
+            return this._cableConnectorId(type.cable);
+        }
         const ids = (type && type.breakouts) || [];
         const first = ids.map(id => bts.find(b => b.id === id)).find(Boolean);
         const pick = (own && ids.includes(own.id))
@@ -1866,7 +1912,10 @@ class _Power {
     // The stored cable on one circuit, resolved for printing: null when
     // the circuit has none, else { ft, connector (the stored id or null),
     // id (the id in force), name, text } - text is what the chip corner,
-    // the canvas tag and the paperwork all print ("10' True1").
+    // the canvas tag and the paperwork all print ("10' TRUE1"). On a
+    // DIRECT output the cable runs outlet to panel, so `name` is its type
+    // (directCableType): "CEE 16A → TRUE1", or "TRUE1" where both ends
+    // are TRUE1.
     powerCircuitCable(layer, circuitNum) {
         const store = layer && layer.powerCircuitCables;
         const rec = store && store[circuitNum];
@@ -1874,11 +1923,11 @@ class _Power {
         if (!rec || ft === null) return null;
         let id = rec.connector && this.cableConnectorName(rec.connector)
             ? rec.connector : null;
-        if (!id) {
-            const box = this._circuitBox(layer, circuitNum);
-            id = this.boxTailConnector(box.d, box.number, layer);
-        }
-        const name = this.cableConnectorName(id) || '';
+        const box = this._circuitBox(layer, circuitNum);
+        if (!id) id = this.boxTailConnector(box.d, box.number, layer);
+        let name = this.cableConnectorName(id) || '';
+        const fbox = box.d && typeof this.faceBox === 'function' ? this.faceBox(box.d, box.number) : null;
+        if (fbox && fbox.kind === 'direct') name = this.directCableType(name, layer);
         return {
             ft, connector: rec.connector || null, id, name,
             text: this.cableText(ft, name, 'circuit'),
@@ -2636,6 +2685,23 @@ class _Power {
                 sel.value = this.getPowerBreakout(layer).id;
             }
         }
+        // The panel input: only where the breakout leaves it to the screen
+        // (Edison, L6-20).
+        const inp = document.getElementById('power-panel-input');
+        const inpRow = document.getElementById('power-panel-input-row');
+        if (inp) {
+            if (!inp.options.length) {
+                this.getPanelInputTypes().forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t.id;
+                    opt.textContent = t.name;
+                    inp.appendChild(opt);
+                });
+            }
+            const choice = !!(screen && this.breakoutHasPanelInputChoice(this.getPowerBreakout(layer)));
+            if (inpRow) inpRow.style.display = choice ? 'flex' : 'none';
+            if (screen && inp !== document.activeElement) inp.value = this.panelInput(layer).id;
+        }
         if (brk && brk !== document.activeElement) {
             // OFF unless explicitly ticked (=== true, matching the canvas
             // gate): brackets started life on by default and the user asked
@@ -2686,6 +2752,27 @@ class _Power {
             }
             write.forEach(l => { l.powerBreakoutType = type.id; });
             this.updateLayers(write, true, 'Change Power Breakout');
+            this.refreshSocaRuns();
+        });
+        // The panel input, on every selected screen whose breakout leaves
+        // it to the screen; a locked one keeps its own and is named.
+        const inp = document.getElementById('power-panel-input');
+        if (inp) inp.addEventListener('change', () => {
+            const layer = this.currentLayer;
+            if (!layer) return;
+            const want = this.getPanelInputTypes().find(t => t.id === inp.value);
+            if (!want) return;
+            const all = this._socaPanelTargets(layer)
+                .filter(l => this.breakoutHasPanelInputChoice(this.getPowerBreakout(l)));
+            this._showLockedError(all.filter(l => l.locked && this.panelInput(l).id !== want.id));
+            const write = all.filter(l => !l.locked && this.panelInput(l).id !== want.id);
+            if (!write.length) {
+                inp.value = this.panelInput(layer).id;
+                return;
+            }
+            write.forEach(l => { l.powerPanelInput = want.id; });
+            this.updateLayers(write, true, 'Change Panel Input');
+            if (window.canvasRenderer) window.canvasRenderer.render();
         });
         const brk = document.getElementById('show-soca-brackets');
         if (brk) brk.addEventListener('change', () => {

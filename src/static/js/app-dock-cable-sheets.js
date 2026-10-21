@@ -161,8 +161,12 @@ class _DockCableSheets {
                 sel.className = 'hw-dock-cable-connector';
                 sel.dataset.lrdField =
                     `power-cable-connector-${layer.id}-${h.circuit}`;
-                const follows = this.cableConnectorName(
+                // what a blank pick prints: the box's tail connector, or on a
+                // direct output the cable outlet to panel ("Edison → TRUE1")
+                let follows = this.cableConnectorName(
                     this.boxTailConnector(d, n, layer)) || '';
+                const direct = typeof this.faceBox === 'function' ? this.faceBox(d, n) : null;
+                if (direct && direct.kind === 'direct') follows = this.directCableType(follows, layer);
                 const blank = document.createElement('option');
                 blank.value = '';
                 blank.textContent = `follows ${typeName} (${follows})`;

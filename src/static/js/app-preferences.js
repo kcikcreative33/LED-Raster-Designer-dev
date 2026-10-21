@@ -6,6 +6,10 @@
 import { LEDRasterApp } from './app-core.js';
 import { sendClientLog } from './helpers.js';
 
+// The single power jumper name shipped before the per-connector names: a
+// record still holding it never customised it, so nothing carries over.
+const LEGACY_POWER_JUMP_NAME = 'Tru-1 Power Jump';
+
 // The six circuit colours that ship, A to F: the Power tab's "Circuit
 // colors" default, and what any position of a stored set falls back to.
 const SHIPPED_CIRCUIT_COLORS = ['#BC382F', '#CC6B30', '#D2E94D', '#2CF82B', '#2145DC', '#7414F5'];
@@ -138,7 +142,11 @@ class _Preferences {
             // long jumper rounds up to are lists, ascending.
             pullRev: '1.0',
             cableUnit: 'ft',
-            powerJumpName: 'Tru-1 Power Jump',
+            // One power jumper name per panel input (owner, 2026-10-21);
+            // the old single powerJumpName, where customised, reads as the
+            // TRUE1 one (getPreferences).
+            powerJumpNameTrue1: 'TRUE1 Power Jump',
+            powerJumpNamePowercon: 'powerCON Power Jump',
             powerJumpLength: 6,
             powerJumpLengthH: 6,
             powerJumpLengthM: 2,
@@ -233,6 +241,13 @@ class _Preferences {
                 if (saved && saved[h] === undefined && saved[v] !== undefined) out[h] = saved[v];
             }
         }
+        // A record from before the per-connector jumper names kept one
+        // powerJumpName: customised, it carries over to TRUE1 only.
+        if (saved && saved.powerJumpNameTrue1 === undefined) {
+            const legacy = String(saved.powerJumpName == null ? '' : saved.powerJumpName).trim();
+            if (legacy && legacy !== LEGACY_POWER_JUMP_NAME) out.powerJumpNameTrue1 = legacy;
+        }
+        delete out.powerJumpName;
         // A record from before the system picker (1.5) kept a voltage and
         // a phase; it reads as the system they map to.
         if (saved && saved.distroSystem === undefined
@@ -767,7 +782,8 @@ class _Preferences {
         setVal('pref-pull-engineer', prefs.engineerName);
         setVal('pref-pull-rev', prefs.pullRev);
         setVal('pref-cable-unit', prefs.cableUnit === 'm' ? 'm' : 'ft');
-        setVal('pref-pull-power-jump-name', prefs.powerJumpName);
+        setVal('pref-pull-power-jump-name-true1', prefs.powerJumpNameTrue1);
+        setVal('pref-pull-power-jump-name-powercon', prefs.powerJumpNamePowercon);
         setVal('pref-pull-power-jump-length', prefs.powerJumpLength);
         setVal('pref-pull-power-jump-length-h', prefs.powerJumpLengthH);
         setVal('pref-pull-power-jump-length-m', prefs.powerJumpLengthM);
@@ -939,7 +955,8 @@ class _Preferences {
             // Pull sheet & cables
             engineerName: readText('pref-pull-engineer', stored.engineerName != null ? stored.engineerName : defaults.engineerName),
             pullRev: readStr('pref-pull-rev', defaults.pullRev),
-            powerJumpName: readStr('pref-pull-power-jump-name', defaults.powerJumpName),
+            powerJumpNameTrue1: readStr('pref-pull-power-jump-name-true1', defaults.powerJumpNameTrue1),
+            powerJumpNamePowercon: readStr('pref-pull-power-jump-name-powercon', defaults.powerJumpNamePowercon),
             dataJumpName: readStr('pref-pull-data-jump-name', defaults.dataJumpName),
             // The unit a new show starts in (each show keeps its own).
             cableUnit: (dialogOpen ? readStr('pref-cable-unit', stored.cableUnit) : stored.cableUnit) === 'm' ? 'm' : 'ft',

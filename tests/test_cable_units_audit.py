@@ -95,7 +95,7 @@ def test_a_preferences_save_never_rounds_a_ladder(page, unit):
 
 
 # The edits' state: every key and added length, the STALE keys, and the
-# exported Tru-1 rows that carry a note.
+# exported TRUE1 rows that carry a note.
 EDIT_STATE_JS = """() => {
     const app = window.app;
     app._circuitTailCache = null;
@@ -119,14 +119,14 @@ EDIT_SEED_JS = """([ft, gone]) => {
     app.updateLayers([wall]);
     app._circuitTailCache = null;
     const list = app.buildPullList();
-    const pos = list.positions.find(p => p.rows.some(r => r.type === 'Tru-1'
+    const pos = list.positions.find(p => p.rows.some(r => r.type === 'TRUE1'
         && r.length === app.cableLengthText(ft)));
-    const row = pos.rows.find(r => r.type === 'Tru-1' && r.length === app.cableLengthText(ft));
+    const row = pos.rows.find(r => r.type === 'TRUE1' && r.length === app.cableLengthText(ft));
     const posKey = app.pullPositionKey(pos);
     app.setPullSheetRowEdit(posKey, app.pullRowKey(row), {notes: 'spare'}, row);
-    app.setPullSheetRowEdit(posKey, 'Tru-1|' + app.cableLengthText(gone), {qty: 9});
+    app.setPullSheetRowEdit(posKey, 'TRUE1|' + app.cableLengthText(gone), {qty: 9});
     app._pullPositionEdits(posKey, true).added.push(
-        {type: 'Spare Tru-1', length: app.cableLengthText(ft), qty: 1, label: '', notes: ''});
+        {type: 'Spare TRUE1', length: app.cableLengthText(ft), qty: 1, label: '', notes: ''});
     return app.pullRowKey(row);
 }"""
 
@@ -139,23 +139,23 @@ def test_m_to_ft_to_m_keeps_every_edit_key(page):
     pg, errors = page
     _seed(pg, 'm')
     key = pg.evaluate(EDIT_SEED_JS, [7.62, 9.99])
-    assert key == 'Tru-1|7.62 m'
+    assert key == 'TRUE1|7.62 m'
     start = pg.evaluate(EDIT_STATE_JS)
-    assert sorted(start['keys']) == ['Tru-1|7.62 m', 'Tru-1|9.99 m'], start
-    assert start['stale'] == ['Tru-1|9.99 m'] and start['exported'] == [['Tru-1', '7.62 m']], start
+    assert sorted(start['keys']) == ['TRUE1|7.62 m', 'TRUE1|9.99 m'], start
+    assert start['stale'] == ['TRUE1|9.99 m'] and start['exported'] == [['TRUE1', '7.62 m']], start
 
     pg.evaluate("() => window.app.setCableUnit('ft', false)")
     feet = pg.evaluate(EDIT_STATE_JS)
-    assert sorted(feet['keys']) == ["Tru-1|10'", "Tru-1|7.6'"], feet
-    assert feet['added'] == ["7.6'"] and feet['stale'] == ["Tru-1|10'"], feet
-    assert feet['exported'] == [['Tru-1', "7.6'"]], feet
+    assert sorted(feet['keys']) == ["TRUE1|10'", "TRUE1|7.6'"], feet
+    assert feet['added'] == ["7.6'"] and feet['stale'] == ["TRUE1|10'"], feet
+    assert feet['exported'] == [['TRUE1', "7.6'"]], feet
 
     pg.evaluate("() => window.app.setCableUnit('m', false)")
     back = pg.evaluate(EDIT_STATE_JS)
     assert sorted(back['keys']) == sorted(start['keys']), back
     assert back['added'] == ['7.62 m'], back
-    assert back['stale'] == ['Tru-1|9.99 m'], back
-    assert back['exported'] == [['Tru-1', '7.62 m']], back
+    assert back['stale'] == ['TRUE1|9.99 m'], back
+    assert back['exported'] == [['TRUE1', '7.62 m']], back
     pg.wait_for_timeout(500)
     served = pg.evaluate("async () => (await (await fetch('/api/project')).json()).pullSheetEdits")
     rows = [r['key'] for p in served['positions'].values() for r in p['rows']]
@@ -171,22 +171,22 @@ def test_ft_to_m_to_ft_keeps_every_edit_key(page):
     pg, errors = page
     _seed(pg, 'ft')
     key = pg.evaluate(EDIT_SEED_JS, [7.64, 12.5])
-    assert key == "Tru-1|7.6'"
+    assert key == "TRUE1|7.6'"
     start = pg.evaluate(EDIT_STATE_JS)
-    assert start['exported'] == [['Tru-1', "7.6'"]], start
+    assert start['exported'] == [['TRUE1', "7.6'"]], start
 
     pg.evaluate("() => window.app.setCableUnit('m', false)")
     meters = pg.evaluate(EDIT_STATE_JS)
-    assert sorted(meters['keys']) == ['Tru-1|12.5 m', 'Tru-1|7.64 m'], meters
-    assert meters['stale'] == ['Tru-1|12.5 m'], meters
-    assert meters['exported'] == [['Tru-1', '7.64 m']], meters
+    assert sorted(meters['keys']) == ['TRUE1|12.5 m', 'TRUE1|7.64 m'], meters
+    assert meters['stale'] == ['TRUE1|12.5 m'], meters
+    assert meters['exported'] == [['TRUE1', '7.64 m']], meters
 
     pg.evaluate("() => window.app.setCableUnit('ft', false)")
     back = pg.evaluate(EDIT_STATE_JS)
     assert sorted(back['keys']) == sorted(start['keys']), back
     assert back['added'] == start['added'] == ["7.6'"], back
-    assert back['stale'] == ["Tru-1|12.5'"], back
-    assert back['exported'] == [['Tru-1', "7.6'"]], back
+    assert back['stale'] == ["TRUE1|12.5'"], back
+    assert back['exported'] == [['TRUE1', "7.6'"]], back
     assert errors == [], errors
 
 
@@ -246,7 +246,7 @@ def test_the_unit_and_the_edits_post_on_one_queue(page):
             }
             return real(url, opts);
         };
-        const edits = (note) => ({positions: {q: {rows: [{key: "Tru-1|3'", notes: note}], added: []}}});
+        const edits = (note) => ({positions: {q: {rows: [{key: "TRUE1|3'", notes: note}], added: []}}});
         try {
             app.project.pullSheetEdits = edits('A');
             const p1 = app._persistCableUnit(true);

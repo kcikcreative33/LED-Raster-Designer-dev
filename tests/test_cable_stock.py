@@ -303,21 +303,21 @@ TAG_TEXTS_JS = """(exportMode) => {
 
 def test_power_lengths_are_written_as_pieces_everywhere(page):
     """With 25 / 50 / 100 on hand: multi 1's typed 125 home run and circuit
-    1's 60 cable are written 100'+25' and 50'+25' True1 - the chip, the map
+    1's 60 cable are written 100'+25' and 50'+25' TRUE1 - the chip, the map
     tag, the exported map's bracket, the pull sheet (which counts the
-    pieces: a 100' and a 25' Multi, a 50' and two 25' Tru-1 with circuit
+    pieces: a 100' and a 25' Multi, a 50' and two 25' TRUE1 with circuit
     2's own 25), the workbook, the binder - while the multi's own field
     still holds 125."""
     pg, errors = page
     ids = _power_seed(pg, FEET)
     cable = pg.evaluate("([id]) => window.app.powerCircuitCable(window.app.project.layers.find(l => l.id === id), 1)",
                         [ids['id']])
-    assert cable['text'] == "50'+25' True1" and cable['ft'] == 60, cable
+    assert cable['text'] == "50'+25' TRUE1" and cable['ft'] == 60, cable
 
     pull = pg.evaluate(PULL_ROWS_JS)
     multis = sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'Multi')
     assert multis == [("100'", 1), ("25'", 1)], pull['totals']
-    tru = sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'Tru-1')
+    tru = sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'TRUE1')
     assert tru == [("25'", 2), ("50'", 1)], pull['totals']
     assert not [r for r in pull['rows'] if '+' in str(r[1])], 'the sheet lists pieces, never sums'
     # the pieces keep the row's label
@@ -326,7 +326,8 @@ def test_power_lengths_are_written_as_pieces_everywhere(page):
     assert sorted((r[1], r[2]) for r in pull['hardware'] if r[0] == 'Multi') == [("100'", 1), ("25'", 1)]
 
     tags = pg.evaluate(TAG_TEXTS_JS, False)
-    assert "50'+25' True1" in tags and "25' True1" in tags, tags
+    # a tag too wide for its disc wraps under its length (test_cable_tag_wrap)
+    assert "50'+25' TRUE1" in ' '.join(tags) and "25' TRUE1" in tags, tags
     exported = pg.evaluate(TAG_TEXTS_JS, True)
     assert any("SR1 · 100'+25'" in t for t in exported), [t for t in exported if 'SR1' in t]
 
@@ -348,7 +349,7 @@ def test_power_lengths_are_written_as_pieces_everywhere(page):
     col = pull_sheet.BLOCK_COLS[0]
     block = [tuple(ws.cell(r, col + i).value for i in range(4)) for r in range(7, 40)]
     assert ('Multi', "100'", 1, 'SR 1') in block and ('Multi', "25'", 1, 'SR 1') in block, block
-    assert ('Tru-1', "50'", 1) in [b[:3] for b in block], block
+    assert ('TRUE1', "50'", 1) in [b[:3] for b in block], block
     assert not [b for b in block if b[1] and '+' in str(b[1])], block
 
     # the binder's power sheet: the circuits table and the multi's band
@@ -361,9 +362,9 @@ def test_power_lengths_are_written_as_pieces_everywhere(page):
         plan.forEach((p, i) => { out.push(...app.renderBinderPage(opts, i).texts); });
         return out;
     }""")
-    assert "50'+25' True1" in texts, [t for t in texts if 'True1' in t]
+    assert "50'+25' TRUE1" in texts, [t for t in texts if 'TRUE1' in t]
     assert any("100'+25'" in t and 'SR1' in t for t in texts), [t for t in texts if 'SR1' in t]
-    assert not [t for t in texts if "125'" in t or "60' True1" in t], [t for t in texts if "125'" in t]
+    assert not [t for t in texts if "125'" in t or "60' TRUE1" in t], [t for t in texts if "125'" in t]
 
     # the tray: the multi's field keeps what was typed, its tooltip says how
     # it is pulled; the circuit's sheet field the same
@@ -391,10 +392,10 @@ def test_an_old_show_without_a_stock_reads_as_before(page):
         ids = _power_seed(pg, stock)
         pull = pg.evaluate(PULL_ROWS_JS)
         assert sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'Multi') == [("125'", 1)], pull
-        assert sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'Tru-1') == [("25'", 1), ("60'", 1)]
+        assert sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'TRUE1') == [("25'", 1), ("60'", 1)]
         cable = pg.evaluate("([id]) => window.app.powerCircuitCable(window.app.project.layers.find(l => l.id === id), 1).text",
                             [ids['id']])
-        assert cable == "60' True1"
+        assert cable == "60' TRUE1"
     assert errors == [], errors
 
 

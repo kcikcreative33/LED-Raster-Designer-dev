@@ -13,10 +13,14 @@
 //     a property of the box and is said once - one `Multi` row per box on a
 //     distro, whatever it feeds, two plan entries on one (distro, number)
 //     being one box.
-//   * a circuit's cable is the connector's NAME as the type (`Tru-1` for
-//     True1 - the sheet's spelling - else powerCON / Edison / L6-20) plus
-//     its length; a 2fer / 3fer is `<connector> 2fer` EA; a box on a distro
-//     takes one `<connector> Breakout` EA.
+//   * a circuit's cable is the connector's NAME as the type (TRUE1 /
+//     powerCON / Edison / L6-20) plus its length; a 2fer / 3fer is
+//     `<panel input> 2fer` EA - the panels' side, TRUE1 or powerCON; a box
+//     on a distro takes one `<connector> Breakout` EA per connector its
+//     screens break out to. A circuit off an Edison or L6-20 breakout
+//     takes one `Edison → TRUE1 tail` EA (2026-10-21). A DIRECT output's
+//     one cable is the panel input, or both ends where the outlet is
+//     another plug ("CEE 16A → TRUE1"); its length is its own column.
 //   * data: `Ether-con` + length for a loose CAT port cable, one
 //     `Ether-con Snake` row per snake (qty 1, "6 channel" in Notes - the
 //     type already says Snake, so snakeSizeText does not say it again -
@@ -51,7 +55,9 @@
 //     own row under the jumper's name ("Data Jump 1'" x 200, "Data Jump 6'"
 //     x 5); a short link on a screen whose length for that direction is
 //     blank counts no cable. The NAMES are per project (project.pullSheet),
-//     defaults "Data Jump" and "Tru-1 Power Jump".
+//     defaults "Data Jump", and one power jumper per panel input,
+//     "TRUE1 Power Jump" and "powerCON Power Jump", each link named by the
+//     panel input of the cabinet's own screen (2026-10-21).
 //   * a breakout box's FIBER is its links' CABLES (2026-09-25,
 //     app-fiber.js): each TAC, MTP or opticalCON is ONE row however many
 //     boxes' links take it - "TAC 12 · ST", "MTP 24", "opticalCON QUAD"
@@ -142,13 +148,24 @@ import { sendClientLog } from './helpers.js';
 // read by nothing.
 const PULL_SHEET_DEFAULTS = {
     dataJumpName: 'Data Jump',
-    powerJumpName: 'Tru-1 Power Jump',
+    powerJumpNameTrue1: 'TRUE1 Power Jump',
+    powerJumpNamePowercon: 'powerCON Power Jump',
     rev: '1.0',
 };
 
-// The sheet's spelling of each power connector. True1 is the only one the
-// GEAR LIST spells differently from the app.
-const POWER_CONNECTOR_SHEET_NAMES = { True1: 'Tru-1' };
+// The one power jumper name a project or a preference kept before the
+// per-connector names (2026-10-21). Customised, it carries over to TRUE1
+// only; still the shipped one, it carries nothing.
+const LEGACY_POWER_JUMP_NAME = 'Tru-1 Power Jump';
+
+// The sheet's spelling of each power connector: the app's own now
+// (2026-10-21, "TRUE1" and "powerCON" everywhere).
+const POWER_CONNECTOR_SHEET_NAMES = {};
+
+// The pull sheet spelled TRUE1 "Tru-1" until 2026-10-21, and older files
+// key their edits on it ("Tru-1|10'", "Tru-1 Breakout|EA"); such an edit
+// answers to the row under its TRUE1 name now (pullEditKey).
+const PULL_LEGACY_TRUE1 = 'Tru-1';
 
 // Brompton models as the pull sheet printed them until 2026-10-17 -
 // "Tessera XD", "Tessera SX40" - and as older files key their edits. The
@@ -171,12 +188,24 @@ class _PullList {
     getPullSheetDefaults() {
         const prefs = (typeof this.getPreferences === 'function') ? this.getPreferences() : {};
         const out = { ...PULL_SHEET_DEFAULTS };
-        const map = { rev: 'pullRev', powerJumpName: 'powerJumpName', dataJumpName: 'dataJumpName' };
+        const map = { rev: 'pullRev', powerJumpNameTrue1: 'powerJumpNameTrue1',
+                      powerJumpNamePowercon: 'powerJumpNamePowercon', dataJumpName: 'dataJumpName' };
         for (const k of Object.keys(map)) {
             const v = prefs[map[k]];
             if (v != null && String(v).trim()) out[k] = String(v).trim();
         }
+        if (!(prefs && prefs.powerJumpNameTrue1 != null)) {
+            const legacy = this._legacyPowerJumpName(prefs && prefs.powerJumpName);
+            if (legacy) out.powerJumpNameTrue1 = legacy;
+        }
         return out;
+    }
+
+    // The old single power jumper name where somebody customised it, else
+    // null: it carries over to TRUE1 only.
+    _legacyPowerJumpName(value) {
+        const v = String(value == null ? '' : value).trim();
+        return v && v !== LEGACY_POWER_JUMP_NAME ? v : null;
     }
 
     // The project's pull-sheet settings, defaults filled in. Never returns
@@ -184,11 +213,21 @@ class _PullList {
     getPullSheetSettings() {
         const stored = (this.project && this.project.pullSheet) || {};
         const out = this.getPullSheetDefaults();
+        if (stored.powerJumpNameTrue1 == null) {
+            const legacy = this._legacyPowerJumpName(stored.powerJumpName);
+            if (legacy) out.powerJumpNameTrue1 = legacy;
+        }
         for (const k of Object.keys(PULL_SHEET_DEFAULTS)) {
             if (stored[k] === undefined || stored[k] === null) continue;
             out[k] = stored[k];
         }
         return out;
+    }
+
+    // The power jumper's name for a panel input id ('true1' / 'powercon').
+    pullPowerJumpName(settings, inputId) {
+        const s = settings || this.getPullSheetSettings();
+        return inputId === 'powercon' ? s.powerJumpNamePowercon : s.powerJumpNameTrue1;
     }
 
     // One setting, one history entry, one project POST (a blank falls
@@ -470,7 +509,7 @@ class _PullList {
     }
 
     // Natural compare for the sort: numbers inside a name read as numbers
-    // (3G SDI before 12G SDI, Tru-1 2fer before Tru-1 3fer), case-blind.
+    // (3G SDI before 12G SDI, TRUE1 2fer before TRUE1 3fer), case-blind.
     _pullNaturalCompare(a, b) {
         const split = s => String(s || '').toLowerCase().match(/\d+|\D+/g) || [];
         const pa = split(a), pb = split(b);
@@ -787,6 +826,9 @@ class _PullList {
         // The DIRECT outputs among them (1.5): one circuit, one cable - not
         // a hole a multi plugs into, so the distro's "N way" never counts them.
         const directSeen = new Set();
+        // Each breakout a box takes: one per connector its screens break
+        // out to ("<box key>|<breakout type>").
+        const breakoutsSeen = new Set();
         const snakesSeen = new Set();
         // A row said once for several runs (a snake, a box's fiber) is
         // tagged with every screen those runs land on, whichever screen's
@@ -847,7 +889,7 @@ class _PullList {
         for (const base of bases) {
             for (const layer of base.layers) {
                 const scr = this._pullScreenList(layer, {
-                    settings, distroById, boxesSeen, directSeen, snakesSeen, fiberSeen, hw, saidOnce,
+                    settings, distroById, boxesSeen, directSeen, breakoutsSeen, snakesSeen, fiberSeen, hw, saidOnce,
                     distroFirstLayer, boxFirstLayer, procFirstLayer,
                 });
                 byScreen[layer.id] = scr;
@@ -1032,6 +1074,7 @@ class _PullList {
     _pullScreenList(layer, ctx) {
         const { settings, distroById, boxesSeen, snakesSeen, fiberSeen, hw } = ctx;
         const directSeen = ctx.directSeen || new Set();
+        const breakoutsSeen = ctx.breakoutsSeen || new Set();
         const distroFirstLayer = ctx.distroFirstLayer || new Map();
         const boxFirstLayer = ctx.boxFirstLayer || new Map();
         const procFirstLayer = ctx.procFirstLayer || new Map();
@@ -1089,14 +1132,18 @@ class _PullList {
         // the per-screen tallies alongside - app-jumpers.js's rule, per link.
         // A bucket per screen pair a link joins, so each jumper row knows
         // where its jumpers are; merged, the rows read as they always did.
+        // A power jumper is the panel input of the cabinet's OWN screen
+        // (link.la) - in a grouped wall that is the member, not the carrier
+        // - so each connector is a row of its own (2026-10-21).
         const countJumpers = (side, panels, layers, at, buckets) => {
             for (const link of this.jumperLinksOfRun(panels, layers, layer, side)) {
                 if (link.ft == null) continue;
                 out.jumpers[side]++;
                 out.jumperLengths[side][link.ft] = (out.jumperLengths[side][link.ft] || 0) + 1;
                 const ends = [...new Set([(link.la || layer).id, (link.lb || layer).id])];
-                const key = `${at || ''}\u0000${link.ft}\u0000${ends.join(',')}`;
-                const b = buckets.get(key) || { at, ft: link.ft, n: 0, on: ends, first: link.la || layer };
+                const conn = side === 'power' ? this.panelInput(link.la || layer).id : '';
+                const key = `${at || ''}\u0000${link.ft}\u0000${ends.join(',')}\u0000${conn}`;
+                const b = buckets.get(key) || { at, ft: link.ft, n: 0, on: ends, first: link.la || layer, conn };
                 b.n++;
                 buckets.set(key, b);
             }
@@ -1105,6 +1152,10 @@ class _PullList {
         // ---- power: boxes, breakouts, circuit cables, gangs, jumpers ----
         const breakout = this.getPowerBreakout(layer);
         const screenConn = this.pullPowerConnectorName(breakout.connector);
+        // the connector the panels take (TRUE1 / powerCON): the splitters
+        // and the tails are on the panels' side - a circuit's are its first
+        // cabinet's own screen's (a group member's, not the carrier's)
+        const inputOf = (c) => this.panelInput((c && c.layers && c.layers[0]) || layer);
         const plan = this.getSocaPlan(layer);
         const circuitOn = new Map(this.screenCircuits(layer).map(c => [c.num, onOf(c.panels, c.layers)]));
         const boxOn = new Map();    // box key -> the screens its circuits land on
@@ -1125,7 +1176,11 @@ class _PullList {
                     // output is one cable, a multi row its own kind.
                     kind: typed && typed.face ? typed.kind : 'multi',
                     connectorId: typed && typed.face ? typed.connectorId : null,
-                    cable: typed && typed.face ? typed.cable : null,
+                    // a direct output's cable runs outlet to panel: its type
+                    // names both ends where they differ (directCableType)
+                    cable: typed && typed.face
+                        ? (typed.kind === 'direct' ? this.directCableType(typed.cable, layer) : typed.cable)
+                        : null,
                     boxSize: typed ? Number(typed.boxSize) || 6 : null,
                     // the typed home run as a length: null when none, or
                     // not one in the show's unit (parseCableLength) - and
@@ -1186,10 +1241,29 @@ class _PullList {
             out.boxes.push(box);
             if (!box.distroId) continue;
             const seenKey = box.key;
-            if (boxesSeen.has(seenKey)) { box.shared = true; continue; }
-            boxesSeen.add(seenKey);
             const distroName = box.distro || '';
             const at = locationOf(distroById.get(box.distroId));
+            const isL2130 = String(box.typeId || '').startsWith('l2130')
+                || box.connectorId === 'l2130';
+            const isHarting = box.connectorId === 'harting';
+            const breakoutType = isL2130
+                ? `L21-30 ${box.connector} Breakout`
+                : (isHarting ? `Harting ${box.connector} Breakout` : `${box.connector} Breakout`);
+            if (boxesSeen.has(seenKey)) {
+                box.shared = true;
+                // The home run is said once; a screen breaking the same box
+                // out to another connector takes a breakout of its own
+                // (2026-10-21: one breakout row per connector).
+                const brkKey = `${seenKey}|${breakoutType}`;
+                if (box.kind !== 'direct' && !breakoutsSeen.has(brkKey)) {
+                    breakoutsSeen.add(brkKey);
+                    on = boxOn.get(box.key) || [layer.id];
+                    const b = row(breakoutType, 'EA', 1, `${distroName}${box.number}`, '', at);
+                    hw('distro', box.distroId, distroName).rows.push({ ...b });
+                }
+                continue;
+            }
+            boxesSeen.add(seenKey);
             if (!distroFirstLayer.has(String(box.distroId))) {
                 distroFirstLayer.set(String(box.distroId), layer.id);
             }
@@ -1211,15 +1285,10 @@ class _PullList {
                 hw('distro', box.distroId, distroName).rows.push({ ...r });
                 continue;
             }
-            const isL2130 = String(box.typeId || '').startsWith('l2130')
-                || box.connectorId === 'l2130';
-            const isHarting = box.connectorId === 'harting';
             const homeType = isL2130 ? 'L21-30' : (isHarting ? 'Harting 16E' : 'Multi');
             const r = row(homeType, this.pullCableLength(box.homeRun, 'multi'), 1, boxLabel,
                           box.homeRun ? '' : 'no length', at);
-            const breakoutType = isL2130
-                ? `L21-30 ${box.connector} Breakout`
-                : (isHarting ? `Harting ${box.connector} Breakout` : `${box.connector} Breakout`);
+            breakoutsSeen.add(`${seenKey}|${breakoutType}`);
             const b = row(breakoutType, 'EA', 1, boxLabel, '', at);
             const hrec = hw('distro', box.distroId, distroName);
             hrec.rows.push({ ...r }, { ...b });
@@ -1242,7 +1311,14 @@ class _PullList {
                     out.gangs.wider = out.gangs.wider || {};
                     out.gangs.wider[ways] = (out.gangs.wider[ways] || 0) + 1;
                 }
-                row(`${screenConn} ${ways}fer`, 'EA', 1, label, '', at);
+                row(`${inputOf(c).name} ${ways}fer`, 'EA', 1, label, '', at);
+            }
+            // An Edison or L6-20 breakout reaches the panels through a tail
+            // per circuit, "Edison → TRUE1 tail" (2026-10-21). A circuit on
+            // a direct output has no breakout: its one cable is the tail.
+            if (this.breakoutHasPanelInputChoice(breakout)
+                    && !this.directOutputCircuitCount(layer, c.num)) {
+                row(`${screenConn} → ${inputOf(c).name} tail`, 'EA', 1, label, '', at);
             }
             // Jumpers: every link of each run (branch) of the circuit.
             const runs = Array.isArray(c.branches) && c.branches.length ? c.branches : [c.panels];
@@ -1258,7 +1334,7 @@ class _PullList {
             const r = row(name, this.pullLengthText(ft), n, grouped ? first.name : layer.name, '', at);
             if (grouped) r.split = first.name;
         };
-        for (const b of powerJumps.values()) jumpRow(settings.powerJumpName, b);
+        for (const b of powerJumps.values()) jumpRow(this.pullPowerJumpName(settings, b.conn), b);
 
         // ---- data: port cables, snakes, extensions, backups, jumpers ----
         side = 'data';
@@ -1454,11 +1530,24 @@ class _PullList {
 
     // A stored edit's key as the row it answers to is keyed today: a key
     // whose type is a Brompton model under its old name ("Tessera
-    // XD|EA") reads as that model's row now ("XD|EA"). Every other key is
+    // XD|EA") reads as that model's row now ("XD|EA"), and one on a
+    // "Tru-1" row as its TRUE1 row ("Tru-1 Breakout|EA" is
+    // "TRUE1 Breakout|EA"; the old shipped jumper name "Tru-1 Power Jump"
+    // is the TRUE1 jumper's shipped one). Every other key is
     // itself. Nothing is rewritten on open - the stored key takes the new
     // spelling the next time somebody edits that row.
     pullEditKey(key) {
         const text = String(key == null ? '' : key);
+        // "Tru-1 ...|len" is the TRUE1 row of the same name now - unless
+        // it is a jumper name somebody typed, which still prints as typed
+        if (text.startsWith(PULL_LEGACY_TRUE1)
+                && /^(?:[ |]|$)/.test(text.slice(PULL_LEGACY_TRUE1.length))) {
+            const cut = text.indexOf('|');
+            const type = cut < 0 ? text : text.slice(0, cut);
+            if (type !== this.getPullSheetSettings().powerJumpNameTrue1) {
+                return `TRUE1${text.slice(PULL_LEGACY_TRUE1.length)}`;
+            }
+        }
         if (!text.startsWith(PULL_LEGACY_TYPE_PREFIX)) return text;
         const cut = text.indexOf('|');
         const type = cut < 0 ? text : text.slice(0, cut);
@@ -1919,7 +2008,8 @@ class _PullList {
             });
         };
         bind('export-pull-sheet-data-jump-name', 'dataJumpName', 'Set Data Jumper Name');
-        bind('export-pull-sheet-power-jump-name', 'powerJumpName', 'Set Power Jumper Name');
+        bind('export-pull-sheet-power-jump-name-true1', 'powerJumpNameTrue1', 'Set Power Jumper Name');
+        bind('export-pull-sheet-power-jump-name-powercon', 'powerJumpNamePowercon', 'Set Power Jumper Name');
         bind('export-pull-sheet-rev', 'rev', 'Set Pull Sheet Revision');
         const eng = document.getElementById('export-pull-sheet-engineer');
         if (eng) {
@@ -1936,7 +2026,8 @@ class _PullList {
         const s = this.getPullSheetSettings();
         const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
         set('export-pull-sheet-data-jump-name', s.dataJumpName);
-        set('export-pull-sheet-power-jump-name', s.powerJumpName);
+        set('export-pull-sheet-power-jump-name-true1', s.powerJumpNameTrue1);
+        set('export-pull-sheet-power-jump-name-powercon', s.powerJumpNamePowercon);
         set('export-pull-sheet-rev', s.rev);
         set('export-pull-sheet-engineer', this.getEngineerName());
         if (typeof this.syncCableUnitControls === 'function') this.syncCableUnitControls();

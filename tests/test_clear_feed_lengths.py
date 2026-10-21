@@ -6,7 +6,7 @@ data tab". Picked, exactly:
 
 Power
 - Delete a distro: every multi home run (powerSocaLengths) and every circuit
-  cable (powerCircuitCables, the "25' True1" tags) on the screens it fed,
+  cable (powerCircuitCables, the "25' TRUE1" tags) on the screens it fed,
   a direct output's home run on the distro face included.
 - Clear a multi: its home run and the cables on its circuits.
 - Clear a circuit: that circuit's cable (and, where the circuit IS the
@@ -85,7 +85,7 @@ def page(e2e_server, pw_browser):
 
 
 # 208V x 5A / 208W = five cabinets a circuit, tl-v organized, five rows: a
-# screen's `columns` IS its circuit count. PD is a distro FACE - five True1
+# screen's `columns` IS its circuit count. PD is a distro FACE - five TRUE1
 # direct outputs (1-5) then two soca multis (6, 7); SR an old-style distro.
 #   A  7 wide: multi 1 (circuits 1-6) on PD 6, home run 100', cables on 1
 #      and 2; multi 2 (circuit 7) on PD 1 - a direct output - home run 25'.
@@ -419,7 +419,7 @@ def test_a_length_an_older_file_left_on_an_unfed_multi_never_rides_a_new_feed(pa
     assert a['powerSocaLengths'] == {'1': '100', '2': '75'}, 'opening rewrote the stored lengths'
     assert sorted(a['powerCircuitCables']) == ['1', '7'], 'opening rewrote the stored cables'
     assert pg.evaluate("() => window.app.printedCircuitCable(window.__fl.layer('A'), 7)") is None
-    assert pg.evaluate("() => window.app.printedCircuitCable(window.__fl.layer('A'), 1).text") == "10' True1"
+    assert pg.evaluate("() => window.app.printedCircuitCable(window.__fl.layer('A'), 1).text") == "10' TRUE1"
     lengths = [r[2] for r in pg.evaluate("() => window.__fl.rows()")]
     assert "75'" not in lengths and "11'" not in lengths, lengths
     texts = pg.evaluate("() => window.__fl.binderTexts()")

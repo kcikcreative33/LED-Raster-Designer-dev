@@ -200,7 +200,7 @@ const PULL_WHOLE_KEEP = 0.85;
 // workbook export writes - so the binder's Cables table and the pull sheet
 // agree row for row. The word the user retired was "Multi" as the name of
 // the THING the circuits come out of (that is named by its type); the
-// multi CABLE keeps its shop name, and "Tru-1 Breakout" stays the pull
+// multi CABLE keeps its shop name, and "TRUE1 Breakout" stays the pull
 // list's CABLE item.
 const BINDER_TYPE_WORDS = {};
 
@@ -4471,7 +4471,7 @@ class _Binder {
     // screen itself by default.
     _bBoxBand(book, layer, box, sheetIds = null) {
         const n = (box.circuits || []).length;
-        const parts = [box.name, box.type || 'no distro',
+        const parts = [box.name, this._bBoxTypeText(box),
                        box.homeRun ? this.pullLengthText(box.homeRun, this.pullHomeRunKind(box)) : 'no length',
                        this._bPlural(n, 'circuit')];
         for (const [id, other] of Object.entries(book.list.byScreen)) {
@@ -4484,6 +4484,17 @@ class _Binder {
             }
         }
         return parts.join(' · ');
+    }
+
+    // What a box on the power sheet is (2026-10-21): a multi by its type
+    // and the connector it breaks out to, "Multi 208 powerCON breakout"; a
+    // DIRECT output by its one cable, "Edison → TRUE1"; a multi on no
+    // distro has no type, "no distro".
+    _bBoxTypeText(box) {
+        if (!box) return 'no distro';
+        if (box.kind === 'direct') return box.cable || box.type || 'no distro';
+        if (!box.type) return 'no distro';
+        return box.connector ? `${box.type} ${box.connector} breakout` : `${box.type} breakout`;
     }
 
     _bScreenFacts(layer) {
@@ -5671,7 +5682,7 @@ class _Binder {
             for (const box of (scr && scr.boxes) || []) {
                 if (seenBox.has(box.key)) continue;
                 seenBox.add(box.key);
-                hw.push({ cells: ['', box.name, [box.type || 'no distro',
+                hw.push({ cells: ['', box.name, [(box.kind === 'direct' && box.cable) || box.type || 'no distro',
                     box.homeRun ? this.pullLengthText(box.homeRun, this.pullHomeRunKind(box)) : 'no length'].join(' · ')] });
                 if (box.distroId && !seenDistro.has(box.distroId)) {
                     seenDistro.add(box.distroId);
@@ -5918,12 +5929,15 @@ class _Binder {
             // so this table never contradicts them. A crowded output (the
             // flagged error state) keeps the output's home run.
             const fbox = typeof this.faceBox === 'function' ? this.faceBox(d, number) : null;
+            // Its TYPE is that cable too (2026-10-21): "Edison → TRUE1".
+            let typeText = typed ? typed.name : '—';
             if (fbox && fbox.kind === 'direct' && circuits === 1 && lone) {
                 const one = this.directCircuitCable(lone.layer, lone.circuit);
                 homeRun = one ? one.ft : null;
+                typeText = one ? one.name : this.directCableType(fbox.conn.cable, lone.layer);
             }
             allCircuits += circuits;
-            boxes.push({ cells: [`${d.name} ${number}`, typed ? typed.name : '—',
+            boxes.push({ cells: [`${d.name} ${number}`, typeText,
                                  homeRun ? this.pullLengthText(homeRun, this.pullHomeRunKind(fbox)) : 'no length',
                                  names.join(' + '), String(circuits), this._bNum(amps, 1)] });
         }

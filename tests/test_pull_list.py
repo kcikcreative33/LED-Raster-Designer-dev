@@ -210,7 +210,7 @@ def test_the_menu_item_and_the_format_option_are_served(client):
     assert re.search(r'data-action="export-pull-sheet"[^>]*data-label="Export Pull Sheet"', html)
     assert '<option value="pull-sheet">' in html
     assert 'id="export-pull-sheet-section"' in html
-    for field in ('data-jump-name', 'power-jump-name', 'engineer', 'rev'):
+    for field in ('data-jump-name', 'power-jump-name-true1', 'power-jump-name-powercon', 'engineer', 'rev'):
         assert f'id="export-pull-sheet-{field}"' in html, field
     # the jumpers' LENGTHS are per screen now (the sidebars' Jumpers rows),
     # so the dialog no longer offers a project-wide one
@@ -386,39 +386,47 @@ def test_positions_are_the_groups_and_the_rows_read_in_the_sheets_vocabulary(pag
         ('H9', 'EA', 1, '', ''),
         ('Multi', "100'", 1, 'SR 2', ''),
         ('Multi', "125'", 1, 'SR 1', ''),
-        ('Tru-1', "6'", 1, 'SR2-1', ''),
-        ('Tru-1', "10'", 2, 'SR1-1, SR1-2', ''),
-        ('Tru-1 Breakout', 'EA', 2, 'SR 1-2', ''),
-        ('Tru-1 Power Jump', "1'", 9, 'WALL-A', ''),
-        ('Tru-1 Power Jump', "2'", 1, 'WALL-A', ''),
-        ('Tru-1 Power Jump', "6'", 10, 'WALL-B', ''),
+        ('TRUE1', "6'", 1, 'SR2-1', ''),
+        ('TRUE1', "10'", 2, 'SR1-1, SR1-2', ''),
+        ('TRUE1 Breakout', 'EA', 2, 'SR 1-2', ''),
+        ('TRUE1 Power Jump', "1'", 9, 'WALL-A', ''),
+        ('TRUE1 Power Jump', "2'", 1, 'WALL-A', ''),
+        ('TRUE1 Power Jump', "6'", 10, 'WALL-B', ''),
     ]
     # CENTER (3 x 5): power runs top-down columns - 3 runs x 4 links, all
     # vertical, at its 3'; the port serpentines 5 rows of 3 - 10 links
     # beside, which count NOTHING (a blank horizontal: the panels link
     # themselves), and 4 down at 1.5'. No distro, so no Multi and no
-    # breakout; a 110 V screen breaks out to Edison, so the gang is an
-    # Edison 2fer and the loose port cable is 50' of Ether-con.
+    # breakout; a 110 V screen breaks out to Edison, which reaches its
+    # TRUE1 panels (the panel input as shipped) through a tail per circuit,
+    # so the gang is on the panels' side, a TRUE1 2fer (2026-10-21), and
+    # the loose port cable is 50' of Ether-con.
     center = _rows(out['positions'][1]['rows'])
+    labels = pg.evaluate(f"() => window.app.screenCircuits(window.app.project.layers"
+                         f".find(l => l.id === {json.dumps(ids['c'])}))"
+                         f".map(c => window.app.getPowerCircuitLabel(window.app.project.layers"
+                         f".find(l => l.id === {json.dumps(ids['c'])}), c.num))")
     assert center == [
         ('Data Jump', "1.5'", 4, 'CENTER', ''),
-        ('Edison 2fer', 'EA', 1, ids['centerLabel'], ''),
+        ('Edison → TRUE1 tail', 'EA', 2, ', '.join(labels), ''),
         ('Ether-con', "50'", 1, ids['centerPortLabel'], ''),
-        ('Tru-1 Power Jump', "3'", 12, 'CENTER', ''),
+        ('TRUE1 2fer', 'EA', 1, ids['centerLabel'], ''),
+        ('TRUE1 Power Jump', "3'", 12, 'CENTER', ''),
     ]
     # totals merge the same (type, length) across positions, and keep
     # every length apart
     totals = {(t, l): q for t, l, q, _, _ in _rows(out['totals'])}
     assert {k[1]: q for k, q in totals.items() if k[0] == 'Data Jump'} == {
         "1'": 9, "1.5'": 4, "2'": 2, "6'": 11}
-    assert {k[1]: q for k, q in totals.items() if k[0] == 'Tru-1 Power Jump'} == {
+    assert {k[1]: q for k, q in totals.items() if k[0] == 'TRUE1 Power Jump'} == {
         "1'": 9, "2'": 1, "3'": 12, "6'": 10}
-    assert totals[('Tru-1', "10'")] == 2 and totals[('Tru-1', "6'")] == 1
+    assert totals[('TRUE1', "10'")] == 2 and totals[('TRUE1', "6'")] == 1
     assert totals[('Multi', "125'")] == 1 and totals[('Multi', "100'")] == 1
-    assert totals[('Tru-1 Breakout', 'EA')] == 2 and totals[('Edison 2fer', 'EA')] == 1
+    assert totals[('TRUE1 Breakout', 'EA')] == 2 and totals[('TRUE1 2fer', 'EA')] == 1
+    assert totals[('Edison → TRUE1 tail', 'EA')] == 2
     assert totals[('Distro', 'EA')] == 1
     assert totals[('H9', 'EA')] == 1
-    assert len(out['totals']) == 18
+    assert len(out['totals']) == 19
     # EA sorts after every length; types are A-Z
     types = [r['type'] for r in out['totals']]
     assert types == sorted(types, key=str.lower)
@@ -436,9 +444,9 @@ def test_the_per_screen_readings_the_packet_will_print(page):
     assert len(a['boxes']) == 1
     box = a['boxes'][0]
     assert (box['distro'], box['number'], box['homeRun'], box['type'], box['connector'], box['shared']) == (
-        'SR', 1, 125, 'Multi 208', 'Tru-1', False)
+        'SR', 1, 125, 'Multi 208', 'TRUE1', False)
     assert [(c['num'], c['label'], c['tail'], c['cable']) for c in box['circuits']] == [
-        (1, 'SR1-1', 1, "10' True1"), (2, 'SR1-2', 2, "10' True1")]
+        (1, 'SR1-1', 1, "10' TRUE1"), (2, 'SR1-2', 2, "10' TRUE1")]
     assert a['gangs'] == {'twofer': 0, 'threefer': 0}
     assert [(p['num'], p['snake'], p['cable']) for p in a['ports']] == [(1, 'SNAKE A', None)]
     assert [(s['name'], s['ways'], s['ft']) for s in a['snakes']] == [('SNAKE A', 2, 100)]
@@ -458,7 +466,7 @@ def test_the_per_screen_readings_the_packet_will_print(page):
     assert kinds[('distro', 'SR')] == [
         ('Distro', 'EA', 1, 'SR', ''),
         ('Multi', "100'", 1, 'SR 2', ''), ('Multi', "125'", 1, 'SR 1', ''),
-        ('Tru-1 Breakout', 'EA', 2, 'SR 1-2', '')]
+        ('TRUE1 Breakout', 'EA', 2, 'SR 1-2', '')]
     proc_rows = next(v for (k, n), v in kinds.items() if k == 'processor')
     assert proc_rows == [('Ether-con', "50'", 1, ids['centerPortLabel'], ''),
                          ('Ether-con Snake', "100'", 1, 'SNAKE A', '2 channel'),
@@ -856,21 +864,24 @@ def test_a_boxs_fiber_is_one_row_and_the_workbook_writes_it(page):
 # ── the browser: the settings, the menu, the export ─────────────────────
 
 def test_the_jumper_names_are_project_state_with_one_entry_per_edit(page):
-    """The export dialog names the two jumpers for the project (one undo
-    entry each, served, undone one at a time); their LENGTHS are per screen
-    now, so the dialog has none."""
+    """The export dialog names the jumpers for the project - data, and one
+    power jumper per panel input, TRUE1 and powerCON (2026-10-21) - one
+    undo entry each, served, undone one at a time; their LENGTHS are per
+    screen now, so the dialog has none."""
     pg, ids = page
     before = pg.evaluate("() => ({steps: window.app.history.length, i: window.app.historyIndex})")
     pg.locator('[data-menu="file"]').click()
     pg.locator('[data-action="export-pull-sheet"]').click()
     pg.wait_for_timeout(300)
     assert pg.locator('#export-pull-sheet-data-jump-name').input_value() == 'Data Jump'
-    assert pg.locator('#export-pull-sheet-power-jump-name').input_value() == 'Tru-1 Power Jump'
+    assert pg.locator('#export-pull-sheet-power-jump-name-true1').input_value() == 'TRUE1 Power Jump'
+    assert pg.locator('#export-pull-sheet-power-jump-name-powercon').input_value() == 'powerCON Power Jump'
+    assert pg.locator('#export-pull-sheet-power-jump-name').count() == 0
     assert pg.locator('#export-pull-sheet-power-jump-length').count() == 0
     pg.locator('#export-pull-sheet-data-jump-name').fill('Absen Long Data Jump')
     pg.locator('#export-pull-sheet-data-jump-name').dispatch_event('change')
-    pg.locator('#export-pull-sheet-power-jump-name').fill('Tru-1 Jumper')
-    pg.locator('#export-pull-sheet-power-jump-name').dispatch_event('change')
+    pg.locator('#export-pull-sheet-power-jump-name-true1').fill('TRUE1 Jumper')
+    pg.locator('#export-pull-sheet-power-jump-name-true1').dispatch_event('change')
     pg.wait_for_timeout(600)
     st = pg.evaluate("""() => {
         const app = window.app;
@@ -878,9 +889,9 @@ def test_the_jumper_names_are_project_state_with_one_entry_per_edit(page):
                 steps: app.history.length, i: app.historyIndex,
                 actions: app.history.slice(-2).map(h => h.action)};
     }""")
-    assert st['stored'] == {'dataJumpName': 'Absen Long Data Jump', 'powerJumpName': 'Tru-1 Jumper'}
-    assert st['settings'] == {'dataJumpName': 'Absen Long Data Jump', 'powerJumpName': 'Tru-1 Jumper',
-                              'rev': '1.0'}
+    assert st['stored'] == {'dataJumpName': 'Absen Long Data Jump', 'powerJumpNameTrue1': 'TRUE1 Jumper'}
+    assert st['settings'] == {'dataJumpName': 'Absen Long Data Jump', 'powerJumpNameTrue1': 'TRUE1 Jumper',
+                              'powerJumpNamePowercon': 'powerCON Power Jump', 'rev': '1.0'}
     assert st['steps'] == before['steps'] + 2 and st['actions'] == [
         'Set Data Jumper Name', 'Set Power Jumper Name']
     # the list reads them, every length under the one name
@@ -888,13 +899,13 @@ def test_the_jumper_names_are_project_state_with_one_entry_per_edit(page):
     assert [r[:3] for r in rows if r[0] == 'Absen Long Data Jump'] == [
         ('Absen Long Data Jump', "1'", 9), ('Absen Long Data Jump', "1.5'", 4),
         ('Absen Long Data Jump', "2'", 2), ('Absen Long Data Jump', "6'", 11)]
-    assert [r[:3] for r in rows if r[0] == 'Tru-1 Jumper'] == [
-        ('Tru-1 Jumper', "1'", 9), ('Tru-1 Jumper', "2'", 1),
-        ('Tru-1 Jumper', "3'", 12), ('Tru-1 Jumper', "6'", 10)]
-    assert not [r for r in rows if r[0] in ('Data Jump', 'Tru-1 Power Jump')]
+    assert [r[:3] for r in rows if r[0] == 'TRUE1 Jumper'] == [
+        ('TRUE1 Jumper', "1'", 9), ('TRUE1 Jumper', "2'", 1),
+        ('TRUE1 Jumper', "3'", 12), ('TRUE1 Jumper', "6'", 10)]
+    assert not [r for r in rows if r[0] in ('Data Jump', 'TRUE1 Power Jump', 'powerCON Power Jump')]
     # served: a reload would keep them
     served = pg.evaluate("async () => (await (await fetch('/api/project')).json()).pullSheet")
-    assert served == {'dataJumpName': 'Absen Long Data Jump', 'powerJumpName': 'Tru-1 Jumper'}
+    assert served == {'dataJumpName': 'Absen Long Data Jump', 'powerJumpNameTrue1': 'TRUE1 Jumper'}
     # undo takes the last edit back, and only that one
     pg.locator('#export-cancel').click()
     pg.evaluate("() => window.app.undo()")
@@ -902,7 +913,7 @@ def test_the_jumper_names_are_project_state_with_one_entry_per_edit(page):
     assert pg.evaluate("() => window.app.project.pullSheet") == {'dataJumpName': 'Absen Long Data Jump'}
     pg.evaluate("() => window.app.redo()")
     pg.wait_for_timeout(600)
-    assert pg.evaluate("() => window.app.getPullSheetSettings().powerJumpName") == 'Tru-1 Jumper'
+    assert pg.evaluate("() => window.app.getPullSheetSettings().powerJumpNameTrue1") == 'TRUE1 Jumper'
 
 
 def test_the_engineer_lives_in_the_preferences(page):
@@ -1002,7 +1013,9 @@ def test_export_saves_the_workbook_through_the_picker_path(page):
     assert [ws.cell(10, c).value for c in range(1, 6)] == ['Distro', 'EA', 1, 'SR', None]
     assert ws['E2'].value is not None and ws['E3'].value == '1.0'
     gear_types = [wb['GEAR LIST'].cell(r, 1).value for r in range(4, 100) if wb['GEAR LIST'].cell(r, 1).value]
-    assert 'Edison 2fer' in gear_types and 'Tru-1 Jumper' in gear_types
+    assert 'TRUE1 2fer' in gear_types and 'TRUE1 Jumper' in gear_types
+    # the template's own words in the app's spelling (2026-10-21)
+    assert 'TRUE1 Breakout' in gear_types and not [t for t in gear_types if 'Tru-1' in t or 'TRU-1' in t]
     assert gear_types.count('Absen Long Data Jump') == 1
     assert wb['calc'].sheet_state == 'hidden'
     assert not pg.locator('#export-modal').is_visible()
@@ -1086,10 +1099,10 @@ def test_smoke_live_show_b(page):
         ('Ether-con Snake', "150'", 1, 'SR A', '4 channel'),
         ('Multi', "100'", 2, 'SR 2, 4', ''),
         ('Multi', "125'", 2, 'SR 1, 3', ''),
-        ('Tru-1', "6'", 8, 'SR1-2, SR1-5, SR2-3, SR2-6, SR3-2, SR3-5, SR4-2, SR4-6', ''),
-        ('Tru-1', "10'", 6, 'SR1-1, SR1-6, SR2-2, SR3-1, SR3-6, SR4-1', ''),
-        ('Tru-1 Breakout', 'EA', 4, 'SR 1-4', ''),
-        ('Tru-1 Power Jump', "6'", 286, 'SR - MAIN', ''),
+        ('TRUE1', "6'", 8, 'SR1-2, SR1-5, SR2-3, SR2-6, SR3-2, SR3-5, SR4-2, SR4-6', ''),
+        ('TRUE1', "10'", 6, 'SR1-1, SR1-6, SR2-2, SR3-1, SR3-6, SR4-1', ''),
+        ('TRUE1 Breakout', 'EA', 4, 'SR 1-4', ''),
+        ('TRUE1 Power Jump', "6'", 286, 'SR - MAIN', ''),
     ]
     # SR - Return: box 5 at 125', its cables as typed; the auto wall packs
     # with splitters on (maxWays 3) and gangs circuits 1-5 through 2fers.
@@ -1102,12 +1115,12 @@ def test_smoke_live_show_b(page):
         ('Ether-con', "50'", 1, 'SR B-5', ''),
         ('Ether-con', "100'", 1, 'SR A-5', ''),
         ('Multi', "125'", 1, 'SR 5', ''),
-        ('Tru-1', "6'", 1, 'SR5-3', ''),
-        ('Tru-1', "10'", 2, 'SR5-2, SR5-5', ''),
-        ('Tru-1', "25'", 2, 'SR5-1, SR5-6', ''),
-        ('Tru-1 2fer', 'EA', 5, 'SR5-1, SR5-2, SR5-3, SR5-4, SR5-5', ''),
-        ('Tru-1 Breakout', 'EA', 1, 'SR 5', ''),
-        ('Tru-1 Power Jump', "6'", 55, 'SR - Return', ''),
+        ('TRUE1', "6'", 1, 'SR5-3', ''),
+        ('TRUE1', "10'", 2, 'SR5-2, SR5-5', ''),
+        ('TRUE1', "25'", 2, 'SR5-1, SR5-6', ''),
+        ('TRUE1 2fer', 'EA', 5, 'SR5-1, SR5-2, SR5-3, SR5-4, SR5-5', ''),
+        ('TRUE1 Breakout', 'EA', 1, 'SR 5', ''),
+        ('TRUE1 Power Jump', "6'", 55, 'SR - Return', ''),
     ]
     assert out['returnLegs'] == [[[1, 'SR5-1'], [2, 'SR5-2'], [3, 'SR5-3'], [4, 'SR5-4'], [5, 'SR5-5'], [6, 'SR5-6']]]
     # SL's screens are SR's with SL for SR - the circuit cables typed the
@@ -1125,10 +1138,10 @@ def test_smoke_live_show_b(page):
         ('Ether-con Snake', "150'", 1, 'SL B', '4 channel'),
         ('Multi', "100'", 2, 'SL 2, 4', ''),
         ('Multi', "125'", 2, 'SL 1, 3', ''),
-        ('Tru-1', "6'", 8, 'SL1-2, SL1-5, SL2-3, SL2-6, SL3-2, SL3-5, SL4-2, SL4-6', ''),
-        ('Tru-1', "10'", 6, 'SL1-1, SL1-6, SL2-2, SL3-1, SL3-6, SL4-1', ''),
-        ('Tru-1 Breakout', 'EA', 4, 'SL 1-4', ''),
-        ('Tru-1 Power Jump', "6'", 286, 'SL - MAIN', ''),
+        ('TRUE1', "6'", 8, 'SL1-2, SL1-5, SL2-3, SL2-6, SL3-2, SL3-5, SL4-2, SL4-6', ''),
+        ('TRUE1', "10'", 6, 'SL1-1, SL1-6, SL2-2, SL3-1, SL3-6, SL4-1', ''),
+        ('TRUE1 Breakout', 'EA', 4, 'SL 1-4', ''),
+        ('TRUE1 Power Jump', "6'", 286, 'SL - MAIN', ''),
     ]
     # A position is its screens' rows merged by (type, length), labels in
     # screen order, plus what the position alone carries: five boxes in use
@@ -1149,12 +1162,12 @@ def test_smoke_live_show_b(page):
         ('H9', 'EA', 1, '', ''),
         ('Multi', "100'", 2, 'SR 2, 4', ''),
         ('Multi', "125'", 3, 'SR 1, 3, 5', ''),
-        ('Tru-1', "6'", 9, 'SR1-2 … SR5-3 (9)', ''),
-        ('Tru-1', "10'", 8, 'SR1-1, SR1-6, SR2-2, SR3-1, SR3-6, SR4-1, SR5-2, SR5-5', ''),
-        ('Tru-1', "25'", 2, 'SR5-1, SR5-6', ''),
-        ('Tru-1 2fer', 'EA', 5, 'SR5-1, SR5-2, SR5-3, SR5-4, SR5-5', ''),
-        ('Tru-1 Breakout', 'EA', 5, 'SR 1-5', ''),
-        ('Tru-1 Power Jump', "6'", 341, 'SR - MAIN, SR - Return', ''),
+        ('TRUE1', "6'", 9, 'SR1-2 … SR5-3 (9)', ''),
+        ('TRUE1', "10'", 8, 'SR1-1, SR1-6, SR2-2, SR3-1, SR3-6, SR4-1, SR5-2, SR5-5', ''),
+        ('TRUE1', "25'", 2, 'SR5-1, SR5-6', ''),
+        ('TRUE1 2fer', 'EA', 5, 'SR5-1, SR5-2, SR5-3, SR5-4, SR5-5', ''),
+        ('TRUE1 Breakout', 'EA', 5, 'SR 1-5', ''),
+        ('TRUE1 Power Jump', "6'", 341, 'SR - MAIN, SR - Return', ''),
     ]
     assert by['SL'] == [
         ('CVT4K-S', 'EA', 2, 'SL A, SL B', ''),
@@ -1169,12 +1182,12 @@ def test_smoke_live_show_b(page):
         ('Ether-con Snake', "150'", 1, 'SL B', '4 channel'),
         ('Multi', "100'", 2, 'SL 2, 4', ''),
         ('Multi', "125'", 3, 'SL 1, 3, 5', ''),
-        ('Tru-1', "6'", 9, 'SL1-2 … SL5-3 (9)', ''),
-        ('Tru-1', "10'", 8, 'SL1-1, SL1-6, SL2-2, SL3-1, SL3-6, SL4-1, SL5-2, SL5-5', ''),
-        ('Tru-1', "25'", 2, 'SL5-1, SL5-6', ''),
-        ('Tru-1 2fer', 'EA', 5, 'SL5-1, SL5-2, SL5-3, SL5-4, SL5-5', ''),
-        ('Tru-1 Breakout', 'EA', 5, 'SL 1-5', ''),
-        ('Tru-1 Power Jump', "6'", 341, 'SL - MAIN, SL - Return', ''),
+        ('TRUE1', "6'", 9, 'SL1-2 … SL5-3 (9)', ''),
+        ('TRUE1', "10'", 8, 'SL1-1, SL1-6, SL2-2, SL3-1, SL3-6, SL4-1, SL5-2, SL5-5', ''),
+        ('TRUE1', "25'", 2, 'SL5-1, SL5-6', ''),
+        ('TRUE1 2fer', 'EA', 5, 'SL5-1, SL5-2, SL5-3, SL5-4, SL5-5', ''),
+        ('TRUE1 Breakout', 'EA', 5, 'SL 1-5', ''),
+        ('TRUE1 Power Jump', "6'", 341, 'SL - MAIN, SL - Return', ''),
     ]
     # the totals: every position's rows merged by (type, length), labels
     # and notes unioned in position order; long label runs fold to their
@@ -1194,12 +1207,12 @@ def test_smoke_live_show_b(page):
         ('H9', 'EA', 1, '', ''),
         ('Multi', "100'", 4, 'SR 2, 4, SL 2, 4', ''),
         ('Multi', "125'", 6, 'SR 1, 3, 5, SL 1, 3, 5', ''),
-        ('Tru-1', "6'", 18, 'SR1-2 … SL5-3 (18)', ''),
-        ('Tru-1', "10'", 16, 'SR1-1 … SL5-5 (16)', ''),
-        ('Tru-1', "25'", 4, 'SR5-1, SR5-6, SL5-1, SL5-6', ''),
-        ('Tru-1 2fer', 'EA', 10, 'SR5-1 … SL5-5 (10)', ''),
-        ('Tru-1 Breakout', 'EA', 10, 'SR 1-5, SL 1-5', ''),
-        ('Tru-1 Power Jump', "6'", 682, 'SR - MAIN, SR - Return, SL - MAIN, SL - Return', ''),
+        ('TRUE1', "6'", 18, 'SR1-2 … SL5-3 (18)', ''),
+        ('TRUE1', "10'", 16, 'SR1-1 … SL5-5 (16)', ''),
+        ('TRUE1', "25'", 4, 'SR5-1, SR5-6, SL5-1, SL5-6', ''),
+        ('TRUE1 2fer', 'EA', 10, 'SR5-1 … SL5-5 (10)', ''),
+        ('TRUE1 Breakout', 'EA', 10, 'SR 1-5, SL 1-5', ''),
+        ('TRUE1 Power Jump', "6'", 682, 'SR - MAIN, SR - Return, SL - MAIN, SL - Return', ''),
     ]
     # one barrel per extension, nowhere else: six on each MAIN - three on
     # the primary box, three on the backup - none for the Returns' loose

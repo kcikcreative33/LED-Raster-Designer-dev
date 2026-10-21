@@ -514,7 +514,7 @@ def test_a_mismatched_connector_is_refused_with_the_fix(page):
                mid_check=lambda p: p.evaluate(MID_JS, ids['aId']))
     assert mid['lit'] == [] and mid['pill']['cls'] == 'hw-dock-pill-bad', mid
     assert mid['pill']['text'] == \
-        'WALL A is set to Multi → True1 — change its breakout first', mid
+        'WALL A is set to Multi → TRUE1 — change its breakout first', mid
     assert pg.evaluate(POWER_STATE_JS, ids['aId'])['distro'] == {}
     # the L21-30 chip DOES land on the L21-30 box - three circuits, one box
     sx, sy = chip_center(pg, f'plug-{d}-l2130')
@@ -1095,7 +1095,7 @@ def test_a_screen_is_written_an_eligible_breakout_on_load(page):
             b.powerVoltage = saved.v; b.powerBreakoutType = saved.bt;
             return r;
         }""", ids)
-        assert out['readsTrue1'] == ['soca-true1', 'soca208', 'True1'], out
+        assert out['readsTrue1'] == ['soca-true1', 'soca208', 'TRUE1'], out
         assert out['fileOpen'] == 'soca-true1', out
         assert out['startup'] == 'soca-edison', out
     finally:
@@ -1656,9 +1656,9 @@ def test_a_typed_spare_box_drags_as_its_plug(page):
     assert mid['lit'] == [], mid
     assert mid['pill'] and mid['pill']['cls'] == 'hw-dock-pill-bad', mid
     assert mid['pill']['text'] == \
-        'WALL A is set to Multi → True1 — change its breakout first', mid
+        'WALL A is set to Multi → TRUE1 — change its breakout first', mid
     assert pg.evaluate(STATUS_JS) == \
-        'WALL A is set to Multi → True1 — change its breakout first'
+        'WALL A is set to Multi → TRUE1 — change its breakout first'
     assert pg.evaluate(POWER_STATE_JS, ids['aId'])['distro'] == {}
     assert pg.evaluate(HIST_LEN_JS) == n, 'a refused drop earned an entry'
     # onto an L21-30 screen, dropped on its THIRD circuit: the anchored

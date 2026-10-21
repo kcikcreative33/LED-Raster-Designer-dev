@@ -1203,7 +1203,7 @@
                             <input type="checkbox" id="show-power-nfer-tags" checked>
                             <label for="show-power-nfer-tags">Show 2fer / 3fer Tags</label>
                         </div>
-                        <div class="info-row checkbox-row" data-tooltip="Show Cable Tags, Print each circuit's cable (10' True1) beside its label. Off by default; turn on for the per-screen docs." data-cable-unit-tip="Show Cable Tags, Print each circuit's cable ({len:10:3} True1) beside its label. Off by default; turn on for the per-screen docs.">
+                        <div class="info-row checkbox-row" data-tooltip="Show Cable Tags, Print each circuit's cable (10' TRUE1) beside its label. Off by default; turn on for the per-screen docs." data-cable-unit-tip="Show Cable Tags, Print each circuit's cable ({len:10:3} TRUE1) beside its label. Off by default; turn on for the per-screen docs.">
                             <input type="checkbox" id="show-power-cable-tags">
                             <label for="show-power-cable-tags">Show Cable Tags</label>
                         </div>
@@ -1268,9 +1268,13 @@
                              in refreshSplitterPanel. -->
                         <div class="lrd-side-block" style="margin-bottom: 12px;">
                             <label class="lrd-side-block-h">Multis &amp; Splitters</label>
-                            <div class="info-row" style="display: flex; flex-wrap: wrap; align-items: center; gap: 5px;" data-tooltip="Breakout, How the multi terminates: True1 or powerCON breakouts feed panels directly (the 6-channel default), Edison is the 110V option, L6-20 adds L6-20-to-panel cables per circuit. Drives the gear checklist.">
+                            <div class="info-row" style="display: flex; flex-wrap: wrap; align-items: center; gap: 5px;" data-tooltip="Breakout, How the multi terminates: TRUE1 or powerCON breakouts feed panels directly (the 6-channel default), Edison is the 110V option, L6-20 adds L6-20-to-panel cables per circuit. Drives the gear checklist.">
                                 <label style="font-weight: 400;">Breakout</label>
                                 <select id="power-breakout-type" data-lrd-field="power-breakout-type" class="info-select" style="flex: 1 1 100px; min-width: 0; max-width: 150px;"></select>
+                            </div>
+                            <div class="info-row" id="power-panel-input-row" style="display: none; flex-wrap: wrap; align-items: center; gap: 5px;" data-tooltip="Panel input, The connector the panels take power in on: TRUE1 or powerCON. An Edison or L6-20 breakout needs a tail to it per circuit, and the jumpers and splitters are this connector.">
+                                <label style="font-weight: 400;">Panel input</label>
+                                <select id="power-panel-input" data-lrd-field="power-panel-input" class="info-select" style="flex: 1 1 100px; min-width: 0; max-width: 150px;"></select>
                             </div>
                             <div class="info-row checkbox-row" data-tooltip="Circuit sharing, Put consecutive row/column runs onto one shared circuit through a 2fer or 3fer, up to the splitter size and the circuit capacity. Only adjacent runs share - a run is never skipped to pair two non-neighbours. Share one circuit, or remove its 2fer or 3fer, by right-clicking it on the map or its chip in the Hardware tray. A share past the circuit's amps is refused in automatic mode; custom mode allows it and flags it OVER.">
                                 <input type="checkbox" id="power-splitters-enabled" data-lrd-field="power-splitters-enabled">
@@ -2092,8 +2096,12 @@
                         <input type="text" id="export-pull-sheet-data-jump-name" placeholder="Data Jump" data-tooltip="The data jumper's name on the pull sheet - one row per length. Each screen sets its own lengths in the Data sidebar's Jumpers row." style="flex: 1; min-width: 60px; padding: 4px 6px; background: #1a1a1a; border: 1px solid #3a3a3a; color: #fff; border-radius: 3px;">
                     </div>
                     <div style="display: flex; gap: 8px; align-items: center; font-size: 12px; color: #aaa;">
-                        <span style="flex: none; width: 92px;">Power jumper</span>
-                        <input type="text" id="export-pull-sheet-power-jump-name" placeholder="Tru-1 Power Jump" data-tooltip="The power jumper's name on the pull sheet - one row per length. Each screen sets its own lengths in the Power sidebar's Jumpers row." style="flex: 1; min-width: 60px; padding: 4px 6px; background: #1a1a1a; border: 1px solid #3a3a3a; color: #fff; border-radius: 3px;">
+                        <span style="flex: none; width: 92px;">TRUE1 jumper</span>
+                        <input type="text" id="export-pull-sheet-power-jump-name-true1" placeholder="TRUE1 Power Jump" data-tooltip="The TRUE1 power jumper's name on the pull sheet - one row per length. Each screen sets its own lengths in the Power sidebar's Jumpers row." style="flex: 1; min-width: 60px; padding: 4px 6px; background: #1a1a1a; border: 1px solid #3a3a3a; color: #fff; border-radius: 3px;">
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center; font-size: 12px; color: #aaa;">
+                        <span style="flex: none; width: 92px;">powerCON jumper</span>
+                        <input type="text" id="export-pull-sheet-power-jump-name-powercon" placeholder="powerCON Power Jump" data-tooltip="The powerCON power jumper's name on the pull sheet - one row per length. Each screen sets its own lengths in the Power sidebar's Jumpers row." style="flex: 1; min-width: 60px; padding: 4px 6px; background: #1a1a1a; border: 1px solid #3a3a3a; color: #fff; border-radius: 3px;">
                     </div>
                     <div style="display: flex; gap: 8px; align-items: center; font-size: 12px; color: #aaa;">
                         <span style="flex: none; width: 92px;">Engineer</span>
@@ -2777,7 +2785,8 @@
                         <div class="pm-row">
                             <label>Power jumper</label>
                             <div class="prefs-row">
-                                <input type="text" id="pref-pull-power-jump-name" placeholder="Tru-1 Power Jump" class="pm-wide">
+                                <input type="text" id="pref-pull-power-jump-name-true1" placeholder="TRUE1 Power Jump" title="The TRUE1 power jumper's name" class="pm-wide">
+                                <input type="text" id="pref-pull-power-jump-name-powercon" placeholder="powerCON Power Jump" title="The powerCON power jumper's name" class="pm-wide">
                                 <span>V</span>
                                 <input type="text" id="pref-pull-power-jump-length" placeholder="—" class="pm-short">
                                 <span>H</span>
