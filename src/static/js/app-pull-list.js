@@ -17,8 +17,10 @@
 //     True1 - the sheet's spelling - else powerCON / Edison / L6-20) plus
 //     its length; a 2fer / 3fer is `<connector> 2fer` EA; a box on a distro
 //     takes one `<connector> Breakout` EA.
-//   * data: `Ether-con` + length for a loose CAT port cable, one
-//     `Ether-con Snake` row per snake (qty 1, "6 channel" in Notes - the
+//   * data: `Cat6` (or `etherCON`, where the box's output is etherCON -
+//     dataCableWord) + length for a loose port cable, `Cat6` with an empty
+//     length and "no length" in Notes for a port with none typed, one
+//     `Cat6 Snake` row per snake (qty 1, "6 channel" in Notes - the
 //     type already says Snake, so snakeSizeText does not say it again -
 //     snakes of different channel counts are never merged), lengths as
 //     the snake's ONE home run. A snake is said ONCE for the show, keyed by the snake
@@ -26,14 +28,16 @@
 //     boxes as it was formed across ("Any sockets, any device"), and it is
 //     still one cable to pull - its hardware rows land on every processor
 //     it touches. A snaked port's EXTENSION (the shorter cable from the
-//     snake's fan-out to the panel, 2026-09-07) is one `Ether-con` +
+//     snake's fan-out to the panel, 2026-09-07) is one `Cat6 Extension` +
 //     length row under the port's label with "ext · <snake>" in Notes,
-//     and ONE `Ether-con Barrel` EA row under the same label beside it -
+//     and ONE `Cat6 Barrel` EA row under the same label beside it -
 //     the coupler that joins the extension to the snake's fan-out
 //     ("every time we add an extension to a snake, we need to count for
 //     one barrel so a snake of four with four extensions would be four
 //     ethercon barrels", 2026-09-07). A loose port's own home run joins
-//     nothing, so it takes no barrel.
+//     nothing, so it takes no barrel - unless the stock makes it of
+//     several pieces: every join of two pieces is one more barrel (one per
+//     channel on a snake). Power multis join without one.
 //   * the BACKUP end of a port (the socket its return comes back on -
 //     backedBy, the card's 1:1 partner or the box's) is walked exactly like
 //     the primary: its snake said once, its cable or extension as a row
@@ -159,6 +163,16 @@ const POWER_CONNECTOR_SHEET_NAMES = { True1: 'Tru-1' };
 const PULL_LEGACY_TYPE_PREFIX = 'Tessera ';
 const PULL_LEGACY_PREFIXED_TYPES = new Set(['SX40', 'S8', 'S4', 'M2', 'T1', 'SQ200',
     'QD-S', 'XD', 'XD-S', 'XD-T']);
+
+// Data home runs as the sheet printed them until 2026-10-21 - "Ether-con",
+// a bare "Data Cable" / "Snake" / "Barrel" where no connector was known -
+// and as older files key their edits. Every one of them was a Cat6 run
+// (no box documented etherCON then), so its edit answers to the Cat6 row.
+const PULL_LEGACY_DATA_TYPES = new Map([
+    ['Ether-con', 'Cat6'], ['Ether-con Snake', 'Cat6 Snake'],
+    ['Ether-con Barrel', 'Cat6 Barrel'], ['Data Cable', 'Cat6'],
+    ['Snake', 'Cat6 Snake'], ['Barrel', 'Cat6 Barrel'],
+]);
 
 class _PullList {
 
@@ -325,8 +339,11 @@ class _PullList {
     // Rows whose length is several stock pieces (pullCableLength), one row
     // per piece length: "Multi | 100'+25' | 1" pulls as "Multi | 100' | 1"
     // and "Multi | 25' | 1", each with the row's label and notes, so the
-    // sheet and its totals count the cables a crew pulls. Every other row
-    // passes through as it is.
+    // sheet and its totals count the cables a crew pulls. A data row that
+    // carries `_join` (its barrel's type and how many per join) adds the
+    // barrels its joins take: "Cat6 | 100'+25'" is 100' + 25' + one "Cat6
+    // Barrel" EA. A power multi joins without one. Every other row passes
+    // through as it is.
     _pullExpandPieces(rows) {
         const out = [];
         for (const r of rows) {
@@ -336,7 +353,16 @@ class _PullList {
             for (const [length, n] of counts) {
                 const piece = { ...r, length, qty: (Number(r.qty) || 0) * n };
                 delete piece._pieces;
+                delete piece._join;
                 out.push(piece);
+            }
+            const joins = r._pieces.length - 1;
+            if (r._join && joins > 0) {
+                const barrel = { ...r, type: r._join.type, length: 'EA', notes: '',
+                                 qty: (Number(r.qty) || 0) * joins * (Number(r._join.per) || 1) };
+                delete barrel._pieces;
+                delete barrel._join;
+                out.push(barrel);
             }
         }
         return out;
@@ -460,13 +486,13 @@ class _PullList {
         return POWER_CONNECTOR_SHEET_NAMES[name] || name;
     }
 
-    // The sheet's word for a data connector id, or null where the catalog
-    // is silent (no plug is guessed). Copper only: a port's or a snake's
-    // plug is never fiber - fiber is a breakout box's trunk row
-    // (pullBoxFiberText), processor to box.
+    // The sheet's word for a data connector id - the one name table
+    // (dataCableWord): "etherCON" or "Cat6", Cat6 where the catalog is
+    // silent. Copper only: a port's or a snake's plug is never fiber -
+    // fiber is a breakout box's trunk row (pullBoxFiberText), processor to
+    // box.
     pullDataConnectorWord(connectorId) {
-        if (connectorId === 'cat') return 'Ether-con';
-        return null;
+        return typeof this.dataCableWord === 'function' ? this.dataCableWord(connectorId) : 'Cat6';
     }
 
     // Natural compare for the sort: numbers inside a name read as numbers
@@ -696,7 +722,7 @@ class _PullList {
                 .filter(n => Number.isFinite(n))
                 .sort((a, b) => a - b)
                 .forEach(n => {
-                    const resolved = this.getResolvedPathPanels(layer, layer.customPortPaths[n] || []);
+                    const resolved = this.getResolvedPathPanels(layer, layer.customPortPaths[n] || [], 'data');
                     if (!resolved.length) return;
                     runs.push({ num: n, panels: resolved.map(r => r.panel),
                                 layers: resolved.map(r => r.layer) });
@@ -947,7 +973,7 @@ class _PullList {
             // Every link host - a QD-S's IN 1 / IN 2 as well as each box.
             const hosts = typeof this._fiberAllBoxes === 'function'
                 ? this._fiberAllBoxes() : this._pullAllBoxes();
-            for (const { box, proc } of hosts) {
+            for (const { box, proc, card } of hosts) {
                 for (const l of this.fiberBoxLinks(box)) {
                     const key = l.copper ? `cu:${l.box.id}:${l.key}` : (l.cable ? `fib:${l.cable.id}` : null);
                     if (!key || fiberSeen.has(key)) continue;
@@ -962,7 +988,15 @@ class _PullList {
                         r = { type: this.fiberCableTypeText(l.cable), length: this.pullLengthText(ft),
                               qty: 1, label: l.cable.name || '', notes: has ? '' : 'no length', side: 'data' };
                     }
-                    if (!gearAt(r, this.pullLocationOf(box), boxFirstLayer.get(box.id))) {
+                    // A card cabled on links of its own (a QD-S, `box` the
+                    // card itself) has no location and no first screen: its
+                    // fiber goes where its boxes are, as its gear row does,
+                    // else where its processor's ports first land.
+                    const placed = box === card
+                        ? ((card.cvts || []).some(b => gearAt(r, this.pullLocationOf(b), boxFirstLayer.get(b.id)))
+                           || gearAt(r, null, procFirstLayer.get(proc.id)))
+                        : gearAt(r, this.pullLocationOf(box), boxFirstLayer.get(box.id));
+                    if (!placed) {
                         if (!bases.length) continue;
                         land(bases[0].key, r, null);
                     }
@@ -1271,10 +1305,11 @@ class _PullList {
         // type or "Fiber", its length, the box's title) said once however
         // many ports ride it, and a box without a length has no row (the
         // binder's band says so); then the socket's run - a snake said
-        // once, a loose cable as one `Ether-con 50'` row under `label`;
-        // then, on a snaked socket, its EXTENSION as one `Ether-con 25'`
-        // row under the same label with "ext · <snake>" in Notes and
-        // the `Ether-con Barrel` EA that joins it to the fan-out. Every
+        // once, a loose cable as one `Cat6 50'` row under `label` (a
+        // `Cat6` row with "no length" where none is typed); then, on a
+        // snaked socket, its EXTENSION as one `Cat6 Extension 25'` row
+        // under the same label with "ext · <snake>" in Notes and the
+        // `Cat6 Barrel` EA that joins it to the fan-out. Every
         // row is pushed to the processor's hardware rows too. `into` is
         // the port entry (or its .backup) that records what was read.
         // Every row of a socket a BOX delivers is pulled where the box
@@ -1292,6 +1327,35 @@ class _PullList {
             const procName = proc ? (proc.name || proc.deviceName || proc.id) : '';
             const push = (r) => { if (proc) hw('processor', proc.id, procName).rows.push({ ...r }); };
             if (proc && !procFirstLayer.has(proc.id)) procFirstLayer.set(proc.id, layer.id);
+            // Each fiber CABLE once, however many boxes' links take it
+            // (a TAC shared by four boxes is one TAC to pull): "TAC 12 ·
+            // ST", "MTP 24", "opticalCON QUAD" with its length, under the
+            // cable's name, where the first box that reaches it sits, and
+            // on that box's processor's hardware rows.
+            const sayLinks = (links) => {
+                for (const l of links) {
+                    const key = l.copper ? `cu:${l.box.id}:${l.key}` : `fib:${l.cable.id}`;
+                    if (fiberSeen.has(key)) { tagOnce(key); continue; }
+                    fiberSeen.add(key);
+                    const r = l.copper ? row(...this._pullCopperCells(l), at) : (() => {
+                        const ft = this.parseCableLength(l.cable.ft);
+                        const has = Number.isFinite(ft) && ft > 0;
+                        return row(this.fiberCableTypeText(l.cable), this.pullLengthText(ft), 1,
+                                   l.cable.name || '', has ? '' : 'no length', at);
+                    })();
+                    saidOnce.set(key, r);
+                    push(r);
+                }
+            };
+            // A card that is a unit of its own (a QD-S) is cabled to its
+            // processor on links of its own (IN 1 from the SQ200, IN 2
+            // from a backup SQ200): that fiber goes where the QD-S is - with
+            // the box the socket comes out of - and on this screen's rows.
+            const found = typeof this._dockFindCard === 'function' ? this._dockFindCard(owner.cardId) : null;
+            const host = found && found.card && found.card.linkHost ? found.card : null;
+            if (host && typeof this.fiberBoxLinks === 'function') {
+                sayLinks(this.fiberBoxLinks(host).filter(l => l.cable || l.copper));
+            }
             if (owner.kind === 'cvt') {
                 const box = owner.rec;
                 into.box = this.pullBoxTitle(box);
@@ -1310,27 +1374,27 @@ class _PullList {
                 } else if (fiberText) {
                     tagOnce(`fiber:${box.id}`);
                 }
-                // Each fiber CABLE once, however many boxes' links take it
-                // (a TAC shared by four boxes is one TAC to pull): "TAC 12 ·
-                // ST", "MTP 24", "opticalCON QUAD" with its length, under the
-                // cable's name, where the first box that reaches it sits, and
-                // on that box's processor's hardware rows.
-                for (const l of linked) {
-                    const key = l.copper ? `cu:${l.box.id}:${l.key}` : `fib:${l.cable.id}`;
-                    if (fiberSeen.has(key)) { tagOnce(key); continue; }
-                    fiberSeen.add(key);
-                    const r = l.copper ? row(...this._pullCopperCells(l), at) : (() => {
-                        const ft = this.parseCableLength(l.cable.ft);
-                        const has = Number.isFinite(ft) && ft > 0;
-                        return row(this.fiberCableTypeText(l.cable), this.pullLengthText(ft), 1,
-                                   l.cable.name || '', has ? '' : 'no length', at);
-                    })();
-                    saidOnce.set(key, r);
-                    push(r);
-                }
+                sayLinks(linked);
             }
+            // A cable made of several stock pieces is joined where they
+            // meet: one barrel in the cable's word per join, per channel
+            // on a snake - the extension coupler's rule (owner,
+            // 2026-10-21). _pullExpandPieces counts them.
+            const joined = (r, word, per = 1) => {
+                if (r._pieces && r._pieces.length > 1) r._join = { type: `${word} Barrel`, per };
+                return r;
+            };
             const cable = this._dataPortCableOn(owner, socket);
-            if (!cable) return;
+            if (!cable) {
+                // A socket with a screen on it and no home run typed still
+                // takes a cable: one row in the cable's word, an empty
+                // length and "no length" in Notes, as a multi, a snake or a
+                // TAC with no length reads (owner, 2026-10-21).
+                const rec = (owner.rec.portCables || {})[String(socket)];
+                push(row(this.pullDataConnectorWord(this.dataPortConnectorId(owner, rec && rec.connector)),
+                         '', 1, label, 'no length', at));
+                return;
+            }
             if (cable.kind === 'snake') {
                 const s = cable.snake;
                 const connId = this.dataPortConnectorId(owner, s.connector);
@@ -1341,16 +1405,18 @@ class _PullList {
                     into.ext = cable.ext;
                     const extWord = this.pullDataConnectorWord(
                         this.dataPortConnectorId(owner, cable.extConnector));
-                    push(row(extWord || 'Data Cable', this.pullCableLength(cable.ext, 'data'), 1, label,
-                             `ext · ${s.name || 'snake'}`, at));
+                    // An extension is a type of its own ("Cat6 Extension"),
+                    // so its note never rides onto the home runs of the same
+                    // length when the rows merge.
+                    push(joined(row(`${extWord} Extension`, this.pullCableLength(cable.ext, 'data'), 1, label,
+                                    `ext · ${s.name || 'snake'}`, at), extWord));
                     // One barrel per extension (2026-09-07): the coupler
                     // between the fan-out and the extension, in the
-                    // extension's connector word ("Ether-con Barrel" - the
-                    // GEAR LIST's own type), EA, no notes. _pullMergeRows
-                    // folds a snake's four into `Ether-con Barrel | EA | 4`.
-                    // The backup end passes through here too, so its
-                    // extension takes one as well.
-                    push(row(extWord ? `${extWord} Barrel` : 'Barrel', 'EA', 1, label, '', at));
+                    // extension's connector word ("Cat6 Barrel"), EA, no
+                    // notes. _pullMergeRows folds a snake's four into
+                    // `Cat6 Barrel | EA | 4`. The backup end passes through
+                    // here too, so its extension takes one as well.
+                    push(row(`${extWord} Barrel`, 'EA', 1, label, '', at));
                 }
                 // ONE row for the loom, keyed by the SNAKE (2026-09-09:
                 // "Any sockets, any device" - one snake can hold sockets
@@ -1364,7 +1430,7 @@ class _PullList {
                 out.snakes.push({ name: s.name || '', ways, ft: s.ft || null,
                                   connector: connId || null, owner: owner.kind,
                                   ownerId: owner.id, id: s.id });
-                const type = word ? `${word} Snake` : 'Snake';
+                const type = `${word} Snake`;
                 const ft = this.parseCableLength(s.ft);
                 const snakeRow = { type, length: this.pullCableLength(ft, 'data'),
                                    qty: 1, label: s.name || '',
@@ -1374,8 +1440,8 @@ class _PullList {
                                            (Number.isFinite(ft) && ft > 0)
                                                ? '' : 'no length']
                                        .filter(Boolean).join('; ') };
-                const r = row(snakeRow.type, snakeRow.length, snakeRow.qty,
-                              snakeRow.label, snakeRow.notes, at);
+                const r = joined(row(snakeRow.type, snakeRow.length, snakeRow.qty,
+                                     snakeRow.label, snakeRow.notes, at), word, Math.max(1, ways));
                 saidOnce.set(snakeKey, r);
                 for (const pid of this._snakeProcessorIds(s)) {
                     const p2 = (this.project.processors || [])
@@ -1387,7 +1453,7 @@ class _PullList {
             } else {
                 const word = this.pullDataConnectorWord(cable.id);
                 into.cable = cable.text;
-                push(row(word || 'Data Cable', this.pullCableLength(cable.ft, 'data'), 1, label, '', at));
+                push(joined(row(word, this.pullCableLength(cable.ft, 'data'), 1, label, '', at), word));
             }
         };
         // A run's jumpers go with the box delivering its primary socket.
@@ -1454,14 +1520,18 @@ class _PullList {
 
     // A stored edit's key as the row it answers to is keyed today: a key
     // whose type is a Brompton model under its old name ("Tessera
-    // XD|EA") reads as that model's row now ("XD|EA"). Every other key is
+    // XD|EA") reads as that model's row now ("XD|EA"), an old data word
+    // ("Ether-con|50'") as its Cat6 row ("Cat6|50'"). Every other key is
     // itself. Nothing is rewritten on open - the stored key takes the new
     // spelling the next time somebody edits that row.
     pullEditKey(key) {
         const text = String(key == null ? '' : key);
-        if (!text.startsWith(PULL_LEGACY_TYPE_PREFIX)) return text;
         const cut = text.indexOf('|');
         const type = cut < 0 ? text : text.slice(0, cut);
+        if (PULL_LEGACY_DATA_TYPES.has(type)) {
+            return PULL_LEGACY_DATA_TYPES.get(type) + (cut < 0 ? '' : text.slice(cut));
+        }
+        if (!text.startsWith(PULL_LEGACY_TYPE_PREFIX)) return text;
         const model = type.slice(PULL_LEGACY_TYPE_PREFIX.length);
         if (!PULL_LEGACY_PREFIXED_TYPES.has(model)) return text;
         return model + (cut < 0 ? '' : text.slice(cut));
@@ -1528,10 +1598,42 @@ class _PullList {
     }
 
     // A free row's side, for the binder's power / data split: a data word
-    // in the type makes it data, everything else is power.
+    // in the type makes it data - Cat5e / Cat6 / Cat6A, etherCON, a barrel,
+    // fiber, a breakout box or a processor (XD, CVT10, any model the
+    // catalog or the show names) - everything else is power.
     pullGuessSide(type) {
-        return /ether|cat\b|fiber|fibre|sdi|hdmi|data|snake|opt|sfp|tac/i.test(String(type || ''))
-            ? 'data' : 'power';
+        const text = String(type || '');
+        if (/ether|\bcat(?:5e?|6a?|7|8)?\b|fiber|fibre|sdi|hdmi|data|snake|opt|sfp|tac|barrel|\bcvt|\bxd\b/i.test(text)) {
+            return 'data';
+        }
+        const lower = text.toLowerCase();
+        return this._pullDataDeviceNames().some(n => {
+            const at = lower.indexOf(n);
+            if (at < 0) return false;
+            const before = lower[at - 1], after = lower[at + n.length];
+            return !(before && /[a-z0-9]/.test(before)) && !(after && /[a-z0-9]/.test(after));
+        }) ? 'data' : 'power';
+    }
+
+    // Every processor, card and breakout box model the catalog and the
+    // show name, lower-cased, a "RS12 / MSM4214X" as both and a
+    // "(legacy)" left off: the words pullGuessSide reads as data.
+    _pullDataDeviceNames() {
+        const names = new Set();
+        const add = (name) => String(name || '').replace(/\([^)]*\)/g, '').split('/')
+            .map(n => n.trim().toLowerCase()).filter(n => n.length >= 2).forEach(n => names.add(n));
+        const devices = typeof this._processorDevices === 'function' ? this._processorDevices() : [];
+        for (const d of devices) add(d && d.name);
+        for (const proc of this._processorsResolved || []) {
+            add(proc && proc.deviceName);
+            for (const slot of (proc && proc.slots) || []) {
+                const card = slot && slot.card;
+                if (!card) continue;
+                add(card.deviceName);
+                for (const box of card.cvts || []) add(box && box.deviceName);
+            }
+        }
+        return [...names];
     }
 
     // Engine list in, the list the papers print out: overrides overlaid,

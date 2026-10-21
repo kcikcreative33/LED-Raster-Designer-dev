@@ -1558,13 +1558,26 @@ class _Processors {
     // fiber" (2026-09-07).
     getDataCableConnectors() {
         return (this._dataCableConnectors || [
-            { id: 'cat', name: 'CAT' },
+            { id: 'cat', name: 'Cat6' },
+            { id: 'ethercon', name: 'etherCON' },
         ]).map(c => ({ id: c.id, name: c.name }));
     }
 
     dataCableConnectorName(id) {
         const hit = this.getDataCableConnectors().find(c => c.id === id);
         return hit ? hit.name : null;
+    }
+
+    // THE word for a data home run, on every surface that names one - the
+    // pull sheet, the binder's PORTS / CABLES / Snakes & home runs, the
+    // map's cable tags and the tray chips (owner, 2026-10-21): "etherCON"
+    // where the box's output is etherCON, "Cat6" where it is plain RJ45 or
+    // nobody documented it. A snake is "<word> Snake", its extension
+    // "<word> Extension", a coupler "<word> Barrel". Fiber keeps its own
+    // names (fiberCableTypeText).
+    dataCableWord(id) {
+        return this.dataCableConnectorName(id)
+            || this.dataCableConnectorName('cat') || 'Cat6';
     }
 
     // The record that OWNS a socket's home run: the first breakout box
@@ -1857,19 +1870,19 @@ class _Processors {
 
     // The connector a socket's cable FOLLOWS: the stored pick where there
     // is one, else the catalog's word for the device the port comes out of
-    // (rec.portConnector - the box, else the card, else the processor),
-    // else null: no name is printed rather than a guessed one.
+    // (rec.portConnector - a box's own, never its card's; a card's, else
+    // its processor's), else 'cat': an undocumented port reads Cat6.
     dataPortConnectorId(owner, stored) {
         if (stored && this.dataCableConnectorName(stored)) return stored;
         const follows = owner && owner.rec && owner.rec.portConnector;
         return follows && this.dataCableConnectorName(follows)
-            ? follows : null;
+            ? follows : 'cat';
     }
 
     // What one socket's home run reads as: the snake it rides
     // ({ kind: 'snake', snake, owner, ext, extConnector, text: 'SNAKE A'
     // or "SNAKE A +25'" }) or its own cable ({ kind: 'cable', ft,
-    // connector, id, name, text: "50' CAT" }), or null for a socket with
+    // connector, id, name, text: "50' Cat6" }), or null for a socket with
     // neither. On a snaked socket `ext` is the EXTENSION from the snake's
     // fan-out to the panel (rec.portCables on that socket - the same store
     // a loose socket's home run lives in), null when none; `text` is what
@@ -1896,7 +1909,7 @@ class _Processors {
         }
         if (!hasFt) return null;
         const id = this.dataPortConnectorId(owner, rec.connector);
-        const name = this.dataCableConnectorName(id) || '';
+        const name = this.dataCableWord(id);
         return {
             kind: 'cable', owner, ft, connector: rec.connector || null,
             id, name, text: this.cableText(ft, name, 'data'),
@@ -1907,7 +1920,7 @@ class _Processors {
     // the pull list share this: a snake reads "SR Primary 150'" (its name
     // and its home run; "SR Primary · no length" without one), plus
     // " +25'" when the socket carries an extension; a loose cable reads
-    // as its text ("50' CAT"); nothing reads '—'.
+    // as its text ("50' Cat6"); nothing reads '—'.
     runText(cable) {
         if (!cable) return '—';
         if (cable.kind !== 'snake') return cable.text || '—';
@@ -1945,7 +1958,7 @@ class _Processors {
     // read off the tree by _pullBackedBy (app-pull-list.js: the pull list
     // walks the backup end through the same helper - one implementation),
     // then that socket's own home run: the backup box's snake, "+25'" when
-    // the backup socket carries an extension, "50' CAT" for a loose backup
+    // the backup socket carries an extension, "50' Cat6" for a loose backup
     // cable. Null while the port is on no card, has no backup, or the
     // backup socket carries nothing.
     dataPortBackupCableForScreen(layer, portNum) {

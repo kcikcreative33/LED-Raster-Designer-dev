@@ -3,7 +3,7 @@
 "also we should add wrapping like we did to port labels on cable extensions
 such as Snake 1 SR A would be / Snake 1 / SR A" (user, 2026-09-07). The
 cable tag - the small pill beside a label when "show cable tags" is on: a
-power circuit's "10' True1", a data port's "50' CAT" or "SR Primary Snake
+power circuit's "10' True1", a data port's "50' Cat6" or "SR Primary Snake
 +10'" - used to draw as ONE line however long it ran. canvas.js now lays it
 out through cableTagLayout(text, labelSize) -> { lines, width, height }:
 
@@ -266,7 +266,7 @@ def test_three_lines_is_the_most_a_tag_takes(page):
 # -- the width the flip rule reads ------------------------------------------
 
 @pytest.mark.parametrize('text,label_size', [
-    ("10' True1", 30), (LONG, 30), (USERS, 10), ("50' CAT", 24),
+    ("10' True1", 30), (LONG, 30), (USERS, 10), ("50' Cat6", 24),
 ])
 def test_cable_tag_width_is_the_widest_line_plus_padding(page, text, label_size):
     """cableTagWidth = gap + widest wrapped line + padding, so a wrapped

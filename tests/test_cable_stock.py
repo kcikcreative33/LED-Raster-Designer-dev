@@ -320,6 +320,8 @@ def test_power_lengths_are_written_as_pieces_everywhere(page):
     tru = sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'Tru-1')
     assert tru == [("25'", 2), ("50'", 1)], pull['totals']
     assert not [r for r in pull['rows'] if '+' in str(r[1])], 'the sheet lists pieces, never sums'
+    # a power multi joins without a barrel (2026-10-21)
+    assert not [r for r in pull['totals'] if 'Barrel' in r[0]], pull['totals']
     # the pieces keep the row's label
     assert ['Multi', "100'", 1, 'SR 1'] in pull['rows'] and ['Multi', "25'", 1, 'SR 1'] in pull['rows'], pull['rows']
     # the distro's hardware rows count the same pieces
@@ -484,9 +486,14 @@ def test_data_lengths_are_written_as_pieces_everywhere(page):
     assert not [r for r in out['totals'] if '+' in str(r[1])], out['totals']
     snake_rows = [v for k, v in lengths.items() if k.endswith('Snake')]
     assert snake_rows and sorted(snake_rows[0]) == [("100'", 1), ("50'", 1)], lengths
-    flat = sorted(lengths.get('Ether-con', []))
     # the loose 125 (100 + 25) and the extension 60 (50 + 25)
-    assert flat == [("100'", 1), ("25'", 2), ("50'", 1)], lengths
+    assert sorted(lengths.get('Cat6', [])) == [("100'", 1), ("25'", 1)], lengths
+    assert sorted(lengths.get('Cat6 Extension', [])) == [("25'", 1), ("50'", 1)], lengths
+    # every stock join takes a barrel (2026-10-21): the loose run's one
+    # join, the extension's one, the 2 channel snake's one join per
+    # channel (2), plus the extension's own coupler to the fan-out
+    barrels = [q for t, length, q in out['totals'] if t == 'Cat6 Barrel' and length == 'EA']
+    assert barrels == [5], out['totals']
     pg.locator('[data-mode="power"]').click()
     pg.wait_for_timeout(300)
     assert errors == [], errors

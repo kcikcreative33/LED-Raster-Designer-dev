@@ -283,12 +283,13 @@ def test_the_file_menu_opens_the_editor_laid_out_like_the_workbook(page):
     # TOTALS is a readout block with the engine's totals
     tot = pg.locator('#pull-sheet-totals tr').evaluate_all(
         "els => els.slice(1).map(tr => [...tr.children].map(td => td.textContent))")
-    # the jumpers head the totals - one row per length (2026-09-25,
-    # test_pull_list's seed) - then the distro's own row, by its Type
-    # ("Distro" with none, 2026-10-18)
-    assert tot[0:4] == [['Data Jump', "1'", '9', 'WALL-A'], ['Data Jump', "1.5'", '4', 'CENTER'],
+    # the Cat6 home runs head the totals, then the jumpers - one row per
+    # length (2026-09-25, test_pull_list's seed) - then the distro's own
+    # row, by its Type ("Distro" with none, 2026-10-18)
+    assert tot[0:2] == [['Cat6', "50'", '1', 'SR-3'], ['Cat6 Snake', "100'", '1', 'SNAKE A']]
+    assert tot[2:6] == [['Data Jump', "1'", '9', 'WALL-A'], ['Data Jump', "1.5'", '4', 'CENTER'],
                         ['Data Jump', "2'", '2', 'WALL-A'], ['Data Jump', "6'", '11', 'WALL-B']]
-    assert tot[4] == ['Distro', 'EA', '1', 'SR']
+    assert tot[6] == ['Distro', 'EA', '1', 'SR']
     assert pg.locator('#pull-sheet-totals input').count() == 0
     assert 'tails' not in pg.locator('#pull-sheet-modal').inner_text().lower()
     # the pickers carry the GEAR LIST plus the show's own words
@@ -472,7 +473,7 @@ def test_an_added_row_with_a_new_type_lands_in_the_export_and_the_gear_list(page
     assert (widget['length'], widget['qty'], widget['label'], widget['notes'], widget['side']) == ("12'", 3, 'X', 'new', 'power')
     assert _totals(sheet)[('Widget Cable', "12'")] == (3, 'X', 'new')
     # sorted into place, EA last
-    assert [t for t, *_ in _rows(center['rows'])] == ['Data Jump', 'Edison 2fer', 'Ether-con', 'Tru-1 Power Jump', 'Widget Cable']
+    assert [t for t, *_ in _rows(center['rows'])] == ['Cat6', 'Data Jump', 'Edison 2fer', 'Tru-1 Power Jump', 'Widget Cable']
     assert _rows(sheet['totals'])[-1][0] == 'Widget Cable' or _rows(sheet['totals'])[-1][1] == 'EA'
     # the export: the row in the CENTER block, the type in the GEAR LIST
     wb, body = _export_xlsx(pg)
@@ -491,10 +492,10 @@ def test_an_added_row_with_a_new_type_lands_in_the_export_and_the_gear_list(page
     assert center.index('Widget Cable') < center.index('DATA CABLES'), center
     assert ('Widget Cable', "12'", '3') not in _triples(cols['SR Beach'])
     # a data word goes to the data side
-    idx = pg.evaluate("(k) => window.app.addPullSheetRow(k, {type: 'Ether-con Barrel', length: 'EA', qty: 2})", ids['center'])
+    idx = pg.evaluate("(k) => window.app.addPullSheetRow(k, {type: 'Cat6 Barrel', length: 'EA', qty: 2})", ids['center'])
     assert idx == 1
     sheet = pg.evaluate(SHEET_JS)
-    barrel = next(r for p in sheet['positions'] for r in p['rows'] if r['type'] == 'Ether-con Barrel')
+    barrel = next(r for p in sheet['positions'] for r in p['rows'] if r['type'] == 'Cat6 Barrel')
     assert barrel['side'] == 'data'
     pg.evaluate("() => window.app.renderPullSheetEditor()")
     pg.wait_for_timeout(200)

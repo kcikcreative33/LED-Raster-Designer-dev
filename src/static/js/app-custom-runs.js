@@ -152,7 +152,7 @@ class _CustomRuns {
         const isPower = kind === 'power';
         const pathsKey = isPower ? 'powerCustomPaths' : 'customPortPaths';
         const path = (owner && owner[pathsKey] && owner[pathsKey][num]) || [];
-        const hits = this.getResolvedPathPanels(owner, path);
+        const hits = this.getResolvedPathPanels(owner, path, kind);
         const cap = this.customRunCapacity(owner, kind, hits.map(h => h.panel));
         const load = this.customRunLoad(owner, kind, hits);
         const eps = CUSTOM_RUN_EPS;
@@ -255,7 +255,7 @@ class _CustomRuns {
     customRunAccepts(owner, kind, num, hitLayer, panel) {
         const pathsKey = kind === 'power' ? 'powerCustomPaths' : 'customPortPaths';
         const path = (owner && owner[pathsKey] && owner[pathsKey][num]) || [];
-        const hits = this.getResolvedPathPanels(owner, path)
+        const hits = this.getResolvedPathPanels(owner, path, kind)
             .concat(panel ? [{ layer: hitLayer, panel }] : []);
         const cap = this.customRunCapacity(owner, kind, hits.map(h => h.panel));
         if (!cap.known) return true;
@@ -367,7 +367,7 @@ class _CustomRuns {
         if (!fill.known) {
             const pathsKey = kind === 'power' ? 'powerCustomPaths' : 'customPortPaths';
             const n = this.getResolvedPathPanels(layer,
-                (layer[pathsKey] && layer[pathsKey][num]) || []).length;
+                (layer[pathsKey] && layer[pathsKey][num]) || [], kind).length;
             el.textContent = `${head}: ${n} panels — no cap (`
                 + (kind === 'power'
                     ? 'set voltage, amperage and watts per panel)'

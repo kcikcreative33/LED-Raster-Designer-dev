@@ -1165,7 +1165,7 @@ class _DockDrag {
                 Object.keys(layer.customPortPaths).forEach(numStr => {
                     const num = parseInt(numStr, 10);
                     this.getResolvedPathPanels(
-                        layer, layer.customPortPaths[numStr] || [])
+                        layer, layer.customPortPaths[numStr] || [], 'data')
                         .forEach(r => map.set(r.panel,
                                               { ownerId: layer.id, portNum: num }));
                 });

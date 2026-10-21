@@ -208,10 +208,10 @@ def test_a_distro_at_its_own_beach_pulls_the_power_rows_there(page):
         ('Tru-1 Power Jump', "6'", 10, 'WALL-B', ''),
     ]
     assert _rows(pos['SR Beach']['rows']) == [
+        ('Cat6 Snake', "100'", 1, 'SNAKE A', '2 channel'),
         ('Data Jump', "1'", 9, 'WALL-A', ''),
         ('Data Jump', "2'", 2, 'WALL-A', ''),
         ('Data Jump', "6'", 11, 'WALL-B', ''),
-        ('Ether-con Snake', "100'", 1, 'SNAKE A', '2 channel'),
         ('H9', 'EA', 1, '', ''),
     ]
     assert pos['SR Beach']['layerIds'] == [ids['a'], ids['b']]
@@ -327,7 +327,7 @@ def test_a_box_at_its_beach_pulls_its_ports_rows_and_two_boxes_list_once(page):
     - a beach the project keeps (project.beaches, made the way the picker
     makes one) that each box PICKS by id. The sockets' home runs are the
     box's now (its snake of sockets 1-2 with a 10' extension on socket 1,
-    its 50' cable on 3), so the snake, the extension and its `Ether-con
+    its 50' cable on 3), so the snake, the extension and its `Cat6
     Barrel` (one per extension, 2026-09-07), CENTER's cable, every data
     jumper, box A's fiber and ONE "CVT10 EA" row of qty 2 labelled "A, B"
     land on SL Beach, whose layerIds are the three screens; the power rows
@@ -415,15 +415,15 @@ def test_a_box_at_its_beach_pulls_its_ports_rows_and_two_boxes_list_once(page):
     assert pos['SR Beach']['memberIds'] == [ids['a'], ids['b']] and pos['SR Beach']['location'] == 'SR Beach'
     assert _rows(sl['rows']) == [
         ('12 Tac Fiber', "250'", 1, 'CVT10 A', ''),
+        ('Cat6', "50'", 1, out['centerLabel'], ''),
+        ('Cat6 Barrel', 'EA', 1, out['aLabel'], ''),
+        ('Cat6 Extension', "10'", 1, out['aLabel'], f"ext · {out['snakeName']}"),
+        ('Cat6 Snake', "100'", 1, out['snakeName'], '2 channel'),
         ('CVT10', 'EA', 2, 'A, B', ''),
         ('Data Jump', "1'", 9, 'WALL-A', ''),
         ('Data Jump', "1.5'", 4, 'CENTER', ''),
         ('Data Jump', "2'", 2, 'WALL-A', ''),
         ('Data Jump', "6'", 11, 'WALL-B', ''),
-        ('Ether-con', "10'", 1, out['aLabel'], f"ext · {out['snakeName']}"),
-        ('Ether-con', "50'", 1, out['centerLabel'], ''),
-        ('Ether-con Barrel', 'EA', 1, out['aLabel'], ''),
-        ('Ether-con Snake', "100'", 1, out['snakeName'], '2 channel'),
         ('H9', 'EA', 1, '', ''),
     ]
     assert all(r['side'] == 'data' for r in sl['rows'])

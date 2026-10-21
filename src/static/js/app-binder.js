@@ -1536,8 +1536,9 @@ class _Binder {
     }
 
     // The CABLES THIS SCREEN table: CABLE, LENGTH, QTY - a cable crossing into
-    // another member reading "Data Cable · also on WALL SL", wrapped under
-    // its type.
+    // another member reading "Cat6 · also on WALL SL", wrapped under its
+    // type. A cable nobody gave a length (a TAC, a home run) says "no
+    // length" in LENGTH, as the pull sheet says it in Notes.
     _bCableTable(book, s, side) {
         const rows = this._bSubjectRows(book, s, side);
         const crossing = rows.some(r => r.also);
@@ -1548,7 +1549,8 @@ class _Binder {
                    { title: 'qty', w: 0.6, align: 'right', lend: true }],
             rows: rows.length
                 ? rows.map(r => ({ cells: [r.also ? `${this._bType(r.type)} · ${r.also}` : this._bType(r.type),
-                                           r.length || '—', this._bQty(r.qty)] }))
+                                           r.length || (/(^|; )no length\b/.test(r.notes || '') ? 'no length' : '—'),
+                                           this._bQty(r.qty)] }))
                 : [{ cells: ['no cables typed', '', ''] }],
         });
     }
@@ -6315,7 +6317,7 @@ class _Binder {
                                         'snake',
                                         s.ft ? this.pullLengthText(s.ft, 'data') : 'no length',
                                         `${o.title} ${this._fmtTails(here)}`
-                                        + (connId ? ` · ${this.dataCableConnectorName(connId)}` : '')
+                                        + ` · ${this.dataCableWord(connId)}`
                                         + away] });
                 }
                 // A socket's own entry: its home run where it is loose
@@ -6338,7 +6340,7 @@ class _Binder {
                         continue;
                     }
                     runs.push({ cells: [`${o.title} ${socket}`, 'cable', this.pullLengthText(ft, 'data'),
-                                        connId ? this.dataCableConnectorName(connId) : ''] });
+                                        this.dataCableWord(connId)] });
                 }
             }
         }
@@ -6389,7 +6391,7 @@ class _Binder {
             const also = (procsOf.get(cable.id) || []).filter(t => t !== here);
             const title = [`Strand map · ${cable.name || this.fiberKindWord(cable.kind)}`,
                            this.fiberCableTypeText(cable),
-                           Number.isFinite(ft) && ft > 0 ? this.pullLengthText(ft) : '']
+                           Number.isFinite(ft) && ft > 0 ? this.pullLengthText(ft) : 'no length']
                 .filter(Boolean).join(' · ');
             const m = uses.get(cable.id) || new Map();
             const rows = [];
@@ -6514,6 +6516,9 @@ class _Binder {
             if (!cable) return { cells: [output, 'no fiber picked', '', input, ''] };
             let name = cable.name || this.fiberCableTypeText(cable);
             if (cable.name && !typed.has(cable.id)) name += ` (${this.fiberCableTypeText(cable)})`;
+            // a cable nobody gave a length is flagged here as everywhere
+            const cableFt = this.parseCableLength(cable.ft);
+            if (!(Number.isFinite(cableFt) && cableFt > 0)) name += ' · no length';
             typed.add(cable.id);
             const set = strands(l.link);
             const atProcessor = swatched(set, cable);

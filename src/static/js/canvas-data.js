@@ -473,7 +473,7 @@ Object.assign(CanvasRenderer.prototype, {
             }
 
             // The port's home run, as a small blue tag beside its label -
-            // the snake it rides ("SNAKE A") or its own cable ("50' CAT"):
+            // the snake it rides ("SNAKE A") or its own cable ("50' Cat6"):
             // "the same option for data homeruns" (2026-09-06), per screen,
             // default OFF, and the same test in exportMode so the PDF is
             // what was asked for. The power tag's drawer, in the data
@@ -539,13 +539,18 @@ Object.assign(CanvasRenderer.prototype, {
                 // takes the other side of both branches below.
                 if (this._deferCrossMemberPath(layer, path)) return;
                 if (this._crossMemberPass) {
-                    drawPort(this._crossMemberDrawPanels(layer, path), portNum,
+                    drawPort(this._crossMemberDrawPanels(layer, path, 'data'), portNum,
                         this._crossMemberLoadPanels(layer, path));
                     return;
                 }
+                // A blank cabinet, like a hidden one, carries no data and
+                // counts nothing on a hand-drawn path (isPanelDataDark).
+                const app = window.app;
+                const dark = (panel) => (app && typeof app.isPanelDataDark === 'function'
+                    ? app.isPanelDataDark(panel) : !!(panel.hidden || panel.blank));
                 const portPanels = path.map(p => {
                     const panel = layer.panels.find(panel => panel.row === p.row && panel.col === p.col);
-                    return panel && !panel.hidden ? panel : null;
+                    return panel && !dark(panel) ? panel : null;
                 }).filter(Boolean);
                 drawPort(portPanels, portNum);
             });
