@@ -4037,7 +4037,7 @@
         addService: {
             since: '1.5.3',
             target: '#power-service-add', place: 'top', title: 'Add a service',
-            body: 'Add service puts a Service card above the distros: the house power they are fed from, 600 A per leg to start, with its rating and system behind its &#9881;.',
+            body: 'Add service puts a Service card above the distros: the house power they are fed from. It starts at 400 A per leg, and its rating and system sit behind its &#9881;.',
             before: function () { switchView('power'); closePopover(); },
             act: function (t) {
                 return t.click('#power-service-add').then(function () {
@@ -4052,6 +4052,38 @@
                 return s && $('[data-lrd-service="' + s.id + '"]')
                     ? A().serviceLabel(s) + ' is in the tray, feeding nothing yet.' : null;
             }
+        },
+        // The house size: a service starts at 400 A, and the gear's Rating
+        // makes it the 600 A the walkthrough's distros share.
+        serviceRating: {
+            since: '1.5.3',
+            target: function () { var s = service(); return s ? '[data-hwpop="service-' + s.id + '"]' : '#power-service-add'; },
+            place: 'top', title: 'Set the service size',
+            avoid: [function () { var s = service(); return s ? '[data-lrd-field="service-rating-' + s.id + '"]' : null; }],
+            body: 'Open the service&rsquo;s &#9881; and type the house power into Rating, in amps per leg. Make this one 600 A, enough for a 400 A and a 200 A distro to share.',
+            before: function () { switchView('power'); closePopover(); },
+            act: function (t) {
+                var s = service();
+                if (!s) throw new Error('there is no service to size');
+                return t.click('[data-hwpop="service-' + s.id + '"]').then(function () {
+                    return t.wait(popover);
+                }).then(function (pop) {
+                    if (!pop) throw new Error('the service\'s gear popover did not open');
+                    return t.spot(pop).then(function () { return t.pause(900); });
+                }).then(function () {
+                    return t.type('[data-lrd-field="service-rating-' + s.id + '"]', '600');
+                }).then(function () {
+                    return t.wait(function () { var q = service(); return q && Number(q.ratingA) === 600; });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the service did not take 600 A');
+                    return t.pause(PACE.acted);
+                });
+            },
+            check: function () {
+                var s = service();
+                return s && Number(s.ratingA) === 600 ? A().serviceLabel(s) + ' is the house power now.' : null;
+            },
+            after: function () { closePopover(); }
         },
         serviceDistro: {
             since: '1.5.3',
@@ -4597,7 +4629,7 @@
                     'dropMulti', 'clearCircuit', 'clearMultiByMenu', 'dropMultiAgain',
                     'multiCableSheet', 'powerJumpers', 'cableUnit', 'cableStock', 'cableStockPieces', 'powerCableTags',
                     'powerColumns', 'splitters', 'takeOver', 'customPower', 'customDraw', 'sweepShare', 'balance',
-                    'addService', 'serviceDistro',
+                    'addService', 'serviceRating', 'serviceDistro',
                     'addBeach', 'screenBeach', 'addScreen', 'beachByMenu', 'crossScreens', 'groupScreens',
                     'exportBinder', 'screenOrder', 'wiringTick', 'titleBlock', 'fileExports', 'preferences',
                     'helpMenu', 'outroAdvanced']

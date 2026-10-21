@@ -258,12 +258,12 @@ def test_add_service_puts_a_card_above_the_distros(page):
     pg.mouse.click(x, y)
     pg.wait_for_timeout(400)
     out = read(pg)
-    assert out['stored'] == [{'id': 's1', 'name': 'SERVICE 1', 'ratingA': 600, 'system': '120/208',
+    assert out['stored'] == [{'id': 's1', 'name': 'SERVICE 1', 'ratingA': 400, 'system': '120/208',
                               'voltage': 208, 'phase': 3}], out['stored']
     s = out['services']['s1']
-    assert s['card'] and s['name'] == 'SERVICE 1' and s['size'] == '600 A · 120/208V 3φ', s
+    assert s['card'] and s['name'] == 'SERVICE 1' and s['size'] == '400 A · 120/208V 3φ', s
     assert s['empty'] == "Drag a distro's header bar here.", s
-    assert s['use'] == '0.0/480 A' and s['lim'] == '· 80% of 600 A', s
+    assert s['use'] == '0.0/320 A' and s['lim'] == '· 80% of 400 A', s
     # The strip sits above the distro columns, spanning the tray.
     geo = pg.evaluate("""() => {
         const strip = document.querySelector('#hardware-dock-body > .hw-dock-services');

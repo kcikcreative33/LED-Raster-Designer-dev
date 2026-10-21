@@ -92,7 +92,9 @@ class _Services {
         const s = {
             id: 's' + n,
             name: String(opts.name || '').trim() || `SERVICE ${n}`,
-            ratingA: Number(opts.ratingA) > 0 ? Number(opts.ratingA) : 600,
+            // A new service starts at 400 A (owner ruling, 2026-10-21); the
+            // gear's Rating sets the house's real size.
+            ratingA: Number(opts.ratingA) > 0 ? Number(opts.ratingA) : 400,
             system: sys.id,
             voltage: sys.voltage,
             phase: sys.phase,

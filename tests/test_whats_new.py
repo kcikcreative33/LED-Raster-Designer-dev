@@ -261,7 +261,7 @@ def test_new_steps_filter_by_since(page):
         assert _new_steps(page, after, up_to) == want, (after, up_to)
     assert _new_steps(page, '1.5.2', '1.5.3') == [
         'cableStock', 'cableStockPieces', 'takeOver', 'customPower', 'customDraw', 'sweepShare',
-        'addService', 'serviceDistro']
+        'addService', 'serviceRating', 'serviceDistro']
     # A step is never newer than the running version.
     assert not set(_new_steps(page, '1.5.2', '1.5.2'))
     assert _new_steps(page, 'junk', '1.5.3') == []
@@ -274,7 +274,7 @@ def test_decide_patch_update_with_new_steps_offers_them(page):
     d = _decide(page, '1.5.3', '1.5.2')
     assert d['show'] is True and d['stamp'] is None, d
     assert d['window'] == {'key': '1.5.3', 'also': None, 'after': '1.5.2', 'upTo': '1.5.3',
-                           'steps': _new_steps(page, '1.5.2', '1.5.3')}, d
+                           'steps': _new_steps(page, '1.5.2', '1.5.3'), 'stamp': '1.5.3'}, d
     assert d['window']['steps'], d
 
 
@@ -322,6 +322,43 @@ def test_decide_first_run_stamps_silently(page):
 def test_decide_same_or_older_version_is_silent(page):
     assert _decide(page, '1.5.3', '1.5.3') == {'show': False, 'stamp': None, 'window': None}
     assert _decide(page, '1.5.2', '1.5.3') == {'show': False, 'stamp': '1.5.2', 'window': None}
+
+
+def test_decide_full_release_after_its_betas_shows_once(page):
+    """Owner, 2026-10-21: the first launch of a new version always shows
+    the window. A beta stamps its whole tag, so the full release it led to
+    is still news; between betas of one version it stays quiet."""
+    d = _decide(page, '1.5.3', '1.5.3-beta.11')
+    assert d['show'] and d['window']['key'] == '1.5.3', d
+    assert d['window']['steps'] == _new_steps(page, '1.5.2', '1.5.3'), d
+    assert d['window']['after'] is None and d['window']['stamp'] == '1.5.3', d
+    assert _decide(page, '1.5.3-beta.11', '1.5.3-beta.10') == {
+        'show': False, 'stamp': '1.5.3-beta.11', 'window': None}
+    assert _decide(page, '1.5.3-beta.11', '1.5.3-beta.11') == {
+        'show': False, 'stamp': None, 'window': None}
+    assert _decide(page, '1.5.3-beta.11', '1.5.3') == {
+        'show': False, 'stamp': '1.5.3-beta.11', 'window': None}
+    up = _decide(page, '1.5.3-beta.2', '1.5.2')
+    assert up['show'] and up['window']['stamp'] == '1.5.3-beta.2', up
+
+
+def test_autorun_shows_the_full_release_to_a_bare_beta_stamp(page):
+    """Betas up to 1.5.3 stamped the bare version. Without the mark this
+    build writes, a stamp equal to the full release reads as a beta's: the
+    window opens once, and dismissing it marks the stamp as a full one."""
+    _serve_version(page, '1.5.3')
+    try:
+        page.evaluate("""() => { localStorage.setItem(window.WhatsNew.LS_KEY, '1.5.3');
+            localStorage.removeItem(window.WhatsNew.MARK_KEY); }""")
+        page.evaluate("window.WhatsNew.autoRun(true)")
+        _wait_modal(page)
+        page.click('#whatsnew-close')
+        assert page.evaluate("[localStorage.getItem(window.WhatsNew.LS_KEY), localStorage.getItem(window.WhatsNew.MARK_KEY)]") == ['1.5.3', '1']
+        page.evaluate("window.WhatsNew.autoRun(true)")
+        page.wait_for_timeout(400)
+        assert not _modal_visible(page)
+    finally:
+        page.unroute('**/api/version')
 
 
 def test_decide_unknown_version_stamps_silently(page):

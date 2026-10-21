@@ -15,6 +15,12 @@
  * snapshot (QuickStart.startSteps). Close skips them. Anything else (a patch
  * with no new steps, a downgrade) only moves the stamp, silently.
  *
+ * A beta stamps its whole tag ("1.5.3-beta.11"), so the full 1.5.3 it led
+ * to is still an update and opens the window for 1.5.3 (owner, 2026-10-21:
+ * "first time start on any new version should always show it"). Up to
+ * 1.5.3 a beta stamped the bare "1.5.3"; a stamp written before the
+ * lrd_whatsnew_full mark reads as a beta's for the same reason.
+ *
  * A brand-new install has no stamp: it is stamped silently and the
  * first-run Quick Start guide keeps its job: the window and the guide
  * never stack. Content ships with the app (offline).
@@ -27,6 +33,9 @@
     // The version this browser last ran ("1.5.3"). Up to 1.5.2 it held the
     // MAJOR.MINOR the window last showed ("1.5"), which reads as "1.5.0".
     var LS_KEY = 'lrd_whatsnew_seen';
+    // Set by every stamp this build writes; a bare stamp without it came
+    // from a build that stamped betas bare.
+    var MARK_KEY = 'lrd_whatsnew_full';
 
     // "1.5.2" / "v1.0.3.1" -> [1, 5, 2] / [1, 0, 3, 1]; null when unparseable.
     function parts(version) {
@@ -43,6 +52,31 @@
         return 0;
     }
     function clean(version) { var p = parts(version); return p ? p.join('.') : null; }
+    // "1.5.3-beta.11" -> "beta.11"; null for a full release.
+    function preOf(version) {
+        var m = /^v?\d+(?:\.\d+)*-(\S+)/.exec(String(version == null ? '' : version).trim());
+        return m ? m[1] : null;
+    }
+    // What a launch of `version` stamps: "1.5.3", or "1.5.3-beta.11".
+    function stampOf(version) {
+        var c = clean(version), pre = preOf(version);
+        return c && pre ? c + '-' + pre : c;
+    }
+    // The version just before `version`, for counting its own steps:
+    // "1.5.3" -> "1.5.2", "1.6.0" -> "1.5.99999".
+    function below(version) {
+        var p = parts(version);
+        if (!p) return null;
+        while (p.length < 3) p.push(0);
+        for (var i = p.length - 1; i >= 0; i--) {
+            if (p[i] > 0) {
+                p[i] -= 1;
+                for (var j = i + 1; j < p.length; j++) p[j] = 99999;
+                return p.join('.');
+            }
+        }
+        return null;
+    }
     // "0.12.2" / "v1.0.3.1" -> "0.12" / "1.0"; null when unparseable.
     function majorMinor(version) {
         var p = parts(version);
@@ -52,10 +86,14 @@
     function content() { return window.WHATS_NEW_CONTENT || {}; }
 
     function getStamp() {
-        try { return localStorage.getItem(LS_KEY); } catch (e) { return null; }
+        try {
+            var v = localStorage.getItem(LS_KEY);
+            if (v && !preOf(v) && localStorage.getItem(MARK_KEY) !== '1') return v + '-legacy';
+            return v;
+        } catch (e) { return null; }
     }
     function setStamp(v) {
-        try { localStorage.setItem(LS_KEY, v); } catch (e) {}
+        try { localStorage.setItem(LS_KEY, v); localStorage.setItem(MARK_KEY, '1'); } catch (e) {}
     }
 
     // ── the guide steps (quickstart.js) ──────────────────────────────────
@@ -109,18 +147,28 @@
     function decide(currentVersion, stamped, between) {
         var cur = clean(currentVersion);
         if (!cur || !majorMinor(cur)) return { show: false, stamp: null, window: null };
+        var mine = stampOf(currentVersion);
         var seen = clean(stamped);
         // First run: no stamp yet. Stamp silently; the Quick Start guide
         // owns the first launch and the window must not pile on top of it.
-        if (!seen) return { show: false, stamp: cur, window: null };
-        // The same version, or an older one: nothing new to say.
-        if (cmp(parts(cur), parts(seen)) <= 0) {
-            return { show: false, stamp: seen === cur ? null : cur, window: null };
+        if (!seen) return { show: false, stamp: mine, window: null };
+        var order = cmp(parts(cur), parts(seen));
+        var win = null;
+        if (order === 0 && preOf(stamped) && !preOf(currentVersion)) {
+            // The full release after its own betas: everything this
+            // version brought is news to someone who only ran its betas.
+            win = windowFor(below(cur), cur, between);
+            if (win) win.after = null;
+        } else if (order <= 0) {
+            // The same version, or an older one: nothing new to say.
+            return { show: false, stamp: stampOf(stamped) === mine ? null : mine, window: null };
+        } else {
+            win = windowFor(seen, cur, between);
         }
-        var win = windowFor(seen, cur, between);
         // Updated, but nothing curated and no new steps (a plain patch):
         // stamp so the next update compares against this one, and stay quiet.
-        if (!win) return { show: false, stamp: cur, window: null };
+        if (!win) return { show: false, stamp: mine, window: null };
+        win.stamp = mine;
         return { show: true, stamp: null, window: win };
     }
 
@@ -312,7 +360,7 @@
     }
 
     function show(win) {
-        if (openWindow(win)) pendingStampOnDismiss = win.upTo;
+        if (openWindow(win)) pendingStampOnDismiss = win.stamp || win.upTo;
     }
 
     function autoRun(force) {
@@ -364,7 +412,8 @@
         decide: decide,
         windowFor: windowFor,
         _majorMinor: majorMinor,
-        LS_KEY: LS_KEY
+        LS_KEY: LS_KEY,
+        MARK_KEY: MARK_KEY
     };
 
     if (document.readyState === 'loading') {
