@@ -41,6 +41,7 @@ import datetime
 import decimal
 import io
 import os
+import re
 import sys
 
 BASE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
@@ -247,6 +248,29 @@ def _metric_gear_lengths(ws):
             cell.value = wanted[i]
         elif cell.value is not None:
             cell.value = None
+
+
+# The template is the user's own sheet, which spells TRUE1 "Tru-1" (and
+# once "TRU-1"). The app writes TRUE1 on every surface (2026-10-21), so the
+# GEAR LIST and the READ ME read the same word in the copy it hands out.
+_OLD_TRUE1 = re.compile(r'\bTRU-1\b|\bTru-1\b')
+
+
+def true1_spelling(text):
+    """`text` with the template's old TRUE1 spelling replaced."""
+    return _OLD_TRUE1.sub('TRUE1', text) if isinstance(text, str) else text
+
+
+def _true1_workbook(wb):
+    """The GEAR LIST cable types and the READ ME in the app's spelling."""
+    gear = wb[GEAR]
+    for r in range(GEAR_FIRST_ROW, GEAR_TYPE_LAST_ROW + 1):
+        cell = gear.cell(r, GEAR_TYPE_COL)
+        cell.value = true1_spelling(cell.value)
+    if README in wb.sheetnames:
+        for row in wb[README].iter_rows():
+            for cell in row:
+                cell.value = true1_spelling(cell.value)
 
 
 def _sort_keys(row):
@@ -457,6 +481,7 @@ def build_workbook(pull_list, meta=None, template_path=TEMPLATE_PATH):
     # GEAR LIST lacks, so the dropdowns accept what was written.
     if meta.get('cable_unit') == 'm':
         _metric_workbook(wb)
+    _true1_workbook(wb)
     _add_gear(gear, GEAR_TYPE_COL, GEAR_TYPE_LAST_ROW, list(dict.fromkeys(types)), warnings, 'Cable Type')
     _add_gear(gear, GEAR_LENGTH_COL, GEAR_LENGTH_LAST_ROW, list(dict.fromkeys(lengths)), warnings, 'Length')
 
@@ -495,7 +520,7 @@ def gear_list(template_path=TEMPLATE_PATH):
     for r in range(GEAR_FIRST_ROW, GEAR_TYPE_LAST_ROW + 1):
         v = ws.cell(r, GEAR_TYPE_COL).value
         if v is not None and str(v).strip():
-            types.append(str(v).strip())
+            types.append(true1_spelling(str(v).strip()))
         if r <= GEAR_LENGTH_LAST_ROW:
             v = ws.cell(r, GEAR_LENGTH_COL).value
             if v is not None and str(v).strip():

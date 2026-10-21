@@ -163,9 +163,9 @@ def test_a_feet_show_that_stores_its_jumpers_prints_exactly_as_before(page):
     assert out['rows'] == [
         ['Data Jump', "2'", 4, 'STORED', ''],
         ['Data Jump', "6'", 1, 'STORED', ''],
-        ['Tru-1 Power Jump', "6'", 1, 'STORED', ''],
+        ['TRUE1 Power Jump', "6'", 1, 'STORED', ''],
         ['Data Jump', "6'", 5, 'OLD', ''],
-        ['Tru-1 Power Jump', "6'", 5, 'OLD', ''],
+        ['TRUE1 Power Jump', "6'", 5, 'OLD', ''],
     ], out
     assert out['per'] == {
         'STORED': {'data': {'2': 4, '6': 1}, 'power': {'6': 1}},
@@ -333,8 +333,8 @@ def test_a_direct_output_reads_the_same_lengths(page):
     '30m' there is no length - not 30'."""
     pg, _ = page
     _power_show(pg)
-    for typed, want, row in (('25ft', "25' True1", ['Tru-1', "25'", 1, 'SL5', '']),
-                             ('30m', None, ['Tru-1', '', 1, 'SL5', 'no length'])):
+    for typed, want, row in (('25ft', "25' TRUE1", ['TRUE1', "25'", 1, 'SL5', '']),
+                             ('30m', None, ['TRUE1', '', 1, 'SL5', 'no length'])):
         nums = pg.evaluate(SETUP_JS, {'distros': [DIST_US], 'walls': {'W': {
             'powerSocaSplits': [1], 'powerSocaDistro': {'1': 'd1'}, 'powerSocaNumber': {'1': 5},
             'powerSocaLengths': {'1': typed}}}})
@@ -376,10 +376,10 @@ def test_a_direct_output_with_its_own_circuit_cable_prints_one_cable(page):
     pg, errors = page
     _power_show(pg)
     for lengths, cable, want in (
-            ({'1': '25'}, {'ft': 10, 'connector': None}, [['Tru-1', "10'", 1, 'SL5', '']]),
-            ({}, {'ft': 10, 'connector': None}, [['Tru-1', "10'", 1, 'SL5', '']]),
-            ({'1': '25'}, None, [['Tru-1', "25'", 1, 'SL5', '']]),
-            ({}, None, [['Tru-1', '', 1, 'SL5', 'no length']])):
+            ({'1': '25'}, {'ft': 10, 'connector': None}, [['TRUE1', "10'", 1, 'SL5', '']]),
+            ({}, {'ft': 10, 'connector': None}, [['TRUE1', "10'", 1, 'SL5', '']]),
+            ({'1': '25'}, None, [['TRUE1', "25'", 1, 'SL5', '']]),
+            ({}, None, [['TRUE1', '', 1, 'SL5', 'no length']])):
         nums = pg.evaluate(SETUP_JS, {'distros': [DIST_US], 'walls': {'W': {
             'powerSocaSplits': [1], 'powerSocaDistro': {'1': 'd1'}, 'powerSocaNumber': {'1': 5},
             'powerSocaLengths': lengths}}})
@@ -391,10 +391,10 @@ def test_a_direct_output_with_its_own_circuit_cable_prints_one_cable(page):
             return { tag: (own && own.text) || (direct && direct.text) || null };""",
                  {'circuit': circuit, 'cable': cable})
         every = pg.evaluate(ROWS_JS)
-        rows = [r for r in every if r[0] == 'Tru-1']
+        rows = [r for r in every if r[0] == 'TRUE1']
         assert rows == want, (lengths, cable, every, out)
         if want[0][1]:
-            assert out['tag'] == f"{want[0][1]} True1", out
+            assert out['tag'] == f"{want[0][1]} TRUE1", out
     assert errors == [], errors
 
 

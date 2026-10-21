@@ -352,6 +352,7 @@ class _Clipboard {
             powerVoltage: layer.powerVoltage,
             powerVoltageCustom: layer.powerVoltageCustom,
             powerBreakoutType: layer.powerBreakoutType,
+            powerPanelInput: layer.powerPanelInput,
             powerAmperage: layer.powerAmperage,
             powerAmperageCustom: layer.powerAmperageCustom,
             panelWatts: layer.panelWatts,

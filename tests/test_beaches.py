@@ -557,7 +557,7 @@ def test_the_distro_picker_pulls_the_power_rows_to_its_beach(page):
     assert [p['name'] for p in out['positions']] == ['SR', 'SL', 'SPARE']
     sl_rows = _rows(pos['SL']['rows'])
     for row in [('Distro', 'EA', 1, 'SR', ''), ('Multi', "100'", 1, 'SR2', ''), ('Multi', "125'", 1, 'SR1', ''),
-                ('Tru-1 Breakout', 'EA', 2, 'SR 1-2', '')]:
+                ('TRUE1 Breakout', 'EA', 2, 'SR 1-2', '')]:
         assert row in sl_rows, (row, sl_rows)
     # the walls' power jumpers beside CENTER's and LEFT's own, at SL - one
     # row per length (2026-09-25): WALL-A's 1' / 2', CENTER's 3', LEFT's
@@ -565,13 +565,13 @@ def test_the_distro_picker_pulls_the_power_rows_to_its_beach(page):
     # GROUP, so their jumpers are said per member, each under the screen it
     # sits on (2026-10-01: "the jumpers should go on the beach they are on")
     # - WALL-B's ten 6' its own row, no longer folded into LEFT's
-    jumps = [r for r in sl_rows if r[0] == 'Tru-1 Power Jump']
-    assert jumps == [('Tru-1 Power Jump', "1'", 9, 'WALL-A', ''),
-                     ('Tru-1 Power Jump', "2'", 1, 'WALL-A', ''),
-                     ('Tru-1 Power Jump', "3'", 12, 'CENTER', ''),
-                     ('Tru-1 Power Jump', "6'", 10, 'WALL-B', ''),
-                     ('Tru-1 Power Jump', "6'", 3, 'LEFT', '')], sl_rows
-    assert not [r for r in _rows(pos['SR']['rows']) if r[0] in ('Distro', 'Multi', 'Tru-1 Breakout')]
+    jumps = [r for r in sl_rows if r[0] == 'TRUE1 Power Jump']
+    assert jumps == [('TRUE1 Power Jump', "1'", 9, 'WALL-A', ''),
+                     ('TRUE1 Power Jump', "2'", 1, 'WALL-A', ''),
+                     ('TRUE1 Power Jump', "3'", 12, 'CENTER', ''),
+                     ('TRUE1 Power Jump', "6'", 10, 'WALL-B', ''),
+                     ('TRUE1 Power Jump', "6'", 3, 'LEFT', '')], sl_rows
+    assert not [r for r in _rows(pos['SR']['rows']) if r[0] in ('Distro', 'Multi', 'TRUE1 Breakout')]
     assert ('Cat6 Snake', "100'", 1, 'SNAKE A', '2 channel') in _rows(pos['SR']['rows'])
     assert set(pos['SL']['layerIds']) >= {ids['a'], ids['b'], ids['c']}
     counts = lambda rows: sorted((t, l, q) for t, l, q, _, _ in _rows(rows))

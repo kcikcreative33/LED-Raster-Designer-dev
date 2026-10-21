@@ -79,7 +79,7 @@ def ev(pg, body, arg=None):
 
 # ── 1 & 2: direct outputs ──────────────────────────────────────────────────
 
-# True1 x5 + Socapex x2 on 120/208: outputs 1-5 are True1, 6-7 Socapex.
+# TRUE1 x5 + Socapex x2 on 120/208: outputs 1-5 are TRUE1, 6-7 Socapex.
 FACE = {'id': 'd1', 'name': 'PD', 'ratingA': 200, 'system': '120/208',
         'outputRows': [{'id': 'r1', 'connector': 'true1', 'count': 5, 'coupling': 'll',
                         'breakerA': 20},
@@ -128,7 +128,7 @@ def walls(page):
     return pg, errors
 
 
-# WALL A's six-circuit multi on output 4 (a True1), home run 100'.
+# WALL A's six-circuit multi on output 4 (a TRUE1), home run 100'.
 CROWDED = {'a': {'powerSocaDistro': {'1': 'd1'}, 'powerSocaNumber': {'1': 4},
                  'powerSocaLengths': {'1': '100'}}}
 
@@ -149,7 +149,7 @@ def _crowd(pg, cables):
 
 
 def test_the_crowded_output_is_the_flagged_error_state(walls):
-    """The repro's footing: six circuits on PD4, a True1, flagged by the
+    """The repro's footing: six circuits on PD4, a TRUE1, flagged by the
     strip's own check and labelled PD4-1..PD4-6."""
     pg, _ = walls
     _crowd(pg, [10, 15, 20, 25, 30, 35])
@@ -158,12 +158,12 @@ def test_the_crowded_output_is_the_flagged_error_state(walls):
         return { labels: s.legs.map(g => g.label),
                  checks: app.distroChecks(app.getDistros()[0]).map(w => w.text) };""")
     assert out['labels'] == [f'PD4-{i}' for i in range(1, 7)], out
-    assert ("WALL A's 6 circuits are on PD4, a True1 — one circuit only. "
+    assert ("WALL A's 6 circuits are on PD4, a TRUE1 — one circuit only. "
             'Move it to a multi output.') in out['checks'], out['checks']
 
 
 def test_a_crowded_direct_output_lists_every_cable(walls):
-    """The pull sheet used to print one row - `Tru-1 35' PD 4` - each
+    """The pull sheet used to print one row - `TRUE1 35' PD 4` - each
     circuit's cable overwriting the output's one cable. Now all seven
     cables are listed: the six circuit cables under their circuits and the
     100' home run under the output, flagged in Notes."""
@@ -220,23 +220,23 @@ def test_the_map_tag_never_hangs_a_crowded_home_run_on_a_circuit(walls):
     _crowd(pg, [10, 15, 20, 25, 30, None])
     tags = pg.evaluate(TAGS_JS)
     assert sorted(t for t in tags if "'" in t) == sorted(
-        f"{ft}' True1" for ft in (10, 15, 20, 25, 30)), tags
+        f"{ft}' TRUE1" for ft in (10, 15, 20, 25, 30)), tags
     assert not [t for t in tags if t.startswith("100'")], tags
     assert errors == [], errors
 
 
 def test_a_lone_direct_circuit_keeps_its_one_cable(walls):
     """The legal case is unchanged: WALL B's one circuit on PD 5, home run
-    25', circuit cable 10' - one `Tru-1 10'` row, the tag 10' True1."""
+    25', circuit cable 10' - one `TRUE1 10'` row, the tag 10' TRUE1."""
     pg, _ = walls
     nums = pg.evaluate(SETUP_JS, {'distros': [FACE], 'walls': {'b': {
         'powerSocaSplits': [1], 'powerSocaDistro': {'1': 'd1'}, 'powerSocaNumber': {'1': 5},
         'powerSocaLengths': {'1': '25'}, 'powerCircuitCables': {}}}})['WALL B']
     ev(pg, "B.powerCircuitCables = { [arg]: { ft: 10, connector: null } }; return null;", nums[0])
-    rows = [r for r in pg.evaluate(ROWS_JS) if r[0] == 'Tru-1']
-    assert rows == [['Tru-1', "10'", 1, 'PD5', '']], rows
+    rows = [r for r in pg.evaluate(ROWS_JS) if r[0] == 'TRUE1']
+    assert rows == [['TRUE1', "10'", 1, 'PD5', '']], rows
     one = ev(pg, "const c = app.directCircuitCable(B, arg); return c && c.text;", nums[0])
-    assert one == "10' True1"
+    assert one == "10' TRUE1"
 
 
 # The Distro page's rows: each box's cells, caught as the page builds them.
@@ -317,11 +317,13 @@ def test_the_captions_say_the_one_cable_or_the_crowd(walls):
         'powerSocaLengths': {'1': '25'}}}})['WALL B']
     ev(pg, "B.powerCircuitCables = { [arg]: { ft: 10, connector: null } }; return null;", nums[0])
     caps = pg.evaluate(CAPTIONS_JS, 'WALL B')
-    assert caps[0] == "PD5 · True1 208V · 10'", caps
+    # the type is the cable's, outlet to panel: TRUE1 at both ends is
+    # just "TRUE1" (2026-10-21)
+    assert caps[0] == "PD5 · TRUE1 · 10'", caps
     assert "10'" in pg.evaluate(BRACKETS_JS)
     _crowd(pg, [10, 15, 20, 25, 30, 35])
     caps = pg.evaluate(CAPTIONS_JS, 'WALL A')
-    assert caps == ["PD4 · True1 208V · 100' · 6 circuits on a one-circuit output"], caps
+    assert caps == ["PD4 · TRUE1 · 100' · 6 circuits on a one-circuit output"], caps
     assert errors == [], errors
 
 

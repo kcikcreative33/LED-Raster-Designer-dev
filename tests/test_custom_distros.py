@@ -3,7 +3,7 @@
 A distro is a SYSTEM (120/208V 3φ, 120/240V split-phase, 120V 1φ,
 230/400V 3φ, 230V 1φ) with an input, a rating per leg and OUTPUT ROWS on
 its face: multi rows (Socapex 19-pin, Harting 16E - six circuits; L21-30 -
-three 208V circuits) that break out at the screen, and direct rows (True1,
+three 208V circuits) that break out at the screen, and direct rows (TRUE1,
 powerCON 20A, powerCON XX, Edison 5-20, L5-20, L6-20, stage pin 20A, CEE
 16A/32A blue, Schuko) - one circuit per connector with its own cable.
 
@@ -390,16 +390,16 @@ def test_eu_circuits_are_checked_at_the_breaker_and_true1_at_16a(seeded):
     # 6 x 580 W = 3480 W at 230 = 15.1 A: under the 16 A breaker, no 80%.
     out = _direct_load(pg, dist, 230, 580)
     assert not [w for w in out['warn'] if 'breaker' in w or 'rated' in w], out
-    # 6 x 650 W = 3900 W = 17.0 A: over the breaker and over a True1's 16 A.
+    # 6 x 650 W = 3900 W = 17.0 A: over the breaker and over a TRUE1's 16 A.
     out = _direct_load(pg, dist, 230, 650)
     assert [w for w in out['warn'] if 'on a 16 A breaker — OVER' in w], out
-    assert [w for w in out['warn'] if 'a True1 is rated 16 A here' in w], out
+    assert [w for w in out['warn'] if 'a TRUE1 is rated 16 A here' in w], out
 
 
 # ── legs (ruling 4) ─────────────────────────────────────────────────────
 
 def test_direct_outputs_rotate_x_y_z(seeded):
-    """'6 True1 at 110, each on its own leg': direct outputs take the legs
+    """'6 TRUE1 at 110, each on its own leg': direct outputs take the legs
     X Y Z X Y Z in face order; paired order is X X Y Y Z Z."""
     pg, _, _ = seeded
     dist = {'id': 'd1', 'name': 'SL', 'ratingA': 200, 'system': '120/208',
@@ -516,7 +516,7 @@ def test_a_direct_row_drop_takes_one_circuit_pinned(seeded):
             'outputRows': [{'connector': 'true1', 'count': 3, 'coupling': 'll'}]}
     setup(pg, distros=[dist], walls={'b': {'powerAmperage': 6}})
     out = ev(pg, """
-        const payload = { type: 'plug', distroId: 'd1', output: 'face:r1', title: 'SL · True1 208V' };
+        const payload = { type: 'plug', distroId: 'd1', output: 'face:r1', title: 'SL · TRUE1 208V' };
         const plan = app._plugDropPlan(payload, B);
         app._dockDropPlug(payload, { kind: 'screen', layerId: B.id });
         app._dockDropPlug(payload, { kind: 'screen', layerId: B.id });
@@ -667,10 +667,12 @@ def test_a_direct_output_cable_is_on_the_pull_sheet_in_the_shows_unit(seeded):
             const tag = app.directOutputCable(B, app.screenCircuits(B)[0].num);
             return { rows: rows.map(r => [r.type, r.length, r.qty, r.label, r.notes]),
                      hw: hw.map(r => [r.type, r.length, r.label, r.notes]), tag: tag && tag.text };""")
-        assert ['Schuko', want, 1, 'SL2', ''] in out['rows'], out
+        # a Schuko outlet feeding TRUE1 panels: the cable names both ends,
+        # its length its own column (2026-10-21)
+        assert ['Schuko → TRUE1', want, 1, 'SL2', ''] in out['rows'], out
         assert not [r for r in out['rows'] if 'Breakout' in r[0] or r[0] == 'Multi'], out
         assert ['Distro', 'EA', 'SL', '1 direct output'] in out['hw'], out
-        assert out['tag'] == f'{want} Schuko', out
+        assert out['tag'] == f'{want} Schuko → TRUE1', out
 
 
 def test_the_binder_prints_the_face_once_with_paired_rows_together(seeded):
@@ -718,4 +720,4 @@ def test_every_binder_sheet_draws_a_face_distro_and_its_direct_output(seeded):
     t = out['texts']
     assert '63 A service · 230/400V 3φ · CEE 63 A red' in t, [x for x in t if 'service' in x]
     assert '4 × Schuko · 4 direct circuits · 16 A' in t, [x for x in t if 'Schuko' in x]
-    assert ['SL4 · Schuko · 8 m', 1] in out['devices'], out['devices']
+    assert ['SL4 · Schuko → TRUE1 · 8 m', 1] in out['devices'], out['devices']

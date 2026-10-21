@@ -82,9 +82,9 @@ export const DISTRO_CONNECTORS = [
     { id: 'l2130', name: 'L21-30 (3 × 208V)', short: 'L21-30', kind: 'multi', circuits: 3,
       regions: ['us'], systems: ['120/208'], couple: 'll', feedLegA: 30, glyph: 'l2130',
       cable: 'L21-30' },
-    { id: 'true1', name: 'True1', short: 'True1', kind: 'direct', circuits: 1,
+    { id: 'true1', name: 'TRUE1', short: 'TRUE1', kind: 'direct', circuits: 1,
       regions: ['us', 'eu'], couple: 'either', rating: { us: 20, eu: 16 }, glyph: 'true1',
-      cable: 'True1' },
+      cable: 'TRUE1' },
     { id: 'powercon20', name: 'powerCON 20A', short: 'powerCON 20A', kind: 'direct', circuits: 1,
       regions: ['us', 'eu'], couple: 'either', rating: { us: 20, eu: 16 }, glyph: 'powercon',
       cable: 'powerCON' },
@@ -160,7 +160,7 @@ export const DISTRO_PRESETS = [
     { id: 'us-200-6l2130-3dup', name: '200A 3φ: 6 × L21-30 + 3 duplex',
       system: '120/208', input: 'cam200', ratingA: 200,
       rows: [row('r1', 'l2130', 6, 'll', 20), row('r2', 'edison', 6, 'ln', 20)] },
-    { id: 'us-l2130-3true1', name: 'L21-30 spider: 3 × True1 208V',
+    { id: 'us-l2130-3true1', name: 'L21-30 spider: 3 × TRUE1 208V',
       system: '120/208', input: 'l2130', ratingA: 30,
       rows: [row('r1', 'true1', 3, 'll', 20)] },
     { id: 'us-l2130-3dup', name: 'L21-30 spider: 3 duplex as 6 × 120V',
@@ -169,10 +169,10 @@ export const DISTRO_PRESETS = [
     { id: 'us-200-6soca120-6dup', name: '200A 3φ: 6 × Socapex 120V + 6 duplex',
       system: '120/208', input: 'cam200', ratingA: 200,
       rows: [row('r1', 'soca', 6, 'ln', 20), row('r2', 'edison', 12, 'ln', 20)] },
-    { id: 'eu-63-3soca-true1', name: '63A 3φ: 3 × Socapex, one per phase + 1 True1',
+    { id: 'eu-63-3soca-true1', name: '63A 3φ: 3 × Socapex, one per phase + 1 TRUE1',
       system: '230/400', input: 'cee63', ratingA: 63, phasing: 'whole-ln',
       rows: [row('r1', 'soca', 3, 'ln', 16), row('r2', 'true1', 1, 'ln', 16)] },
-    { id: 'eu-63-18true1', name: '63A 3φ: 18 × True1',
+    { id: 'eu-63-18true1', name: '63A 3φ: 18 × TRUE1',
       system: '230/400', input: 'cee63', ratingA: 63,
       rows: [row('r1', 'true1', 18, 'ln', 16)] },
     { id: 'eu-63-2soca-9schuko', name: '63A 3φ: 2 × Socapex or 2 × Harting 16E + 9 Schuko',
@@ -695,7 +695,7 @@ class _DistroSystems {
         const offered = this.connectorCouplings(conn, sys);
         const volts = this._rowVolts(sys, box.row);
         // The volts go in the name where the connector could be either -
-        // "Socapex 208V", "True1 120V" - never where it cannot.
+        // "Socapex 208V", "TRUE1 120V" - never where it cannot.
         const withVolts = offered.length > 1 || conn.kind === 'multi';
         const name = withVolts ? `${conn.short} ${volts}V` : conn.short;
         let breakouts = [];
@@ -793,10 +793,12 @@ class _DistroSystems {
     }
 
     // The cable a circuit on a DIRECT output runs on, distro to screen:
-    // the output's home-run length in the show's unit and its connector -
-    // { ft, name, text } ("25' True1", "8 m Schuko") - or null where the
-    // circuit is not on a direct output or no length is typed. What the
-    // map's cable tag prints for it.
+    // the output's home-run length in the show's unit and its type - the
+    // screen's panel input, or both ends where the outlet is another plug
+    // (directCableType) - { ft, name, text } ("25' TRUE1",
+    // "8 m Schuko → powerCON") - or null where the circuit is not on a
+    // direct output or no length is typed. What the map's cable tag prints
+    // for it.
     directOutputCable(layer, circuitNum) {
         if (!layer) return null;
         const box = this._circuitBox(layer, circuitNum);
@@ -805,7 +807,7 @@ class _DistroSystems {
         if (!fbox || fbox.kind !== 'direct') return null;
         const ft = this.parseCableLength((layer.powerSocaLengths || {})[box.idx]);
         if (ft === null) return null;
-        const name = fbox.conn.cable;
+        const name = this.directCableType(fbox.conn.cable, layer);
         // written from the direct-output cables' own stock (2026-10-21)
         return { ft, name, text: this.cableText(ft, name, 'direct') };
     }

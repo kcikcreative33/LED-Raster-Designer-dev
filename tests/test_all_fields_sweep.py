@@ -619,6 +619,23 @@ _PREPARE_JS = {
         }
         window.app.refreshSocaRuns();
     }""",
+    # power-panel-input shows (and writes) only on a screen whose breakout
+    # leaves the panel input to it - Edison or L6-20 (2026-10-21): the
+    # screen goes to 110V and Multi → Edison first, through the sidebar.
+    'power-panel-input': """() => {
+        const v = document.getElementById('power-voltage-select');
+        if (v && v.value !== '110') {
+            v.value = '110';
+            v.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        window.app.refreshSocaRuns();
+        const b = document.getElementById('power-breakout-type');
+        if (b && b.value !== 'soca-edison') {
+            b.value = 'soca-edison';
+            b.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        window.app.refreshSocaRuns();
+    }""",
 }
 
 

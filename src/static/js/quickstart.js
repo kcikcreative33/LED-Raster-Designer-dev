@@ -3313,7 +3313,7 @@
         },
         breakoutType: {
             target: '#power-breakout-type', place: 'right', title: 'The breakout',
-            body: 'How each multi fans out to the cabinets. Multi to True1 is six circuits a box; the choice drives the gear list.',
+            body: 'How each multi fans out to the cabinets. Multi to TRUE1 is six circuits a box; the choice drives the gear list.',
             before: function () { switchView('power'); },
             act: function (t) {
                 return t.select('#power-breakout-type', 'soca-true1').then(function () {
@@ -3322,7 +3322,7 @@
             },
             check: function () {
                 var w = wall();
-                return w && w.powerBreakoutType === 'soca-true1' ? 'Each multi fans out to True1: six circuits a box.' : null;
+                return w && w.powerBreakoutType === 'soca-true1' ? 'Each multi fans out to TRUE1: six circuits a box.' : null;
             }
         },
         addDistro: {

@@ -385,16 +385,16 @@ class _BinderWiring {
             // one socket, an L21-30 three.
             const slots = box.boxSize && String(box.typeId || '').startsWith('face:')
                 ? box.boxSize : (t ? (Number(t.boxSize) || 6) : Math.max(6, ...tails));
-            // "SR1 · Multi 208 breakout · 125'"; a multi on no distro has no
-            // type to name its breakout by and reads as the band does. A
-            // DIRECT output is its own cable, no breakout: "SL5 · True1
-            // 208V · 25'". A direct output carrying several circuits (the
-            // flagged error state) has no one cable: its length is the
-            // output's home run, and the caption says it is crowded.
+            // "SR1 · Multi 208 powerCON breakout · 125'"; a multi on no
+            // distro has no type to name its breakout by and reads as the
+            // band does (_bBoxTypeText). A DIRECT output is its own cable,
+            // no breakout: "SL5 · Edison → TRUE1 · 25'". A direct output
+            // carrying several circuits (the flagged error state) has no
+            // one cable: its length is the output's home run, and the
+            // caption says it is crowded.
             const crowd = box.crowded || 0;
             const caption = [box.name,
-                             box.kind === 'direct' ? box.type
-                                 : (box.type ? `${box.type} breakout` : 'no distro'),
+                             this._bBoxTypeText(box),
                              box.homeRun ? this.pullLengthText(box.homeRun, this.pullHomeRunKind(box)) : 'no length',
                              ...(crowd ? [`${crowd} circuits on a one-circuit output`] : [])]
                 .join(' · ');

@@ -53,7 +53,8 @@ TABS = {
                'pref-binder-hardware', 'pref-binder-wiring', 'pref-binder-title-block',
                'pref-binder-designer', 'pref-binder-pm-name', 'pref-binder-pm-phone',
                'pref-binder-pm-email', 'pref-binder-drafter', 'pref-binder-logo'],
-    'pull': ['pref-pull-engineer', 'pref-pull-rev', 'pref-pull-power-jump-name',
+    'pull': ['pref-pull-engineer', 'pref-pull-rev', 'pref-pull-power-jump-name-true1',
+             'pref-pull-power-jump-name-powercon',
              'pref-pull-power-jump-length', 'pref-pull-power-jump-length-h',
              'pref-pull-data-jump-name', 'pref-pull-data-jump-length',
              'pref-pull-data-jump-length-h', 'pref-snake-home-run-length',
@@ -75,7 +76,7 @@ TABS = {
 }
 ALL_IDS = [i for ids in TABS.values() for i in ids]
 # 1.5 audit: the distro voltage + phase pair became one system picker.
-assert len(ALL_IDS) == 108
+assert len(ALL_IDS) == 109
 
 # Issue 28: the colour defaults a NEW screen starts with, id -> (the colour
 # the dialog is given, the preference key, the layer property it lands on).
@@ -235,7 +236,8 @@ NEW_FIELDS = [
     ('pref-binder-drafter', 'Dan Drafter', 'binderDrafter', 'Dan Drafter'),
     ('pref-pull-engineer', 'Ed Engineer', 'engineerName', 'Ed Engineer'),
     ('pref-pull-rev', '2.0', 'pullRev', '2.0'),
-    ('pref-pull-power-jump-name', 'Power Jump X', 'powerJumpName', 'Power Jump X'),
+    ('pref-pull-power-jump-name-true1', 'Power Jump X', 'powerJumpNameTrue1', 'Power Jump X'),
+    ('pref-pull-power-jump-name-powercon', 'Power Jump Y', 'powerJumpNamePowercon', 'Power Jump Y'),
     ('pref-pull-power-jump-length', '8', 'powerJumpLength', 8),
     ('pref-pull-power-jump-length-h', '7', 'powerJumpLengthH', 7),
     ('pref-pull-data-jump-name', 'Data Jump X', 'dataJumpName', 'Data Jump X'),
@@ -688,7 +690,7 @@ def test_the_breakout_preference_is_gated_by_the_voltage_preference(page):
             assert st['opts'][gone][0] is True, (gone, st)
         assert st['opts']['l2130-true1'][1] == 'Not available at 110V — L21-30 is 208V only.', st
         assert st['opts']['soca-l620'][1] == \
-            'Not available at 110V — a screen up to 120V runs Multi → True1, powerCON or Edison.', st
+            'Not available at 110V — a screen up to 120V runs Multi → TRUE1, powerCON or Edison.', st
         for ok in ('soca-true1', 'soca-powercon', 'soca-edison'):
             assert st['opts'][ok] == [False, ''], (ok, st)
         # a custom 121 V (committed on change, never per keystroke - see
@@ -753,7 +755,8 @@ def test_the_export_dialog_binder_block_opens_with_the_preferences(page):
     info = pg.evaluate("() => window.app.getBinderInfo()")
     assert info['designer'] == 'Dee Signer' and info['screenOrder'] == 'power', info
     assert pg.evaluate("() => window.app.getPullSheetSettings()") == {
-        'dataJumpName': 'Data Jump X', 'powerJumpName': 'Power Jump X', 'rev': '2.0'}
+        'dataJumpName': 'Data Jump X', 'powerJumpNameTrue1': 'Power Jump X',
+        'powerJumpNamePowercon': 'Power Jump Y', 'rev': '2.0'}
     # the jumper LENGTHS are per screen: the preferences are what a new
     # screen starts with (vertical / horizontal, data and power)
     assert pg.evaluate("() => window.app.jumperDefaults()") == {

@@ -35,6 +35,7 @@ any other):
 
 import base64
 import io
+import json
 import os
 import sys
 
@@ -201,12 +202,12 @@ def test_a_distro_at_its_own_beach_pulls_the_power_rows_there(page):
         ('Feeder', '', 1, 'SR', 'no length'),
         ('Multi', "100'", 1, 'SR2', ''),
         ('Multi', "125'", 1, 'SR1', ''),
-        ('Tru-1', "6'", 1, 'SR2-1', ''),
-        ('Tru-1', "10'", 2, 'SR1-1, SR1-2', ''),
-        ('Tru-1 Breakout', 'EA', 2, 'SR 1-2', ''),
-        ('Tru-1 Power Jump', "1'", 9, 'WALL-A', ''),
-        ('Tru-1 Power Jump', "2'", 1, 'WALL-A', ''),
-        ('Tru-1 Power Jump', "6'", 10, 'WALL-B', ''),
+        ('TRUE1', "6'", 1, 'SR2-1', ''),
+        ('TRUE1', "10'", 2, 'SR1-1, SR1-2', ''),
+        ('TRUE1 Breakout', 'EA', 2, 'SR 1-2', ''),
+        ('TRUE1 Power Jump', "1'", 9, 'WALL-A', ''),
+        ('TRUE1 Power Jump', "2'", 1, 'WALL-A', ''),
+        ('TRUE1 Power Jump', "6'", 10, 'WALL-B', ''),
     ]
     assert _rows(pos['SR Beach']['rows']) == [
         ('Cat6 Snake', "100'", 1, 'SNAKE A', '2 channel'),
@@ -433,16 +434,23 @@ def test_a_box_at_its_beach_pulls_its_ports_rows_and_two_boxes_list_once(page):
         ('Feeder', '', 1, 'SR', 'no length'),
         ('Multi', "100'", 1, 'SR2', ''),
         ('Multi', "125'", 1, 'SR1', ''),
-        ('Tru-1', "6'", 1, 'SR2-1', ''),
-        ('Tru-1', "10'", 2, 'SR1-1, SR1-2', ''),
-        ('Tru-1 Breakout', 'EA', 2, 'SR 1-2', ''),
-        ('Tru-1 Power Jump', "1'", 9, 'WALL-A', ''),
-        ('Tru-1 Power Jump', "2'", 1, 'WALL-A', ''),
-        ('Tru-1 Power Jump', "6'", 10, 'WALL-B', ''),
+        ('TRUE1', "6'", 1, 'SR2-1', ''),
+        ('TRUE1', "10'", 2, 'SR1-1, SR1-2', ''),
+        ('TRUE1 Breakout', 'EA', 2, 'SR 1-2', ''),
+        ('TRUE1 Power Jump', "1'", 9, 'WALL-A', ''),
+        ('TRUE1 Power Jump', "2'", 1, 'WALL-A', ''),
+        ('TRUE1 Power Jump', "6'", 10, 'WALL-B', ''),
     ]
+    # CENTER's Edison breakout reaches its TRUE1 panels through a tail per
+    # circuit, and its splitter is on the panels' side (2026-10-21)
+    tails = pg.evaluate(f"""() => {{
+        const app = window.app, c = app.project.layers.find(l => l.id === {json.dumps(ids['c'])});
+        return app.screenCircuits(c).map(x => app.getPowerCircuitLabel(c, x.num)).join(', ');
+    }}""")
     assert _rows(pos['CENTER']['rows']) == [
-        ('Edison 2fer', 'EA', 1, ids['centerLabel'], ''),
-        ('Tru-1 Power Jump', "3'", 12, 'CENTER', ''),
+        ('Edison → TRUE1 tail', 'EA', 2, tails, ''),
+        ('TRUE1 2fer', 'EA', 1, ids['centerLabel'], ''),
+        ('TRUE1 Power Jump', "3'", 12, 'CENTER', ''),
     ]
     # the processor's hardware list carries both boxes' gear rows
     hw = {(h['kind'],): _rows(h['rows']) for h in out['located']['hardware'] if h['kind'] == 'processor'}

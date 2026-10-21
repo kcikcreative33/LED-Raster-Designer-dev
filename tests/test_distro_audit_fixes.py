@@ -155,9 +155,9 @@ READ_FACE = """
 
 
 def test_a_multi_left_on_a_direct_output_is_said_and_kept_apart(seeded):
-    """Rows True1 x3 + Socapex x2: a six-circuit multi on output 4 and a
-    one-circuit screen on output 5. Raising True1 3 -> 5 leaves both on
-    True1s. The six circuits used to read PD4 on one leg pair, with their
+    """Rows TRUE1 x3 + Socapex x2: a six-circuit multi on output 4 and a
+    one-circuit screen on output 5. Raising TRUE1 3 -> 5 leaves both on
+    TRUE1s. The six circuits used to read PD4 on one leg pair, with their
     tails 2-6 aliasing outputs 5-9 - a false "paired" line for PD4 + PD5
     and a breaker line summing both screens."""
     pg, _ = seeded
@@ -180,12 +180,12 @@ def test_a_multi_left_on_a_direct_output_is_said_and_kept_apart(seeded):
     assert out['kinds'] == ['direct', 'direct'], out
     assert out['aCircuits'] == 6 and out['bCircuits'] == 1
     name_a = 'PD4'
-    want = (f"WALL A's 6 circuits are on {name_a}, a True1 — one circuit only. "
+    want = (f"WALL A's 6 circuits are on {name_a}, a TRUE1 — one circuit only. "
             'Move it to a multi output.')
     assert want in out['checks'], out['checks']
     assert want in out['strip'], 'the dock strip carries the check'
     assert out['checks'].count(want) == 1
-    # WALL B's one circuit on its True1 is fine.
+    # WALL B's one circuit on its TRUE1 is fine.
     assert not [c for c in out['checks'] if c.startswith('WALL B')], out['checks']
     # Never a pairing that is not there, never a breaker line summing the two.
     assert not [c for c in out['checks'] if 'paired' in c], out['checks']
@@ -193,7 +193,7 @@ def test_a_multi_left_on_a_direct_output_is_said_and_kept_apart(seeded):
     # Keys: A's circuits never share B's (or each other's).
     assert out['bKey'] not in out['aKeys'], out
     assert len(set(out['aKeys'])) == 6, out
-    # Legs: the output's own pair (True1 #4 of a rotating LL face: XY),
+    # Legs: the output's own pair (TRUE1 #4 of a rotating LL face: XY),
     # each circuit booked once - nothing dropped, nothing doubled.
     assert out['aLegs'] == ['XY'] * 6, out
     assert out['watts'] == pytest.approx(out['wattsA'])
@@ -203,7 +203,7 @@ def test_a_multi_left_on_a_direct_output_is_said_and_kept_apart(seeded):
 
 
 def test_a_socapex_row_turned_true1_under_a_multi_is_said(seeded):
-    """The other way in: the Socapex row's connector changed to True1
+    """The other way in: the Socapex row's connector changed to TRUE1
     while the multi sits on it."""
     pg, _ = seeded
     setup(pg, distros=[FACE], walls=WALLS)
@@ -219,7 +219,7 @@ def test_a_socapex_row_turned_true1_under_a_multi_is_said(seeded):
         return true;""")
     out = ev(pg, READ_FACE)
     assert out['kinds'] == ['direct', 'direct'], out
-    assert ("WALL A's 6 circuits are on PD4, a True1 — one circuit only. "
+    assert ("WALL A's 6 circuits are on PD4, a TRUE1 — one circuit only. "
             'Move it to a multi output.') in out['checks'], out['checks']
     assert not [c for c in out['checks'] if 'paired' in c], out['checks']
 

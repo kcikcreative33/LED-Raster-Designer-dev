@@ -160,10 +160,11 @@ def test_a_meters_sort_key_reads_meters_in_size_order():
 def test_a_feet_workbook_keeps_the_template_s_feet():
     """A feet show (and a show that names no unit) writes the template's
     GEAR LIST, READ ME and sort key untouched, only the lengths used
-    appended."""
+    appended - save the template's old TRUE1 spelling, which reads TRUE1
+    (2026-10-21)."""
     tpl = _template()
     tpl_lengths = _gear_lengths(tpl)
-    tpl_readme = [c.value for row in tpl[README].iter_rows() for c in row]
+    tpl_readme = [pull_sheet.true1_spelling(c.value) for row in tpl[README].iter_rows() for c in row]
     tpl_keys = [tpl[CALC].cell(r, CALC_SORTKEY_COL).value
                 for r in range(CALC_FIRST_ROW, CALC_LAST_ROW + 1)]
     for meta in ({'cable_unit': 'ft'}, {}):
