@@ -6,8 +6,9 @@
  * to say:
  *   - a new MAJOR.MINOR with curated highlights (whatsnew_content.js), or
  *   - ANY update, patch releases included, that added Advanced Guide steps
- *     (each step's `since`, quickstart.js). With no curated entry for that
- *     version the window lists the new steps' titles.
+ *     (each step's `since`, quickstart.js). The window shows that
+ *     version's curated entry when it has one ("1.5.3"), else the new
+ *     steps' titles; Show me is offered either way.
  * When steps were added, Show me runs exactly the Advanced Guide steps
  * whose `since` is newer than the version last run (in guide order, so a
  * user who skipped versions sees all of them), each from its own entry
@@ -78,17 +79,21 @@
 
     /*
      * The window an update from `seen` to `cur` owes, or null: the curated
-     * entry (the version's own, else the new MAJOR.MINOR's when the update
-     * crossed one) and the steps added in between.
-     *   { key, after, upTo, steps }  key null = list the steps' titles
+     * entry and the steps added in between. An update that crossed into a
+     * new MAJOR.MINOR leads with that feature version's entry, and the
+     * running patch's own entry (if it has one) follows it as `also`, so a
+     * person skipping 1.5.0 still reads what 1.5 brought. Within one
+     * MAJOR.MINOR the version's own entry is the window.
+     *   { key, also, after, upTo, steps }  key null = list the steps' titles
      */
     function windowFor(seen, cur, between) {
         var steps = (between || stepsBetween)(seen, cur) || [];
         var mm = majorMinor(cur);
-        var key = content()[cur] ? cur
-            : (majorMinor(seen) !== mm && content()[mm]) ? mm : null;
+        var own = content()[cur] ? cur : null;
+        var key = (majorMinor(seen) !== mm && content()[mm]) ? mm : own;
+        var also = own && own !== key ? own : null;
         if (!key && !steps.length) return null;
-        return { key: key, after: seen, upTo: cur, steps: steps };
+        return { key: key, also: also, after: seen, upTo: cur, steps: steps };
     }
 
     /*
@@ -172,6 +177,21 @@
         return one || !win.after ? 'What’s new in v' + win.upTo : 'What’s new since v' + win.after;
     }
 
+    function itemList(items) {
+        var list = el('div', 'border-top:1px solid #3a3a3a;');
+        (items || []).forEach(function (item) {
+            var row = el('div', 'padding:11px 0;border-bottom:1px solid #333;');
+            row.appendChild(el('div',
+                'color:#fff;font-weight:600;font-size:13px;' + (item.d ? 'margin-bottom:3px;' : ''), item.h));
+            if (item.d) {
+                row.appendChild(el('div',
+                    'color:#c0c0c0;font-size:12.5px;line-height:1.5;', item.d));
+            }
+            list.appendChild(row);
+        });
+        return list;
+    }
+
     function render(win) {
         var panel = build().firstChild;
         panel.innerHTML = '';
@@ -185,19 +205,18 @@
             heading(win)));
         panel.appendChild(el('h2',
             'margin:0 0 16px;color:#fff;font-size:19px;', entry.title));
+        panel.appendChild(itemList(entry.items));
 
-        var list = el('div', 'border-top:1px solid #3a3a3a;');
-        (entry.items || []).forEach(function (item) {
-            var row = el('div', 'padding:11px 0;border-bottom:1px solid #333;');
-            row.appendChild(el('div',
-                'color:#fff;font-weight:600;font-size:13px;' + (item.d ? 'margin-bottom:3px;' : ''), item.h));
-            if (item.d) {
-                row.appendChild(el('div',
-                    'color:#c0c0c0;font-size:12.5px;line-height:1.5;', item.d));
-            }
-            list.appendChild(row);
-        });
-        panel.appendChild(list);
+        // The running patch's own entry, after the feature version's.
+        var more = win.also ? content()[win.also] : null;
+        if (more) {
+            panel.appendChild(el('div',
+                'color:#888;font-size:11px;letter-spacing:.06em;text-transform:uppercase;margin:22px 0 4px;',
+                'And in v' + win.also));
+            panel.appendChild(el('h2',
+                'margin:0 0 16px;color:#fff;font-size:17px;', more.title));
+            panel.appendChild(itemList(more.items));
+        }
 
         var btns = el('div',
             'display:flex;justify-content:flex-end;gap:8px;margin-top:16px;');
@@ -334,7 +353,7 @@
                 return key === cur ? clean(stepSince(k)) === cur : majorMinor(stepSince(k)) === mm;
             });
             if (!key && !steps.length) return;
-            openWindow({ key: key, after: null, upTo: cur, steps: steps });
+            openWindow({ key: key, also: null, after: null, upTo: cur, steps: steps });
         });
     }
 

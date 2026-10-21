@@ -58,10 +58,11 @@ def _top_version():
 
 
 def _content_entries():
-    """{major.minor: entry-source} parsed from whatsnew_content.js."""
+    """{key: entry-source} parsed from whatsnew_content.js; a key is a
+    MAJOR.MINOR ('1.5') or a patch's full version ('1.5.3')."""
     src = _read(CONTENT_JS)
     keys = [(m.group(1), m.start())
-            for m in re.finditer(r"^\s{4}'(\d+\.\d+)':", src, re.M)]
+            for m in re.finditer(r"^\s{4}'(\d+\.\d+(?:\.\d+)?)':", src, re.M)]
     assert keys, 'whatsnew_content.js defines no version entries'
     entries = {}
     for i, (key, start) in enumerate(keys):
@@ -113,6 +114,27 @@ def test_content_never_says_retired_words():
     from test_tour_anchors import _retired_wording_hits
     hits = _retired_wording_hits(_read(CONTENT_JS))
     assert not hits, 'whatsnew_content.js still says:\n' + '\n'.join(hits)
+
+
+def test_content_reads_like_release_notes():
+    """Plain release-note voice: no em dashes and none of the words that
+    make a note read like an advert."""
+    src = _read(CONTENT_JS)
+    assert '\u2014' not in src, 'whatsnew_content.js has an em dash'
+    for word in ('seamless', 'powerful', 'effortless'):
+        assert not re.search(r'\b%s' % word, src, re.I), word
+
+
+def test_the_running_patch_has_its_own_entry():
+    """VERSION.txt's top version, when it is a patch that added guide
+    steps (1.5.3), carries an entry of its own; the window would otherwise
+    describe 1.5.0 or list bare step titles."""
+    m = re.search(r'^v(\d+\.\d+\.\d+)\s*-', _read(VERSION_TXT), re.M)
+    assert m
+    entries = _content_entries()
+    if m.group(1) == '1.5.3':
+        assert '1.5.3' in entries
+        assert "title: '2fers and 3fers in custom mode" in entries['1.5.3']
 
 
 def test_every_item_is_its_own_subject():
@@ -248,9 +270,10 @@ def test_new_steps_filter_by_since(page):
 # ── decide(): the gating matrix ──────────────────────────────────────────
 
 def test_decide_patch_update_with_new_steps_offers_them(page):
+    """1.5.2 -> 1.5.3: 1.5.3's own entry and its new steps, both."""
     d = _decide(page, '1.5.3', '1.5.2')
     assert d['show'] is True and d['stamp'] is None, d
-    assert d['window'] == {'key': None, 'after': '1.5.2', 'upTo': '1.5.3',
+    assert d['window'] == {'key': '1.5.3', 'also': None, 'after': '1.5.2', 'upTo': '1.5.3',
                            'steps': _new_steps(page, '1.5.2', '1.5.3')}, d
     assert d['window']['steps'], d
 
@@ -273,7 +296,13 @@ def test_decide_patch_without_new_steps_is_silent(page):
 def test_decide_minor_change_shows_the_entry_and_its_steps(page):
     d = _decide(page, '1.5.0', '1.4.2')
     assert d['show'] and d['window']['key'] == '1.5', d
+    assert d['window']['also'] is None, d
     assert d['window']['steps'] == _new_steps(page, '1.4.2', '1.5.0'), d
+    # Straight to 1.5.3: the 1.5 highlights lead, 1.5.3's own entry
+    # follows, and Show me has every step since 1.4.2.
+    d = _decide(page, '1.5.3', '1.4.2')
+    assert d['show'] and d['window']['key'] == '1.5' and d['window']['also'] == '1.5.3', d
+    assert d['window']['steps'] == _new_steps(page, '1.4.2', '1.5.3'), d
     # A feature version with an entry and no steps still shows (no Show me).
     d = _decide(page, '1.4.0', '1.3.2')
     assert d['show'] and d['window']['key'] == '1.4' and d['window']['steps'] == [], d
@@ -343,30 +372,94 @@ def test_autorun_update_shows_then_stamp_silences(page):
     assert not _modal_visible(page)
 
 
+def _entry(page, key):
+    return page.evaluate("(k) => window.WHATS_NEW_CONTENT[k]", key)
+
+
+def _panel_text(page):
+    return page.evaluate("document.querySelector('#whatsnew-modal .modal-content').textContent")
+
+
+def _step_titles(page, keys):
+    return page.evaluate("""(keys) => keys.map(k => {
+        const t = document.createElement('textarea');
+        t.innerHTML = window.QuickStart.steps()[k].title; return t.value; })""", keys)
+
+
 def test_autorun_patch_update_with_new_steps_offers_show_me(page):
-    """1.5.2 -> 1.5.3: the window opens on a patch release because the
-    release added guide steps; with no entry of its own it lists their
-    titles, offers Show me, and Close skips them (stamped, quiet after)."""
+    """1.5.2 -> 1.5.3: the window opens on a patch release that added
+    guide steps, shows 1.5.3's own title and items under "What's new in
+    v1.5.3", offers Show me for the steps added in 1.5.3, and Close skips
+    them (stamped, quiet after)."""
     _serve_version(page, '1.5.3')
     try:
         page.evaluate("localStorage.setItem(window.WhatsNew.LS_KEY, '1.5.2')")
         page.evaluate("window.WhatsNew.autoRun(true)")
         _wait_modal(page)
-        text = page.evaluate("document.querySelector('#whatsnew-modal .modal-content').textContent")
-        titles = page.evaluate("""(keys) => keys.map(k => {
-            const t = document.createElement('textarea');
-            t.innerHTML = window.QuickStart.steps()[k].title; return t.value; })""",
-            _new_steps(page, '1.5.2', '1.5.3'))
-        assert 'v1.5.3' in text, text
-        for t in titles:
-            assert t in text, (t, text)
-        assert page.evaluate("!!document.getElementById('whatsnew-show-me')")
+        text = _panel_text(page)
+        entry = _entry(page, '1.5.3')
+        assert 'What’s new in v1.5.3' in text, text
+        assert page.evaluate("document.querySelector('#whatsnew-modal h2').textContent") == entry['title']
+        assert 6 <= len(entry['items']) <= 8, entry
+        for item in entry['items']:
+            assert item['h'] in text and item['d'] in text, (item, text)
+        assert 'v1.5 ' not in text and 'And in' not in text, text
+        show = page.evaluate("""() => { const b = document.getElementById('whatsnew-show-me');
+            return b && { text: b.textContent, title: b.title }; }""")
+        keys = _new_steps(page, '1.5.2', '1.5.3')
+        assert show == {'text': 'Show me',
+                        'title': 'Play the %d new steps of the Advanced Guide' % len(keys)}, show
+        assert keys and all(page.evaluate(
+            "(k) => window.QuickStart.steps()[k].since", k) == '1.5.3' for k in keys), keys
         page.click('#whatsnew-close')
         assert page.evaluate("localStorage.getItem(window.WhatsNew.LS_KEY)") == '1.5.3'
         assert not page.evaluate("window.QuickStart.state().visible")
         page.evaluate("window.WhatsNew.autoRun(true)")
         page.wait_for_timeout(400)
         assert not _modal_visible(page)
+    finally:
+        page.unroute('**/api/version')
+
+
+def test_patch_without_an_entry_lists_the_step_titles(page):
+    """Without 1.5.3's own entry the window falls back to the new steps'
+    titles, still with Show me."""
+    _serve_version(page, '1.5.3')
+    page.evaluate("window.__wn153 = window.WHATS_NEW_CONTENT['1.5.3'];"
+                  " delete window.WHATS_NEW_CONTENT['1.5.3']")
+    try:
+        page.evaluate("localStorage.setItem(window.WhatsNew.LS_KEY, '1.5.2')")
+        page.evaluate("window.WhatsNew.autoRun(true)")
+        _wait_modal(page)
+        text = _panel_text(page)
+        assert 'New in the Advanced Guide' in text, text
+        for t in _step_titles(page, _new_steps(page, '1.5.2', '1.5.3')):
+            assert t in text, (t, text)
+        assert page.evaluate("!!document.getElementById('whatsnew-show-me')")
+        page.click('#whatsnew-close')
+    finally:
+        page.evaluate("window.WHATS_NEW_CONTENT['1.5.3'] = window.__wn153")
+        page.unroute('**/api/version')
+
+
+def test_update_across_a_feature_version_shows_both_entries(page):
+    """1.4.2 -> 1.5.3: the 1.5 highlights, then "And in v1.5.3" with
+    1.5.3's own entry, and Show me for every step since 1.4.2."""
+    _serve_version(page, '1.5.3')
+    try:
+        page.evaluate("localStorage.setItem(window.WhatsNew.LS_KEY, '1.4.2')")
+        page.evaluate("window.WhatsNew.autoRun(true)")
+        _wait_modal(page)
+        text = _panel_text(page)
+        heads = page.evaluate(
+            "[...document.querySelectorAll('#whatsnew-modal h2')].map(h => h.textContent)")
+        assert heads == [_entry(page, '1.5')['title'], _entry(page, '1.5.3')['title']], heads
+        assert 'What’s new in v1.5' in text and 'And in v1.5.3' in text, text
+        n = len(_new_steps(page, '1.4.2', '1.5.3'))
+        assert page.evaluate("document.getElementById('whatsnew-show-me').title") == \
+            'Play the %d new steps of the Advanced Guide' % n
+        page.click('#whatsnew-close')
+        assert page.evaluate("localStorage.getItem(window.WhatsNew.LS_KEY)") == '1.5.3'
     finally:
         page.unroute('**/api/version')
 
@@ -438,17 +531,22 @@ def guide_page(e2e_server, pw_browser):
 
 
 def test_show_me_runs_only_the_new_steps(guide_page):
-    """1.5.2 -> 1.5.3, Show me: the walkthrough is exactly the steps added
-    in 1.5.3, in guide order, each landing on its own entry snapshot and
+    """1.5.2 -> 1.5.3, Show me under 1.5.3's own entry: the walkthrough is
+    exactly the steps added in 1.5.3 (since '1.5.3'), in guide order, each landing on its own entry snapshot and
     taking; Done puts the person's project back."""
     from test_tour_anchors import _wait_step
     pg = guide_page
     _serve_version(pg, '1.5.3')
     keys = _new_steps(pg, '1.5.2', '1.5.3')
     before = pg.evaluate("() => window.app._canonicalJson(window.app.project)")
+    assert keys and all(pg.evaluate("(k) => window.QuickStart.steps()[k].since", k) == '1.5.3'
+                        for k in keys), keys
     pg.evaluate("localStorage.setItem(window.WhatsNew.LS_KEY, '1.5.2')")
     pg.evaluate("window.WhatsNew.autoRun(true)")
     _wait_modal(pg)
+    # The curated entry is up, and Show me is still there under it.
+    assert pg.evaluate("document.querySelector('#whatsnew-modal h2').textContent") == \
+        pg.evaluate("window.WHATS_NEW_CONTENT['1.5.3'].title")
     pg.evaluate("window.QuickStart.setSpeed(3)")
     pg.click('#whatsnew-show-me')
     assert not _modal_visible(pg)
