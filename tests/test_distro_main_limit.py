@@ -121,7 +121,7 @@ READ_JS = """() => {
     const unit = document.querySelector('[data-lrd-distro="d1"]');
     const q = (sel) => unit.querySelector(sel);
     const meat = q('.hw-dock-headbar > i');
-    const strip = (app._dockPowerWarnings || []).filter(w => /^D1 /.test(w.text));
+    const strip = (app._dockPowerWarnings || []).filter(w => /^D1[ ,]/.test(w.text));
     // the binder's Service block for d1, caught as the page builds it
     const caught = [];
     const orig = app._bKvLines;

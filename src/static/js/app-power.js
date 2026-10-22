@@ -430,16 +430,19 @@ class _Power {
     //
     // A multi the screen no longer has (the wall got lighter and its last
     // multi went) can still have an entry in powerSocaDistro: those are
-    // left out. How many multis a screen has depends on the % itself, so it
-    // is counted once at 80% - the most circuits the screen can ever make -
-    // with this rule switched off for the count (_capacityProbe), never by
-    // asking getSocaPlan. An entry past that count is stale whatever the %.
-    // An entry inside it holds a multi that exists at 80%, so the screen
-    // packs at 80% and that multi is real: the answer agrees with itself.
+    // left out. How many multis a screen has depends on the % itself, so
+    // it is counted at a fixed % with this rule switched off for the count
+    // (_capacityProbe), never by asking getSocaPlan: at 80%, the most
+    // circuits a screen normally makes, and, only when an entry lies past
+    // that, at 100% too (a wall whose rows cannot fit at 80% makes no
+    // circuits there at all). An entry past both counts is stale whatever
+    // the %. An entry inside them holds a multi that exists at that %, so
+    // the screen packs to it and that multi is real: the answer agrees
+    // with itself.
     _circuitPackRule(layer, voltage) {
         const byVoltage = voltage > 0 && voltage < 208.5;
         const fallback = { pct: byVoltage ? 0.8 : 1, us: byVoltage };
-        if (this._capacityProbe) return { pct: 0.8, us: byVoltage };
+        if (this._capacityProbe) return { pct: this._capacityProbe.pct, us: byVoltage };
         if (!layer) return fallback;
         if (typeof this.getDistros !== 'function') return fallback;
         const group = (layer.group_id && typeof this.groupMembersOf === 'function')
@@ -478,33 +481,37 @@ class _Power {
         }
         const counts = new Map();
         const live = entries.filter(e => {
-            if (!counts.has(e.screen)) counts.set(e.screen, this._multiCountAt80(e.screen));
-            return e.index <= counts.get(e.screen);
+            if (!counts.has(e.screen)) counts.set(e.screen, this._multiCountAt(e.screen, 0.8));
+            if (e.index <= counts.get(e.screen)) return true;
+            return e.index <= this._multiCountAt(e.screen, 1);
         });
         return decide(live);
     }
 
-    // How many multis `layer` has when its circuits are packed at 80% (the
-    // most it can ever have), for _circuitPackRule's stale-entry rule.
-    // Memoized for the naming burst (_circuitTailCache), which every edit
-    // that moves circuits drops.
-    _multiCountAt80(layer) {
+    // How many multis `layer` has when its circuits are packed at `pct` of
+    // the breaker, for _circuitPackRule's stale-entry rule. Every screen
+    // the count packs reads `pct` (_capacityProbe). Memoized for the naming
+    // burst (_circuitTailCache), which every edit that moves circuits drops.
+    _multiCountAt(layer, pct) {
         const cache = this._circuitTailCache;
         if (cache && this._multiCountMemoFor !== cache) {
             this._multiCountMemoFor = cache;
             this._multiCountMemo = new Map();
         }
         const memo = cache ? this._multiCountMemo : null;
-        if (memo && memo.has(layer)) return memo.get(layer);
-        this._capacityProbe = (this._capacityProbe || 0) + 1;
+        const key = `${pct}`;
+        const seen = memo ? memo.get(layer) : null;
+        if (seen && key in seen) return seen[key];
+        const outer = this._capacityProbe;
+        this._capacityProbe = { pct };
         let n = 0;
         try {
             const circuits = this.screenCircuits(layer) || [];
             n = circuits.length ? this.socaCountFor(layer, circuits.length) : 0;
         } finally {
-            this._capacityProbe -= 1;
+            this._capacityProbe = outer;
         }
-        if (memo) memo.set(layer, n);
+        if (memo) memo.set(layer, Object.assign(seen || {}, { [key]: n }));
         return n;
     }
 

@@ -667,7 +667,7 @@ def test_the_pill_warns_amber_past_the_rating_and_still_lands(page):
                mid_check=lambda p: p.evaluate(MID_JS, ids['aId']))
     assert mid['lit'] == [1, 2, 3, 4, 5, 6], mid
     assert mid['pill']['cls'] == 'hw-dock-pill-warn', mid
-    assert mid['pill']['text'].startswith('PD1 → circuits 1–6 · 46 A — '
+    assert mid['pill']['text'].startswith('PD1 → circuits 1–6 · 46 A. '
                                           'PD legs to '), mid
     # read against the main's continuous limit: 80% of 5 A on a US distro
     assert ' A of 4 A' in mid['pill']['text'], mid
@@ -1576,7 +1576,7 @@ def test_an_occupied_box_chip_is_read_only_and_reads_its_members(page):
     chip = pg.evaluate(TYPECHIP_JS, [d, 1])
     assert chip['tag'] == 'SPAN' and chip['ro'], chip
     assert chip['text'] == 'Multi 208' and chip['chips'] == 6, chip
-    assert 'is a Multi 208 - ' in chip['title'] and 'Clear its circuits' in chip['title'], chip
+    assert 'is a Multi 208. The type follows' in chip['title'] and 'Clear its circuits' in chip['title'], chip
     assert 'output' not in chip['payload'], chip
     assert not chip['clash'] and chip['stripTyped'] == [], chip
     # one undo forgets the stamp with the assignment
