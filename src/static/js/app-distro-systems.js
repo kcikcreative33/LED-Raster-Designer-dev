@@ -432,7 +432,7 @@ class _DistroSystems {
         if (this.systemVoltsFor(sys, layer.powerVoltage) !== null) return null;
         const v = this.voltageNumber(layer.powerVoltage);
         const figures = this._systemFigures(sys);
-        return `${layer.name} runs at ${v}V — ${d.name || d.id} gives `
+        return `${layer.name} runs at ${v}V — ${this.distroLabel(d)} gives `
             + `${figures.map(f => `${f}V`).join(' or ')}. `
             + `Set the screen to ${this._nearestFigure(figures, v)}V.`;
     }
@@ -753,7 +753,7 @@ class _DistroSystems {
                     + `${sys.vll}V (ANSI E1.24)` };
             }
             return { ok: false, why: `${layer.name} runs at ${v}V — `
-                + `${d.name || d.id} ${box.number} (${type.name}) gives ${box.volts}V. `
+                + `${this.distroLabel(d)} ${box.number} (${type.name}) gives ${box.volts}V. `
                 + `Set the screen to ${box.volts}V.` };
         }
         if (box.kind === 'multi') {
@@ -1090,7 +1090,7 @@ class _DistroSystems {
         const out = [];
         if (!d) return out;
         const sys = this.distroSystem(d);
-        const name = d.name || d.id;
+        const name = this.distroLabel(d);
         if (!sys) {
             out.push({ mild: true,
                        text: `${name} is ${this.distroSystemName(d)} — pick its system `
@@ -1225,7 +1225,7 @@ class _DistroSystems {
         // multis on it wear), else the distro and number.
         return [...by.values()].filter(r => r.circuits > r.box.size)
             .map(r => ({ ...r, where: (r.members[0] && r.members[0].name)
-                || `${d.name || d.id} ${r.number}` }))
+                || `${this.distroLabel(d)} ${r.number}` }))
             .sort((a, b) => a.number - b.number);
     }
 
@@ -1299,7 +1299,7 @@ class _DistroSystems {
         document.getElementById(ID)?.remove();
         const esc = (x) => String(x).replace(/[&<>"]/g, c => (
             { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-        const name = d.name || d.id;
+        const name = this.distroLabel(d);
         const members = made.flatMap(cr => cr.members.map(m => ({ ...m, cr })));
         const locked = [...new Set(members.filter(m => m.layer.locked).map(m => m.layer))];
         const lines = made.map(cr => {
@@ -1396,7 +1396,7 @@ class _DistroSystems {
             }
         }
         if (s.legs.length + others <= box.size) return null;
-        const where = `${d.name || d.id} ${n}`;
+        const where = `${this.distroLabel(d)} ${n}`;
         return s.legs.length > box.size
             ? `${layer.name}'s ${s.legs.length}-circuit multi cannot go on ${where} — `
                 + `a ${box.conn.short} carries ${this._circuitsWord(box.size)}. Use a multi output.`

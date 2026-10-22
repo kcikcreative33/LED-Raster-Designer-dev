@@ -2382,7 +2382,7 @@ class _HardwareDock {
                 this._dockPowerWarnings.push({
                     mild: true,
                     text: `${rec.name} names two multis on `
-                        + `${d ? d.name : 'one distro'} — ${l.name} at `
+                        + `${d ? this.distroLabel(d) : 'one distro'} — ${l.name} at `
                         + `No. ${rec.number}, ${collisions.map(c =>
                             `${c.layerName} at No. ${c.number}`).join(', ')}. `
                         + `Same ${d ? this.distroBoxType(d, rec.number).type.name : 'one'}? `
@@ -2402,7 +2402,7 @@ class _HardwareDock {
         // The supply as the system names it (1.5): "120/208V·3φ",
         // "230V·1φ"; an old record its old "208V·1φ".
         const head = this._dockBuildHandle(
-            { type: 'distro', distroId: d.id, title: d.name || d.id },
+            { type: 'distro', distroId: d.id, title: this.distroLabel(d) },
             `distro-${d.id}`,
             '',
             this.distroSupplyText(d),
@@ -2425,7 +2425,7 @@ class _HardwareDock {
                 ? ` worst leg ${this.distroLegLabel(d, load.worstLeg)}` : '';
             const rule = this.distroMainLimit(d);
             const note = this.distroMainLimitNote(rule);
-            const fig = `${d.name || d.id} —${leg} ${load.amps.toFixed(1)} A / `
+            const fig = `${this.distroLabel(d)} —${leg} ${load.amps.toFixed(1)} A / `
                 + `${+load.limitA.toFixed(1)} A`
                 + (note ? ` (${note}, continuous)` : ` (${Math.round(load.pct)}%)`);
             if (load.overloadAccepted) {
@@ -2437,7 +2437,7 @@ class _HardwareDock {
                     text: `${fig} — OVER`,
                     offer: {
                         label: 'Accept overload',
-                        title: `Accept ${d.name || d.id}'s overload: the error turns `
+                        title: `Accept ${this.distroLabel(d)}'s overload: the error turns `
                             + 'amber and reads accepted, the figures stay. Untick it '
                             + 'behind the distro\'s ⚙. One undoable step.'
                             + (rule.us && !rule.main100
@@ -2501,6 +2501,23 @@ class _HardwareDock {
                 },
             },
         });
+        // Two distros of one name read "-1", "-2" everywhere (distroLabel,
+        // 2026-10-22): the name field keeps the name as typed, and the
+        // suffix this distro reads by rides beside it.
+        const label = this.distroLabel(d);
+        const typed = String(d.name || '').trim();
+        const nameField = head.querySelector(`[data-lrd-field="distro-name-${d.id}"]`);
+        if (nameField && typed && label !== typed && label.startsWith(typed)) {
+            const tag = document.createElement('span');
+            tag.className = 'hw-dock-distro-suffix';
+            tag.dataset.lrdDistroSuffix = d.id;
+            tag.textContent = label.slice(typed.length);
+            tag.style.color = 'var(--ps-faint, #969696)';
+            tag.title = `Another distro is also named ${typed}: this one reads ${label} on the `
+                + 'map, the pull sheet and the binder, and its boxes and circuits follow it. '
+                + 'Rename one to drop the suffix.';
+            nameField.insertAdjacentElement('afterend', tag);
+        }
         // The voltage tag, Balance and the gear ride as ONE group at the
         // header's end: in a narrow tray the header wraps and the group
         // drops to a second line whole, right-aligned, so Balance is never
@@ -2576,7 +2593,7 @@ class _HardwareDock {
         const sec = document.createElement('div');
         sec.className = 'hw-dock-box hw-dock-multi hw-dock-direct';
         const type = this.faceBoxType(d, info.boxes[0]);
-        const name = d.name || d.id;
+        const name = this.distroLabel(d);
         let used = 0;
         let amps = 0;
         const perBox = info.boxes.map(box => {
@@ -2657,7 +2674,7 @@ class _HardwareDock {
             top.appendChild(corner);
         }
         if (face) {
-            face.title = `${d.name || d.id} ${box.number} - ${type.name}, one circuit. `
+            face.title = `${this.distroLabel(d)} ${box.number} - ${type.name}, one circuit. `
                 + face.title;
         }
         const editor = tile.querySelector('.lrd-tile-body');
@@ -2665,7 +2682,7 @@ class _HardwareDock {
             holders.forEach(h => {
                 const l = layerOf(h);
                 if (!l) return;
-                const tip = `The cable from ${d.name || d.id} ${box.number} to ${l.name}, in `
+                const tip = `The cable from ${this.distroLabel(d)} ${box.number} to ${l.name}, in `
                     + `${this.cableUnitWord()} - it goes on the pull sheet as `
                     + `${this.directCableType(type.cable, l)}.`
                     + this.cableStockHint((l.powerSocaLengths || {})[h.soca], 'direct');
@@ -2777,7 +2794,7 @@ class _HardwareDock {
         const types = this.distroOutputs(d);
         if (!types.length) return null;
         const { row, chips } = this._dockOutputsShell();
-        const name = d.name || d.id;
+        const name = this.distroLabel(d);
         types.forEach(t => {
             const chip = this._plugChip(t);
             chip.title = `${t.name} from ${name}. Drag onto a screen: the `
@@ -2822,7 +2839,7 @@ class _HardwareDock {
     // same circuits as another row's, not more of them.
     _dockFaceOutputsRow(d, face) {
         const { row, chips } = this._dockOutputsShell();
-        const name = d.name || d.id;
+        const name = this.distroLabel(d);
         const groups = new Map();
         for (const r of face.rows) {
             const info = face.rowInfo.get(r.id);
@@ -2933,7 +2950,7 @@ class _HardwareDock {
         if (overflow || tailClash) sec.classList.add('hw-dock-multi-clash');
         // The box's problems are strip questions too - the same states the
         // chips wear, said where a glance lands first.
-        const boxName = `${d.name || d.id} ${n}`;
+        const boxName = `${this.distroLabel(d)} ${n}`;
         if (overflow) {
             this._dockPowerWarnings.push({
                 text: `${boxName} — more circuits than the `
@@ -2997,7 +3014,7 @@ class _HardwareDock {
             }
         });
 
-        const tip = `${d.name || d.id} multi ${n} - `
+        const tip = `${this.distroLabel(d)} multi ${n} - `
             + (members.length
                 ? `${members.map(m => m.layerName).join(' and ')}, `
                     + (free.length
@@ -3025,13 +3042,13 @@ class _HardwareDock {
         // its payload: its drop is the join/move it always was.
         const payload = {
             type: 'slot', distroId: d.id, number: n,
-            title: `${d.name || d.id} ${n}`,
+            title: `${this.distroLabel(d)} ${n}`,
         };
         if (!members.length) payload.output = boxType.id;
         const head = this._dockBuildHandle(
             payload,
             `slot-${d.id}-${n}`,
-            memberRecs.length ? '' : `${d.name || d.id} ${n}`,
+            memberRecs.length ? '' : `${this.distroLabel(d)} ${n}`,
             memberRecs.length
                 ? `${legs} circuit${legs === 1 ? '' : 's'} · `
                     + `${boxAmps.toFixed(1)} A`
@@ -3078,16 +3095,19 @@ class _HardwareDock {
             const namesRow = document.createElement('span');
             namesRow.className = 'hw-dock-names';
             const first = memberRecs[0];
+            // A setter that refuses on every member (a typed length that is
+            // no length, a locked screen) returns false and writes nothing,
+            // so no entry is made for it.
             const writeThrough = (setter, action, val) => {
-                memberRecs.forEach(({ layer, m }) => {
-                    setter.call(this, layer, m.soca, val, false);
-                });
+                const took = memberRecs.map(({ layer, m }) =>
+                    setter.call(this, layer, m.soca, val, false));
+                if (took.length && took.every(t => t === false)) return;
                 this.updateLayers(memberRecs.map(r => r.layer), true, action);
             };
             const nameField = this._dockHeadName({
                 value: (first.layer.powerSocaNames || {})[first.m.soca],
                 placeholder: (first.s && first.s.name)
-                    || `${d.name || d.id} ${n}`,
+                    || `${this.distroLabel(d)} ${n}`,
                 key: `power-soca-name-${first.layer.id}-${first.m.soca}`,
                 title: 'Name this multi by hand - all screens sharing it '
                     + 'follow. Left blank it follows its distro - '
@@ -3174,7 +3194,7 @@ class _HardwareDock {
         const name = document.createElement('b');
         name.textContent = t.name;
         el.appendChild(name);
-        const boxName = `${d.name || d.id} ${n}`;
+        const boxName = `${this.distroLabel(d)} ${n}`;
         if (editable) {
             const offered = this.distroOutputs(d);
             const list = offered.length ? offered : this.getDistroOutputTypes();
@@ -3314,7 +3334,7 @@ class _HardwareDock {
 
         this._dockWireDraggable(face, {
             type: 'tail', distroId: d.id, number: n, tail: t,
-            title: `${d.name || d.id} ${n} circuit ${t}`,
+            title: `${this.distroLabel(d)} ${n} circuit ${t}`,
         }, `tail-${d.id}-${n}-${t}`);
         return tile;
     }

@@ -213,8 +213,11 @@ const PULL_LEGACY_DATA_TYPES = new Map([
 const PULL_POWER_WORDS = new RegExp('\\b(?:socapex|soca|camlok|camlock|cam|edison|true1|tru-1|powercon'
     + '|harting|cee|nema|stage ?pin|l\\d{1,2}-\\d{2}|power|feeder|distro)\\b', 'i');
 // ...and these make it data.
+// RJ45, LC, coax, BNC and a network switch are data too (2026-10-22:
+// "RJ45 coupler", "LC duplex patch", "Network switch", "Coax", "BNC").
 const PULL_DATA_WORDS = new RegExp('\\b(?:ether\\w*|cat(?:5e?|6a?|7|8)?|fiber|fibre|\\w*sdi|hdmi|data'
-    + '|snakes?|barrels?|tac\\s?\\d*|mtp\\s?\\d*|opticalcon\\w*|sfp\\+?|opt|cvt\\w*|xd(?:-\\w+)?)\\b', 'i');
+    + '|snakes?|barrels?|tac\\s?\\d*|mtp\\s?\\d*|opticalcon\\w*|sfp\\+?|opt|cvt\\w*|xd(?:-\\w+)?'
+    + '|rj-?45|lc|coax\\w*|bnc|switch(?:es)?)\\b', 'i');
 // What may follow a catalog model and leave it the head of the name.
 const PULL_MODEL_TAIL_WORDS = new Set(['rack', 'racks', 'case', 'cases', 'spare', 'spares', 'unit',
     'units', 'processor', 'processors', 'card', 'cards', 'box', 'boxes', 'frame', 'kit', 'backup',
@@ -516,27 +519,40 @@ class _PullList {
     // only listing the distros by name, if there happen to be 2 of the
     // exact same name, then you can use a -1 etc"): the box's OWN name -
     // the multi's name as the tray shows it ("SR1", "DISTRO 1-1", a typed
-    // "MAIN") - never the distro's name and the number glued on. Only
-    // where two boxes of the show carry exactly the same name does each
-    // take "-1", "-2" (distro tray order, then box number). The pull
-    // sheet, the distros' pull lists and the binder's distro tables all
-    // read this one map: `${distroId}|${number}` -> label.
+    // "MAIN") - never the distro's name and the number glued on. Two
+    // DISTROS of one name are told apart on the distro itself (owner,
+    // 2026-10-22: "Suffix the distro: SR-1 and SR-2", distroLabel), so
+    // their derived boxes already differ (SR-1-1, SR-2-1) and no box ever
+    // reads like a circuit (SR1-2). Only where two boxes still carry
+    // exactly the same name - two typed "MAIN" - does each take "-1",
+    // "-2" (distro tray order, then box number). A box on hidden screens
+    // only is not counted. The pull sheet, the distros' pull lists, the
+    // binder's distro tables and the map's brackets all read this one
+    // map: `${distroId}|${number}` -> label.
     distroBoxLabels() {
         const distros = typeof this.getDistros === 'function' ? this.getDistros() : [];
         const order = new Map(distros.map((d, i) => [d.id, i]));
-        const found = new Map();      // key -> { d, number, name }
+        const found = new Map();      // key -> { d, number, name, shown }
+        const hidden = (l) => (typeof this._screenHidden === 'function'
+            ? this._screenHidden(l) : l.visible === false);
         for (const l of ((this.project && this.project.layers) || [])) {
             if (!l || (l.type || 'screen') !== 'screen' || typeof this._powerNaming !== 'function') continue;
+            const shown = !hidden(l);
             for (const rec of this._powerNaming(l).socas.values()) {
                 if (!rec || !rec.distroId || !order.has(rec.distroId)) continue;
                 const key = `${rec.distroId}|${rec.number}`;
-                if (found.has(key)) continue;
+                if (found.has(key)) {
+                    if (shown) found.get(key).shown = true;
+                    continue;
+                }
                 const d = distros[order.get(rec.distroId)];
+                const base = typeof this.distroLabel === 'function'
+                    ? this.distroLabel(d) : String(d.name || '').trim();
                 const name = String(rec.name || '').trim()
                     || (typeof this._deriveMultiName === 'function'
-                        ? this._deriveMultiName(String(d.name || '').trim(), rec.number, null)
-                        : `${d.name || ''}${rec.number}`);
-                found.set(key, { d: rec.distroId, number: Number(rec.number), name });
+                        ? this._deriveMultiName(base, rec.number, null)
+                        : `${base}${rec.number}`);
+                found.set(key, { d: rec.distroId, number: Number(rec.number), name, shown });
             }
         }
         const keys = [...found.keys()].sort((a, b) => {
@@ -544,12 +560,15 @@ class _PullList {
             return (order.get(x.d) - order.get(y.d)) || (x.number - y.number);
         });
         const count = new Map();
-        for (const k of keys) count.set(found.get(k).name, (count.get(found.get(k).name) || 0) + 1);
+        for (const k of keys) {
+            const f = found.get(k);
+            if (f.shown) count.set(f.name, (count.get(f.name) || 0) + 1);
+        }
         const seen = new Map();
         const out = new Map();
         for (const k of keys) {
-            const { name } = found.get(k);
-            if (count.get(name) < 2) { out.set(k, name); continue; }
+            const { name, shown } = found.get(k);
+            if (!shown || (count.get(name) || 0) < 2) { out.set(k, name); continue; }
             const i = (seen.get(name) || 0) + 1;
             seen.set(name, i);
             out.set(k, `${name}-${i}`);
@@ -1300,18 +1319,18 @@ class _PullList {
             // Named by its Type; a distro feeding direct outputs only says
             // its outputs in Notes, as it always has.
             const r = { type: this.pullDistroType(d), length: 'EA', qty: 1,
-                        label: d.name || '',
+                        label: this.distroLabel(d),
                         notes: n || !k ? '' : `${k} direct output${k === 1 ? '' : 's'}`,
                         side: 'power' };
             const at = n || k ? distroFirstLayer.get(String(d.id)) : fallbackLayer(d);
             if (!gearAt(r, this.pullLocationOf(d), at)) continue;
-            hw('distro', d.id, d.name).rows.push({ ...r });
+            hw('distro', d.id, this.distroLabel(d)).rows.push({ ...r });
             // Its FEEDER (2026-10-21, app-services.js): one row under the
             // distro's name, where the distro sits - "400 A cam set" with
             // its length, "no length" where none is typed.
             const feeder = typeof this.pullFeederRow === 'function' ? this.pullFeederRow(d) : null;
             if (feeder && gearAt(feeder, this.pullLocationOf(d), at)) {
-                hw('distro', d.id, d.name).rows.push({ ...feeder });
+                hw('distro', d.id, this.distroLabel(d)).rows.push({ ...feeder });
             }
         }
 
@@ -1498,7 +1517,7 @@ class _PullList {
                     // the binder's brackets read what the pull sheet does
                     key, name: (s.distroId && ctx.boxLabels && ctx.boxLabels.get(key)) || s.name,
                     number: s.number,
-                    distroId: s.distroId || null, distro: d ? d.name : null,
+                    distroId: s.distroId || null, distro: d ? this.distroLabel(d) : null,
                     type: typed ? typed.name : null,
                     typeId: typed ? typed.id : null,
                     // A face box (1.5) says what connector it is: a direct
@@ -2251,12 +2270,26 @@ class _PullList {
     // Every processor, card and breakout box model the catalog and the
     // show name, lower-cased, a "RS12 / MSM4214X" as both and a
     // "(legacy)" left off: the words pullGuessSide reads as data.
+    // A catalog model also counts by its common short name (2026-10-22:
+    // "UHD JR" for a NovaPro UHD Jr): the catalog's own shortName, and the
+    // name with its product-line head dropped where what is left still
+    // names one model - two words or more, or one carrying a digit
+    // ("UHD Jr", never a bare "Pro" or "Jr").
     _pullDataDeviceNames() {
         const names = new Set();
         const add = (name) => String(name || '').replace(/\([^)]*\)/g, '').split('/')
-            .map(n => n.trim().toLowerCase()).filter(n => n.length >= 2).forEach(n => names.add(n));
+            .map(n => n.trim().toLowerCase()).filter(n => n.length >= 2).forEach(n => {
+                names.add(n);
+                const rest = n.split(/\s+/).slice(1);
+                if (rest.length >= 2 || (rest.length === 1 && /\d/.test(rest[0]) && rest[0].length >= 3)) {
+                    names.add(rest.join(' '));
+                }
+            });
         const devices = typeof this._processorDevices === 'function' ? this._processorDevices() : [];
-        for (const d of devices) add(d && d.name);
+        for (const d of devices) {
+            add(d && d.name);
+            add(d && d.shortName);
+        }
         for (const proc of this._processorsResolved || []) {
             add(proc && proc.deviceName);
             for (const slot of (proc && proc.slots) || []) {

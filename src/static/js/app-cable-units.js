@@ -257,6 +257,48 @@ class _CableUnits {
         return n > 0 ? { n, from: other, bad: false } : { n: null, from: null, bad: true };
     }
 
+    // A length TYPED INTO ANY FIELD, read and said the one way every
+    // length field says it (2026-10-22, the feeder field's rule for every
+    // typed length: a multi's home run, a direct output's cable, a circuit
+    // cable, a data port, a snake, a copper or fiber run): "30m" in a feet
+    // show is stored as 98.4 and said; text that is no length in either
+    // unit is refused, said, and the length that was there stays. `noun`
+    // names what the length is of, as the refusal says it ("Type the
+    // feeder's length ..."). Returns { ok, n }: `ok` false for a refusal,
+    // `n` the length to store in the show's unit (null for none).
+    readTypedLength(value, noun = 'cable') {
+        const read = this.parseTypedCableLength(value);
+        const text = String(value == null ? '' : value).trim();
+        if (read.bad) {
+            this._sayTypedLength(`"${text}" is not a length. Type the ${noun}'s length in `
+                + `${this.cableUnitWord()}, like ${this.cableUnit() === 'm' ? '30' : '100'}.`);
+            return { ok: false, n: null };
+        }
+        if (read.from) {
+            this._sayTypedLength(`${text} is ${this.cableLengthWords(read.n)} `
+                + `in this ${this.cableUnitWord()} show.`);
+        }
+        return { ok: true, n: read.n };
+    }
+
+    // Said where the user is looking - a toast and the status bar - and
+    // once: a length written through to every screen sharing a multi is
+    // said for the one field that was typed in. The tray is redrawn a
+    // macrotask later, so the field shows what is stored now: the length
+    // that stayed, or the converted figure.
+    _sayTypedLength(text) {
+        const now = Date.now();
+        const last = this._typedLengthSaid;
+        if (!(last && last.text === text && now - last.at < 500)) {
+            this._typedLengthSaid = { text, at: now };
+            if (typeof this._toast === 'function') this._toast(text, true, 4000);
+            if (typeof this._dockSay === 'function') this._dockSay(text);
+        }
+        if (typeof this.renderHardwareDock === 'function') {
+            setTimeout(() => this.renderHardwareDock(), 0);
+        }
+    }
+
     // A length as every paper prints it: "100'" in feet, "30 m" in
     // meters, "" for a length nobody typed (blank, zero, not a length).
     cableLengthText(n, unit) {

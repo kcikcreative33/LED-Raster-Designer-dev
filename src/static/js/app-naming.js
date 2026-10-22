@@ -450,6 +450,82 @@ class _Naming {
         return { socas, slots, tpl };
     }
 
+    // THE DISTRO'S DISPLAY LABEL (owner, 2026-10-22: "Suffix the distro:
+    // SR-1 and SR-2"): its name (its id when it has none) - and where two
+    // or more distros share exactly that name, "-1", "-2" after it, in
+    // tray order. Everything that names a distro on screen or on paper
+    // reads it: the tray, the pull sheet's Distro rows, the binder's
+    // distro sheets and FACTS, the map. Its boxes and circuits derive from
+    // it (_multiNameFor), so SR-1's boxes are SR-1-1, SR-1-2 and their
+    // circuits SR-1-1-1 ..., and a box can never read the same as another
+    // distro's circuit. A unique name is unchanged. A distro whose screens
+    // are all hidden is not counted: it neither takes a suffix nor gives
+    // one. Built once per burst, with the naming index.
+    distroLabel(d) {
+        if (!d) return '';
+        const own = String(d.name || '').trim() || String(d.id || '');
+        return this._distroLabels().get(d.id) || own;
+    }
+
+    // distro id -> display label, every distro. Rebuilt whenever the naming
+    // index is (_circuitTailCache: dropped on the next microtask, and by
+    // every edit that renames or renumbers).
+    _distroLabels() {
+        if (!this._circuitTailCache) {
+            this._circuitTailCache = new Map();
+            Promise.resolve().then(() => { this._circuitTailCache = null; });
+        }
+        if (this._distroLabelsFor === this._circuitTailCache && this._distroLabelsMap) {
+            return this._distroLabelsMap;
+        }
+        const distros = typeof this.getDistros === 'function' ? this.getDistros() : [];
+        const shown = this._distroShownIds();
+        const own = (d) => String(d.name || '').trim() || String(d.id || '');
+        const count = new Map();
+        for (const d of distros) {
+            if (!shown.has(d.id)) continue;
+            count.set(own(d), (count.get(own(d)) || 0) + 1);
+        }
+        const seen = new Map();
+        const out = new Map();
+        for (const d of distros) {
+            const name = own(d);
+            if (!shown.has(d.id) || (count.get(name) || 0) < 2) { out.set(d.id, name); continue; }
+            const i = (seen.get(name) || 0) + 1;
+            seen.set(name, i);
+            out.set(d.id, `${name}-${i}`);
+        }
+        this._distroLabelsFor = this._circuitTailCache;
+        this._distroLabelsMap = out;
+        return out;
+    }
+
+    // Whether a screen is hidden, as the user left it: while the binder
+    // draws one subject's map it hides every other screen for a moment,
+    // and hands the visibility the show really has here
+    // (_labelVisibility), so no label changes from page to page.
+    _screenHidden(l) {
+        const vis = this._labelVisibility;
+        const v = vis && vis.has(l) ? vis.get(l) : (l && l.visible);
+        return v === false;
+    }
+
+    // The distros counted when names are compared: every distro, but one
+    // whose multis are all on hidden screens.
+    _distroShownIds() {
+        const distros = typeof this.getDistros === 'function' ? this.getDistros() : [];
+        const fed = new Map();          // distro id -> fed a shown screen
+        for (const l of ((this.project && this.project.layers) || [])) {
+            if (!l || (l.type || 'screen') !== 'screen') continue;
+            const hidden = this._screenHidden(l);
+            for (const id of Object.values(l.powerSocaDistro || {})) {
+                if (!id) continue;
+                fed.set(id, (fed.get(id) || false) || !hidden);
+            }
+        }
+        return new Set(distros.filter(d => !fed.has(d.id) || fed.get(d.id)).map(d => d.id));
+    }
+
     // Rungs 2-4 of the name ladder for one multi (rung 1, the per-circuit
     // override, is the label authority's): the name somebody typed on it,
     // else its distro's name plus its number under that distro, else the
@@ -463,7 +539,9 @@ class _Naming {
         if (hand) return hand;
         const list = distros || this.getDistros();
         const distro = distroId ? list.find(d => d.id === distroId) : null;
-        const base = distro ? String(distro.name || '').trim() : '';
+        // the distro's DISPLAY label (distroLabel): SR-1's boxes are
+        // SR-1-1, SR-1-2 where two distros are named SR
+        const base = distro && String(distro.name || '').trim() ? this.distroLabel(distro) : '';
         if (base) return this._deriveMultiName(base, number, tpl);
         return tpl.ok ? this._deriveMultiName(tpl.prefix, number, tpl) : '';
     }

@@ -2149,7 +2149,16 @@ class _Processors {
         const body = {};
         if ('name' in patch) body.name = (patch.name || '').trim();
         if ('ft' in patch) {
-            body.ft = this.parseCableLength(patch.ft);
+            // read the way every typed length is (readTypedLength,
+            // 2026-10-22): "30m" in a feet show converted and said, text
+            // that is no length refused and said, the length kept
+            if (typeof patch.ft === 'string') {
+                const read = this.readTypedLength(patch.ft, 'snake');
+                if (!read.ok) return Promise.resolve();
+                body.ft = read.n;
+            } else {
+                body.ft = this.parseCableLength(patch.ft);
+            }
         }
         if ('connector' in patch) {
             body.connector = patch.connector
@@ -2180,7 +2189,14 @@ class _Processors {
         const stores = this._dataCableStores(owner);
         const key = String(parseInt(socket, 10));
         const before = JSON.stringify(stores.portCables[key] || null);
-        const ft = cable ? this.parseCableLength(cable.ft) : null;
+        // a length typed as text reads the way every typed length does
+        // (readTypedLength): converted and said, or refused and kept
+        let ft = cable ? this.parseCableLength(cable.ft) : null;
+        if (cable && typeof cable.ft === 'string') {
+            const read = this.readTypedLength(cable.ft, 'cable');
+            if (!read.ok) return Promise.resolve();
+            ft = read.n;
+        }
         const connector = cable && cable.connector
             && this.dataCableConnectorName(cable.connector)
             ? cable.connector : null;
