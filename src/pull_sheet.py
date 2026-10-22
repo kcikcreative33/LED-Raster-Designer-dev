@@ -174,8 +174,11 @@ def _positions(pull_list):
                 qty = 0
             if qty <= 0:
                 continue
+            rtype = str(r.get('type')).strip()
+            if r.get('added'):
+                rtype = free_row_spelling(rtype)
             rows.append({
-                'type': str(r.get('type')).strip(),
+                'type': rtype,
                 'length': str(r.get('length') or '').strip(),
                 'qty': qty,
                 'label': str(r.get('label') or ''),
@@ -275,6 +278,26 @@ def connector_spelling(text):
     if not isinstance(text, str):
         return text
     return _OLD_ETHERCON.sub('etherCON', true1_spelling(text))
+
+
+# A FREE ROW (one somebody typed on the pull sheet, `added`) from 1.5.2 or
+# 1.5.3 may say "Tru-1", "TRU-1" or "True1", "Ether-con", or "... tail".
+# The app reads it as TRUE1, etherCON and "... cable" (owner, 2026-10-22:
+# "Rewrite to TRUE1 / etherCON"), and so does the copy: the new word counts
+# as a connector in use and the old one never prints.
+_OLD_FREE_TRUE1 = re.compile(r'(?<![\w-])(?:Tru-1|TRU-1|tru-1|True1|true1)(?![\w-])')
+_OLD_FREE_ETHERCON = re.compile(r'(?<![\w-])(?:Ether-con|ether-con|Ether-Con|ETHER-CON)(?![\w-])')
+_OLD_FREE_TAIL = re.compile(r'(?<![\w-])(tail|Tail|TAIL)(?![\w-])')
+
+
+def free_row_spelling(text):
+    """A free row's type in the app's spelling: "Tru-1 Breakout" reads
+    "TRUE1 Breakout", "Ether-con 50" reads "etherCON 50", "Edison → TRUE1
+    tail" reads "Edison → TRUE1 cable"."""
+    if not isinstance(text, str):
+        return text
+    text = _OLD_FREE_ETHERCON.sub('etherCON', _OLD_FREE_TRUE1.sub('TRUE1', text))
+    return _OLD_FREE_TAIL.sub(lambda m: {'TAIL': 'CABLE', 'Tail': 'Cable'}.get(m.group(1), 'cable'), text)
 
 
 # The connectors whose families the GEAR LIST lists only when the show uses

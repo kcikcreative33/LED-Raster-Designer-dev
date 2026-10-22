@@ -76,14 +76,16 @@ def seeded(page):
 # ── the rule, on the keys alone ──────────────────────────────────────────
 
 RESOLVE_CASES = [
-    # an old data word: Cat6, else etherCON, else stale on Cat6
+    # an old data word: Cat6, else etherCON, else stale on Cat6; where the
+    # old row is BOTH now it answers to neither (owner, 2026-10-22: a count
+    # goes stale - a hide covers both, test_paper_rulings_1022.py)
     ("Ether-con|25'", ["Cat6|25'"], "Cat6|25'"),
     ("Ether-con|25'", ["etherCON|25'"], "etherCON|25'"),
-    ("Ether-con|25'", ["Cat6|25'", "etherCON|25'"], "Cat6|25'"),
+    ("Ether-con|25'", ["Cat6|25'", "etherCON|25'"], "Ether-con|25'"),
     ("Ether-con|25'", ["Cat6|50'"], "Cat6|25'"),
     ("Data Cable|25'", ["etherCON|25'"], "etherCON|25'"),
     ('Ether-con Barrel|EA', ['etherCON Barrel|EA'], 'etherCON Barrel|EA'),
-    ('Barrel|EA', ['Cat6 Barrel|EA', 'etherCON Barrel|EA'], 'Cat6 Barrel|EA'),
+    ('Barrel|EA', ['Cat6 Barrel|EA', 'etherCON Barrel|EA'], 'Barrel|EA'),
     # a snake with no snake id: the one snake of that type and length
     ("Ether-con Snake|100'", ["Cat6 Snake|100'|snake:a"], "Cat6 Snake|100'|snake:a"),
     ("Ether-con Snake|100'", ["etherCON Snake|100'|snake:b"], "etherCON Snake|100'|snake:b"),
@@ -92,9 +94,10 @@ RESOLVE_CASES = [
     ("Cat6 Snake|100'", ["etherCON Snake|100'|snake:a"], "Cat6 Snake|100'"),
     ("Ether-con Snake|100'", ["Cat6 Snake|100'|snake:a", "Cat6 Snake|100'|snake:b"], "Cat6 Snake|100'"),
     ("Ether-con Snake|100'", ["Cat6 Snake|50'|snake:a"], "Cat6 Snake|100'"),
-    # the old power jumper: TRUE1, else powerCON, its member kept
+    # the old power jumper: TRUE1, else powerCON, its member kept; both
+    # there, neither
     ("Tru-1 Power Jump|6'", ["powerCON Power Jump|6'"], "powerCON Power Jump|6'"),
-    ("Tru-1 Power Jump|6'", ["TRUE1 Power Jump|6'", "powerCON Power Jump|6'"], "TRUE1 Power Jump|6'"),
+    ("Tru-1 Power Jump|6'", ["TRUE1 Power Jump|6'", "powerCON Power Jump|6'"], "Tru-1 Power Jump|6'"),
     ("Tru-1 Power Jump|6'|WALL-B", ["powerCON Power Jump|6'|WALL-B"], "powerCON Power Jump|6'|WALL-B"),
     ("Tru-1 Power Jump|6'", ["powerCON Power Jump|2'"], "TRUE1 Power Jump|6'"),
     # splitters: the panel input the position has

@@ -177,6 +177,9 @@ const POWER_CONNECTOR_SHEET_NAMES = {};
 // key their edits on it ("Tru-1|10'", "Tru-1 Breakout|EA"); such an edit
 // answers to the row under its TRUE1 name now (pullEditKey).
 const PULL_LEGACY_TRUE1 = 'Tru-1';
+// ... anywhere in the type, as a whole word ("L21-30 Tru-1 Breakout|EA",
+// "Harting Tru-1 Breakout|EA" - 2026-10-22), either case.
+const PULL_LEGACY_TRUE1_WORD = /(^|[\s(/])(?:Tru-1|TRU-1)(?=[\s)/]|$)/g;
 
 // The Edison / L6-20 adapter cable printed as "Edison → TRUE1 tail" in the
 // 1.5.4 betas; it is "Edison → TRUE1 cable" now (2026-10-21, never "tail"),
@@ -1535,13 +1538,6 @@ class _PullList {
                 // A cable prints only where the circuit is fed (the
                 // home run's rule above - printedCircuitCable).
                 const cable = this.printedCircuitCable(layer, leg.circuit);
-                box.circuits.push({
-                    num: leg.circuit, label: leg.label, tail: leg.leg,
-                    tiles: leg.tiles, amps: leg.amps,
-                    cable: cable ? cable.text : null,
-                    cableFt: cable ? cable.ft : null,
-                    cableConnector: cable ? this.pullPowerConnectorName(cable.name) : null,
-                });
                 // A DIRECT output is one circuit on one cable, distro to
                 // screen: a cable typed on the circuit IS that cable, and
                 // wins over the output's home run - what the map's cable
@@ -1554,6 +1550,19 @@ class _PullList {
                     ? this.directOutputCircuitCount(layer, leg.circuit) : 0;
                 if (crowd > 1) box.crowded = crowd;
                 const one = cable && crowd === 1 ? this.directCircuitCable(layer, leg.circuit) : null;
+                // The circuit's cable reads as that one cable too - the
+                // binder's Circuits table on a direct output said the
+                // circuit stock ("50' Edison → powerCON") where every
+                // other surface said "30'+10' Edison → powerCON"
+                // (2026-10-22).
+                const said = one || cable;
+                box.circuits.push({
+                    num: leg.circuit, label: leg.label, tail: leg.leg,
+                    tiles: leg.tiles, amps: leg.amps,
+                    cable: said ? said.text : null,
+                    cableFt: said ? said.ft : null,
+                    cableConnector: said ? this.pullPowerConnectorName(said.name || cable.name) : null,
+                });
                 if (one) {
                     box.homeRun = one.ft;
                     if (one.name) box.cable = one.name;
@@ -1924,14 +1933,17 @@ class _PullList {
     pullEditKey(key) {
         const text = String(key == null ? '' : key);
         if (PULL_LEGACY_ADAPTER.test(text)) return text.replace(PULL_LEGACY_ADAPTER, '$1 cable');
-        // "Tru-1 ...|len" is the TRUE1 row of the same name now - unless
-        // it is a jumper name somebody typed, which still prints as typed
-        if (text.startsWith(PULL_LEGACY_TRUE1)
-                && /^(?:[ |]|$)/.test(text.slice(PULL_LEGACY_TRUE1.length))) {
+        // "Tru-1 ...|len" is the TRUE1 row of the same name now - and so
+        // is a type with "Tru-1" anywhere in it as a word ("L21-30 Tru-1
+        // Breakout") - unless it is a jumper name somebody typed, which
+        // still prints as typed
+        {
             const cut = text.indexOf('|');
             const type = cut < 0 ? text : text.slice(0, cut);
-            if (type !== this.getPullSheetSettings().powerJumpNameTrue1) {
-                return `TRUE1${text.slice(PULL_LEGACY_TRUE1.length)}`;
+            PULL_LEGACY_TRUE1_WORD.lastIndex = 0;
+            if (PULL_LEGACY_TRUE1_WORD.test(type)
+                    && type !== this.getPullSheetSettings().powerJumpNameTrue1) {
+                return type.replace(PULL_LEGACY_TRUE1_WORD, '$1TRUE1') + (cut < 0 ? '' : text.slice(cut));
             }
         }
         const cut = text.indexOf('|');
@@ -1959,10 +1971,35 @@ class _PullList {
     //   * "Tru-1 Power Jump|6'" is the TRUE1 jumper row, else (a powerCON
     //     screen) the powerCON jumper row of that length;
     //   * "Edison 2fer|EA", "L6-20 3fer|EA" ... are "<panel input> Nfer",
-    //     TRUE1 or powerCON, whichever the position has.
+    //     TRUE1 or powerCON, whichever the position has;
+    //   * an old direct output's cable by its plug alone ("CEE 16A|50'",
+    //     "Tru-1|25'") is the position's "<plug> → <input>|len" row where
+    //     it is the only one (2026-10-22).
+    // AN OLD ROW THAT IS TWO ROWS NOW (owner, 2026-10-22): "Ether-con|25'"
+    // at a position with both a Cat6 and an etherCON 25', "Tru-1 Power
+    // Jump|6'" with both a TRUE1 and a powerCON 6' jumper. A HIDE covers
+    // both rows; a count, label or note cannot say which of them it meant
+    // and goes stale, shown in the editor for the user to redo
+    // (_pullEditHits, getPullSheetEdits).
     // A 1.5.2 extension printed as "Ether-con|25'" too and cannot be told
     // from a home run: it stays on the home-run row. Every other key is
     // pullEditKey's.
+
+    // A FREE ROW'S TYPE in today's spelling (owner, 2026-10-22: "Rewrite
+    // to TRUE1 / etherCON"): a row somebody typed on the pull sheet in
+    // 1.5.2 or 1.5.3 says "Tru-1", "TRU-1" or "True1" for TRUE1,
+    // "Ether-con" for etherCON, "... tail" for "... cable". Read so on
+    // every paper - the pull pages, the xlsx, the GEAR LIST - so the new
+    // word counts as a connector in use and the old one never prints.
+    // Anything else is the user's own words, as typed.
+    pullFreeRowType(type) {
+        if (type == null) return type;
+        return String(type)
+            .replace(/(^|[^\w-])(?:Tru-1|TRU-1|tru-1|True1|true1)(?![\w-])/g, '$1TRUE1')
+            .replace(/(^|[^\w-])(?:Ether-con|ether-con|Ether-Con|ETHER-CON)(?![\w-])/g, '$1etherCON')
+            .replace(/(^|[^\w-])(tail|Tail|TAIL)(?![\w-])/g, (m, lead, w) =>
+                lead + (w === 'TAIL' ? 'CABLE' : w === 'Tail' ? 'Cable' : 'cable'));
+    }
 
     // Does this stored key need the position's rows to be placed?
     _pullEditNeedsRows(key) {
@@ -1974,8 +2011,33 @@ class _PullList {
         if (PULL_LEGACY_DATA_TYPES.has(type)) return true;
         if (/ Snake$/.test(type) && parts.length === 1) return true;
         if (this._pullLegacyJumpNames().includes(type)) return true;
+        // (a key already spelled as a panel input - "TRUE1|25'",
+        // "powerCON|25'" - is today's row from that outlet, read alone)
+        if (parts.length === 1 && parts[0] !== 'EA' && !this._pullPanelInputNames().has(type)
+                && this._pullDirectPlugNames().has(this._pullEditType(key))) {
+            return true;
+        }
         const fer = /^(.+) (\d+)fer$/.exec(type);
         return !!(fer && fer[1] !== 'TRUE1' && fer[1] !== 'powerCON');
+    }
+
+    // A stored key's type as pullEditKey reads it ("Tru-1|25'" -> "TRUE1").
+    _pullEditType(key) {
+        const plain = this.pullEditKey(key);
+        const cut = plain.indexOf('|');
+        return cut < 0 ? plain : plain.slice(0, cut);
+    }
+
+    _pullPanelInputNames() {
+        const all = typeof this.getPanelInputTypes === 'function' ? this.getPanelInputTypes() : [];
+        return new Set(all.map(t => t && t.name).filter(Boolean));
+    }
+
+    // The plugs a direct output's cable is named by ("Edison", "CEE 16A",
+    // "TRUE1"): an old key on one of them alone was that output's cable.
+    _pullDirectPlugNames() {
+        const all = typeof this.distroConnectors === 'function' ? this.distroConnectors() : [];
+        return new Set(all.filter(c => c && c.kind === 'direct' && c.cable).map(c => c.cable));
     }
 
     // The jumper names an old file keyed its power jumper rows on: the
@@ -1990,16 +2052,29 @@ class _PullList {
     // pullRowKey of every engine row of its position). A key the rows
     // cannot place is pullEditKey's reading: an edit on no live row is
     // stale, as before.
+    // An old key whose row is two rows now (_pullEditHits) answers to
+    // neither: it keeps its own spelling, so a count on it is stale.
     _pullResolveEditKey(key, liveKeys) {
         const plain = this.pullEditKey(key);
         if (!this._pullEditNeedsRows(key)) return plain;
+        const hits = this._pullEditHits(key, liveKeys);
+        if (hits.length > 1) return String(key);
+        return hits.length ? hits[0] : plain;
+    }
+
+    // The live rows an old key that needs its position's rows answers to:
+    // one, or none (it reads as pullEditKey), or - for an old row that
+    // is two rows now - each of them.
+    _pullEditHits(key, liveKeys) {
+        const plain = this.pullEditKey(key);
+        if (!this._pullEditNeedsRows(key)) return [];
         const live = liveKeys instanceof Set ? liveKeys : new Set(liveKeys || []);
         const text = String(key);
         const cut = text.indexOf('|');
         const type = text.slice(0, cut);
         const rest = text.slice(cut);                 // "|25'" or "|6'|WALL-A"
         const length = rest.slice(1).split('|')[0];
-        const first = (keys) => keys.find(k => live.has(k)) || null;
+        const all = (keys) => keys.filter(k => live.has(k));
         // the data words: Cat6, else etherCON
         let types = null;
         if (PULL_LEGACY_DATA_TYPES.has(type)) {
@@ -2010,21 +2085,33 @@ class _PullList {
         }
         if (types && / Snake$/.test(types[0]) && rest.split('|').length === 2) {
             // a snake by its type and length: the only one there is
+            // (several of them: it stays stale, whatever it was)
             for (const t of types) {
                 const head = `${t}|${length}|`;
                 const hits = [...live].filter(k => k.startsWith(head));
-                if (hits.length === 1) return hits[0];
-                if (hits.length > 1) return plain;
+                if (hits.length === 1) return hits;
+                if (hits.length > 1) return [];
             }
-            return plain;
+            return [];
         }
-        if (types) return first(types.map(t => t + rest)) || plain;
+        if (types) return all(types.map(t => t + rest));
         if (this._pullLegacyJumpNames().includes(type)) {
-            return first([plain, `${this.getPullSheetSettings().powerJumpNamePowercon}${rest}`]) || plain;
+            return all([plain, `${this.getPullSheetSettings().powerJumpNamePowercon}${rest}`]);
         }
         const fer = /^(.+) (\d+)fer$/.exec(type);
-        if (fer) return first([`TRUE1 ${fer[2]}fer${rest}`, `powerCON ${fer[2]}fer${rest}`]) || plain;
-        return plain;
+        if (fer) return all([`TRUE1 ${fer[2]}fer${rest}`, `powerCON ${fer[2]}fer${rest}`]);
+        // an old direct output's cable by its plug: the one "<plug> →
+        // <input>" row of that length (the plug's own row where it is the
+        // input too)
+        const plug = this._pullEditType(key);
+        if (this._pullDirectPlugNames().has(plug)) {
+            const plainRest = plain.slice(plain.indexOf('|'));
+            if (live.has(plain)) return [plain];
+            const hits = [...live].filter(k => k.startsWith(`${plug} → `)
+                && k.indexOf('|') >= 0 && k.slice(k.indexOf('|')) === plainRest);
+            return hits.length === 1 ? hits : [];
+        }
+        return [];
     }
 
     // The pullRowKey of every row of one position of `list`.
@@ -2061,6 +2148,17 @@ class _PullList {
                 : this.pullEditKey(raw));
             const rows = [];
             for (const r of held) {
+                // an old row that is two rows now: a hide covers both
+                if (r && r.removed && r.key != null && this._pullEditNeedsRows(r.key)) {
+                    const hits = this._pullEditHits(r.key, live || (live = liveOf(k)));
+                    if (hits.length > 1) {
+                        for (const hit of hits) {
+                            if (held.some(x => x && x.key === hit) || rows.some(x => x.key === hit)) continue;
+                            rows.push({ ...r, key: hit });
+                        }
+                        continue;
+                    }
+                }
                 const key = r && r.key != null ? keyOf(r.key) : null;
                 if (key === null || key === r.key) { rows.push({ ...r }); continue; }
                 if (held.some(x => x && x.key === key)) continue;
@@ -2068,7 +2166,11 @@ class _PullList {
             }
             positions[k] = {
                 rows,
-                added: Array.isArray(v.added) ? v.added.map(r => ({ ...r })) : [],
+                // a free row typed in 1.5.2 / 1.5.3 reads in today's
+                // spelling (pullFreeRowType)
+                added: Array.isArray(v.added)
+                    ? v.added.map(r => (r && typeof r === 'object' ? { ...r, type: this.pullFreeRowType(r.type) } : r))
+                    : [],
             };
         }
         return { positions };
@@ -2434,6 +2536,17 @@ class _PullList {
                     .filter(k => k.startsWith(`${pk}\n`)).map(k => k.slice(pk.length + 1)))))
                 : this.pullEditKey(raw));
             pos.rows = pos.rows.filter(e => {
+                // a hide on an old row that is two rows now goes when
+                // both of them go
+                if (e && e.removed && this._pullEditNeedsRows(e.key)) {
+                    const keyOf2 = keyOf(e.key);
+                    const hits = this._pullEditHits(e.key, had);
+                    if (keyOf2 === String(e.key) && hits.length > 1) {
+                        const gone = hits.every(h => before.has(`${pk}\n${h}`) && !after.has(`${pk}\n${h}`));
+                        if (gone) dropped++;
+                        return !gone;
+                    }
+                }
                 const k = `${pk}\n${keyOf(e && e.key)}`;
                 if (before.has(k) && !after.has(k)) { dropped++; return false; }
                 return true;
@@ -2486,6 +2599,33 @@ class _PullList {
             }
             return this._pullResolveEditKey(raw, live);
         };
+    }
+
+    // Row KEY's share of a hide stored on an old row that is two rows now
+    // (_pullEditHits): the hide is written out as one on each OTHER row,
+    // so restoring one row leaves the other hidden. True when it found
+    // one (and changed the store).
+    _pullUnsplitHide(pos, key, positionKey) {
+        const rows = (pos && pos.rows) || [];
+        if (rows.some(x => x && x.key === key)) return false;
+        let live = null;
+        const at = rows.findIndex(x => {
+            if (!x || !x.removed || !this._pullEditNeedsRows(x.key)) return false;
+            if (!live) {
+                try { live = this._pullPositionRowKeys(this.buildPullList(), positionKey); } catch (err) {
+                    sendClientLog('pull_edit_rows_failed', { error: String(err) });
+                    live = new Set();
+                }
+            }
+            const hits = this._pullEditHits(x.key, live);
+            return hits.length > 1 && hits.includes(key);
+        });
+        if (at < 0) return false;
+        const e = rows[at];
+        const others = this._pullEditHits(e.key, live).filter(h => h !== key
+            && !rows.some(x => x && x.key === h));
+        rows.splice(at, 1, ...others.map(h => ({ ...e, key: h })));
+        return true;
     }
 
     // Override one field of an engine row. A value equal to the engine's
@@ -2542,6 +2682,10 @@ class _PullList {
 
     restorePullSheetRow(positionKey, key) {
         const pos = this._pullPositionEdits(positionKey, false);
+        if (pos && this._pullUnsplitHide(pos, key, positionKey)) {
+            this._commitPullSheetEdit('Restore Pull Sheet Row');
+            return true;
+        }
         const e = pos && this._pullFindRowEdit(pos, key, positionKey);
         if (!e || !e.removed) return false;
         e.key = key;
@@ -2554,7 +2698,8 @@ class _PullList {
     resetPullSheetRow(positionKey, key) {
         const pos = this._pullPositionEdits(positionKey, false);
         if (!pos) return false;
-        const n = pos.rows.length;
+        const split = this._pullUnsplitHide(pos, key, positionKey);
+        const n = pos.rows.length + (split ? 1 : 0);
         const keyOf = this._pullStoredKeyReader(positionKey);
         pos.rows = pos.rows.filter(x => !x || keyOf(x.key) !== key);
         if (pos.rows.length === n) return false;

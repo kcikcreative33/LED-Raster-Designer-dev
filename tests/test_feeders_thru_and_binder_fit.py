@@ -324,7 +324,9 @@ def test_binder_cells_rating_line_and_kv_words(page):
     assert out['cells'] == [['400 A cam set · 5-wire', 'no length'], ['400 A cam set · 5-wire', "150'"],
                             ['Multi', 'no length'], ['TAC 4', 'no length'], ['Spare Widget', '—']], out['cells']
     assert out['legacy'] == '400 A service · 120/208V 3φ', out['legacy']
-    assert '400 A' in out['words'] and '50 m+20 m' in out['words'] and '320 A' in out['words'], out['words']
+    # (a " · " rides at the end of the word before it - 2026-10-22)
+    assert '400 A' in out['words'] and '50 m+20 m ·' in out['words'] and '320 A' in out['words'], out['words']
+    assert not [w for w in out['words'] if w.startswith('·')], out['words']
     assert '(80%' in out['words'] and 'A)' not in out['words'], out['words']
     assert out['pieces'] == ['400 A ', 'cam ', 'set · ', '5-wire ', '30 m+10 m'], out['pieces']
     assert not errors, errors

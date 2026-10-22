@@ -514,3 +514,39 @@ def test_the_qd_s_input_fiber_goes_where_the_qd_s_is(page):
     assert out['pins'] > 0, out
     assert out['placed'] == ['SR Beach'], out
     assert out['onScreen'] == [["300'", 1]], out
+
+
+def test_a_placed_port_with_no_length_says_so_on_the_binder(page):
+    """CENTER's socket with no cable typed (owner, 2026-10-22): the data
+    sheet's Ports HOME RUN says "Cat6 no length" as CABLES THIS SCREEN
+    does, never "—"; the processor sheet's Snakes & home runs lists it,
+    marked no length, as its Pull list does."""
+    pg, ids = page
+    out = pg.evaluate("""async (ids) => {""" + HELPERS_JS + """
+        await j('PUT', cardUrl, {portCables: {}});
+        await rebuild();
+        const tables = [];
+        const orig = app._bTableLines;
+        app._bTableLines = function (book, spec) {
+            tables.push({ title: spec.title, rows: (spec.rows || []).filter(r => r.cells).map(r => r.cells.slice()) });
+            return orig.apply(this, arguments);
+        };
+        const opts = Object.assign(app.readBinderOptions(),
+            { scope: { kind: 'show' }, hardware: true, pull: false, cover: false, wiring: false,
+              sides: { power: false, data: true } });
+        try { app.planBinder(opts); } finally { app._bTableLines = orig; }
+        // a placed port's own socket, read off the assignment
+        const pin = ((app._assignment && app._assignment.screens) || []).flatMap(s => s.ports || [])
+            .find(p => p.cardId && p.port != null && !app.dataPortCable(p.cardId, p.port));
+        const res = { tables, run: pin ? app.runText(null, { cardId: pin.cardId, port: pin.port }) : null,
+                      none: app.runText(null), cards: (app._processorsResolved || []).length };
+        await j('PUT', cardUrl, {portCables: {[cSock]: {ft: 50}}});
+        await rebuild();
+        return res;
+    }""", ids)
+    assert out['run'] in ('Cat6 no length', 'etherCON no length') and out['none'] == '—', out
+    ports = [r for t in out['tables'] if t['title'] == 'Ports' for r in t['rows']]
+    assert [r for r in ports if 'Cat6 no length' in r], ports
+    runs = [r for t in out['tables'] if t['title'] == 'Snakes & home runs' for r in t['rows']]
+    assert [r for r in runs if r[1:] == ['cable', 'no length', 'Cat6']], runs
+    assert ids['errors'] == []
