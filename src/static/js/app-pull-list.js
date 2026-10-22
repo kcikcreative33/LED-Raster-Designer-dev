@@ -229,16 +229,22 @@ const PULL_LEGACY_DATA_TYPES = new Map([
 
 // A free row's side (pullGuessSide): these words, whole, make it power
 // whatever else it says ("Socapex Snake", "Camlok Barrel")...
+// ("Light switch" is power, 2026-10-22: a switch alone is a network's)
 const PULL_POWER_WORDS = new RegExp('\\b(?:socapex|soca|camlok|camlock|cam|edison|true1|tru-1|powercon'
-    + '|harting|cee|nema|stage ?pin|l\\d{1,2}-\\d{2}|power|feeder|distro)\\b', 'i');
+    + '|harting|cee|nema|stage ?pin|l\\d{1,2}-\\d{2}|power|feeder|distro|light ?switch(?:es)?)\\b', 'i');
 // ...and these make it data.
 // RJ45, LC, coax, BNC and a network switch are data too (2026-10-22:
 // "RJ45 coupler", "LC duplex patch", "Network switch", "Coax", "BNC").
 const PULL_DATA_WORDS = new RegExp('\\b(?:ether\\w*|cat(?:5e?|6a?|7|8)?|fiber|fibre|\\w*sdi|hdmi|data'
     + '|snakes?|barrels?|tac\\s?\\d*|mtp\\s?\\d*|opticalcon\\w*|sfp\\+?|opt|cvt\\w*|xd(?:-\\w+)?'
-    + '|rj-?45|lc|coax\\w*|bnc|switch(?:es)?)\\b', 'i');
-// ...and, failing both, these make it a panel.
+    + '|\\w*rj-?45|lc|coax\\w*|bnc|switch(?:es)?|patch(?:es)?)\\b', 'i');
+// (an RJ45 count glued to it is still RJ45: "Card H 20xRJ45"; a patch
+// panel patches data - 2026-10-22)
+// ...and, failing both, these make it a panel - only where nothing else
+// in it says it is some other gear: "Breakout panel" is power, "Truss
+// panel" is rigging (power, the default), never a panel (2026-10-22).
 const PULL_PANEL_WORDS = /\b(?:panels?|cabinets?|tiles?)\b/i;
+const PULL_NOT_PANEL_WORDS = /\b(?:breakouts?|truss(?:es)?|rigging|brackets?|bumpers?|headers?|clamps?|carts?|dolly|dollies|cases?|mounts?)\b/i;
 // What may follow a catalog model and leave it the head of the name.
 const PULL_MODEL_TAIL_WORDS = new Set(['rack', 'racks', 'case', 'cases', 'spare', 'spares', 'unit',
     'units', 'processor', 'processors', 'card', 'cards', 'box', 'boxes', 'frame', 'kit', 'backup',
@@ -1697,7 +1703,10 @@ class _PullList {
                 const crowd = box.kind === 'direct'
                     ? this.directOutputCircuitCount(layer, leg.circuit) : 0;
                 if (crowd > 1) box.crowded = crowd;
-                const one = cable && crowd === 1 ? this.directCircuitCable(layer, leg.circuit) : null;
+                // (the output's length typed in the tray's direct Cable
+                // field with no cable on the circuit is that one cable too:
+                // directCircuitCable falls back to the output's home run)
+                const one = crowd === 1 ? this.directCircuitCable(layer, leg.circuit) : null;
                 // The circuit's cable reads as that one cable too - the
                 // binder's Circuits table on a direct output said the
                 // circuit stock ("50' Edison → powerCON") where every
@@ -1709,7 +1718,7 @@ class _PullList {
                     tiles: leg.tiles, amps: leg.amps,
                     cable: said ? said.text : null,
                     cableFt: said ? said.ft : null,
-                    cableConnector: said ? this.pullPowerConnectorName(said.name || cable.name) : null,
+                    cableConnector: said ? this.pullPowerConnectorName(said.name || (cable && cable.name)) : null,
                 });
                 if (one) {
                     box.homeRun = one.ft;
@@ -2081,6 +2090,20 @@ class _PullList {
     pullEditKey(key) {
         const text = String(key == null ? '' : key);
         if (PULL_LEGACY_ADAPTER.test(text)) return text.replace(PULL_LEGACY_ADAPTER, '$1 cable');
+        // A key whose type is the USER'S TEXT - a distro's Type, a jumper
+        // name somebody typed, a panel name from Screen Info - is never
+        // rewritten (2026-10-22): its row prints that text as typed, so
+        // the key keeps matching it ("Tru-1 Rack|EA" on a distro typed so).
+        {
+            const cut = text.indexOf('|');
+            const type = cut < 0 ? text : text.slice(0, cut);
+            PULL_LEGACY_TRUE1_WORD.lastIndex = 0;
+            const old = PULL_LEGACY_TRUE1_WORD.test(type) || PULL_LEGACY_DATA_TYPES.has(type)
+                || type.startsWith(PULL_LEGACY_TYPE_PREFIX);
+            PULL_LEGACY_TRUE1_WORD.lastIndex = 0;
+            if (old && type !== LEGACY_POWER_JUMP_NAME
+                    && this._pullUserTypeNames().has(type.toLowerCase())) return text;
+        }
         // "Tru-1 ...|len" is the TRUE1 row of the same name now - and so
         // is a type with "Tru-1" anywhere in it as a word ("L21-30 Tru-1
         // Breakout") - unless it is a jumper name somebody typed, which
@@ -2140,13 +2163,64 @@ class _PullList {
     // every paper - the pull pages, the xlsx, the GEAR LIST - so the new
     // word counts as a connector in use and the old one never prints.
     // Anything else is the user's own words, as typed.
+    // "tail" is "cable" only on an ADAPTER (owner, 2026-10-22): a type
+    // with "→" in it, or "Edison tail" / "L6-20 tail". Any other "tail"
+    // is the user's word: "Tail rope" stays "Tail rope".
     pullFreeRowType(type) {
         if (type == null) return type;
-        return String(type)
+        const t = String(type)
             .replace(/(^|[^\w-])(?:Tru-1|TRU-1|tru-1|True1|true1)(?![\w-])/g, '$1TRUE1')
-            .replace(/(^|[^\w-])(?:Ether-con|ether-con|Ether-Con|ETHER-CON)(?![\w-])/g, '$1etherCON')
-            .replace(/(^|[^\w-])(tail|Tail|TAIL)(?![\w-])/g, (m, lead, w) =>
-                lead + (w === 'TAIL' ? 'CABLE' : w === 'Tail' ? 'Cable' : 'cable'));
+            .replace(/(^|[^\w-])(?:Ether-con|ether-con|Ether-Con|ETHER-CON)(?![\w-])/g, '$1etherCON');
+        const cable = (w) => (w === 'TAIL' ? 'CABLE' : w === 'Tail' ? 'Cable' : 'cable');
+        if (/→|->/.test(t)) {
+            return t.replace(/(^|[^\w-])(tail|Tail|TAIL)(?![\w-])/g, (m, lead, w) => lead + cable(w));
+        }
+        return t.replace(/(^|[^\w-])((?:Edison|EDISON|edison|L6-20|l6-20)\s+)(tail|Tail|TAIL)(?![\w-])/g,
+            (m, lead, plug, w) => lead + plug + cable(w));
+    }
+
+    // A FREE ROW'S NOTES in today's spelling too (owner, 2026-10-22: "Old
+    // free-row NOTES are rewritten too"): each thing the notes say - the
+    // pieces between " · ", "; " and ", " - read the way a type is.
+    pullFreeRowNotes(notes) {
+        if (notes == null) return notes;
+        return String(notes).split(/( · |; |, )/)
+            .map((piece, i) => (i % 2 ? piece : this.pullFreeRowType(piece))).join('');
+    }
+
+    // A free row in today's spelling, its type and its notes.
+    _pullFreeRowSpelled(r) {
+        if (!r || typeof r !== 'object') return r;
+        const out = { ...r, type: this.pullFreeRowType(r.type) };
+        if (r.notes != null) out.notes = this.pullFreeRowNotes(r.notes);
+        return out;
+    }
+
+    // The row types that are the user's own text, lower-cased: every
+    // distro's typed Type, the jumper names (a custom one from an old file
+    // too) and every screen's panel names (a name typed in Screen Info,
+    // its halves). The shipped jumper names are the app's.
+    _pullUserTypeNames() {
+        const out = new Set();
+        const add = (t) => { const v = String(t == null ? '' : t).trim(); if (v) out.add(v.toLowerCase()); };
+        const distros = typeof this.getDistros === 'function' ? this.getDistros() || [] : [];
+        for (const d of distros) add(d && d.typeName);
+        const shipped = new Set(Object.values(PULL_SHEET_DEFAULTS || {}).map(v => String(v)));
+        const s = this.getPullSheetSettings();
+        for (const k of ['powerJumpNameTrue1', 'powerJumpNamePowercon', 'dataJumpName']) {
+            if (s && s[k] != null && !shipped.has(String(s[k]))) add(s[k]);
+        }
+        const stored = (this.project && this.project.pullSheet) || {};
+        if (typeof this._legacyPowerJumpName === 'function') add(this._legacyPowerJumpName(stored.powerJumpName));
+        for (const l of ((this.project && this.project.layers) || [])) {
+            if (!l || (l.type || 'screen') !== 'screen') continue;
+            const name = String(l.panelModelName || '').trim();
+            if (!name) continue;
+            const t = this.pullPanelTypes(l);
+            for (const k of ['none', 'height', 'width']) add(t[k]);
+        }
+        out.delete(String(LEGACY_POWER_JUMP_NAME).toLowerCase());
+        return out;
     }
 
     // Does this stored key need the position's rows to be placed?
@@ -2317,7 +2391,7 @@ class _PullList {
                 // a free row typed in 1.5.2 / 1.5.3 reads in today's
                 // spelling (pullFreeRowType)
                 added: Array.isArray(v.added)
-                    ? v.added.map(r => (r && typeof r === 'object' ? { ...r, type: this.pullFreeRowType(r.type) } : r))
+                    ? v.added.map(r => this._pullFreeRowSpelled(r))
                     : [],
             };
         }
@@ -2376,7 +2450,9 @@ class _PullList {
     //     "H9 spare (2)" are data, "S4 Spanset", "T1 Tape", "M2 bolt" are
     //     not (_pullModelIsHead);
     //   * then a PANEL word ("Spare panel", "Half tile", "cabinet") makes
-    //     it a panel, side 'panel' - printed with the show's panel rows;
+    //     it a panel, side 'panel' - printed with the show's panel rows -
+    //     unless another word names other gear ("Breakout panel", "Truss
+    //     panel" are power; "Patch panel" is data, a patch a data word);
     //   * everything else is power.
     // Before all of these, a type that IS one of the show's panel types
     // (the name a panel row prints, pullPanelTypes) is a panel, whatever
@@ -2389,7 +2465,7 @@ class _PullList {
         if (lower && this._pullPanelTypeNames().has(lower)) return 'panel';
         if (PULL_POWER_WORDS.test(text)) return 'power';
         if (PULL_DATA_WORDS.test(text)) return 'data';
-        if (PULL_PANEL_WORDS.test(text)) return 'panel';
+        if (PULL_PANEL_WORDS.test(text) && !PULL_NOT_PANEL_WORDS.test(text)) return 'panel';
         return this._pullDataDeviceNames().some(n => this._pullModelIsHead(lower, n)) ? 'data' : 'power';
     }
 
@@ -2415,12 +2491,19 @@ class _PullList {
     // ("UHD Jr", never a bare "Pro" or "Jr").
     _pullDataDeviceNames() {
         const names = new Set();
+        // (and a model's short name without its "Pro": "MX40" for an
+        // MX40 Pro, where what is left carries a digit - 2026-10-22)
+        const addOne = (n) => {
+            names.add(n);
+            const bare = n.replace(/\s+pro$/, '');
+            if (bare !== n && /\d/.test(bare) && bare.length >= 3) names.add(bare);
+        };
         const add = (name) => String(name || '').replace(/\([^)]*\)/g, '').split('/')
             .map(n => n.trim().toLowerCase()).filter(n => n.length >= 2).forEach(n => {
-                names.add(n);
+                addOne(n);
                 const rest = n.split(/\s+/).slice(1);
                 if (rest.length >= 2 || (rest.length === 1 && /\d/.test(rest[0]) && rest[0].length >= 3)) {
-                    names.add(rest.join(' '));
+                    addOne(rest.join(' '));
                 }
             });
         const devices = typeof this._processorDevices === 'function' ? this._processorDevices() : [];
