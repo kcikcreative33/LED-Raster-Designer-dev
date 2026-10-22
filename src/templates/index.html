@@ -297,7 +297,7 @@
                             <select id="layer-beach" class="info-select" data-lrd-field="layer-beach"></select>
                         </div>
                         <div id="screen-grid-settings" class="screen-only">
-                            <div class="info-row" data-tooltip="Panel, The panel this screen hangs, as the pull sheet names it. A pick from the panel library fills it in; type your own name for a custom panel. Changing the cabinet's pixels or size by hand clears it, and clearing it goes back to naming the panel by its size.">
+                            <div class="info-row" data-tooltip="Panel, The panel this screen hangs, as the pull sheet names it. A pick from the panel library fills it in; type your own name for a custom panel. Changing the cabinet's pixels or size by hand clears it, and clearing it goes back to the library's name for its size, or its size.">
                                 <label>Panel</label>
                                 <input type="text" id="panel-model-name" value="" autocomplete="off" spellcheck="false">
                             </div>
@@ -3014,7 +3014,7 @@
                     <tr><td class="sc-key">Drag in empty space</td><td>Marquee-select screens; hold <span data-sc-mod>Ctrl</span> to toggle the caught ones</td></tr>
                     <tr><td class="sc-key">Click &amp; drag a screen-name label</td><td>Move the current screen's label in that view</td></tr>
                     <tr><td class="sc-key">Shift+drag</td><td>In Cabinet ID, Data and Power: move the screen-name label, not the screen</td></tr>
-                    <tr><td class="sc-key">Right-click</td><td>The menu for what is under the cursor - a screen, a run, a chip, a row</td></tr>
+                    <tr><td class="sc-key">Right-click</td><td>The menu for what is under the cursor: a screen, a run, a chip, a row</td></tr>
                     <tr><td class="sc-key">Enter / Esc in a rename field</td><td>Commit / revert the name</td></tr>
                     <tr><td class="sc-key">Esc</td><td>Close a menu, a popover or a prompt</td></tr>
                 </table>
@@ -3054,19 +3054,19 @@
                     <tr><td class="sc-key">Esc</td><td>End the redraw (the drawing stays) or drop the cabinet selection</td></tr>
                     <tr><td class="sc-key">Tab / Shift+Tab, ] / [</td><td>Next / previous port in custom mode</td></tr>
                     <tr><td class="sc-key">Right-click a run</td><td>Redraw port N, Port N back to auto, Clear port N</td></tr>
-                    <tr><td class="sc-key">Drag a port, card, box or processor onto a screen</td><td>Assign it - a port lands on a run, a card or box fills ports in order</td></tr>
+                    <tr><td class="sc-key">Drag a port, card, box or processor onto a screen</td><td>Assign it: a port lands on a run, a card or box fills ports in order</td></tr>
                     <tr><td class="sc-key">Drag an assigned port back onto the tray</td><td>Release it</td></tr>
                     <tr><td class="sc-key">Right-click a port chip, card or box header</td><td>Clear it</td></tr>
                     <tr><td class="sc-key">Click a port chip (Enter / Space when focused)</td><td>Open its editor; Esc closes it</td></tr>
                     <tr><td class="sc-key">⚙ on a header</td><td>Configure the processor, card or box</td></tr>
                     <tr><td class="sc-key">Drag ⋮⋮ along the tray</td><td>Reorder the processors</td></tr>
                     <tr><td class="sc-key">Esc mid-drag</td><td>Cancel the drag</td></tr>
-                    <tr><td class="sc-key">Alt+press a port chip, sweep across chips</td><td>Light a run of ports - across cards and boxes</td></tr>
+                    <tr><td class="sc-key">Alt+press a port chip, sweep across chips</td><td>Light a run of ports, across cards and boxes</td></tr>
                     <tr><td class="sc-key">Right-click the lit ports</td><td>Snake these N, Set home run…, Unsnake</td></tr>
                     <tr><td class="sc-key">Alt+Enter</td><td>Snake the lit ports</td></tr>
                     <tr><td class="sc-key">Esc / click away</td><td>Drop the lit ports</td></tr>
                     <tr><td class="sc-key">Right-click a snake's tag</td><td>Rename, Set home run of…, Unsnake</td></tr>
-                    <tr><td class="sc-key">≡ on a card or box header</td><td>Flip its chips into the cable sheet - snakes and home runs per port</td></tr>
+                    <tr><td class="sc-key">≡ on a card or box header</td><td>Flip its chips into the cable sheet: snakes and home runs per port</td></tr>
                 </table>
             </section>
             <section class="sc-group">
@@ -3083,7 +3083,7 @@
                     <tr><td class="sc-key">Drag across cabinets (custom mode)</td><td>Select cabinets for a pattern button</td></tr>
                     <tr><td class="sc-key">Esc</td><td>End the redraw, or drop the sweep or the cabinet selection</td></tr>
                     <tr><td class="sc-key">Tab / Shift+Tab, ] / [</td><td>Next / previous circuit in custom mode</td></tr>
-                    <tr><td class="sc-key">Drag a multi slot, circuit chip or distro onto a screen</td><td>Assign it - a slot lands on a circuit, a distro feeds the screen's unassigned multis</td></tr>
+                    <tr><td class="sc-key">Drag a multi slot, circuit chip or distro onto a screen</td><td>Assign it: a slot lands on a circuit, a distro feeds the screen's unassigned multis</td></tr>
                     <tr><td class="sc-key">Drag an assigned slot or circuit chip back onto the tray</td><td>Clear it</td></tr>
                     <tr><td class="sc-key">Click a box's type chip</td><td>Cycle its connector type</td></tr>
                     <tr><td class="sc-key">Click a circuit chip</td><td>Edit its label</td></tr>
@@ -3091,7 +3091,7 @@
                     <tr><td class="sc-key">Drag ⋮⋮ along the tray</td><td>Reorder the distros</td></tr>
                     <tr><td class="sc-key">Drag a distro's header bar onto a Service card</td><td>Put the distro on that service (same system only)</td></tr>
                     <tr><td class="sc-key">Esc mid-drag</td><td>Cancel the drag</td></tr>
-                    <tr><td class="sc-key">≡ on a multi header</td><td>Flip its chips into the cable sheet - a length and connector per circuit</td></tr>
+                    <tr><td class="sc-key">≡ on a multi header</td><td>Flip its chips into the cable sheet: a length and connector per circuit</td></tr>
                 </table>
             </section>
             <section class="sc-group">
@@ -3101,15 +3101,15 @@
                     <tr><td class="sc-key">Shift+click a row</td><td>Select the range from the last pick, across canvases</td></tr>
                     <tr><td class="sc-key"><span data-sc-mod>Ctrl</span>+click a row</td><td>Toggle it in or out of the selection</td></tr>
                     <tr><td class="sc-key"><span data-sc-mod>Ctrl</span>+right-click a row</td><td>Toggle it and open the menu</td></tr>
-                    <tr><td class="sc-key">Right-click a row</td><td>The screen menu - Put on beach, Group Screens, Export this screen…, Move to Canvas…, Change cabinet…</td></tr>
-                    <tr><td class="sc-key">▦ on a row</td><td>Change cabinet… - re-pick the screen's cabinet from the catalog or a preset; columns, rows, position, ports and circuits stay</td></tr>
+                    <tr><td class="sc-key">Right-click a row</td><td>The screen menu: Put on beach, Group Screens, Export this screen…, Move to Canvas…, Change cabinet…</td></tr>
+                    <tr><td class="sc-key">▦ on a row</td><td>Change cabinet…: re-pick the screen's cabinet from the catalog or a preset; columns, rows, position, ports and circuits stay</td></tr>
                     <tr><td class="sc-key">Double-click a name</td><td>Rename a screen, canvas, group or beach (Enter commits, Esc reverts)</td></tr>
                     <tr><td class="sc-key">Drag a row</td><td>Reorder screens within their canvas</td></tr>
                     <tr><td class="sc-key">Drag a row onto another canvas's header</td><td>Move it there; hold <span data-sc-mod>Ctrl</span> or Alt to duplicate</td></tr>
                     <tr><td class="sc-key">Drag ⋮⋮ on a canvas header</td><td>Reorder the canvases</td></tr>
                     <tr><td class="sc-key">Click a group header</td><td>Select all its members; ▸ folds and unfolds it</td></tr>
                     <tr><td class="sc-key">+ Add beach</td><td>Make a beach</td></tr>
-                    <tr><td class="sc-key">Drag ⋮⋮ on a beach</td><td>Reorder the beaches - the pull sheet and binder run in this order</td></tr>
+                    <tr><td class="sc-key">Drag ⋮⋮ on a beach</td><td>Reorder the beaches: the pull sheet and binder run in this order</td></tr>
                     <tr><td class="sc-key">× on a beach</td><td>Remove it; its screens go back to their own positions</td></tr>
                     <tr><td class="sc-key">Right-click selected screens → Put on beach</td><td>Put them on a beach, or + New beach…</td></tr>
                 </table>

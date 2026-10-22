@@ -251,6 +251,7 @@ VERSION_TXT = os.path.join(os.path.dirname(__file__), '..', 'src', 'VERSION.txt'
 README_MD = os.path.join(os.path.dirname(__file__), '..', 'README.md')
 WHATS_NEW_JS = os.path.join(os.path.dirname(__file__), '..', 'src', 'static',
                             'js', 'whatsnew_content.js')
+INDEX_HTML = os.path.join(os.path.dirname(__file__), '..', 'src', 'templates', 'index.html')
 
 PLAIN_US_WORDING = [
     (r'\blabell(?:ed|ing)\b', 'US spelling: labeled, labeling'),
@@ -270,8 +271,16 @@ PLAIN_US_WORDING = [
     (r'\b(?:organ|optim|minim|maxim|custom|recogn|real|summar|priorit|'
      r'initial|normal|visual|synchron|author|final|categor|apolog|emphas|'
      r'util|standard)is(?:e|es|ed|ing|ation|ations)\b', 'US spelling: -ize, not -ise'),
-    (r'[—–]', 'no em or en dashes; use a comma, colon or full stop'),
+    # "analyses" is also the plural of analysis, so only the verb forms
+    (r'\b(?:anal|paral|catal)ys(?:e|ed|ing)\b', 'US spelling: -yze, not -yse'),
+    # An en dash in a numeric range ("8–16") is allowed (owner ruling,
+    # 2026-10-22); anywhere else it is a dash, like an em dash.
+    (r'—|(?<!\d)–|–(?!\d)', 'no em dashes, and en dashes only in a range like 8–16; '
+                             'use a comma, colon or full stop'),
     (r'(?<=\S) - (?=\S)', 'no " - " as a dash; use a comma, colon or full stop'),
+    # the same dash where the text wraps: "on -" ending a line of
+    # VERSION.txt or the README, its sentence going on below
+    (r'(?<=\S) -[ \t]*(?=\n)', 'no " - " as a dash at a line end; use a comma, colon or full stop'),
 ]
 
 # Words a string may be on its own without being prose (see above).
@@ -410,6 +419,36 @@ def test_readme_is_us_spelling_without_dashes():
     assert not hits, 'README.md says:\n' + '\n'.join(hits)
 
 
+def test_release_copy_never_says_retired_words():
+    """What's New, the release being shipped (the top entry of
+    VERSION.txt) and the README say what the app says today, the same as
+    the guide: never "tail", "True1", "Ether-con" and the rest."""
+    body, first = _top_version_entry()
+    with open(WHATS_NEW_JS, encoding='utf-8') as f:
+        whats_new = f.read()
+    with open(README_MD, encoding='utf-8') as f:
+        readme = f.read()
+    problems = []
+    for name, text in (("What's New", whats_new), ('the top entry of VERSION.txt', body),
+                       ('README.md', readme)):
+        hits = _retired_wording_hits(text)
+        if hits:
+            problems.append(name + ' says:\n' + '\n'.join(hits))
+    assert not problems, '\n'.join(problems)
+
+
+def test_shortcuts_dialog_has_no_dashes():
+    """The Shortcuts dialog is read as prose too: colons and commas, no
+    " - " and no em dash (owner ruling, 2026-10-22)."""
+    with open(INDEX_HTML, encoding='utf-8') as f:
+        html = f.read()
+    start = html.index('<div id="shortcuts-modal"')
+    end = html.index('id="shortcuts-close"', start)
+    text = re.sub(r'<[^>]+>', ' ', html[start:end])
+    hits = [h for h in _plain_wording_hits(text) if 'dash' in h]
+    assert not hits, 'the Shortcuts dialog says:\n' + '\n'.join(hits)
+
+
 def test_plain_wording_guard_catches_each_word():
     """The guard itself: each spelling and dash is caught in a sentence,
     and the things that only look like them are not."""
@@ -418,12 +457,16 @@ def test_plain_wording_guard_catches_each_word():
                    'the behaviour', 'cancelling the chooser', 'organise the binder',
                    'a fibre link', 'the catalogue', 'a grey bar',
                    'the socket it sits on - 6, 7, 8, 9 - the same',
-                   'a breaker — over the limit', 'pages 1–2'):
+                   'a breaker — over the limit', 'the limit – over it',
+                   'the socket it sits on -\n6, 7, 8 or 9', 'analyse the load',
+                   'it paralysed the run', 'the -yse words: catalysing'):
         assert _plain_wording_hits(sample), sample
+    # an en dash in a numeric range is allowed (owner ruling, 2026-10-22)
+    assert not _plain_wording_hits('8–16 panels a circuit, pages 1–2, 110–120V')
     assert not _plain_wording_hits(
         "labeled, neighbors, color, centered, meters, millimeter, canceling, "
         "organize, fiber, catalog, SR-1 … SR-6, L21-30, Edison → TRUE1, "
-        "max-width:calc(100vw - 32px)")
+        "analyze, analyses, analysis, max-width:calc(100vw - 32px)")
     # markdown bullets and indented sub points are not dashes
     assert not _plain_wording_hits('- FIX: one\n  - a sub point\n   - **The first time**')
     # a .js file is checked by its strings: a comment or a unit word passes

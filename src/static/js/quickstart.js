@@ -315,6 +315,16 @@
     }
     function closeExport() { var m = $('#export-modal'); if (m) m.style.display = 'none'; }
     function closeExportUnless(next) { if (!next || !next.exportStep) closeExport(); }
+    // The pull sheet editor (app-pull-sheet-editor.js), opened from the
+    // Export dialog's Edit rows; closed here without the editor's own trip
+    // back to the Export dialog.
+    var PANEL_ROW = '#pull-sheet-board tr.pull-row[data-side="panel"]';
+    function pullSheetOpen() { var m = $('#pull-sheet-modal'); return !!m && m.style.display === 'block'; }
+    function closePullSheet() {
+        var a = A(), m = $('#pull-sheet-modal');
+        if (a) a._pullSheetReturnToExport = false;
+        if (m) m.style.display = 'none';
+    }
     function hideMenus() {
         $$('.menu-dropdown').forEach(function (m) { m.style.display = 'none'; });
         $$('#menu-bar .menu-item.active').forEach(function (i) { i.classList.remove('active'); });
@@ -2293,6 +2303,7 @@
         closePrefs();
         var pp = $('#preset-picker-modal'); if (pp) pp.style.display = 'none';
         hideMenus();
+        closePullSheet();
         closeExport();
         if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     }
@@ -2566,6 +2577,33 @@
                 var w = wall();
                 return w && Number(w.cabinet_width) === 200 && Number(w.cabinet_height) === 200
                     ? 'Each cabinet is 200 × 200 px.' : null;
+            }
+        },
+        // The panel saved on the screen (1.5.4, app-screen-info.js
+        // updateLayerFromInputs, app-presets.js catalogPanelModelFields): a
+        // pick from the panel library fills Screen Info's Panel field, and
+        // a typed name names a panel of your own. The cabinet step just
+        // typed its pixels by hand, which forgets any saved panel, so the
+        // demo wall names its own here; the pull sheet's panel rows print it.
+        panelName: {
+            since: '1.5.4',
+            target: '#panel-model-name', place: 'right', title: 'Name the panel',
+            avoid: ['#panel-model-name'],
+            body: 'Panel is the cabinet as the pull sheet names it. A pick from the panel library fills it in; for a panel of your own, type its name.',
+            before: function () { switchView('pixel-map'); },
+            act: function (t) {
+                return t.type('#panel-model-name', 'Demo Panel', { enter: true }).then(function () {
+                    return t.wait(function () { var w = wall(); return w && w.panelModelName === 'Demo Panel'; });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the screen did not take the panel name');
+                    return t.pause(PACE.rest);
+                });
+            },
+            check: function () {
+                var w = wall();
+                if (!w || w.panelModelName !== 'Demo Panel') return null;
+                var types = A().pullPanelTypes(w);
+                return (w.name || 'The screen') + ' hangs ' + types.none + ': the pull sheet counts its cabinets by that name, and a half tile as ' + types.height + '.';
             }
         },
         gridSize: {
@@ -3328,6 +3366,45 @@
                     + s.powerJumpNamePowercon + '.';
             },
             after: function () { closeExport(); }
+        },
+        // Panel counts on the pull sheet (1.5.4, app-pull-list.js
+        // pullPanelCounts): the Export dialog's Edit rows opens the pull
+        // sheet editor, and each screen's position has a row per panel type
+        // it hangs, named by the panel saved on it (the Name the panel
+        // step), blank and hidden cabinets left out.
+        pullPanels: {
+            since: '1.5.4',
+            target: function () { return pullSheetOpen() ? PANEL_ROW : '#export-pull-sheet-edit-rows'; },
+            place: 'left', title: 'Panels on the pull sheet',
+            avoid: ['#export-pull-sheet-edit-rows'],
+            body: 'Edit rows opens the pull sheet. Each screen gets a row for every panel type it hangs, half tiles on rows of their own, and a blank cabinet isn&rsquo;t counted.',
+            before: function () {
+                closePullSheet();
+                var a = A();
+                if (!exportOpen() || ($('#export-format') && $('#export-format').value !== 'pull-sheet')) {
+                    a.openExportModal('pull-sheet');
+                }
+            },
+            act: function (t) {
+                return t.click('#export-pull-sheet-edit-rows').then(function () {
+                    return t.wait(function () { return pullSheetOpen() && $(PANEL_ROW); }, 6000);
+                }).then(function (row) {
+                    if (!row) throw new Error('the pull sheet did not list the panels');
+                    return t.spot(row).then(function () { return t.pause(PACE.opened); });
+                });
+            },
+            check: function () {
+                var w = wall(), row = pullSheetOpen() ? $(PANEL_ROW) : null;
+                if (!w || !row) return null;
+                var counts = A().pullPanelCounts(w);
+                var full = counts[0];
+                var blank = (w.panels || []).filter(function (p) { return p && (p.blank || p.hidden); }).length;
+                if (!full) return null;
+                return 'The pull sheet lists ' + full.qty + ' ' + full.type + ' for ' + (w.name || 'the screen')
+                    + (blank ? ', the ' + (blank === 1 ? 'blank cabinet' : blank + ' blank cabinets') + ' left out' : '')
+                    + ', and TOTALS adds up every screen.';
+            },
+            after: function () { closePullSheet(); closeExport(); }
         },
         panelWatts: {
             target: '#power-panel-watts', place: 'right', title: 'Power view and the math',
@@ -4787,7 +4864,7 @@
         advanced: {
             title: 'Advanced Guide',
             seed: { name: 'New Show', layer: { panelWatts: 100, powerBreakoutType: 'soca-powercon' } },
-            steps: ['introAdvanced', 'projectName', 'cabinetSize', 'gridSize', 'fit', 'blankCabinet',
+            steps: ['introAdvanced', 'projectName', 'cabinetSize', 'panelName', 'gridSize', 'fit', 'blankCabinet',
                     'cabinetIdStyle', 'showLook', 'processing', 'flowPattern', 'addProcessor',
                     'nameProcessor', 'redundancy', 'backupProcessor', 'dropProcessor', 'releasePort', 'attachmentFlag', 'pinPort',
                     'clearPortByMenu', 'clearCard', 'dropProcessorAgain',
@@ -4796,7 +4873,7 @@
                     'addDistro', 'nameDistro',
                     'distroPhase', 'distroRating', 'distroMain', 'distroPreset', 'distroRows',
                     'dropMulti', 'clearCircuit', 'clearMultiByMenu', 'dropMultiAgain',
-                    'multiCableSheet', 'powerJumpers', 'jumperNames', 'cableUnit', 'cableStock', 'cableStockPieces',
+                    'multiCableSheet', 'powerJumpers', 'jumperNames', 'pullPanels', 'cableUnit', 'cableStock', 'cableStockPieces',
                     'cableStockPerKind', 'powerCableTags',
                     'powerColumns', 'splitters', 'takeOver', 'customPower', 'customDraw', 'sweepShare', 'balance',
                     'addService', 'serviceRating', 'serviceDistro', 'feederLength',

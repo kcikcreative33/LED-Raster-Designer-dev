@@ -3,6 +3,15 @@
 import { LEDRasterApp } from './app-core.js';
 import { sendClientLog, setupColorPickerWithHex } from './helpers.js';
 
+// Library models renamed in a release, old "<manufacturer>|<model>" to new:
+// a favorite saved under the old name finds the model under its new one
+// (_libraryPanelFor). 1.5.4: ROE's "Graphite 2.6 (4 in 1)" is named the
+// way ROE names it, "Graphite GP2.6 (4 in 1)".
+const PANEL_CATALOG_RENAMES = {
+    'ROE|Graphite 2.6 (4 in 1) Full Tile': 'ROE|Graphite GP2.6 (4 in 1) Full Tile',
+    'ROE|Graphite 2.6 (4 in 1) Half Tile': 'ROE|Graphite GP2.6 (4 in 1) Half Tile',
+};
+
 class _Presets {
     // ── Preset CRUD (server) ──
     fetchPresetList() {
@@ -1087,7 +1096,12 @@ class _Presets {
             else this.addLayer(data);
         };
         if (sel.type === 'panel' && sel.panel) {
-            deliver(this._panelToPresetData(sel.panel));
+            // The pick reads the library as it is NOW: a favorite is a
+            // snapshot taken when it was hearted, and the library may have
+            // corrected the model's figures or renamed it since.
+            const pick = () => deliver(this._pickedPanelPresetData(sel.panel));
+            if (this._panelCatalog || typeof this._ensurePanelCatalogData !== 'function') pick();
+            else this._ensurePanelCatalogData().then(pick, pick);
             return;
         }
         if (sel.type === 'preset') {
@@ -1200,6 +1214,41 @@ class _Presets {
         this.loadLayerToInputs();
         this.renderLayers();
         if (window.canvasRenderer) window.canvasRenderer.render();
+    }
+
+    // A picked panel (a library row or a favorite's snapshot) as the
+    // loaded library lists it today: { ...model, _mfr }, looked up by
+    // manufacturer and name, then through PANEL_CATALOG_RENAMES for a model
+    // the library has renamed. Null where the library has no such model
+    // (or is not loaded).
+    _libraryPanelFor(panel) {
+        if (!panel || !this._panelCatalog) return null;
+        const find = (mfr, name) => {
+            const F = (this._panelCatalog[mfr] || []).find(p => p && p.name === name);
+            return F ? { ...F, _mfr: mfr } : null;
+        };
+        const mfr = String(panel._mfr || panel.manufacturer || '');
+        const name = String(panel.name || '');
+        const own = find(mfr, name);
+        if (own) return own;
+        const renamed = PANEL_CATALOG_RENAMES[this._favoriteKey(mfr, name)];
+        if (!renamed) return null;
+        const cut = renamed.indexOf('|');
+        return find(renamed.slice(0, cut), renamed.slice(cut + 1));
+    }
+
+    // What a panel pick hands addLayer / changeCabinetForLayers: the
+    // library's current figures and model where it still lists the panel;
+    // otherwise the snapshot's figures under its name, with NO model id
+    // and no halves, so the screen never names a library model the
+    // library does not have.
+    _pickedPanelPresetData(panel) {
+        const lib = this._libraryPanelFor(panel);
+        if (lib) return this._panelToPresetData(lib);
+        const data = this._panelToPresetData(panel);
+        data.panelModelId = null;
+        data.panelModelHalves = null;
+        return data;
     }
 
     // Convert a catalog panel into preset-shaped data that addLayer() consumes.

@@ -26,17 +26,17 @@ window.WHATS_NEW_CONTENT = {
             { h: 'A panel input for Edison and L6-20 screens',
               d: 'An Edison or L6-20 breakout now asks which connector your panels take, TRUE1 or powerCON, and the jumpers and splitters follow it. Each circuit gets one cable from its Edison or L6-20 plug to that panel input, with the 2fers at the panels.' },
             { h: 'US circuits filled to 80%',
-              d: 'On 110V, 120V and 208V screens each circuit is now filled to 80% of its breaker, so a US screen may need more circuits than before. A distro with 100% rated breakers still fills them to 100%.' },
+              d: 'A circuit on a US distro is now filled to 80% of its breaker, so a US screen may need more circuits than before. The amperage box is the breaker size, with the amps you can use shown beside it, and a distro with 100% rated breakers still fills them to 100%.' },
             { h: 'A feeder for every distro',
               d: 'Open a distro\'s gear, type its feeder length and pick whether it\'s fed from the service or thru another distro. A cam input lists a 400 A cam set with 5-wire, and the feeder is on the pull sheet even before you type a length.' },
+            { h: 'The panel saved on each screen',
+              d: 'A panel you pick from the library is saved on the screen, and Screen Info\'s Panel field shows its name or takes one you type. The pull sheet counts your panels by that name, a row for each type on each screen, with half tiles on rows of their own.' },
             { h: 'A stock list for each kind of cable',
               d: 'In Preferences > Cable stock, tick A list for each kind of cable to give multis, data, power, L21-30 and Harting home runs, direct-output cables and feeders their own lengths. Shows and presets from before keep the lists they had.' },
             { h: 'Distros, boxes and snakes by their own names',
               d: 'Distro boxes are listed by their own names everywhere, and two distros with the same name read SR-1 and SR-2, with their boxes and circuits named to match. Snakes are labeled by their ports, and two snakes are never merged into one row.' },
             { h: 'Check paperwork you\'ve already ordered from',
-              d: 'US screens may need more circuits, powerCON screens listed TRUE1 jumpers, Edison screens had the wrong cables, and the pull sheet now counts panels, feeders and the barrels at each join. If you ordered from an older pull sheet, export it again and compare.' },
-            { h: '2fers and 3fers in custom mode',
-              d: 'Share with next run no longer joins wide circuits, Clear Circuit clears a whole custom 3fer, and the fill readout counts every leg of a shared circuit. Picking 2fer this screen or 3fer this screen turns Share circuits on for you, in automatic mode too.' }
+              d: 'US screens may need more circuits, powerCON screens listed TRUE1 jumpers, Edison and L6-20 screens had the wrong cables, and saved 2fers and 3fers past 80% now read OVER. If you ordered from an older pull sheet, export it again and compare.' }
         ]
     },
     '1.5.3': {
