@@ -1625,7 +1625,7 @@ class _BinderWiring {
         }
 
         if (P.unplaced) {
-            this._bText(book, `${P.unplaced} of ${P.total} not placed on any ${this.showUnitWord()} — no run to draw`,
+            this._bText(book, `${P.unplaced} of ${P.total} not placed on any ${this.showUnitWord()}, no run to draw`,
                         A.x, A.y + A.h - 4 * K, { size: NOTE_SZ * K * 1.15, weight: 400, color: MUTED });
         }
         if (log) book.log.wiring.halves.push(log);

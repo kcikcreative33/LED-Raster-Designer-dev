@@ -2452,6 +2452,12 @@ class _Binder {
     // MANY ("S1-3-1, S1-3-2, +14 more") - a circuit name cut in half on a
     // pull sheet is worse than useless (2026-09-09). Never returns a cut
     // string, so nothing ends in an ellipsis.
+    // A WORDS cell never folds (owner, 2026-10-22): a name, a cable, a
+    // length takes as many lines as it needs - "STAGE LEFT DISTRO 1-1"
+    // printed "STAGE / LEFT +1 more", a fiber's "(duplex) no length"
+    // went under "+2 more". And a list member too wide for a line on its
+    // own wraps at its words rather than being cut ("SR DISTRO B →
+    // WALL A" in LABEL); the fold counts members, never pieces of one.
     _bCellLines(book, text, size, weight, maxWidth, maxLines, words) {
         const ctxM = book.measureCtx;
         ctxM.font = this._bFont(size, weight);
@@ -2459,25 +2465,70 @@ class _Binder {
         const fits = (t) => ctxM.measureText(t).width <= maxWidth;
         if (!s || fits(s)) return [s];
         const pieces = this._bCellPieces(s, words);
-        const textOf = (idx) => idx.map(i => pieces[i]).join('').trim();
-        const rows = [];
-        let cur = [];
-        for (let i = 0; i < pieces.length; i++) {
-            if (cur.length && !fits(textOf(cur.concat(i)))) { rows.push(cur); cur = [i]; }
-            else cur.push(i);
-        }
-        if (cur.length) rows.push(cur);
-        if (rows.length <= maxLines) return rows.map(textOf);
-        const keep = rows.slice(0, maxLines);
-        let last = keep[maxLines - 1].slice();
-        let shown = keep.slice(0, -1).reduce((n, r) => n + r.length, 0) + last.length;
-        while (last.length > 1 && !fits(`${textOf(last)} +${pieces.length - shown} more`)) {
-            last.pop();
-            shown--;
-        }
-        keep[maxLines - 1] = last;
-        return keep.map((r, i) => i === maxLines - 1
-            ? `${textOf(r)} +${pieces.length - shown} more` : textOf(r));
+        // each member as the pieces it is drawn in: itself, or - a member
+        // no line holds - its words, the lines it takes beyond its one
+        // given to the cell on top of maxLines, so a long name never
+        // pushes its neighbour under the fold
+        const units = [];
+        const pack = (idx) => {
+            const rows = [];
+            let cur = [];
+            for (const i of idx) {
+                if (cur.length && !fits(textOf(cur.concat(i)))) { rows.push(cur); cur = [i]; }
+                else cur.push(i);
+            }
+            if (cur.length) rows.push(cur);
+            return rows;
+        };
+        const textOf = (idx) => idx.map(i => units[i].t).join('').trim();
+        let extra = 0;
+        pieces.forEach((p, m) => {
+            const split = !words && !fits(p.trim()) ? this._bCellPieces(p, true) : [p];
+            const from = units.length;
+            split.forEach(t => units.push({ t, m }));
+            if (split.length > 1) extra += pack(split.map((_, k) => from + k)).length - 1;
+        });
+        const rows = pack(units.map((_, i) => i));
+        const cap = maxLines + extra;
+        if (words || rows.length <= cap) return rows.map(textOf);
+        const keep = rows.slice(0, cap);
+        let last = keep[cap - 1].slice();
+        // members wholly shown: a member cut off at the fold is not one
+        const shownOf = (rowsKept) => {
+            const idx = rowsKept.flat();
+            const lastAt = idx.length ? idx[idx.length - 1] : -1;
+            const whole = new Set(idx.map(i => units[i].m));
+            if (lastAt >= 0 && lastAt + 1 < units.length && units[lastAt + 1].m === units[lastAt].m) {
+                whole.delete(units[lastAt].m);
+            }
+            return whole.size;
+        };
+        const more = (r) => pieces.length - shownOf([...keep.slice(0, -1), r]);
+        const partial = (r) => r.length && r[r.length - 1] + 1 < units.length
+            && units[r[r.length - 1] + 1].m === units[r[r.length - 1]].m;
+        while (last.length > 1 && (partial(last) || !fits(`${textOf(last)} +${more(last)} more`))) last.pop();
+        keep[cap - 1] = last;
+        return keep.map((r, i) => i === cap - 1
+            ? `${textOf(r)} +${more(r)} more` : textOf(r));
+    }
+
+    // A PLAIN CELL that will not fit its column on one line - after the
+    // little shrink a `shrink` table allows - onto lines at its words,
+    // each line shrinking on its own before it is cut, so nothing that
+    // could wrap is cut (owner, 2026-10-22: "Edison → po…" in a distro's
+    // TYPE, SCREENS narrowed by NAME, circuit names - "prefer wrapping to
+    // cutting"). null where the cell stands on one line as it always did,
+    // is one word, or says two things (" / ") that a `shrink` table puts
+    // on two lines already (_bTextTwoLines).
+    _bPlainLines(book, text, weight, maxWidth, shrink) {
+        const s = String(text == null ? '' : text).trim();
+        if (!s || !/\s/.test(s)) return null;
+        const ctxM = book.measureCtx;
+        ctxM.font = this._bFont(shrink ? 14 : SZ.cell, weight);
+        if (ctxM.measureText(s).width <= maxWidth) return null;
+        if (shrink && s.split(' / ').length === 2) return null;
+        const lines = this._bCellLines(book, s, SZ.cell, weight, maxWidth, Infinity, true);
+        return lines.length > 1 ? lines : null;
     }
 
     // The columns' widths inside the column this block is MEASURED in: the
@@ -2797,10 +2848,16 @@ class _Binder {
             cols.forEach((c, i) => {
                 if (c.tick) return;
                 const ax = anchor(L[i], x);
+                // a heading never cut (2026-10-22, the pull pages'
+                // SCREENS at four positions to a sheet): where it will not
+                // fit at the size a heading shrinks to, it goes smaller
+                const hw = L[i].w - padX * 2;
+                book.measureCtx.font = this._bFont(14, 700);
+                const tight = book.measureCtx.measureText(this._bCaps(c.title || '')).width > hw;
                 this._bText(book, c.title || '', ax, y + 28,
                             { size: SZ.th, weight: 700, upper: true, align: L[i].align,
-                              maxWidth: L[i].w - padX * 2, shrink: true,
-                              ...(c.borrow ? { minSize: 8 } : {}) });
+                              maxWidth: hw, shrink: true,
+                              ...(c.borrow || tight ? { minSize: 8 } : {}) });
             });
             ctx.fillStyle = RULE;
             ctx.fillRect(x, y + TH_H - 4, w, 4);
@@ -2884,17 +2941,23 @@ class _Binder {
             const weight = r.bold ? 700 : 400;
             const partsOf = (i) => (cols[i].parts && r.parts && r.parts[i] && r.parts[i].length
                 ? r.parts[i] : null);
-            const wrapped = cols.map((c, i) => (partsOf(i)
-                ? this._bPartLines(book, partsOf(i), weight, W[i] - padX * 2)
-                : c.list && (r.cells || [])[i]
-                    ? this._bCellLines(book, r.cells[i], SZ.cell, weight,
-                                       W[i] - padX * 2, c.list === true ? LIST_LINES : c.list, c.words)
-                    : null));
             // AN INPUT COLUMN (the Breakout boxes table's FIBER): each input
             // a group - its label centred beside its strands, outlined -
             // and the row as tall as its groups; every other cell of that
             // row sits centred on them rather than hanging at the top.
             const inputsAt = cols.findIndex((c, i) => c.inputs && r.inputs && r.inputs[i] && r.inputs[i].length);
+            // a plain cell too long for its column wraps at its words
+            // rather than being cut (_bPlainLines) - not a tick, a strand's
+            // swatch cell or an input column, which draw their own way
+            const plainAt = (i) => !cols[i].list && !cols[i].tick && !cols[i].swatch && i !== inputsAt;
+            const wrapped = cols.map((c, i) => (partsOf(i)
+                ? this._bPartLines(book, partsOf(i), weight, W[i] - padX * 2)
+                : c.list && (r.cells || [])[i]
+                    ? this._bCellLines(book, r.cells[i], SZ.cell, weight,
+                                       W[i] - padX * 2, c.list === true ? LIST_LINES : c.list, c.words)
+                    : plainAt(i) && (r.cells || [])[i]
+                        ? this._bPlainLines(book, r.cells[i], weight, W[i] - padX * 2, !!spec.shrink)
+                        : null));
             const rowLines = wrapped.reduce((m, ls, i) => (i === inputsAt ? m : Math.max(m, ls ? ls.length : 1)), 1);
             const inLay = inputsAt >= 0 ? this._bInputsLayout(r.inputs[inputsAt]) : null;
             const h = inLay ? Math.max(ROW_H + (rowLines - 1) * LIST_H, inLay.height)
@@ -2929,9 +2992,17 @@ class _Binder {
                                          x + L[i].x + padX, y, maxWidth, weight, true, strandBlockW(i));
                         return;
                     }
-                    if (wrapped[i]) {
-                        const ls = this._bCellLines(book, cell, SZ.cell, weight, maxWidth, rowLines,
-                                                    cols[i].words);
+                    // (a plain cell wrapped where it was measured may stand
+                    // on one line in a wider column: then it is drawn as one)
+                    let ls = !wrapped[i] ? null
+                        : cols[i].list ? this._bCellLines(book, cell, SZ.cell, weight, maxWidth, rowLines,
+                                                          cols[i].words)
+                            : this._bPlainLines(book, cell, weight, maxWidth, !!spec.shrink);
+                    // never past the row's measured height: in a column
+                    // narrower than it was measured in, what would wrap
+                    // below the last line joins it, shrunk to fit
+                    if (ls && ls.length > rowLines) ls = [...ls.slice(0, rowLines - 1), ls.slice(rowLines - 1).join(' ')];
+                    if (ls) {
                         const drawn = ls.map((t, k) => this._bText(book, t, ax, y + 27 + k * LIST_H,
                             { size: SZ.cell, weight, align: L[i].align, maxWidth,
                               shrink: true, log: false }));
@@ -2972,8 +3043,12 @@ class _Binder {
                         this._bText(book, cell, sx + lead, y + 27, o);
                         return;
                     }
+                    // (a cell the measure said fits but the page's own
+                    // metrics make a hair wider shrinks that hair rather
+                    // than losing its last letters - shrinking touches only
+                    // a cell that would otherwise be cut)
                     const o = { size: SZ.cell, weight, align: L[i].align,
-                                maxWidth, shrink: !!spec.shrink };
+                                maxWidth, shrink: true };
                     if (spec.shrink) this._bTextTwoLines(book, cell, ax, y + 27, o);
                     else this._bText(book, cell, ax, y + 27, o);
                 });
@@ -3329,11 +3404,16 @@ class _Binder {
     // A KV value's words, split where it may wrap: at its spaces, except
     // the one between a number and its unit ("50 m", "125 ft", "400 A",
     // "208 V", "30.0 kW") and the ones inside a length written as stock
-    // pieces ("50 m+20 m") - those stay on one line.
+    // pieces ("50 m+20 m") - those stay on one line. A " · " stays at
+    // the end of the line it follows, never starting the next ("· Z 20.7
+    // A" - owner, 2026-10-22), and a leg's letter stays with its figure
+    // ("Z 20.7").
     _bKvWords(v) {
         const GLUE = '\u0000';
         const text = String(v == null ? '' : v)
-            .replace(/(\d) (?=(?:m|ft|A|V|W|kW|kVA)(?![\w]))/g, `$1${GLUE}`);
+            .replace(/(\d) (?=(?:m|ft|A|V|W|kW|kVA)(?![\w]))/g, `$1${GLUE}`)
+            .replace(/(\S) ·(?= |$)/g, `$1${GLUE}·`)
+            .replace(/(^|· )(X|Y|Z|L[123]) (?=\d)/g, `$1$2${GLUE}`);
         return text.split(' ').map(w => w.split(GLUE).join(' '));
     }
 
@@ -4660,10 +4740,17 @@ class _Binder {
             const d = loads.find(x => x.id === id);
             if (!d) continue;
             const rec = this.getDistros().find(x => x.id === id) || d;
-            const svc = typeof this.distroService === 'function' ? this.distroService(rec) : null;
+            // a distro fed thru another reads the service it counts on
+            // ("Yes, show HOUSE" - owner, 2026-10-22), its row saying it
+            // is thru that distro, the way the Service sheet does
+            const svc = typeof this.distroEffectiveService === 'function' ? this.distroEffectiveService(rec)
+                : typeof this.distroService === 'function' ? this.distroService(rec) : null;
+            const thru = svc && typeof this.distroService === 'function' && this.distroService(rec) !== svc
+                && typeof this._feederSource === 'function' ? this._feederSource(rec) : null;
             let feed = svc && feeds.find(f => f.svc === svc);
             if (!feed) feeds.push(feed = { svc, rows: [] });
-            const parts = [d.name, `${rec.ratingA} A`, svc ? null : this.distroSystemName(rec),
+            const parts = [d.name, thru ? `thru ${thru.name || thru.id}` : null,
+                           `${rec.ratingA} A`, svc ? null : this.distroSystemName(rec),
                            rec.breakers100 && this.distroRegion(rec) === 'us' ? '100% rated breakers' : null];
             const legs = grouped ? this._bSubjectLegsOn(s.carriers, id, listed) : this._bScreenLegsOn(layer, id);
             if (legs) {
@@ -5090,9 +5177,11 @@ class _Binder {
         // an end on it carries only what is the PORT'S OWN, its extension
         // from the fan-out to the panel ('—' with none); an end that is not
         // on a snake reads its whole run, because no heading said it.
-        const runOf = (c, headed) => (headed
-            ? (snakeId(c) ? (c.ext != null ? `+${this.cableText(c.ext, '', 'data')}` : '—') : this.runText(c))
-            : this.runText(c));
+        // A placed end with nothing typed says "etherCON no length"
+        // (`at`, its socket - runText), the way CABLES THIS SCREEN does.
+        const runOf = (c, headed, at) => (headed
+            ? (snakeId(c) ? (c.ext != null ? `+${this.cableText(c.ext, '', 'data')}` : '—') : this.runText(c, at))
+            : this.runText(c, at));
         const partnered = new Set();
         let procs = new Map();
         let split = false;
@@ -5147,7 +5236,8 @@ class _Binder {
             }
             group(b, `${snakeId(cable)}|${snakeId(backupCable)}`, cable, backupCable).ports.push({
                 label: run.label, also, out, cable, panels: panelsText,
-                back: end ? { label: end.label || '—', out: end.shortSocket, cable: backupCable } : null,
+                at: { cardId: placed.cardId, port: placed.port },
+                back: end ? { label: end.label || '—', out: end.shortSocket, cable: backupCable, at: bb } : null,
             });
         }
         const said = new Set();
@@ -5176,9 +5266,9 @@ class _Binder {
                 }
                 const headed = !!(snakeId(g.primary) || snakeId(g.backup));
                 for (const p of g.ports) {
-                    const left = [p.also ? `${p.label} · ${p.also}` : p.label, p.out, runOf(p.cable, headed)];
+                    const left = [p.also ? `${p.label} · ${p.also}` : p.label, p.out, runOf(p.cable, headed, p.at)];
                     if (!split) { rows.push({ cells: [...left, p.panels] }); continue; }
-                    const right = p.back ? [p.back.label, p.back.out, runOf(p.back.cable, headed)] : ['', '', ''];
+                    const right = p.back ? [p.back.label, p.back.out, runOf(p.back.cable, headed, p.back.at)] : ['', '', ''];
                     rows.push({ cells: [...left, ...right, p.panels] });
                 }
             }
@@ -6026,7 +6116,15 @@ class _Binder {
         const feeder = typeof this.distroFeeder === 'function' ? this.distroFeeder(d) : null;
         if (feeder && feeder.stored) {
             const from = this.feederSourceText(d);
-            pairs.push([from ? 'Fed from' : 'Feeder', [from, this.feederText(d)].filter(Boolean).join(' · ')]);
+            // a feeder with no input type is "Feeder 50'": its row says
+            // Feeder once - "Feeder: 50'", "Feeder: L21-30 50'" (owner,
+            // 2026-10-22)
+            let text = this.feederText(d);
+            if (!from) {
+                text = String(text).replace(/^Feeder(?:,\s*|\s+)(?=\S)/, '')
+                    .replace(/^(\S.*?) feeder(?=,? |$)/, '$1');
+            }
+            pairs.push([from ? 'Fed from' : 'Feeder', [from, text].filter(Boolean).join(' · ')]);
         } else if (svc) pairs.push(['Fed from', this.serviceLabel(svc)]);
         // The face (1.5): one line per output row, a paired row printed
         // ONCE with both connectors named.
@@ -6426,13 +6524,35 @@ class _Binder {
                 // socket nothing is on - a primary pin or the return it
                 // carries - belongs to no feed and prints nowhere (owner,
                 // 2026-10-17); an older file may still hold one.
+                // A socket with a screen on it and no home run typed is
+                // listed too, "no length", as its Pull list lists it
+                // (owner, 2026-10-22) - it was left out here.
                 const occ = this._assignment && this._assignment.occupancy;
-                for (const [socket, c] of Object.entries(o.rec.portCables || {})) {
+                const typed = Object.entries(o.rec.portCables || {});
+                const loose = occ ? Object.keys(occ[card.id] || {})
+                    .filter(socket => !(o.rec.portCables || {})[socket]
+                        && this._portOccupants(card.id, socket).length)
+                    .filter(socket => {
+                        const own = this._dataPortOwner(card.id, socket);
+                        return own && own.kind === o.kind && own.id === o.id;
+                    })
+                    .sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0))
+                    .map(socket => [socket, null]) : [];
+                for (const [socket, c] of [...typed, ...loose]) {
                     const ft = this.parseCableLength(c && c.ft);
-                    if (!Number.isFinite(ft) || ft <= 0) continue;
+                    const has = Number.isFinite(ft) && ft > 0;
                     if (occ && !this._portOccupants(card.id, socket).length) continue;
-                    const connId = this.dataPortConnectorId({ rec: o.rec }, c.connector);
+                    const connId = this.dataPortConnectorId({ rec: o.rec }, c && c.connector);
                     const snake = this.dataPortSnake(o, socket);
+                    if (!has) {
+                        // a snaked socket's run is the snake's row; with
+                        // no assignment read, nothing says it is placed
+                        if (!snake && occ) {
+                            runs.push({ cells: [`${o.title} ${socket}`, 'cable', 'no length',
+                                                this.dataCableWord(connId)] });
+                        }
+                        continue;
+                    }
                     if (snake) {
                         runs.push({ cells: [`${o.title} ${socket}`, 'ext', this.pullLengthText(ft, 'data'),
                                             snake.name || 'snake'] });

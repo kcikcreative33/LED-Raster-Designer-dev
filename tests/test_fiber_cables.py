@@ -671,10 +671,13 @@ FIT_JS = """(titles) => {
                    scope: {kind: 'show'}, cover: false, pull: true, hardware: true, titleBlock: true };
     const plan = app.planBinder(opts);
     const out = {};
+    // every sheet the title starts (a processor's Snakes & home runs
+    // listing its no-length runs, 2026-10-22, can move a processor onto a
+    // sheet of its own)
     for (const t of titles) {
-        const i = plan.findIndex(p => p.title.startsWith(t));
-        if (i < 0) { out[t] = null; continue; }
-        out[t] = app.renderBinderPage(opts, i).textInfo;
+        const at = plan.map((p, i) => (p.title.startsWith(t)
+            || (t === 'Processors -' && p.title.startsWith('Processor -')) ? i : -1)).filter(i => i >= 0);
+        out[t] = at.length ? at.flatMap(i => app.renderBinderPage(opts, i).textInfo) : null;
     }
     return out;
 }"""
@@ -748,7 +751,7 @@ def test_the_binder_maps_every_strand_and_summarises_each_box(page):
     # swatched (2026-10-17) - logged as the one cell it drew
     for text in ('OPT 1 TAC A (TAC 24) 1 Blue 2 Orange', 'OPT 1 TAC A (TAC 24) 4 Brown 13 Blue/Black',
                  'OPT 1 TAC B (TAC 6) 1 Blue 2 Orange', 'Also on BK RACK'):
-        assert size.get(text) == 24, (text, sorted(k for k in size if 'TAC' in k or 'BK' in k))
+        assert size.get(text) == 24, (text, sorted((k, size[k]) for k in size if 'TAC' in k or 'Blue' in k or 'OPT' in k))
     # the loop's far box wraps at its " · ", each line whole at the cell's
     # size (a list cell is logged as the one text it drew)
     assert size.get('CVT10 C · loop of CVT10 BK1') == 24, sorted(k for k in size if 'CVT10' in k)

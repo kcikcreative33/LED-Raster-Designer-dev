@@ -2547,8 +2547,10 @@ def test_a_box_delivering_the_port_is_listed_instead_of_the_card(page):
         band = "CVT4K-S A-B · OPT 1-2 · 16 ports · 12 Tac Fiber 250'"
         assert band in texts, texts
         i = texts.index(band)
+        # a placed port with no home run typed says so, as CABLES THIS
+        # SCREEN does (owner, 2026-10-22) - '—' is for an empty cell
         assert texts[i + 1:i + 8] == ['PORT', 'OUTPUT', 'HOME RUN', 'PANELS',
-                                      'SR-1', 'CVT4K-S A-B · 1', '—'], texts[i:i + 10]
+                                      'SR-1', 'CVT4K-S A-B · 1', 'etherCON no length'], texts[i:i + 10]
         assert not [t for t in texts if t.startswith('H9 SR ·')], 'the card is not listed where the box delivers'
         k = texts.index('CABLES THIS SCREEN')
         assert texts[k + 4:k + 7] == ['12 Tac Fiber', "250'", '1'], texts[k:k + 12]
@@ -2567,7 +2569,7 @@ def test_a_box_delivering_the_port_is_listed_instead_of_the_card(page):
         # left out (2026-10-18), the port's run beside it
         assert 'SR · 1' not in texts and 'OUTPUT' not in texts
         i = texts.index('SR-1')
-        assert texts[i - 3:i + 2] == ['PORT', 'HOME RUN', 'PANELS', 'SR-1', '—'], texts[i - 4:i + 3]
+        assert texts[i - 3:i + 2] == ['PORT', 'HOME RUN', 'PANELS', 'SR-1', 'etherCON no length'], texts[i - 4:i + 3]
         # the processor sheet: the box under its card, with its fiber
         proc = _render(pg, SHOW, PROC)['texts']
         b = proc.index('BREAKOUT BOXES')
@@ -2623,7 +2625,7 @@ def test_a_box_delivering_the_port_is_listed_instead_of_the_card(page):
             # so neither half prints OUTPUT (2026-10-18)
             assert texts[j + 4:j + 9] == ['PORT', 'HOME RUN', 'PORT', 'HOME RUN', 'PANELS'], texts[j:j + 12]
             i = texts.index('SR-1')
-            assert i > j and texts[i:i + 4] == ['SR-1', '—', 'BK-1', '—'], texts[i:i + 8]
+            assert i > j and texts[i:i + 4] == ['SR-1', 'etherCON no length', 'BK-1', 'etherCON no length'], texts[i:i + 8]
             assert 'SR · 1' not in texts and 'BK · 1' not in texts
             assert not [t for t in texts if t.endswith('…')]
         finally:
@@ -2666,7 +2668,7 @@ def test_the_port_cell_reads_a_long_label_whole(page):
         texts = out['texts']
         assert 'SR A-1' in texts, texts
         i = texts.index('SR A-1')
-        assert texts[i:i + 3] == ['SR A-1', 'H9 SR A · 1', '—'], texts[i:i + 6]
+        assert texts[i:i + 3] == ['SR A-1', 'H9 SR A · 1', 'Cat6 no length'], texts[i:i + 6]
         assert not [t for t in texts if t.endswith('…')], [t for t in texts if t.endswith('…')]
         assert _on_map(out['mapTexts'], 'SR A-1'), out['mapTexts']
     finally:
