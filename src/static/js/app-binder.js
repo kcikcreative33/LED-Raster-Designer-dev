@@ -549,7 +549,7 @@ class _Binder {
             // its own map through the Maps choice - is a SCREEN sheet's: on
             // whatever the scope
             wiring: on('export-binder-wiring', true),
-            // the Rigging sheets - a screen's header bars, one sheet per
+            // the Header/Footer sheets - a screen's header and footer bars, one sheet per
             // screen that has any - on whatever the scope
             rigging: on('export-binder-rigging', true),
             // the border, the title block column and the rev line: on
@@ -1233,7 +1233,7 @@ class _Binder {
         const order = sheets.map(e => e.layer);
         const posOf = new Map(sheets.map(e => [e.layer, e.pos]));
         const printed = new Set();
-        // The Rigging sheet: one per SCREEN with header bars, after that
+        // The Header/Footer sheet: one per SCREEN with header or footer bars, after that
         // screen's own sheets (a group's members each get theirs, after the
         // group's sheets - the bars belong to a screen, not to a group).
         const rig = (screen, pos) => {
@@ -4504,7 +4504,7 @@ class _Binder {
 
     // The Header/Footer sheet for ONE screen (a group's members each have
     // their own): the wall as it stands with its header bars drawn above it
-    // and its footer bars below, and the tables of the bars it takes. No
+    // and its footer bars below, and a table of the bars each row takes. No
     // column or row rulers - the header bars take the strip above the wall
     // the rulers use on the Power and Data sheets, and each bar says its own
     // panel count.
@@ -4541,11 +4541,6 @@ class _Binder {
                 rows: lines,
             }) };
         });
-        blocks.push({ lines: this._bTableLines(book, {
-            title: 'Layout',
-            cols: [{ title: 'left to right', w: 2.4 }, { title: 'wall', w: 1, align: 'right' }],
-            rows: rows.map(([word, bars]) => ({ cells: [`${word}: ${bars.join(' + ')}`, `${layer.columns} panels`] })),
-        }) });
         return blocks;
     }
 
