@@ -1884,6 +1884,10 @@ class _ScreenInfo {
         const panelWidthMMVal = readNumber('panel-width-mm').value;
         const panelHeightMMVal = readNumber('panel-height-mm').value;
         const panelWeightVal = readNumber('panel-weight-kg').value;
+        // The panel's name (2026-10-22): what was typed, trimmed - '' clears
+        // the saved panel - or null where the field was not touched.
+        const panelModelNameEl = pick('panel-model-name');
+        const panelModelNameVal = panelModelNameEl ? String(panelModelNameEl.value || '').trim() : null;
         const panelWeightUnitEl = pick('panel-weight-unit');
         const panelWeightUnitVal = panelWeightUnitEl ? panelWeightUnitEl.value : null;
         const imageScaleEl = pick('image-scale');
@@ -2047,6 +2051,30 @@ class _ScreenInfo {
                     layer.imageScale = Math.max(0.01, imageScaleVal);
                 }
             } else {
+                // A hand change of the cabinet's pixels or millimetres means
+                // another panel: the saved one (its library model, name and
+                // halves) is forgotten, so it never names the wrong panel.
+                // Weight and watts edits keep it.
+                const figuresMoved = [['cabinet_width', cabinetWidthVal], ['cabinet_height', cabinetHeightVal],
+                                      ['panel_width_mm', panelWidthMMVal], ['panel_height_mm', panelHeightMMVal]]
+                    .some(([k, v]) => v !== null && Number(layer[k]) !== Number(v));
+                if (figuresMoved && typeof this.hasSavedPanelModel === 'function' && this.hasSavedPanelModel(layer)) {
+                    layer.panelModelId = null;
+                    layer.panelModelName = null;
+                    layer.panelModelHalves = null;
+                }
+                // A typed name names the panel; a library model keeps its
+                // id (its halves' weight and watts still read the library).
+                // Cleared, the screen saves no panel at all.
+                if (panelModelNameVal !== null && panelModelNameVal !== String(layer.panelModelName || '')) {
+                    if (panelModelNameVal) {
+                        layer.panelModelName = panelModelNameVal;
+                    } else {
+                        layer.panelModelId = null;
+                        layer.panelModelName = null;
+                        layer.panelModelHalves = null;
+                    }
+                }
                 if (cabinetWidthVal !== null) layer.cabinet_width = cabinetWidthVal;
                 if (cabinetHeightVal !== null) layer.cabinet_height = cabinetHeightVal;
                 if (columnsVal !== null) layer.columns = Math.round(columnsVal);
@@ -2128,6 +2156,7 @@ class _ScreenInfo {
         if (panelWidthMMVal !== null && document.getElementById('panel-width-mm')) document.getElementById('panel-width-mm').value = panelWidthMMVal;
         if (panelHeightMMVal !== null && document.getElementById('panel-height-mm')) document.getElementById('panel-height-mm').value = panelHeightMMVal;
         if (panelWeightVal !== null && document.getElementById('panel-weight-kg')) document.getElementById('panel-weight-kg').value = panelWeightVal;
+        this._showPanelModelName(targetLayers);
         this._captureScreenInfoBaseline();
         
         // Update port capacity display when panel size changes (screen layers only)
@@ -2409,6 +2438,7 @@ class _ScreenInfo {
         setTextInput('panel-width-mm', getCommon(l => l.panel_width_mm || 500));
         setTextInput('panel-height-mm', getCommon(l => l.panel_height_mm || 500));
         setTextInput('panel-weight-kg', getCommon(l => l.panel_weight || 20));
+        this._showPanelModelName(layers);
         const weightUnitEl = document.getElementById('panel-weight-unit');
         if (weightUnitEl) {
             const unitCommon = getCommon(l => l.weight_unit || 'kg');
@@ -2832,6 +2862,20 @@ class _ScreenInfo {
     // What Screen Info shows right now, input by input: the baseline that
     // updateLayerFromInputs compares against to tell an edited field from one
     // merely on display. Taken after every fill and every applied edit.
+    // The Panel field (2026-10-22): the saved panel's name, blank on a
+    // mixed selection; with none saved, the name the pull sheet gives the
+    // cabinet stands in as the placeholder ("500 × 500 mm panel").
+    _showPanelModelName(layers) {
+        const el = document.getElementById('panel-model-name');
+        if (!el) return;
+        const screens = (layers || []).filter(l => l && (l.type || 'screen') === 'screen');
+        const names = [...new Set(screens.map(l => String(l.panelModelName || '')))];
+        if (names.length > 1) { el.value = ''; el.placeholder = '-'; return; }
+        el.value = names[0] || '';
+        el.placeholder = (!el.value && screens.length && typeof this.pullPanelTypes === 'function')
+            ? this.pullPanelTypes(screens[0]).none : '';
+    }
+
     _captureScreenInfoBaseline() {
         const shown = new Map();
         document.querySelectorAll('input[id], select[id], textarea[id]').forEach(el => {

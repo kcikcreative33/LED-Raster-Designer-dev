@@ -1056,6 +1056,8 @@ class _Binder {
         if (typeof this.refreshPortAssignment === 'function') {
             try { await this.refreshPortAssignment(); } catch (_) {}
         }
+        // the pull pages' panel rows are named from the panel library
+        if (typeof this.pullPanelCatalogReady === 'function') await this.pullPanelCatalogReady();
         await this._ensureBinderLogo();
         // The revision this export wears is logged before the sheets
         // render, so the REVISIONS table on every sheet carries it.
@@ -5846,6 +5848,21 @@ class _Binder {
             cols: [tick, { title: 'item', w: 1.2 }, { title: 'detail', w: 2, list: true }],
             rows: hw.length ? hw : [{ cells: ['', 'none', ''] }],
         }));
+        // Panels (owner, 2026-10-22): the position's panel rows as the pull
+        // sheet has them - one per type, the screens in the label - beside
+        // the hardware. Every one is EA, so no length column. A position
+        // with no screen of its own has none and no block.
+        const panelRows = (pos.rows || []).filter(r => r.side === 'panel')
+            .map(r => ({ cells: ['', this._bType(r.type), this._bQty(r.qty), r.label || ''] }));
+        if (panelRows.length) {
+            blocks.push(this._bPullBlock(book, {
+                title: 'Panels',
+                cols: [tick, { title: 'panel', w: 1.5, lend: true, list: 2, words: true, asksWhole: true },
+                       { title: 'qty', w: 0.5, align: 'right', lend: true },
+                       { title: 'label', w: 1.4, list: true }],
+                rows: panelRows,
+            }));
+        }
         // Screens with their gang counts - named as the set prints them,
         // each SIDE by its own tab (owner, 2026-10-01: "Depends on if it is
         // power or data and on if grouped or screen group"). A group routed

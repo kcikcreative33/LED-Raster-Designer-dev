@@ -38,6 +38,10 @@ def add_layer():
         'sizeByDimensions', 'targetWidth', 'targetHeight', 'targetUnit',
         'lastFlowPattern',
         'weight_unit', 'infoLabelSize',
+        # The panel saved on the screen (2026-10-22): the library model it
+        # was picked from, its name, and its halves' names. A copy is the
+        # same panel.
+        'panelModelId', 'panelModelName', 'panelModelHalves',
         'halfFirstColumn', 'halfLastColumn', 'halfFirstRow', 'halfLastRow',
         'show_numbers', 'number_size', 'show_panel_borders', 'panel_border_width', 'show_circle_with_x',
         'border_color', 'border_color_pixel', 'border_color_cabinet', 'border_color_data', 'border_color_power',
@@ -314,6 +318,9 @@ def update_layer(layer_id):
     for key in ['name', 'columns', 'rows', 'cabinet_width', 'cabinet_height',
                 'offset_x', 'offset_y', 'rotation', 'color1', 'color2',
                 'panel_width_mm', 'panel_height_mm', 'panel_weight', 'weight_unit', 'visible',
+                # The panel saved on the screen (2026-10-22): its library
+                # model, its name and its halves' names.
+                'panelModelId', 'panelModelName', 'panelModelHalves',
                 'halfFirstColumn', 'halfLastColumn', 'halfFirstRow', 'halfLastRow',
                 'show_numbers', 'number_size', 'show_panel_borders', 'panel_border_width', 'show_circle_with_x', 'border_color',
                 'border_color_pixel', 'border_color_cabinet', 'border_color_data', 'border_color_power',
