@@ -138,6 +138,24 @@
 //     distro's name, at the distro's location, else the position of the
 //     first screen it feeds.
 //
+//   * PANELS, EA (owner, 2026-10-22: "we need to have the pull sheet
+//     include panel counts"): one row per panel type a screen hangs, under
+//     the screen's own position, labelled with the screen's name - two
+//     screens of one type on one position (a group's members) merge into
+//     one row, "WALL SL, WALL SR". Blank and hidden cabinets, and hidden
+//     screens, count none. A HALF TILE is a row of its own. The type is
+//     the panel library's name for the screen's cabinet ("ROE Visual
+//     Black Quartz 3.9 Full Tile", found by its size and weight -
+//     catalogPanelNames), its half the library's matching half where it
+//     has one, else "<name> half"; a cabinet the library cannot name is
+//     its size in the show's unit, "500 × 500 mm panel" ('19.7" × 19.7"
+//     panel' in a feet show) and "500 × 250 mm half panel". A square
+//     cabinet's two halves are one cabinet turned, so one row; on any
+//     other the halves are told apart by their sizes (pullPanelTypes).
+//     These rows are side 'panel': the binder's pull pages print them in
+//     a Panels block beside the hardware, and they are on no screen's
+//     CABLES THIS SCREEN table and no hardware pull list.
+//
 //   * CABLE STOCK (2026-10-20, app-cable-units.js): in a show that keeps
 //     one, a multi's home run, a data cable and a circuit's cable are
 //     written as the stock pieces that make them, and a row is ONE ROW PER
@@ -212,6 +230,8 @@ const PULL_POWER_WORDS = new RegExp('\\b(?:socapex|soca|camlok|camlock|cam|ediso
 // ...and these make it data.
 const PULL_DATA_WORDS = new RegExp('\\b(?:ether\\w*|cat(?:5e?|6a?|7|8)?|fiber|fibre|\\w*sdi|hdmi|data'
     + '|snakes?|barrels?|tac\\s?\\d*|mtp\\s?\\d*|opticalcon\\w*|sfp\\+?|opt|cvt\\w*|xd(?:-\\w+)?)\\b', 'i');
+// ...and, failing both, these make it a panel.
+const PULL_PANEL_WORDS = /\b(?:panels?|cabinets?|tiles?)\b/i;
 // What may follow a catalog model and leave it the head of the name.
 const PULL_MODEL_TAIL_WORDS = new Set(['rack', 'racks', 'case', 'cases', 'spare', 'spares', 'unit',
     'units', 'processor', 'processors', 'card', 'cards', 'box', 'boxes', 'frame', 'kit', 'backup',
@@ -587,6 +607,89 @@ class _PullList {
     pullDistroType(d) {
         const t = String((d && d.typeName) || '').trim();
         return t || 'Distro';
+    }
+
+    // ---- panels ------------------------------------------------------------
+
+    // A cabinet's size as a panel row says it, in the show's unit: "500 ×
+    // 500 mm" in a meters show, '19.7" × 19.7"' (inches, to the tenth) in
+    // a feet one; "128 × 128 px" where the screen has no size in mm.
+    _pullPanelSizeText(wmm, hmm, wpx, hpx) {
+        if (!(wmm > 0) || !(hmm > 0)) return `${wpx} × ${hpx} px`;
+        const tidy = (n) => String(Math.round(n * 10) / 10);
+        if (typeof this.cableUnit === 'function' && this.cableUnit() === 'm') {
+            return `${tidy(wmm)} × ${tidy(hmm)} mm`;
+        }
+        return `${tidy(wmm / 25.4)}" × ${tidy(hmm / 25.4)}"`;
+    }
+
+    // One screen's panel types: { none, height, width } - the names of a
+    // full cabinet and of a half tile halved along each axis (halfTile
+    // 'height' halves the height, 'width' the width). The library's names
+    // where it knows the cabinet (catalogPanelNames); a half it has no
+    // match for is "<name> half". A cabinet the library cannot name is its
+    // size, "500 × 500 mm panel", its half "500 × 250 mm half panel". A
+    // SQUARE cabinet (in mm and in pixels) halved either way is the same
+    // cabinet turned, so both halves carry one name; on any other the two
+    // halves are different cabinets and a name with no library match says
+    // its size: "<name> half (250 × 1000 mm)".
+    pullPanelTypes(layer) {
+        const num = (v) => Number(v) || 0;
+        const wmm = num(layer && layer.panel_width_mm), hmm = num(layer && layer.panel_height_mm);
+        const wpx = num(layer && layer.cabinet_width), hpx = num(layer && layer.cabinet_height);
+        const square = wmm === hmm && wpx === hpx;
+        const size = (w, h, pw, ph) => this._pullPanelSizeText(w, h, pw, ph);
+        const halfH = size(wmm, hmm / 2, wpx, Math.round(hpx / 2));
+        const halfW = size(wmm / 2, hmm, Math.round(wpx / 2), hpx);
+        const lib = typeof this.catalogPanelNames === 'function' ? this.catalogPanelNames(layer) : null;
+        if (lib && lib.full) {
+            if (square) {
+                const one = lib.height || lib.width || `${lib.full} half`;
+                return { none: lib.full, height: one, width: one };
+            }
+            return { none: lib.full,
+                     height: lib.height || `${lib.full} half (${halfH})`,
+                     width: lib.width || `${lib.full} half (${halfW})` };
+        }
+        const full = `${size(wmm, hmm, wpx, hpx)} panel`;
+        if (square) return { none: full, height: `${halfH} half panel`, width: `${halfH} half panel` };
+        return { none: full, height: `${halfH} half panel`, width: `${halfW} half panel` };
+    }
+
+    // One screen's panel counts by type: [{ type, qty }] in first-seen
+    // order (full, then the halves) - every cabinet that hangs, blank and
+    // hidden ones left out.
+    pullPanelCounts(layer) {
+        const types = this.pullPanelTypes(layer);
+        const counts = new Map();
+        for (const p of (layer && layer.panels) || []) {
+            if (!p || p.blank || p.hidden) continue;
+            const half = p.halfTile === 'height' || p.halfTile === 'width' ? p.halfTile : 'none';
+            const type = types[half];
+            counts.set(type, (counts.get(type) || 0) + 1);
+        }
+        return [...counts].map(([type, qty]) => ({ type, qty }));
+    }
+
+    // Every panel type name the show's screens can print, lower-cased:
+    // what pullGuessSide reads as a panel.
+    _pullPanelTypeNames() {
+        const out = new Set();
+        for (const l of ((this.project && this.project.layers) || [])) {
+            if (!l || (l.type || 'screen') !== 'screen') continue;
+            const t = this.pullPanelTypes(l);
+            for (const k of ['none', 'height', 'width']) out.add(String(t[k]).toLowerCase());
+        }
+        return out;
+    }
+
+    // The panel library loaded, so the panel rows carry its names: what an
+    // export and the editor wait on before they read the list (the
+    // library loads on first use; until it lands a cabinet reads as its
+    // size).
+    async pullPanelCatalogReady() {
+        if (this._panelCatalog || typeof this._ensurePanelCatalogData !== 'function') return;
+        try { await this._ensurePanelCatalogData(); } catch (_) {}
     }
 
     // Every location the project knows - the beach names, in beach order.
@@ -1014,7 +1117,8 @@ class _PullList {
     //                              jumperLengths: {data: {ft: n}, power: {ft: n}} } },
     //     hardware: [{ kind: 'distro'|'processor', id, name, rows }],
     //     settings, unmodelled: [strings] }
-    // where a row is { type, length, qty, label, notes, side }. A
+    // where a row is { type, length, qty, label, notes, side } and side is
+    // 'power', 'data' or 'panel' (a screen's panels, EA). A
     // position's memberIds are the screens whose own position it is;
     // layerIds are every screen whose rows land on it (the members plus
     // any screen a located device pulled in). A screen's byScreen rows are
@@ -1121,6 +1225,14 @@ class _PullList {
                 // a row no device located stays with the screen.
                 for (const r of scr.rows) {
                     land((r._at && locationKey(r._at)) || base.key, r, layer.id);
+                }
+                // PANELS, EA: one row per type the screen hangs, under its
+                // own position and its name (pullPanelCounts). No screen's
+                // walk made them, so they are on no CABLES THIS SCREEN
+                // table and no hardware pull list.
+                for (const { type, qty } of this.pullPanelCounts(layer)) {
+                    land(base.key, { type, length: 'EA', qty, label: layer.name || '',
+                                     notes: '', side: 'panel' }, null);
                 }
             }
         }
@@ -2125,12 +2237,21 @@ class _PullList {
     //     head followed by nothing but an equipment word - "S4 rack",
     //     "H9 spare (2)" are data, "S4 Spanset", "T1 Tape", "M2 bolt" are
     //     not (_pullModelIsHead);
+    //   * then a PANEL word ("Spare panel", "Half tile", "cabinet") makes
+    //     it a panel, side 'panel' - printed with the show's panel rows;
     //   * everything else is power.
+    // Before all of these, a type that IS one of the show's panel types
+    // (the name a panel row prints, pullPanelTypes) is a panel, whatever
+    // words its maker put in it. The pull sheet has no hardware side: a
+    // processor and a box are data, a distro power, and its panels are
+    // their own side.
     pullGuessSide(type) {
         const text = String(type || '').trim();
+        const lower = text.toLowerCase();
+        if (lower && this._pullPanelTypeNames().has(lower)) return 'panel';
         if (PULL_POWER_WORDS.test(text)) return 'power';
         if (PULL_DATA_WORDS.test(text)) return 'data';
-        const lower = text.toLowerCase();
+        if (PULL_PANEL_WORDS.test(text)) return 'panel';
         return this._pullDataDeviceNames().some(n => this._pullModelIsHead(lower, n)) ? 'data' : 'power';
     }
 
@@ -2219,7 +2340,7 @@ class _PullList {
                 const row = {
                     type, length: String(a.length || '').trim(), qty,
                     label: String(a.label || ''), notes: String(a.notes || ''),
-                    side: a.side === 'data' || a.side === 'power' ? a.side : this.pullGuessSide(type),
+                    side: ['data', 'power', 'panel'].includes(a.side) ? a.side : this.pullGuessSide(type),
                     added: true,
                 };
                 touched.add(totalKey(row));
@@ -2645,6 +2766,7 @@ class _PullList {
             // sure it describes the screens as they stand now.
             try { await this.refreshPortAssignment(); } catch (_) {}
         }
+        await this.pullPanelCatalogReady();
         const pullList = this.buildPullSheet();
         const settings = pullList.settings;
         const body = {

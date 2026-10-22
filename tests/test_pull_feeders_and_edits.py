@@ -369,7 +369,7 @@ def test_fed_from_another_distro_and_the_server_round_trip(seeded):
         const caught = [];
         const orig = app._bKvLines;
         app._bKvLines = function (book, title, pairs) {
-            if (title === 'Input') caught.push(pairs.map(p => p.slice()));
+            if (title === 'Distro') caught.push(pairs.map(p => p.slice()));
             return orig.apply(this, arguments);
         };
         try {

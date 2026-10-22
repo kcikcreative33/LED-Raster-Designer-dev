@@ -634,8 +634,8 @@ BINDER_JS = """() => {
     const caught = [];
     const orig = app._bKvLines;
     app._bKvLines = function (book, title, pairs) {
-        // the distro's block is INPUT (2026-10-21), the service's SERVICE
-        if (title === 'Service' || title === 'Input') caught.push(pairs.map(p => p.slice()));
+        // the distro's block is DISTRO (2026-10-21), the service's SERVICE
+        if (title === 'Service' || title === 'Distro') caught.push(pairs.map(p => p.slice()));
         return orig.apply(this, arguments);
     };
     const opts = Object.assign(app.readBinderOptions(),

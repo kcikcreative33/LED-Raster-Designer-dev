@@ -98,6 +98,8 @@ class _PullSheetEditor {
         if (typeof this.refreshPortAssignment === 'function') {
             try { await this.refreshPortAssignment(); } catch (_) {}
         }
+        // the panel rows' names come from the panel library
+        if (typeof this.pullPanelCatalogReady === 'function') await this.pullPanelCatalogReady();
         this._pullSheetLoadVocab();
         this.renderPullSheetEditor();
     }

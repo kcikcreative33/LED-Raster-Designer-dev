@@ -452,8 +452,12 @@ def test_positions_are_the_groups_and_the_rows_read_in_the_sheets_vocabulary(pag
     # The distro itself is on the sheet (2026-09-07): two boxes in use on
     # SR is a "Distro" (no Type typed), pulled where SR sits - no location typed, so with
     # the first screen it feeds. Its feeder beside it (2026-10-21): no
-    # input picked, so "Feeder", and no length typed.
+    # input picked, so "Feeder", and no length typed. The walls' panels
+    # (2026-10-22): one row for the type both members hang - 500 x 500 mm
+    # cabinets the panel library cannot name, so their size in the show's
+    # feet - the screens in the label; it sorts first (a number).
     assert sr == [
+        ('19.7" × 19.7" panel', 'EA', 24, 'WALL-A, WALL-B', ''),
         ('Cat6 Snake', "100'", 1, 'SR-1, SR-2', 'SNAKE A · 2 channel'),
         ('Data Jump', "1'", 9, 'WALL-A', ''),
         ('Data Jump', "2'", 2, 'WALL-A', ''),
@@ -484,6 +488,7 @@ def test_positions_are_the_groups_and_the_rows_read_in_the_sheets_vocabulary(pag
                          f".map(c => window.app.getPowerCircuitLabel(window.app.project.layers"
                          f".find(l => l.id === {json.dumps(ids['c'])}), c.num))")
     assert center == [
+        ('19.7" × 19.7" panel', 'EA', 15, 'CENTER', ''),
         ('Cat6', "50'", 1, ids['centerPortLabel'], ''),
         ('Data Jump', "1.5'", 4, 'CENTER', ''),
         ('Edison → TRUE1 cable', 'EA', 2, ', '.join(labels), ''),
@@ -503,7 +508,8 @@ def test_positions_are_the_groups_and_the_rows_read_in_the_sheets_vocabulary(pag
     assert totals[('Edison → TRUE1 cable', 'EA')] == 2
     assert totals[('Distro', 'EA')] == 1 and totals[('Feeder', '')] == 1
     assert totals[('H9', 'EA')] == 1
-    assert len(out['totals']) == 20
+    assert totals[('19.7" × 19.7" panel', 'EA')] == 39
+    assert len(out['totals']) == 21
     # EA sorts after every length; types are A-Z
     types = [r['type'] for r in out['totals']]
     assert types == sorted(types, key=str.lower)
@@ -1100,15 +1106,17 @@ def test_export_saves_the_workbook_through_the_picker_path(page):
     ws = wb['Pull Sheet']
     assert ws['B2'].value == 'Test Show' and ws['B3'].value == 'Test Engineer'
     assert [ws.cell(5, c).value for c in pull_sheet.BLOCK_COLS[:3]] == ['SR Beach', 'CENTER', 'POSITION 3']
-    # the renamed jumper heads the block - one row per length - then the
-    # walls' home runs nobody typed (Cat6, "no length"), and the distro's
-    # own row, named by its Type ("Distro" with none), sorts after
-    assert [[ws.cell(r, c).value for c in range(1, 6)] for r in (7, 8, 9)] == [
+    # the walls' panels head the block (a number sorts first, 2026-10-22),
+    # then the renamed jumper - one row per length - then the walls' home
+    # runs nobody typed (Cat6, "no length"), and the distro's own row,
+    # named by its Type ("Distro" with none), sorts after
+    assert [[ws.cell(r, c).value for c in range(1, 6)] for r in (7, 8, 9, 10)] == [
+        ['19.7" × 19.7" panel', 'EA', 24, 'WALL-A, WALL-B', None],
         ['Absen Long Data Jump', "1'", 9, 'WALL-A', None],
         ['Absen Long Data Jump', "2'", 2, 'WALL-A', None],
         ['Absen Long Data Jump', "6'", 11, 'WALL-B', None]]
-    assert [ws.cell(10, c).value for c in (1, 2, 5)] == ['Cat6', None, 'no length']
-    assert [ws.cell(11, c).value for c in range(1, 6)] == ['Distro', 'EA', 1, 'SR', None]
+    assert [ws.cell(11, c).value for c in (1, 2, 5)] == ['Cat6', None, 'no length']
+    assert [ws.cell(12, c).value for c in range(1, 6)] == ['Distro', 'EA', 1, 'SR', None]
     assert ws['E2'].value is not None and ws['E3'].value == '1.0'
     gear_types = [wb['GEAR LIST'].cell(r, 1).value for r in range(4, 100) if wb['GEAR LIST'].cell(r, 1).value]
     assert 'TRUE1 2fer' in gear_types and 'TRUE1 Jumper' in gear_types

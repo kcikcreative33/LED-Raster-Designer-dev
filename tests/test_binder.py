@@ -1635,9 +1635,12 @@ PULL_SPREAD_JS ="""([opts, n]) => {
     }
 }"""
 
-PULL_SECTIONS = ('POWER CABLES', 'DATA CABLES', 'HARDWARE', 'SCREENS')
-PULL_HEADINGS = ('CABLE', 'LENGTH', 'QTY', 'LABEL', 'ITEM', 'DETAIL',
+PULL_SECTIONS = ('POWER CABLES', 'DATA CABLES', 'HARDWARE', 'PANELS', 'SCREENS')
+PULL_HEADINGS = ('CABLE', 'LENGTH', 'QTY', 'LABEL', 'ITEM', 'DETAIL', 'PANEL',
                  'SCREEN', 'SIZE', 'PANELS', 'CIRCUITS', 'PORTS', 'SHARED')
+# PANELS is both a section (the position's panel rows, 2026-10-22) and the
+# SCREENS table's column heading: each is told by its size.
+PULL_SECTION_AND_HEADING = {'PANELS'}
 
 
 @pytest.mark.parametrize('n', [1, 2, 4], ids=['one position', 'two positions', 'four positions'])
@@ -1670,13 +1673,20 @@ def test_the_pull_sheet_spreads_across_the_page_and_cuts_no_heading(page, n):
     # nothing on the sheet is cut, and every heading is whole and full size
     assert not [t for t in texts if t.endswith('…')], [t for t in texts if t.endswith('…')]
     sc = out['scale'] or 1
+    title_size = 25 * sc
     for h in PULL_HEADINGS:
         sizes = [o['size'] for o in out['ops'] if o['t'] == h and o['weight'] == 700]
+        if h in PULL_SECTION_AND_HEADING:
+            sizes = [s for s in sizes if abs(s - title_size) >= 0.05]
         assert len(sizes) >= n, (h, texts)
         if n < 4:
             assert all(abs(s - 21 * sc) < 0.05 for s in sizes), (h, sizes, sc)
     for h in sections:
         sizes = [o['size'] for o in out['ops'] if o['t'] == h and o['weight'] == 700]
+        if h in PULL_SECTION_AND_HEADING:
+            sizes = [s for s in sizes if abs(s - title_size) < 0.05]
+            assert len(sizes) >= n, (h, sizes, sc)
+            continue
         assert sizes and all(abs(s - 25 * sc) < 0.05 for s in sizes), (h, sizes, sc)
     assert ids['errors'] == []
 
