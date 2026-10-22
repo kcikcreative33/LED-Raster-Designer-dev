@@ -84,6 +84,9 @@ when you're done.
 - A catalog of over 2,600 cabinets from 180 manufacturers, plus your own
   presets. The catalog updates itself from GitHub, and if a figure is wrong
   the app opens a pre-filled issue so it can be fixed.
+- The screen keeps the panel you pick by name, and its half tiles and the
+  pull sheet's panel count read from it. Type your own name for a custom
+  panel.
 - Put screens on as many **canvases** as you need, each with its own raster.
 - **Group** screens built from different cabinet sizes and they act as one
   wall: one name, one set of totals, and runs that cross the seam.
@@ -110,8 +113,9 @@ when you're done.
   powerCON, Edison and CEE, on US or EU power. Start from a preset or build
   your own.
 - Every circuit is checked against its breaker, and on US power the
-  circuits are filled to 80% of it. Balance spreads the multis across the
-  legs for you.
+  circuits are filled to 80% of it. A screen's amperage box is the breaker
+  size, with the amps you can use shown beside it. Balance spreads the
+  multis across the legs for you.
 - Drag a multi onto the wall and the circuits it will feed light up with
   the amps they add before you let go. Share circuits through a 2fer or 3fer.
 

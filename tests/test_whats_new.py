@@ -269,7 +269,7 @@ def test_new_steps_filter_by_since(page):
         'cableStock', 'cableStockPieces', 'takeOver', 'customPower', 'customDraw', 'sweepShare',
         'addService', 'serviceRating', 'serviceDistro']
     assert _new_steps(page, '1.5.3', '1.5.4') == [
-        'panelInput', 'jumperNames', 'cableStockPerKind', 'feederLength']
+        'panelName', 'panelInput', 'jumperNames', 'pullPanels', 'cableStockPerKind', 'feederLength']
     # A step is never newer than the running version.
     assert not set(_new_steps(page, '1.5.2', '1.5.2'))
     assert _new_steps(page, 'junk', '1.5.3') == []
