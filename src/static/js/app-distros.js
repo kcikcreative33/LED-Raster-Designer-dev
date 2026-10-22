@@ -103,6 +103,11 @@ class _Distros {
         // a new system is refused, saying why, until it comes off.
         if (typeof this._serviceRefusesDistroPatch === 'function'
                 && this._serviceRefusesDistroPatch(d, patch)) return null;
+        // Ticking "100% rated breakers" (or a new system) moves the packing
+        // % of the screens on this distro. A locked screen stays unchanged
+        // (owner, 2026-10-16), so a patch that would repack one is refused
+        // whole, the locked screens named, and nothing changes.
+        if (this._repacksLockedScreens(d, patch)) return null;
         // A change to the face - its rows, its system, a preset laid on it,
         // a row removed - never leaves a multi on a one-circuit output
         // (owner, 2026-10-18): it asks first, take the multi off and apply,
@@ -241,6 +246,38 @@ class _Distros {
         this.saveState(action || 'Edit Distro');
         this._persistDistros();
         return d;
+    }
+
+    // True (and the locked screens named) when `patch` would change the
+    // packing % (circuitCapacity) of any locked screen: one this distro
+    // feeds, or one grouped with a screen it feeds, since a wall packs as
+    // one. Worked out by laying the patch's breakers100 / system on the
+    // distro for a moment and putting them back.
+    _repacksLockedScreens(d, patch) {
+        if (!d || !patch || typeof this.circuitCapacity !== 'function') return false;
+        const flips = patch.breakers100 !== undefined && !!patch.breakers100 !== !!d.breakers100;
+        const sys = patch.system !== undefined && typeof this.distroSystemById === 'function'
+            ? this.distroSystemById(patch.system) : null;
+        const moves = sys && sys.id !== d.system;
+        if (!flips && !moves) return false;
+        const locked = ((this.project && this.project.layers) || [])
+            .filter(l => l && l.locked && (l.type || 'screen') === 'screen');
+        if (!locked.length) return false;
+        const pctOf = () => new Map(locked.map(l => [l, this.circuitCapacity(l).pct]));
+        const before = pctOf();
+        const keys = ['breakers100', 'system', 'voltage', 'phase'];
+        const keep = {};
+        keys.forEach(k => { keep[k] = Object.prototype.hasOwnProperty.call(d, k) ? d[k] : undefined; });
+        let after;
+        try {
+            if (flips) d.breakers100 = !!patch.breakers100;
+            if (moves) { d.system = sys.id; d.voltage = sys.voltage; d.phase = sys.phase; }
+            after = pctOf();
+        } finally {
+            keys.forEach(k => { if (keep[k] === undefined) delete d[k]; else d[k] = keep[k]; });
+        }
+        const repacked = locked.filter(l => before.get(l) !== after.get(l));
+        return repacked.length ? this._lockedRefused(repacked) : false;
     }
 
     removeDistro(id) {
@@ -500,6 +537,65 @@ class _Distros {
             }
         }
         return out;
+    }
+
+    // TYPED multi names worn by boxes on two or more distros (owner,
+    // 2026-10-22: two boxes both typed "MAIN" - "Warn instead"). Paper
+    // tells them apart as MAIN-1 and MAIN-2 (distroBoxLabels) and the
+    // circuits take no suffix, so the tray warns and asks for a rename.
+    // One distro wearing a name on two numbers is _socaNameCollisions'
+    // warning, not this one. Screens left hidden are not counted, as on
+    // paper. [{ name, boxes: [{ distroId, number, label }] }], each box
+    // once however many screens share it, in tray order.
+    _typedMultiNameDuplicates() {
+        // Read once per naming burst: every box tile in the tray asks.
+        if (this._circuitTailCache && this._dupNamesFor === this._circuitTailCache) {
+            return this._dupNames;
+        }
+        const distros = typeof this.getDistros === 'function' ? this.getDistros() : [];
+        const order = new Map(distros.map((d, i) => [d.id, i]));
+        const byName = new Map();       // name -> Map(distroId|number -> box)
+        for (const l of ((this.project && this.project.layers) || [])) {
+            if (!l || (l.type || 'screen') !== 'screen') continue;
+            if (typeof this._screenHidden === 'function' ? this._screenHidden(l) : l.visible === false) continue;
+            for (const rec of this._powerNaming(l).socas.values()) {
+                if (!rec || !rec.distroId || !order.has(rec.distroId)) continue;
+                const name = String(rec.name || '').trim();
+                if (!name) continue;
+                const boxes = byName.get(name) || new Map();
+                const key = `${rec.distroId}|${rec.number}`;
+                const box = boxes.get(key)
+                    || { distroId: rec.distroId, number: Number(rec.number), hand: false };
+                box.hand = box.hand || !!rec.hand;
+                boxes.set(key, box);
+                byName.set(name, boxes);
+            }
+        }
+        const out = [];
+        for (const [name, boxes] of byName) {
+            const list = [...boxes.values()];
+            if (list.length < 2 || !list.some(b => b.hand)) continue;
+            if (new Set(list.map(b => b.distroId)).size < 2) continue;
+            list.sort((a, b) => (order.get(a.distroId) - order.get(b.distroId)) || (a.number - b.number));
+            out.push({ name, boxes: list.map(b => ({
+                distroId: b.distroId, number: b.number,
+                label: `${this.distroLabel(distros[order.get(b.distroId)])} ${b.number}`,
+            })) });
+        }
+        this._dupNamesFor = this._circuitTailCache;
+        this._dupNames = out;
+        return out;
+    }
+
+    // The warning one duplicate reads, in the strip and on the box's name:
+    // "MAIN is typed on 2 boxes, SR 1 and SL 3. Rename one so each box
+    // reads its own name."
+    _typedMultiNameText(dup) {
+        const labels = dup.boxes.map(b => b.label);
+        const list = labels.length > 1
+            ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}` : labels[0];
+        return `${dup.name} is typed on ${labels.length} boxes, ${list}. `
+            + 'Rename one so each box reads its own name.';
     }
 
     // "4-6" for [4,5,6], "1-3, 5" for [1,2,3,5] - the way a tail set is

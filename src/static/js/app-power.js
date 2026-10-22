@@ -23,6 +23,11 @@ class _Power {
                 const onCircuit = !this.usesCustomCircuits(layer)
                     || this.screenCircuits(layer).some(c => c.num === head);
                 const target = shown + delta - (!onCircuit && delta > 0 ? 1 : 0);
+                // Prev from a gap goes to the circuit before it. A gap with
+                // no circuit before it (circuit 1 cleared) stays put: the
+                // place-1 circuit is AFTER the gap, and stepping back must
+                // never move forward.
+                if (!onCircuit && delta < 0 && target < 1) return current;
                 return this.customCircuitRun(layer, Math.max(1, target));
             }
             return Math.max(1, current + delta);
@@ -342,27 +347,33 @@ class _Power {
         this._syncCustomFillReadout('data');
     }
 
-    // ---- what one circuit carries (the owner's ruling, 2026-10-22) ---------
+    // ---- what one circuit carries (the owner's rulings, 2026-10-22) --------
     //
     // A show load is continuous, so a US circuit is packed to 80% of its
-    // breaker: a 120V / 20A circuit carries 16 A, 1,920 W. US here is the
-    // screen's voltage, 208 V or under (110, 120, 208). A 220/230/240V
-    // screen stays on the 230/400 math, at the breaker. A US screen whose
-    // circuits are all on distros marked "100% rated breakers" packs at the
-    // breaker too. This is the ONE figure everything that asks "does it fit
-    // on a circuit" reads: the automatic packer, the sidebar's Watts/Circuit
-    // and Panels/Circuit, the custom caps and readouts, the share and Nfer
-    // amps rule. It is the same 80% the distro's breaker check holds a
-    // circuit to, so a fully packed circuit never trips that warning.
+    // breaker: a 120V / 20A circuit carries 16 A, 1,920 W. The packing % is
+    // the REGION's ("It needs to be valid for the region. US is 80"):
+    //   - a circuit on a US distro packs at 80% whatever its voltage, so a
+    //     240 V screen on a US 120/240 distro is 80% too;
+    //   - a US distro marked "100% rated breakers" packs at the breaker;
+    //   - a circuit on a UK/EU distro packs at the breaker;
+    //   - a screen on no distro decides by its voltage: 208 V or under (110,
+    //     120, 208) is US at 80%, 220/230/240 V is at the breaker.
+    // A screen on several distros packs at the lowest of them, so it fits
+    // on every one. This is the ONE figure everything that asks "does it
+    // fit on a circuit" reads: the automatic packer, the sidebar's
+    // Watts/Circuit and Panels/Circuit, the custom caps and readouts, the
+    // share and Nfer amps rule. It is the same % the distro's own breaker
+    // check holds a circuit to (distroChecks), so a fully packed circuit
+    // never trips that warning.
     //   { voltage, breakerA, pct, amps, watts, us, rated100 }
     circuitCapacity(layer) {
         const voltage = parseFloat(layer && layer.powerVoltage) || 0;
         const breakerA = parseFloat(layer && layer.powerAmperage) || 0;
-        const us = voltage > 0 && voltage < 208.5;
-        const rated100 = us && this._circuitsOn100Rated(layer);
-        const pct = us && !rated100 ? 0.8 : 1;
+        const rule = this._circuitPackRule(layer, voltage);
+        const pct = rule.pct;
         const amps = breakerA * pct;
-        return { voltage, breakerA, pct, amps, watts: voltage * amps, us, rated100 };
+        return { voltage, breakerA, pct, amps, watts: voltage * amps,
+                 us: rule.us, rated100: rule.us && pct >= 1 };
     }
 
     // The watts one circuit of `layer` carries (circuitCapacity).
@@ -380,26 +391,128 @@ class _Power {
             + `(${Math.round(cap.pct * 100)}%)`;
     }
 
-    // Are this screen's circuits all on US distros with 100% rated
-    // breakers? The distros its multis are assigned to, every member of its
-    // group counted (a wall packs as one), at least one of them, and every
-    // one marked. A screen with nothing assigned packs at 80%.
-    _circuitsOn100Rated(layer) {
-        if (!layer || typeof this.getDistros !== 'function') return false;
+    // The sidebar's line beside the Breaker box: "20 A breaker · 16 A
+    // usable" on an 80% circuit, "20 A breaker · 20 A usable" at 100%.
+    // Empty with no breaker typed.
+    circuitUsableText(layer) {
+        const cap = this.circuitCapacity(layer);
+        if (!(cap.breakerA > 0)) return '';
+        return `${+cap.breakerA.toFixed(2)} A breaker · ${+cap.amps.toFixed(2)} A usable`;
+    }
+
+    // Why the screen's circuits pack at the % they do, in one sentence.
+    circuitPctReason(layer) {
+        const cap = this.circuitCapacity(layer);
+        if (cap.pct < 1) {
+            return 'A US circuit carries a continuous load to 80% of its breaker. '
+                + 'A US distro marked "100% rated breakers" packs to the breaker.';
+        }
+        return cap.us
+            ? 'Its distro has 100% rated breakers, so it packs to the breaker.'
+            : 'A UK/EU circuit packs to its breaker.';
+    }
+
+    // The packing % one distro holds its circuits to: 80% on a US system,
+    // the breaker when it is marked "100% rated breakers" or on a UK/EU
+    // system. Null for an old record whose system is unknown: it has no
+    // say, and the screen's voltage decides (distroChecks has no breaker
+    // check for it either).
+    _distroPackPct(d) {
+        const region = d && typeof this.distroRegion === 'function' ? this.distroRegion(d) : null;
+        if (region === 'us') return d.breakers100 ? 1 : 0.8;
+        if (region === 'eu') return 1;
+        return null;
+    }
+
+    // { pct, us } for one screen's circuits (circuitCapacity). The distros
+    // its multis are on decide, every member of its group counted (a wall
+    // packs as one); a screen on none decides by voltage.
+    //
+    // A multi the screen no longer has (the wall got lighter and its last
+    // multi went) can still have an entry in powerSocaDistro: those are
+    // left out. How many multis a screen has depends on the % itself, so
+    // it is counted at a fixed % with this rule switched off for the count
+    // (_capacityProbe), never by asking getSocaPlan: at 80%, the most
+    // circuits a screen normally makes, and, only when an entry lies past
+    // that, at 100% too (a wall whose rows cannot fit at 80% makes no
+    // circuits there at all). An entry past both counts is stale whatever
+    // the %. An entry inside them holds a multi that exists at that %, so
+    // the screen packs to it and that multi is real: the answer agrees
+    // with itself.
+    _circuitPackRule(layer, voltage) {
+        const byVoltage = voltage > 0 && voltage < 208.5;
+        const fallback = { pct: byVoltage ? 0.8 : 1, us: byVoltage };
+        if (this._capacityProbe) return { pct: this._capacityProbe.pct, us: byVoltage };
+        if (!layer) return fallback;
+        if (typeof this.getDistros !== 'function') return fallback;
         const group = (layer.group_id && typeof this.groupMembersOf === 'function')
             ? this.groupMembersOf(layer) : [];
         const screens = group.length ? group : [layer];
-        const ids = new Set();
-        screens.forEach(s => Object.values((s && s.powerSocaDistro) || {})
-            .forEach(id => { if (id) ids.add(id); }));
-        if (!ids.size) return false;
         const distros = this.getDistros() || [];
-        for (const id of ids) {
-            const d = distros.find(x => x && x.id === id);
-            if (!d || !d.breakers100) return false;
-            if (typeof this.distroRegion === 'function' && this.distroRegion(d) !== 'us') return false;
+        // [{ screen, index, d, pct }] for every entry naming a distro that exists
+        const entries = [];
+        for (const s of screens) {
+            const map = (s && s.powerSocaDistro) || {};
+            for (const key of Object.keys(map)) {
+                const id = map[key];
+                const index = parseInt(key, 10);
+                if (!id || !Number.isFinite(index) || index < 1) continue;
+                const d = distros.find(x => x && x.id === id);
+                if (!d) continue;
+                const own = this._distroPackPct(d);
+                entries.push({ screen: s, index, d,
+                               pct: own === null ? fallback.pct : own,
+                               region: own === null ? null : this.distroRegion(d) });
+            }
         }
-        return true;
+        if (!entries.length) return fallback;
+        const decide = (list) => {
+            if (!list.length) return fallback;
+            const pct = Math.min(...list.map(e => e.pct));
+            // US when any distro deciding is a US one (or, on old records,
+            // the voltage said so)
+            const us = list.some(e => e.region === 'us' || (e.region === null && byVoltage));
+            return { pct, us };
+        };
+        // Every entry agreeing with the voltage's %: a stale one cannot
+        // change it, so nothing needs counting (the common case).
+        if (entries.every(e => e.pct === fallback.pct)) {
+            return { pct: fallback.pct, us: decide(entries).us };
+        }
+        const counts = new Map();
+        const live = entries.filter(e => {
+            if (!counts.has(e.screen)) counts.set(e.screen, this._multiCountAt(e.screen, 0.8));
+            if (e.index <= counts.get(e.screen)) return true;
+            return e.index <= this._multiCountAt(e.screen, 1);
+        });
+        return decide(live);
+    }
+
+    // How many multis `layer` has when its circuits are packed at `pct` of
+    // the breaker, for _circuitPackRule's stale-entry rule. Every screen
+    // the count packs reads `pct` (_capacityProbe). Memoized for the naming
+    // burst (_circuitTailCache), which every edit that moves circuits drops.
+    _multiCountAt(layer, pct) {
+        const cache = this._circuitTailCache;
+        if (cache && this._multiCountMemoFor !== cache) {
+            this._multiCountMemoFor = cache;
+            this._multiCountMemo = new Map();
+        }
+        const memo = cache ? this._multiCountMemo : null;
+        const key = `${pct}`;
+        const seen = memo ? memo.get(layer) : null;
+        if (seen && key in seen) return seen[key];
+        const outer = this._capacityProbe;
+        this._capacityProbe = { pct };
+        let n = 0;
+        try {
+            const circuits = this.screenCircuits(layer) || [];
+            n = circuits.length ? this.socaCountFor(layer, circuits.length) : 0;
+        } finally {
+            this._capacityProbe = outer;
+        }
+        if (memo) memo.set(layer, Object.assign(seen || {}, { [key]: n }));
+        return n;
     }
 
     updatePowerCapacityDisplay() {
@@ -415,6 +528,8 @@ class _Power {
             if (circuitsEl) circuitsEl.textContent = '-';
             if (amps1El) amps1El.textContent = '-';
             if (amps3El) amps3El.textContent = '-';
+            const usableEl = document.getElementById('power-amperage-usable');
+            if (usableEl) { usableEl.textContent = ''; usableEl.title = ''; }
             return;
         }
         const layer = this.currentLayer;
@@ -450,15 +565,32 @@ class _Power {
         const amps1El = document.getElementById('power-total-amps-1ph');
         const amps3El = document.getElementById('power-total-amps-3ph');
 
+        // The Breaker box is the BREAKER SIZE (the owner's ruling,
+        // 2026-10-22); the usable amps show beside it, so a 16 typed on a
+        // US screen reads "16 A breaker · 12.8 A usable" and a double
+        // derating is there to see.
+        const usableEl = document.getElementById('power-amperage-usable');
+        const usableText = this.circuitUsableText(layer);
+        if (usableEl) {
+            usableEl.textContent = usableText;
+            usableEl.title = usableText ? this.circuitPctReason(layer) : '';
+        }
         if (wattsEl) {
             wattsEl.textContent = wattsPerCircuit > 0 ? wattsPerCircuit.toLocaleString('en-US') : '0';
-            wattsEl.title = capacity.pct < 1 && wattsPerCircuit > 0
-                ? `${Math.round(capacity.pct * 100)}% of ${voltage} V × ${amperage} A: a US circuit `
-                    + 'carries a continuous load to 80% of its breaker. A distro marked '
-                    + '"100% rated breakers" packs to the breaker.'
+            wattsEl.title = wattsPerCircuit > 0
+                ? `What one circuit carries: ${voltage} V × ${+capacity.amps.toFixed(2)} A usable `
+                    + `(${Math.round(capacity.pct * 100)}% of the ${amperage} A breaker). `
+                    + this.circuitPctReason(layer)
                 : '';
         }
-        if (panelsEl) panelsEl.textContent = panelsPerCircuit > 0 ? panelsPerCircuit.toLocaleString('en-US') : '0';
+        if (panelsEl) {
+            panelsEl.textContent = panelsPerCircuit > 0 ? panelsPerCircuit.toLocaleString('en-US') : '0';
+            panelsEl.title = wattsPerCircuit > 0 && panelWatts > 0
+                ? `How many ${panelWatts} W panels fit on one circuit: its `
+                    + `${+capacity.amps.toFixed(2)} A usable of the ${amperage} A breaker, `
+                    + `${wattsPerCircuit.toLocaleString('en-US')} W.`
+                : '';
+        }
         const powerAssignments = this.calculatePowerAssignments(layer);
         // count via the shared authority so a custom-routed screen reports the
         // circuits actually drawn, not what auto routing would have produced
@@ -2483,13 +2615,25 @@ class _Power {
             if (cur !== stored) this._showLockedError([layer]);
             return false;
         }
-        if (!this.readTypedLength(v, 'home run').ok) return false;
+        // On a direct output the length is the circuit's cable, not a
+        // multi's home run, and the refusal and the undo entry say so.
+        const direct = this._socaOnDirectOutput(layer, socaIndex);
+        if (!this.readTypedLength(v, direct ? 'cable' : 'home run').ok) return false;
         const store = layer.powerSocaLengths || (layer.powerSocaLengths = {});
         if (stored) store[socaIndex] = stored; else delete store[socaIndex];
         if (record) {
-            this.updateLayers([layer], true, 'Set Multi Home Run');
+            this.updateLayers([layer], true, direct ? 'Set Direct Cable' : 'Set Multi Home Run');
         }
         return true;
+    }
+
+    // Whether multi `socaIndex` of `layer` sits on a distro's DIRECT
+    // output (one circuit on its own connector) rather than a multi box.
+    _socaOnDirectOutput(layer, socaIndex) {
+        const did = ((layer && layer.powerSocaDistro) || {})[socaIndex];
+        if (!did || typeof this._isDirectBox !== 'function') return false;
+        const rec = this._powerNaming(layer).socas.get(Number(socaIndex));
+        return !!(rec && this._isDirectBox(did, rec.number));
     }
 
     // The distro list died with the Power sidebar: the dock's distro
@@ -2536,12 +2680,15 @@ class _Power {
         const wrap = document.createElement('div');
         const heading = document.createElement('div');
         heading.className = 'hw-pop-heading';
-        heading.textContent = d.name || 'distro';
+        // The display label (distroLabel): SR-1 where two distros are SR.
+        heading.textContent = this.distroLabel(d) || 'distro';
         wrap.appendChild(heading);
 
+        // Returns updateDistro's answer: null when it refused or asked.
         const patch = (p) => {
-            this.updateDistro(d.id, p);
+            const res = this.updateDistro(d.id, p);
             this._restateNaming();
+            return res;
         };
         const cap = (text) => {
             const c = document.createElement('label');
@@ -2575,7 +2722,7 @@ class _Power {
             row2.style.alignItems = 'center';
             row2.style.marginTop = '6px';
             row2.title = 'Phasing. How a multi\'s 6 circuits land on the '
-                + 'phase legs - a property of the distro\'s bus and breaker '
+                + 'phase legs, a property of the distro\'s bus and breaker '
                 + 'arrangement, read off the distro. Not the connector\'s '
                 + 'E1.80 pinout type. Each name gives the coupling, then '
                 + 'the dealing order.';
@@ -2645,7 +2792,7 @@ class _Power {
         beachSelect.style.flex = '1';
         beachSelect.style.minWidth = '0';
         beachSelect.dataset.lrdField = `distro-beach-${d.id}`;
-        beachSelect.title = 'The beach this distro sits on - the dimmer beach, '
+        beachSelect.title = 'The beach this distro sits on: the dimmer beach, '
             + 'stage left world, FOH. Its multis, breakouts and circuit cables '
             + 'are pulled there.';
         this.fillBeachPicker(beachSelect, d.beachId);
@@ -2772,6 +2919,9 @@ class _Power {
             // strip - so ONE render covers what four panel wipes did
             // (refreshDistroPanel is this same render under its old name).
             this.renderHardwareDock && this.renderHardwareDock();
+            // A distro's 100% switch or system moves the packing %, which
+            // the sidebar's Breaker line and Watts/Circuit read.
+            if (this.currentLayer) this.updatePowerCapacityDisplay();
         });
     }
 

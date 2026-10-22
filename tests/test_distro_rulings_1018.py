@@ -436,9 +436,9 @@ def test_an_old_crowded_show_prints_distro_and_opens_unchanged(e2e_server, pw_br
             };
         }""")
         pg2.wait_for_timeout(800)
-        move = ("WALL A's 6 circuits are on OLD2, a TRUE1 — one circuit only. "
+        move = ("WALL A's 6 circuits are on OLD2, a TRUE1 that takes one circuit only. "
                 'Move it to a multi output.')
-        cap = 'OLD2 TRUE1 at 57.7 A of 20 A — over capacity'
+        cap = 'OLD2 TRUE1 at 57.7 A of 20 A: over capacity'
         assert move in out['checks'] and cap in out['checks'], out['checks']
         assert move in out['strip'] and cap in out['strip'], out['strip']
         assert out['binder'] == [['Over capacity', cap + ' · a multi on a one-circuit output, '
@@ -509,7 +509,7 @@ def test_a_row_edit_that_would_crowd_asks_and_cancel_changes_nothing(seeded):
     assert ("WALL A's 6-circuit multi is on PD4. PD4 would become a TRUE1, "
             "which carries one circuit.") in modal['text'], modal['text']
     # the load it would put there, said while it asks: 6 x 9.615 = 57.7 A
-    assert modal['cap'] == 'PD4 TRUE1 at 57.7 A of 20 A — over capacity', modal
+    assert modal['cap'] == 'PD4 TRUE1 at 57.7 A of 20 A: over capacity', modal
     assert modal['buttons'] == ['Cancel the change',
                                 "Take WALL A's 6-circuit multi off PD4 and apply the change"]
     assert _state(pg) == before, 'nothing changes while it asks'
@@ -604,7 +604,7 @@ def test_a_pin_onto_a_direct_output_is_refused(seeded):
         return { touched: touched.length, pin: A.powerSocaNumber[1], same: app.historyIndex === n,
                  status };""")
     assert out['touched'] == 0 and out['pin'] == 4 and out['same'], out
-    assert out['status'] == ("WALL A's 6-circuit multi cannot go on PD 2 — a TRUE1 carries "
+    assert out['status'] == ("WALL A's 6-circuit multi cannot go on PD 2: a TRUE1 carries "
                              'one circuit. Use a multi output.'), out
     # one circuit on TRUE1 output 3 is fine; a second one-circuit multi
     # onto it is refused
@@ -620,7 +620,7 @@ def test_a_pin_onto_a_direct_output_is_refused(seeded):
         return { first, touched: t.length, pin: B.powerSocaNumber[plan[2].soca] ?? null,
                  status: document.getElementById('status-message').textContent };""")
     assert out['first'] == 1 and out['touched'] == 0 and out['pin'] is None, out
-    assert out['status'] == 'PD 3 already carries its one circuit — a TRUE1 takes no more.', out
+    assert out['status'] == 'PD 3 already carries its one circuit, and a TRUE1 takes no more.', out
     # carried pin: a multi pinned to 2 on another distro, moved onto this one
     out = ev(pg, """
         app.project.distros.push({ id: 'd2', name: 'XX', ratingA: 200, system: '120/208' });
@@ -639,4 +639,4 @@ def test_the_override_counts_in_the_over_capacity_check(seeded):
           walls={'a': WALLS['a']})
     out = ev(pg, "return app.distroChecks(app.getDistros()[0]).map(w => w.text);")
     # 57.7 A against min(20 A breaker, 15 A override)
-    assert 'PD4 TRUE1 at 57.7 A of 15 A — over capacity' in out, out
+    assert 'PD4 TRUE1 at 57.7 A of 15 A: over capacity' in out, out

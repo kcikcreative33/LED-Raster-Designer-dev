@@ -768,7 +768,7 @@ class _HardwareDock {
             chips.appendChild(chip);
         });
         row.appendChild(chips);
-        row.title = `${scr.name} - ${scr.numbers.length} of ${scr.total} `
+        row.title = `${scr.name}: ${scr.numbers.length} of ${scr.total} `
             + `${unit} not attached. Click to center the canvas on it.`;
         row.addEventListener('click', () => {
             this.centerCanvasOnLayer(scr.layerId);
@@ -1137,7 +1137,7 @@ class _HardwareDock {
                 placeholder: 'unnamed',
                 key: `processor-name-${proc.id}`,
                 title: oneBox
-                    ? 'Name this processor. Its ports read the name - name '
+                    ? 'Name this processor. Its ports read the name: name '
                         + 'it SR and they read SR-1, SR-2.'
                     : `Name this processor. A ${this.unitWordFor(proc)}'s ports take the `
                         + 'nearest name above them.',
@@ -1153,7 +1153,7 @@ class _HardwareDock {
                 controls: procPills,
                 gear: {
                     id: `proc-${proc.id}`,
-                    title: 'Configure this processor - redundancy, slots, '
+                    title: 'Configure this processor: redundancy, slots, '
                         + 'remove.',
                     build: () => {
                         const p = (this._processorsResolved || [])
@@ -1280,7 +1280,7 @@ class _HardwareDock {
             this.procIsCardBased(proc)
                 ? 'Drag the whole card onto a screen: its unplaced ports fill in '
                     + 'order up to the port under your cursor. Cards keep their slot '
-                    + 'order - drag the processor’s line to reorder.'
+                    + 'order. Drag the processor’s line to reorder.'
                 : `Drag the whole ${word} onto a screen: its unplaced ports fill in `
                     + 'order up to the port under your cursor.',
             // The header's glance: how full the card is, the retired
@@ -1358,7 +1358,7 @@ class _HardwareDock {
                 value: card.name,
                 placeholder: proc.name || 'unnamed',
                 key: `processor-card-name-${card.id}`,
-                title: `Name this ${word}. Its ports read the name - name it `
+                title: `Name this ${word}. Its ports read the name: name it `
                     + 'SR and they read SR-1, SR-2.',
                 onCommit: (val) => this._processorRequest(
                     `/api/processors/${proc.id}/cards/${card.id}`, 'PUT',
@@ -1366,7 +1366,7 @@ class _HardwareDock {
             },
             gear: {
                 id: `card-${card.id}`,
-                title: `Configure this ${word} - templates, mode, breakout `
+                title: `Configure this ${word}: templates, mode, breakout `
                     + 'boxes, remove. Redundancy is set behind the '
                     + 'processor\'s \u2699.',
                 build: () => {
@@ -1721,7 +1721,7 @@ class _HardwareDock {
             },
             gear: {
                 id: `box-${cvt.id}`,
-                title: 'Configure this box - templates, facts, remove.',
+                title: 'Configure this box: templates, facts, remove.',
                 build: () => {
                     const found = this._dockFindCvt(cvt.id);
                     return found ? this._buildBoxGearContent(
@@ -2004,25 +2004,25 @@ class _HardwareDock {
         tile.appendChild(face);
 
         face.title = `Port ${spoken}`
-            + (port.label ? ` - ${port.label}` : '')
+            + (port.label ? `, ${port.label}` : '')
             + (occupants.length
-                ? ` - ${occupants.map(o => `${o.name} p${o.number}`
+                ? `: ${occupants.map(o => `${o.name} p${o.number}`
                     + (o.role === 'return' ? ' return' : '')).join(', ')}`
                 : (idleLoopEnd
-                    ? ` - free: the loop end of ${bu.label
+                    ? `: free, the loop end of ${bu.label
                         || `port ${bu.localPort || bu.port} on `
                             + `${bu.boxTitle || bu.cardTitle}`}, which `
                         + 'carries nothing yet'
                 : port.backsUp
-                    ? ` - backs up ${port.backsUp.label
+                    ? `: backs up ${port.backsUp.label
                         || `port ${port.backsUp.localPort
                             || port.backsUp.port} on ${port.backsUp.boxTitle
                             || port.backsUp.cardTitle}`}`
-                    : ' - free'))
-            + (port.beyondCeiling ? ` - beyond this ${this.unitWordFor(proc, card)}’s ceiling` : '')
+                    : ': free'))
+            + (port.beyondCeiling ? `, beyond this ${this.unitWordFor(proc, card)}’s ceiling` : '')
             + '. Click to edit'
             + (port.backsUp
-                ? '. A backup port is that port\'s return end - nothing '
+                ? '. A backup port is that port\'s return end, so nothing '
                     + 'else can land on it.'
                 : '; drag onto a port run to place it there'
                     + (occupants.some(o => !o.role)
@@ -2189,13 +2189,13 @@ class _HardwareDock {
             who.style.color = occupants.length > 1 ? '#d05a52'
                 : (derived ? '#c8a04a' : 'var(--ps-dim, #c0c0c0)');
             who.textContent = parts.join(', ')
-                + (occupants.length > 1 ? ' - clash' : '');
+                + (occupants.length > 1 ? ' (clash)' : '');
             who.title = occupants.length > 1
                 ? `${parts.join(' and ')} both claim this port. Nothing has `
-                  + 'been renumbered - see Port Numbering.'
+                  + 'been renumbered. See Port Numbering.'
                 : (derived
                     ? `${occupants[0].name} port ${occupants[0].number}'s `
-                      + 'return end - it follows the main and clears with it.'
+                      + 'return end. It follows the main and clears with it.'
                     : `${occupants[0].name}, its port ${occupants[0].number}`);
         }
         row.appendChild(who);
@@ -2213,7 +2213,7 @@ class _HardwareDock {
             role.textContent = `Backs up ${port.backsUp.label
                 || `port ${port.backsUp.localPort || port.backsUp.port} `
                     + `on ${port.backsUp.boxTitle || port.backsUp.cardTitle}`}`
-                + ' - this socket carries its return.';
+                + '. This socket carries its return.';
             wrap.appendChild(role);
         } else if (port.backedBy) {
             const back = document.createElement('div');
@@ -2312,7 +2312,7 @@ class _HardwareDock {
             const why = this._socaPlanEmptyReason(cur);
             if (why) {
                 this._dockPowerWarnings.push({
-                    text: `No circuits on ${cur.name} — ${why}`,
+                    text: `No circuits on ${cur.name}: ${why}`,
                 });
             }
         }
@@ -2382,13 +2382,19 @@ class _HardwareDock {
                 this._dockPowerWarnings.push({
                     mild: true,
                     text: `${rec.name} names two multis on `
-                        + `${d ? this.distroLabel(d) : 'one distro'} — ${l.name} at `
+                        + `${d ? this.distroLabel(d) : 'one distro'}: ${l.name} at `
                         + `No. ${rec.number}, ${collisions.map(c =>
                             `${c.layerName} at No. ${c.number}`).join(', ')}. `
                         + `Same ${d ? this.distroBoxType(d, rec.number).type.name : 'one'}? `
                         + `Pin both to No. ${minNo}.`,
                 });
             }
+        }
+        // One TYPED name on boxes of two or more distros (owner,
+        // 2026-10-22: "Warn instead"): amber, asking for a rename. The
+        // box's name field in the tray wears the same words.
+        for (const dup of this._typedMultiNameDuplicates()) {
+            this._dockPowerWarnings.push({ mild: true, text: this._typedMultiNameText(dup) });
         }
     }
 
@@ -2425,16 +2431,16 @@ class _HardwareDock {
                 ? ` worst leg ${this.distroLegLabel(d, load.worstLeg)}` : '';
             const rule = this.distroMainLimit(d);
             const note = this.distroMainLimitNote(rule);
-            const fig = `${this.distroLabel(d)} —${leg} ${load.amps.toFixed(1)} A / `
+            const fig = `${this.distroLabel(d)}${leg ? `,${leg}` : ''} ${load.amps.toFixed(1)} A / `
                 + `${+load.limitA.toFixed(1)} A`
                 + (note ? ` (${note}, continuous)` : ` (${Math.round(load.pct)}%)`);
             if (load.overloadAccepted) {
                 this._dockPowerWarnings.push({
-                    mild: true, text: `${fig} — over, accepted`,
+                    mild: true, text: `${fig}: over, accepted`,
                 });
             } else {
                 this._dockPowerWarnings.push({
-                    text: `${fig} — OVER`,
+                    text: `${fig}: OVER`,
                     offer: {
                         label: 'Accept overload',
                         title: `Accept ${this.distroLabel(d)}'s overload: the error turns `
@@ -2485,7 +2491,7 @@ class _HardwareDock {
                 placeholder: 'distro',
                 key: `distro-name-${d.id}`,
                 title: 'Name this power source. Multis on it follow the '
-                    + 'name - a distro named SL feeds SL1, SL2.',
+                    + 'name: a distro named SL feeds SL1, SL2.',
                 onCommit: (val) => {
                     this.updateDistro(d.id, { name: val });
                     this._restateNaming();
@@ -2613,7 +2619,7 @@ class _HardwareDock {
             return { box, holders };
         });
         const paired = info.row.pairedWith
-            ? ` · paired with ${this._faceRowSummary(d, info.row.pairedWith)} - the same circuits` : '';
+            ? ` · paired with ${this._faceRowSummary(d, info.row.pairedWith)}, the same circuits` : '';
         const tip = `${info.row.count} × ${type.name} on ${name}, one circuit each with its own `
             + `cable to the screen${paired}. Drag the row onto a screen: its first free output `
             + 'takes the screen\'s next unassigned circuit. Drag one chip onto a circuit to '
@@ -2674,7 +2680,7 @@ class _HardwareDock {
             top.appendChild(corner);
         }
         if (face) {
-            face.title = `${this.distroLabel(d)} ${box.number} - ${type.name}, one circuit. `
+            face.title = `${this.distroLabel(d)} ${box.number}: ${type.name}, one circuit. `
                 + face.title;
         }
         const editor = tile.querySelector('.lrd-tile-body');
@@ -2715,7 +2721,7 @@ class _HardwareDock {
         if (load.over) {
             extra.push(load.overloadAccepted
                 ? { cls: 'hw-dock-unit-flag hw-dock-unit-flag-ok', text: 'OVER · accepted',
-                    title: 'Overload accepted - untick it behind the ⚙.' }
+                    title: 'Overload accepted. Untick it behind the ⚙.' }
                 : { cls: 'hw-dock-unit-flag', text: 'OVER',
                     title: 'The busiest leg is past the limit.' });
         }
@@ -2728,10 +2734,10 @@ class _HardwareDock {
                 : '',
             text: `${load.amps.toFixed(1)}/${+limit.toFixed(1)} A`,
             title: `Busiest leg ${load.amps.toFixed(1)} A of a ${+limit.toFixed(1)} A limit`
-                + (note ? ` - ${note}: a show load is continuous, and a standard main `
+                + (note ? `, ${note}: a show load is continuous, and a standard main `
                     + 'carries 80% of its rating continuously. Tick Main 100% rated '
                     + 'behind the ⚙ if it is.'
-                    : (rule.main100 ? ' - the main is 100% rated.' : ' - the rating.')),
+                    : (rule.main100 ? ', the main is 100% rated.' : ', the rating.')),
             extra,
         };
     }
@@ -2744,7 +2750,7 @@ class _HardwareDock {
         if (!load || !load.legs) return null;
         const row = document.createElement('div');
         row.className = 'hw-dock-legs';
-        row.title = 'Leg loading. Per-leg current is a phasor sum - '
+        row.title = 'Leg loading. Per-leg current is a phasor sum: '
             + 'line-to-line circuits sit 30 degrees off each leg\'s '
             + 'line-to-neutral reference, so they are not simply added. '
             + 'Imbalance is NEMA-style: max deviation from the average.';
@@ -2799,7 +2805,7 @@ class _HardwareDock {
             const chip = this._plugChip(t);
             chip.title = `${t.name} from ${name}. Drag onto a screen: the `
                 + `next free multi on ${name} lands on the screen's next `
-                + `unassigned circuits as a ${t.name} - the circuits it `
+                + `unassigned circuits as a ${t.name}. The circuits it `
                 + `would feed light up under the cursor, and the ${t.name} `
                 + 'that lands wears its type chip. Refused, with the reason, when '
                 + `the screen\'s breakout does not take a ${t.name}.`;
@@ -2954,7 +2960,7 @@ class _HardwareDock {
         const boxName = `${this.distroLabel(d)} ${n}`;
         if (overflow) {
             this._dockPowerWarnings.push({
-                text: `${boxName} — more circuits than the `
+                text: `${boxName} has more circuits than the `
                     + `${boxSize === 1 ? 'one' : boxSize === 3 ? 'three' : 'six'} a ${boxType.name} holds.`,
             });
         }
@@ -3001,7 +3007,7 @@ class _HardwareDock {
                 feedOver = true;
                 sec.classList.add('hw-dock-multi-clash');
                 this._dockPowerWarnings.push({
-                    text: `${boxName} — feed leg at ${worst.toFixed(2)} A / ${feedLimitText} — OVER`,
+                    text: `${boxName}: feed leg at ${worst.toFixed(2)} A / ${feedLimitText}, OVER`,
                 });
             }
         }
@@ -3015,7 +3021,7 @@ class _HardwareDock {
             }
         });
 
-        const tip = `${this.distroLabel(d)} multi ${n} - `
+        const tip = `${this.distroLabel(d)} multi ${n}: `
             + (members.length
                 ? `${members.map(m => m.layerName).join(' and ')}, `
                     + (free.length
@@ -3024,12 +3030,12 @@ class _HardwareDock {
                 : 'free')
             + (feedLegA > 0
                 ? `. L21-30 feed, ${feedLimitText} per leg` : '')
-            + (overflow ? `. OVERFLOW - more circuits than the `
+            + (overflow ? `. OVERFLOW: more circuits than the `
                 + `${boxSize === 1 ? 'one' : boxSize === 3 ? 'three' : 'six'} a ${boxType.name} holds` : '')
             + (typeInfo.faceBox && typeInfo.faceBox.paired
-                ? `. Paired with ${this._faceRowSummary(d, typeInfo.faceBox.primaryRowId)} - `
+                ? `. Paired with ${this._faceRowSummary(d, typeInfo.faceBox.primaryRowId)}, `
                     + 'the same circuits; patch a circuit to one connector or the other' : '')
-            + '. Drag onto a circuit to land that circuit\'s multi here - '
+            + '. Drag onto a circuit to land that circuit\'s multi here: '
             + 'the first circuit takes the whole multi, a later circuit '
             + `splits it there and this ${boxType.name} takes the rest`
             + (members.length
@@ -3119,6 +3125,16 @@ class _HardwareDock {
                     this._restateNaming();
                 },
             });
+            // A typed name another distro's box also wears: flagged amber
+            // on the field, its title saying where (the strip says it too).
+            const dup = this._typedMultiNameDuplicates().find(x =>
+                x.boxes.some(b => b.distroId === d.id && b.number === Number(n)));
+            if (dup) {
+                nameField.dataset.lrdDupName = dup.name;
+                nameField.style.color = '#ffb84d';
+                nameField.style.boxShadow = 'inset 0 -2px 0 #e0a030';
+                nameField.title = `${this._typedMultiNameText(dup)} ${nameField.title}`;
+            }
             namesRow.appendChild(nameField);
             namesRow.appendChild(typeChip);
             const len = this._dockHeadName({
@@ -3126,7 +3142,7 @@ class _HardwareDock {
                     || (first.s && first.s.length) || '',
                 placeholder: this.cableUnit() === 'm' ? '30m' : '100ft',
                 key: `power-soca-length-${first.layer.id}-${first.m.soca}`,
-                title: `The home-run length of this ${boxType.name} - one run `
+                title: `The home-run length of this ${boxType.name}, one run `
                     + 'for every screen sharing it. It flows into the gear checklist '
                     + 'and report.'
                     + this.cableStockHint((first.layer.powerSocaLengths || {})[first.m.soca]
@@ -3199,7 +3215,7 @@ class _HardwareDock {
         if (editable) {
             const offered = this.distroOutputs(d);
             const list = offered.length ? offered : this.getDistroOutputTypes();
-            el.title = `${boxName} is a ${t.name}. Click to cycle - `
+            el.title = `${boxName} is a ${t.name}. Click to cycle: `
                 + `${list.map(x => x.name).join(' → ')}. Drag it onto `
                 + `a circuit and it lands as a ${t.name}; refused, with the `
                 + 'reason, when the screen\'s breakout does not take one.';
@@ -3213,9 +3229,9 @@ class _HardwareDock {
         } else {
             el.title = info.clash
                 ? `${boxName} is typed ${t.name} but holds `
-                    + `${info.implied.name} circuits - the strip offers the `
+                    + `${info.implied.name} circuits. The strip offers the `
                     + 'fix.'
-                : `${boxName} is a ${t.name} - the type follows what `
+                : `${boxName} is a ${t.name}. The type follows what `
                     + 'is on it. Clear its circuits to change it.';
         }
         return el;
@@ -3286,7 +3302,7 @@ class _HardwareDock {
         }
         tile.appendChild(face);
 
-        face.title = `Circuit ${t} - ` + (holders.length
+        face.title = `Circuit ${t}: ` + (holders.length
             ? holders.map(h => `${h.who} ${h.label}`).join(', ')
                 + (holders.length > 1 ? ' (claimed twice)' : '')
             : 'free')
@@ -3403,7 +3419,7 @@ class _HardwareDock {
     _dockChipFill(face, info) {
         if (!info) return;
         if (info.unknown) {
-            face.title += ' · load not scored - no capacity figure to '
+            face.title += ' · load not scored, no capacity figure to '
                 + 'measure against';
             return;
         }
@@ -3650,7 +3666,7 @@ class _HardwareDock {
                     : null;
                 text = found
                     ? `R 1:1 → ${this._backupUnitTitle(found.proc, found.card)}`
-                    : 'R 1:1 — no partner';
+                    : 'R 1:1, no partner';
             } else {
                 // The pill says what the card's own face says, in the pill's
                 // own register - the split reads "OPT split" on a
@@ -3676,7 +3692,7 @@ class _HardwareDock {
                     : null;
                 text = found
                     ? `R → ${this._backupUnitTitle(found.proc, found.card)}`
-                    : 'R 1:1 — no partner';
+                    : 'R 1:1, no partner';
             } else if (level === 'fixed') {
                 // The card row states the loops (above); the header
                 // carries only the backup processor's pill.
@@ -3764,7 +3780,7 @@ class _HardwareDock {
             btn.className = 'hw-dock-gear';
             btn.textContent = '⚙';
             btn.title = opts.gear.title
-                || 'Configure - templates, mode, redundancy, remove.';
+                || 'Configure: templates, mode, redundancy, remove.';
             btn.dataset.hwpop = opts.gear.id;
             btn.dataset.lrdField = `hwgear-${opts.gear.id}`;
             btn.addEventListener('click', (e) => {
@@ -4007,7 +4023,7 @@ class _HardwareDock {
                     + `${main.localPort || main.port}`
                 : 'its main port');
         return `${payload.title} carries ${occupant.name} `
-            + `p${occupant.number}'s return - it follows ${mainName}; `
+            + `p${occupant.number}'s return. It follows ${mainName}; `
             + 'clear that port to clear both ends.';
     }
 

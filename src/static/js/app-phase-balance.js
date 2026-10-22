@@ -707,7 +707,7 @@ class _PhaseBalance {
                </div>
                <div class="balance-busiest" style="color:#8fa0b2; font-size:11px; margin-bottom:14px;">Busiest leg ${amps(r.beforeBusiest)} → ${amps(r.afterBusiest)}</div>
                <div style="font-size:11px; color:#8a949f; margin-bottom:6px;">Re-plug these circuits along the same
-               fan — no rewiring, no re-patching:</div>
+               fan, with no rewiring and no re-patching:</div>
                ${r.moves.map(m => `
                  <div style="margin-bottom:10px;">
                    <div style="color:#e8eef5; margin-bottom:3px;">${esc(m.name)}
@@ -722,7 +722,7 @@ class _PhaseBalance {
                  </div>`).join('')}
                ${lockedHtml}
                <div style="margin-top:12px; font-size:11px; color:#7d8894;">Balancing picks WHICH sockets of the fan a partly-filled
-               multi uses — skipping one lands the remainder on different
+               multi uses. Skipping one lands the remainder on different
                legs. Circuits keep wall order across the chosen sockets,
                so the labels still read in order across the wall.
                ${checked}.</div>`;
@@ -734,7 +734,7 @@ class _PhaseBalance {
         el.innerHTML = `
 <div class="modal-content" style="background:#252525; border-radius:8px; padding:0; width:540px; max-width:94vw; margin:80px auto; border:1px solid #3a3a3a; overflow:hidden;">
   <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid #3a3a3a;">
-    <h2 style="margin:0; font-size:15px; letter-spacing:0.5px;">BALANCE PHASE LEGS${distro ? ` — ${esc(distro.name).toUpperCase()}` : ''}</h2>
+    <h2 style="margin:0; font-size:15px; letter-spacing:0.5px;">BALANCE PHASE LEGS${distro ? `: ${esc(this.distroLabel(distro)).toUpperCase()}` : ''}</h2>
     <button class="btn btn-secondary balance-close" style="padding:4px 12px;">✕</button>
   </div>
   <div style="padding:16px 20px; font-size:12px; line-height:1.55;">${body}</div>
@@ -808,14 +808,14 @@ class _PhaseBalance {
   <div style="padding:16px 20px; overflow-y:auto; font-size:12px; color:#c3ccd6; line-height:1.6;">
 
     <p style="margin:0 0 14px;"><strong style="color:#e8eef5;">A distro fed from camlock is three-phase. Every circuit
-    coming off the breakout is single-phase</strong> — whether it sits on one
+    coming off the breakout is single-phase</strong>, whether it sits on one
     hot and a neutral, or across two hots with no neutral. Three-phase never
     reaches a panel. The legs only decide <em>which</em> hots each circuit
     sits across, and therefore how the load spreads over the service.</p>
 
     <div style="background:#2b2f35; border-left:3px solid #4a6fa5; padding:10px 12px; border-radius:0 4px 4px 0; margin:0 0 14px;">
       <div style="color:#e8eef5; margin-bottom:5px;">Two things vary, and they are independent</div>
-      <div style="color:#a6b0bb; margin-bottom:8px;">Every scheme is named for both, coupling first, order second — so
+      <div style="color:#a6b0bb; margin-bottom:8px;">Every scheme is named for both, coupling first, order second, so
       <em>${byId('paired-ll').name}</em> and <em>${byId('rotating-ll').name}</em>
       are the same coupling dealt differently, not two answers to one question.</div>
       <table style="width:100%; border-collapse:collapse;">
@@ -824,7 +824,7 @@ class _PhaseBalance {
           <td style="padding:3px 0; color:#a6b0bb;"><strong style="color:#c3ccd6;">Line-to-neutral</strong> is one hot and
           a neutral (X). <strong style="color:#c3ccd6;">Line-to-line</strong> is two hots and no neutral (XY). This is the
           electrical relationship, and it follows the circuit voltage: line-to-neutral
-          runs at the service divided by √3 — 120 V off a 208 V service, 230 V off a
+          runs at the service divided by √3: 120 V off a 208 V service, 230 V off a
           400 V one.</td>
         </tr>
         <tr>
@@ -840,8 +840,8 @@ class _PhaseBalance {
 
     <div style="background:#3a2626; border-left:3px solid #b34a3a; padding:10px 12px; border-radius:0 4px 4px 0; margin:0 0 14px; color:#e0c0ba;">
       <strong style="color:#f5cdc4;">No standard assigns a circuit to a leg.</strong>
-      ANSI E1.80, USITT RP-1 and NEC 520.68 all cover the <em>pinout</em> —
-      which pin carries which circuit's conductors — and none of them assigns
+      ANSI E1.80, USITT RP-1 and NEC 520.68 all cover the <em>pinout</em>
+      (which pin carries which circuit's conductors), and none of them assigns
       a circuit to a leg. No major distro manufacturer publishes a universal
       mapping. Motion Laboratories' own maintenance manual says to "verify
       the pinout of each output, including that the correct phase is on the
@@ -851,7 +851,7 @@ class _PhaseBalance {
 
     <p style="margin:0 0 14px; color:#a6b0bb;">What every source does agree on is the
     <em>balance goal</em>: two circuits per leg line-to-neutral, two circuits
-    per leg-pair line-to-line. Only the order varies — and the order is exactly
+    per leg-pair line-to-line. Only the order varies, and the order is exactly
     what decides where a partly-filled multi dumps its remainder. Each pattern
     below is documented on a real distro or rack, none is a default.</p>
 
@@ -873,7 +873,7 @@ class _PhaseBalance {
     only in the order the pairs come round: <em>${byId('paired-ll-alt').pattern}</em>
     follows the cyclic order X → Y → Z → X, the way AB → BC → CA does, and
     <em>${byId('paired-ll').pattern}</em> does not. That is the ordering fact,
-    not a ranking — neither is a default, and the only way to know which one a
+    not a ranking. Neither is a default, and the only way to know which one a
     given soca uses is to read it.</p>
 
     <div style="background:#2b2f35; border-left:3px solid #4a6fa5; padding:10px 12px; border-radius:0 4px 4px 0;">
@@ -881,7 +881,7 @@ class _PhaseBalance {
       <div style="color:#a6b0bb;">Imbalance almost always comes from <strong>partly-filled
       multis</strong>, not from the screens. A full 6-circuit multi balances
       itself under any scheme. A multi that stops at 4 or 5 circuits dumps its
-      remainder onto whichever legs come first in the pattern — with paired
+      remainder onto whichever legs come first in the pattern. With paired
       legs that is always X. Fill the multi, move a circuit to another multi,
       or use the rotating pattern if the distro is wired that way.</div>
     </div>
@@ -889,7 +889,7 @@ class _PhaseBalance {
     <div style="margin-top:14px; color:#7d8894; font-size:11px;">
       Per-leg current is a phasor sum, not a straight addition: a line-to-line
       circuit is one load drawing the <em>same</em> current in both its legs, sitting
-      ±30° off each leg's line-to-neutral reference. Imbalance is NEMA-style —
+      ±30° off each leg's line-to-neutral reference. Imbalance is NEMA-style:
       the largest deviation from the average of the three legs.
     </div>
   </div>
@@ -954,7 +954,7 @@ class _PhaseBalance {
               where: 'Two independent rental houses publish this exact map.' },
             { id: 'paired-ll-alt', lineToLine: true, order: 'paired',
               pattern: 'XY YZ ZX',
-              where: 'Same grouping, other pair order — published as the Strand LightRack module pinout.' },
+              where: 'Same grouping, other pair order, published as the Strand LightRack module pinout.' },
             { id: 'rotating-ll', lineToLine: true, order: 'rotating',
               pattern: 'XY XZ YZ',
               where: 'Reported as a competing family. Spreads a partly-filled multi best.' }
@@ -1371,7 +1371,7 @@ class _PhaseBalance {
         const list = names.length === 1 ? names[0]
             : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
         this._toast(`${list} ${names.length === 1 ? 'stays' : 'stay'} where `
-            + `${names.length === 1 ? 'it was' : 'they were'} - the reset would have patched a circuit `
+            + `${names.length === 1 ? 'it was' : 'they were'}: the reset would have patched a circuit `
             + 'through two paired connectors.', true, 5000);
     }
 

@@ -293,7 +293,7 @@ class _LogsRecent {
             // plainly that no filtering happened.
             if (statusEl) {
                 statusEl.style.color = '#f0ad4e';
-                statusEl.textContent = `${bad.join(' and ')} unrecognized — filter not applied`;
+                statusEl.textContent = `${bad.join(' and ')} unrecognized, so the filter is not applied`;
             }
             return { lines, sinceMs, untilMs, valid: false };
         }

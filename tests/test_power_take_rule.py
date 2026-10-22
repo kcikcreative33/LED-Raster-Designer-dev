@@ -663,7 +663,7 @@ def test_head_circuits_on_another_box_are_skipped(page):
     assert read(page, lid) == before, 'a refused drop mutated the wall'
     assert page.evaluate(HIST_LEN_JS) == hist
     said = page.evaluate(SAID_JS)
-    assert 'is already on ' in said and 'clear it first' in said and 'breakout' not in said, said
+    assert 'is already on ' in said and 'Clear it first' in said and 'breakout' not in said, said
 
     page.evaluate(HUSH_JS)
     drop_slot(page, lid, 4, 'dtk', 2, 'SR 2')

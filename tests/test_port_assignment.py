@@ -1212,7 +1212,7 @@ def test_the_fill_stops_at_the_port_under_the_cursor(one_card):
                              'lastIndex': 5})
     assert resp.status_code == 409
     assert resp.get_json()['error'] == (
-        'Every port of Main is already on a processor - clear it first.')
+        'Every port of Main is already on a processor. Clear it first.')
     assert spots(resolve(client, ('Main', 6)), 'Main') == \
         [(card, n) for n in range(1, 7)]
 

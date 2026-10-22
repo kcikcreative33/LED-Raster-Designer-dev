@@ -459,8 +459,15 @@ class _Naming {
     // it (_multiNameFor), so SR-1's boxes are SR-1-1, SR-1-2 and their
     // circuits SR-1-1-1 ..., and a box can never read the same as another
     // distro's circuit. A unique name is unchanged. A distro whose screens
-    // are all hidden is not counted: it neither takes a suffix nor gives
-    // one. Built once per burst, with the naming index.
+    // are all hidden is not counted - it neither takes a suffix nor gives
+    // one - unless it still prints (its feeder is set, or another distro
+    // is fed thru it), and then it counts like any other.
+    //
+    // A suffix never reads as a name another distro already has (owner,
+    // 2026-10-22). With distros named SR, SR and SR-1, the two SRs skip
+    // SR-1 and read SR-2 and SR-3; the one typed SR-1 keeps its own name.
+    // A typed name is the user's and is never changed, so the suffixes
+    // step around it. Built once per burst, with the naming index.
     distroLabel(d) {
         if (!d) return '';
         const own = String(d.name || '').trim() || String(d.id || '');
@@ -486,14 +493,20 @@ class _Naming {
             if (!shown.has(d.id)) continue;
             count.set(own(d), (count.get(own(d)) || 0) + 1);
         }
+        // Every name a distro already reads by: the typed names of all of
+        // them, and each suffix as it is handed out.
+        const taken = new Set(distros.map(own));
         const seen = new Map();
         const out = new Map();
         for (const d of distros) {
             const name = own(d);
             if (!shown.has(d.id) || (count.get(name) || 0) < 2) { out.set(d.id, name); continue; }
-            const i = (seen.get(name) || 0) + 1;
+            let i = seen.get(name) || 0;
+            let label;
+            do { i += 1; label = `${name}-${i}`; } while (taken.has(label));
             seen.set(name, i);
-            out.set(d.id, `${name}-${i}`);
+            taken.add(label);
+            out.set(d.id, label);
         }
         this._distroLabelsFor = this._circuitTailCache;
         this._distroLabelsMap = out;
@@ -511,9 +524,21 @@ class _Naming {
     }
 
     // The distros counted when names are compared: every distro, but one
-    // whose multis are all on hidden screens.
+    // whose multis are all on hidden screens and that does not print
+    // anyway. A distro prints with its feeder set, or when another distro
+    // is fed thru it - the pull sheet lists it, so its name is compared.
     _distroShownIds() {
         const distros = typeof this.getDistros === 'function' ? this.getDistros() : [];
+        const prints = new Set();
+        for (const d of distros) {
+            const f = d && d.feeder && typeof d.feeder === 'object' ? d.feeder : null;
+            if (!f) continue;
+            prints.add(d.id);
+            if (f.from != null && String(f.from) !== String(d.id)) {
+                const src = distros.find(x => x && String(x.id) === String(f.from));
+                if (src) prints.add(src.id);
+            }
+        }
         const fed = new Map();          // distro id -> fed a shown screen
         for (const l of ((this.project && this.project.layers) || [])) {
             if (!l || (l.type || 'screen') !== 'screen') continue;
@@ -523,7 +548,8 @@ class _Naming {
                 fed.set(id, (fed.get(id) || false) || !hidden);
             }
         }
-        return new Set(distros.filter(d => !fed.has(d.id) || fed.get(d.id)).map(d => d.id));
+        return new Set(distros.filter(d => !fed.has(d.id) || fed.get(d.id) || prints.has(d.id))
+            .map(d => d.id));
     }
 
     // Rungs 2-4 of the name ladder for one multi (rung 1, the per-circuit
