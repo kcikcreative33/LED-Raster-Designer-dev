@@ -353,7 +353,7 @@ class _Wiring {
     // Screen Info: the numeric geometry inputs, the Show Look resets,
     // Image Scale, Drop Shadow, Show Numbers and the weight unit.
     _wireScreenInfo() {
-        ['offset-x', 'offset-y', 'cabinet-width', 'cabinet-height',
+        ['offset-x', 'offset-y', 'cabinet-width', 'cabinet-height', 'panel-model-name',
          'screen-columns', 'screen-rows', 'number-size', 'panel-width-mm', 'panel-height-mm', 'panel-weight-kg', 'image-scale', 'image-scale-range',
          'show-offset-x', 'show-offset-y',
          'size-by-dimensions', 'target-width', 'target-height', 'target-unit'].forEach(id => {

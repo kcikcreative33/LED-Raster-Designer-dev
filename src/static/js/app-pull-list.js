@@ -144,12 +144,13 @@
 //     screens of one type on one position (a group's members) merge into
 //     one row, "WALL SL, WALL SR". Blank and hidden cabinets, and hidden
 //     screens, count none. A HALF TILE is a row of its own. The type is
-//     the panel library's name for the screen's cabinet ("ROE Visual
-//     Black Quartz 3.9 Full Tile", found by its size and weight -
-//     catalogPanelNames), its half the library's matching half where it
-//     has one, else "<name> half"; a cabinet the library cannot name is
-//     its size in the show's unit, "500 × 500 mm panel" ('19.7" × 19.7"
-//     panel' in a feet show) and "500 × 250 mm half panel". A square
+//     the panel SAVED on the screen (picked from the panel library, or
+//     named in Screen Info - "ROE Black Quartz 3.9 Full Tile"), its half
+//     the library's matching half saved with it, else "<name> half"; a
+//     show saved before is named by the library where its size and weight
+//     find one model (catalogPanelNames). A cabinet nothing names is its
+//     size, always in mm: "500 × 500 mm panel", "500 × 250 mm half
+//     panel" (owner, 2026-10-22). A square
 //     cabinet's two halves are one cabinet turned, so one row; on any
 //     other the halves are told apart by their sizes (pullPanelTypes).
 //     These rows are side 'panel': the binder's pull pages print them in
@@ -611,23 +612,24 @@ class _PullList {
 
     // ---- panels ------------------------------------------------------------
 
-    // A cabinet's size as a panel row says it, in the show's unit: "500 ×
-    // 500 mm" in a meters show, '19.7" × 19.7"' (inches, to the tenth) in
-    // a feet one; "128 × 128 px" where the screen has no size in mm.
+    // A cabinet's size as a panel row says it: always millimetres, "500 ×
+    // 500 mm", in a feet show too (owner, 2026-10-22) - "128 × 128 px"
+    // where the screen has no size in mm.
     _pullPanelSizeText(wmm, hmm, wpx, hpx) {
         if (!(wmm > 0) || !(hmm > 0)) return `${wpx} × ${hpx} px`;
         const tidy = (n) => String(Math.round(n * 10) / 10);
-        if (typeof this.cableUnit === 'function' && this.cableUnit() === 'm') {
-            return `${tidy(wmm)} × ${tidy(hmm)} mm`;
-        }
-        return `${tidy(wmm / 25.4)}" × ${tidy(hmm / 25.4)}"`;
+        return `${tidy(wmm)} × ${tidy(hmm)} mm`;
     }
 
     // One screen's panel types: { none, height, width } - the names of a
     // full cabinet and of a half tile halved along each axis (halfTile
-    // 'height' halves the height, 'width' the width). The library's names
-    // where it knows the cabinet (catalogPanelNames); a half it has no
-    // match for is "<name> half". A cabinet the library cannot name is its
+    // 'height' halves the height, 'width' the width). The panel SAVED on
+    // the screen first (panelModelName, its halves' names saved with it -
+    // app-presets.js catalogPanelModelFields; a name typed in Screen Info
+    // has no halves of its own), so the rows never wait on the library;
+    // a show saved before is named by the library where it knows the
+    // cabinet (catalogPanelNames); a half with no match is "<name> half".
+    // A cabinet nothing names is its
     // size, "500 × 500 mm panel", its half "500 × 250 mm half panel". A
     // SQUARE cabinet (in mm and in pixels) halved either way is the same
     // cabinet turned, so both halves carry one name; on any other the two
@@ -641,7 +643,19 @@ class _PullList {
         const size = (w, h, pw, ph) => this._pullPanelSizeText(w, h, pw, ph);
         const halfH = size(wmm, hmm / 2, wpx, Math.round(hpx / 2));
         const halfW = size(wmm / 2, hmm, Math.round(wpx / 2), hpx);
-        const lib = typeof this.catalogPanelNames === 'function' ? this.catalogPanelNames(layer) : null;
+        const savedName = String((layer && layer.panelModelName) || '').trim();
+        let lib = null;
+        if (savedName) {
+            // a library model under its own name keeps the halves saved
+            // with it; renamed, or named by hand, its halves are "<name> half"
+            const own = layer.panelModelId && typeof this.catalogModelIdLabel === 'function'
+                && this.catalogModelIdLabel(layer.panelModelId) === savedName;
+            const halves = own && layer.panelModelHalves && typeof layer.panelModelHalves === 'object'
+                ? layer.panelModelHalves : {};
+            lib = { full: savedName, height: halves.height || null, width: halves.width || null };
+        } else if (typeof this.catalogPanelNames === 'function') {
+            lib = this.catalogPanelNames(layer);
+        }
         if (lib && lib.full) {
             if (square) {
                 const one = lib.height || lib.width || `${lib.full} half`;
@@ -683,12 +697,15 @@ class _PullList {
         return out;
     }
 
-    // The panel library loaded, so the panel rows carry its names: what an
-    // export and the editor wait on before they read the list (the
-    // library loads on first use; until it lands a cabinet reads as its
-    // size).
+    // The panel library loaded where a panel row still needs it to be
+    // named: a screen with no panel saved on it (a show saved before
+    // 2026-10-22) is named by matching its figures against the library.
+    // What an export and the editor wait on before they read the list; a
+    // show whose every screen saved its panel waits on nothing.
     async pullPanelCatalogReady() {
         if (this._panelCatalog || typeof this._ensurePanelCatalogData !== 'function') return;
+        const unsaved = this._pullScreens().some(l => !String(l.panelModelName || '').trim());
+        if (!unsaved) return;
         try { await this._ensurePanelCatalogData(); } catch (_) {}
     }
 

@@ -430,6 +430,10 @@ class _Presets {
             if (typeof this._ensurePanelCatalogData === 'function') this._ensurePanelCatalogData();
             return null;
         }
+        // The screen's SAVED panel first (owner, 2026-10-22): its own
+        // half, whatever other models share its figures.
+        const saved = this._catalogSavedPanel(layer);
+        if (saved !== undefined) return saved ? this._catalogHalfOf(saved.mfr, saved.F, axis) : null;
         const w = Number(layer.panel_weight) || 20;
         const kg = (layer.weight_unit || 'kg') === 'lb' ? w / 2.20462 : w;
         const key = [layer.panel_width_mm, layer.panel_height_mm, layer.cabinet_width, layer.cabinet_height,
@@ -461,6 +465,69 @@ class _Presets {
     // BP2V2" (the manufacturer, then the model).
     _catalogModelLabel(mfr, p) {
         return `${String(mfr || '').replace(/_/g, ' ')} ${(p && p.name) || ''}`.trim();
+    }
+
+    // ── The panel SAVED on the screen (owner, 2026-10-22: "It has to be
+    // saved to the screen considering we derive the half tiles the same
+    // way") ──
+    //
+    // A pick from the panel library writes the model onto the screen:
+    //   panelModelId      "<manufacturer>|<model>", the library's own key
+    //                     (the favorites' key) - null for a panel named by
+    //                     hand
+    //   panelModelName    its name as the show knows it, "ROE Black Pearl
+    //                     BP2V2", or what somebody typed in Screen Info
+    //   panelModelHalves  { height, width }: the library's matching half
+    //                     along each axis by name, null where it has none
+    // A hand change of the cabinet's pixels or millimetres forgets all
+    // three (the figures no longer describe that panel); a weight or
+    // watts edit keeps them.
+    catalogModelId(mfr, p) {
+        return `${String(mfr || '')}|${(p && p.name) || ''}`;
+    }
+
+    // The label a saved library id stands for ("ROE|Black Pearl BP2V2" is
+    // "ROE Black Pearl BP2V2"), without the library.
+    catalogModelIdLabel(id) {
+        const text = String(id || '');
+        const cut = text.indexOf('|');
+        return cut < 0 ? '' : this._catalogModelLabel(text.slice(0, cut), { name: text.slice(cut + 1) });
+    }
+
+    // Does the screen carry a saved panel (a library model or a typed name)?
+    hasSavedPanelModel(layer) {
+        return !!(layer && (String(layer.panelModelId || '').trim() || String(layer.panelModelName || '').trim()));
+    }
+
+    // The screen's saved library model in the loaded library: { mfr, F };
+    // null where the screen's panel is one the library does not speak for
+    // (a name typed by hand); undefined where the screen saved none, or a
+    // model this library no longer lists - the caller then finds it by its
+    // figures, as before.
+    _catalogSavedPanel(layer) {
+        if (!this.hasSavedPanelModel(layer)) return undefined;
+        const id = String(layer.panelModelId || '');
+        if (!id) return null;
+        const cut = id.indexOf('|');
+        const mfr = cut < 0 ? '' : id.slice(0, cut);
+        const name = cut < 0 ? '' : id.slice(cut + 1);
+        const F = ((this._panelCatalog && this._panelCatalog[mfr]) || []).find(p => p && p.name === name);
+        return F ? { mfr, F } : undefined;
+    }
+
+    // What a library pick saves on the screen (see above).
+    catalogPanelModelFields(panel) {
+        const mfr = (panel && (panel._mfr || panel.manufacturer)) || '';
+        const F = mfr && this._panelCatalog
+            ? ((this._panelCatalog[mfr] || []).find(p => p && p.name === panel.name) || panel) : panel;
+        return {
+            panelModelId: this.catalogModelId(mfr, panel),
+            panelModelName: this._catalogModelLabel(mfr, panel),
+            panelModelHalves: {
+                height: this._panelCatalog ? this._catalogHalfName(mfr, F, 'height') : null,
+                width: this._panelCatalog ? this._catalogHalfName(mfr, F, 'width') : null,
+            },
+        };
     }
 
     // The library's perfect half of full model F, halved along `axis`, by
@@ -547,6 +614,9 @@ class _Presets {
             if (typeof this._ensurePanelCatalogData === 'function') this._ensurePanelCatalogData();
             return null;
         }
+        // The screen's SAVED panel first, as the half's weight reads it.
+        const saved = this._catalogSavedPanel(layer);
+        if (saved !== undefined) return saved ? this._catalogHalfWattsOf(saved.mfr, saved.F, axis) : null;
         const w = Number(layer.panel_weight) || 20;
         const kg = (layer.weight_unit || 'kg') === 'lb' ? w / 2.20462 : w;
         const key = [layer.panel_width_mm, layer.panel_height_mm, layer.cabinet_width, layer.cabinet_height,
@@ -564,31 +634,38 @@ class _Presets {
                         || !same(F.pixels_w, layer.cabinet_width) || !same(F.pixels_h, layer.cabinet_height)) continue;
                 if (!(num(F.weight_kg) > 0) || Math.abs(num(F.weight_kg) - kg) > 0.006) continue;
                 found++;
-                const series = this._catalogSizeToken(F, 'full');
-                const [fw, fh, fpw, fph, fp] = dims(F);
-                if (series === null || !(num(F.watts_max) > 0) || ![fw, fh, fpw, fph, fp].every(v => v > 0)) {
-                    short = true;
-                    continue;
-                }
-                const mine = new Set();
-                for (const H of this._panelCatalog[mfr] || []) {
-                    if (H === F) continue;
-                    const [hw, hh, hpw, hph, hp] = dims(H);
-                    if (![hw, hh, hpw, hph, hp].every(v => v > 0) || hp !== fp) continue;
-                    const halved = axis === 'width'
-                        ? (hh === fh && hph === fph && hw * 2 === fw && hpw * 2 === fpw)
-                        : (hw === fw && hpw === fpw && hh * 2 === fh && hph * 2 === fph);
-                    if (!halved || !(num(H.watts_max) > 0)) continue;
-                    if (this._catalogSizeToken(H, 'half') !== series) continue;
-                    mine.add(num(H.watts_max) / num(F.watts_max));
-                }
-                if (mine.size !== 1) { short = true; continue; }
-                ratios.add([...mine][0]);
+                const ratio = this._catalogHalfWattsOf(mfr, F, axis);
+                if (ratio === null) { short = true; continue; }
+                ratios.add(ratio);
             }
         }
         const answer = (found && !short && ratios.size === 1) ? [...ratios][0] : null;
         this._halfWattsCache.set(key, answer);
         return answer;
+    }
+
+    // Full model F's perfect half's share of its watts along `axis` (same
+    // series, exactly half, the same pitch, watts on both), or null where
+    // there is none or the halves disagree.
+    _catalogHalfWattsOf(mfr, F, axis) {
+        const num = (v) => (v === null || v === undefined || v === '' ? NaN : Number(v));
+        const dims = (p) => ['width_mm', 'height_mm', 'pixels_w', 'pixels_h', 'pitch_mm'].map(k => num(p[k]));
+        const series = this._catalogSizeToken(F, 'full');
+        const [fw, fh, fpw, fph, fp] = dims(F);
+        if (series === null || !(num(F.watts_max) > 0) || ![fw, fh, fpw, fph, fp].every(v => v > 0)) return null;
+        const mine = new Set();
+        for (const H of (this._panelCatalog && this._panelCatalog[mfr]) || []) {
+            if (H === F) continue;
+            const [hw, hh, hpw, hph, hp] = dims(H);
+            if (![hw, hh, hpw, hph, hp].every(v => v > 0) || hp !== fp) continue;
+            const halved = axis === 'width'
+                ? (hh === fh && hph === fph && hw * 2 === fw && hpw * 2 === fpw)
+                : (hw === fw && hpw === fpw && hh * 2 === fh && hph * 2 === fph);
+            if (!halved || !(num(H.watts_max) > 0)) continue;
+            if (this._catalogSizeToken(H, 'half') !== series) continue;
+            mine.add(num(H.watts_max) / num(F.watts_max));
+        }
+        return mine.size === 1 ? [...mine][0] : null;
     }
 
     _loadPanelCatalog() {
@@ -1062,6 +1139,13 @@ class _Presets {
             if (Number.isFinite(n)) out[k] = n;
         });
         if (data.weight_unit) out.weight_unit = data.weight_unit;
+        // The panel the pick names (a library model, or a preset saved from
+        // a screen that had one) - and none for a pick that names none, so
+        // the screen never keeps the old cabinet's name.
+        out.panelModelId = data.panelModelId || null;
+        out.panelModelName = data.panelModelName || null;
+        out.panelModelHalves = data.panelModelHalves && typeof data.panelModelHalves === 'object'
+            ? { height: data.panelModelHalves.height || null, width: data.panelModelHalves.width || null } : null;
         return out;
     }
 
@@ -1085,13 +1169,16 @@ class _Presets {
             .filter(l => l && (l.type || 'screen') === 'screen');
         if (targets.length === 0) return;
         const fields = this._cabinetFieldsFrom(data);
-        if (Object.keys(fields).length === 0) return;
+        const MODEL = ['panelModelId', 'panelModelName', 'panelModelHalves'];
+        if (!Object.keys(fields).some(k => !MODEL.includes(k))) return;
         // A locked screen keeps its cabinet (the owner's ruling,
         // 2026-10-16): the unlocked ones change, and a locked one is named
         // only when the pick would really change it - one that already has
         // this cabinet changes nothing and says nothing.
-        const changes = (l) => Object.keys(fields)
-            .some(k => String(l[k] ?? '') !== String(fields[k]));
+        const differs = (a, b) => ((a && typeof a === 'object') || (b && typeof b === 'object')
+            ? JSON.stringify(a ?? null) !== JSON.stringify(b ?? null)
+            : String(a ?? '') !== String(b ?? ''));
+        const changes = (l) => Object.keys(fields).some(k => differs(l[k], fields[k]));
         this._showLockedError(targets.filter(l => l.locked && changes(l)));
         targets = targets.filter(l => !l.locked);
         if (targets.length === 0) return;
@@ -1133,7 +1220,9 @@ class _Presets {
             panel_height_mm: panel.height_mm,
             panel_weight: weight,
             weight_unit: weightUnit,
-            _presetName: `${(panel._mfr || panel.manufacturer || '').replace(/_/g, ' ')} ${panel.name}`.trim()
+            _presetName: `${(panel._mfr || panel.manufacturer || '').replace(/_/g, ' ')} ${panel.name}`.trim(),
+            // the model itself, saved on the screen (catalogPanelModelFields)
+            ...this.catalogPanelModelFields(panel)
         };
         if (panel.watts_max != null) data.panelWatts = panel.watts_max;
         return data;

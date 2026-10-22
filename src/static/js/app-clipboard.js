@@ -240,6 +240,11 @@ class _Clipboard {
             panel_height_mm: layer.panel_height_mm,
             panel_weight: layer.panel_weight,
             weight_unit: layer.weight_unit,
+            // the panel saved on the screen (2026-10-22): a copy hangs the
+            // same panel
+            panelModelId: layer.panelModelId || null,
+            panelModelName: layer.panelModelName || null,
+            panelModelHalves: layer.panelModelHalves ? deep(layer.panelModelHalves) : null,
             halfFirstColumn: !!layer.halfFirstColumn,
             halfLastColumn: !!layer.halfLastColumn,
             halfFirstRow: !!layer.halfFirstRow,
