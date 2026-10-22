@@ -3335,16 +3335,16 @@
             body: 'Power plans the electrical. Voltage, amperage and watts per cabinet set the cabinets a circuit carries and the circuits required.',
             act: function (t) {
                 return t.click('[data-mode="power"]').then(function () {
-                    return t.type('#power-panel-watts', '200', { enter: true });
+                    return t.type('#power-panel-watts', '150', { enter: true });
                 }).then(function () {
-                    return t.wait(function () { var w = wall(); return w && Number(w.panelWatts) === 200; });
+                    return t.wait(function () { var w = wall(); return w && Number(w.panelWatts) === 150; });
                 });
             },
             check: function () {
                 var w = wall();
-                if (!w || Number(w.panelWatts) !== 200) return null;
+                if (!w || Number(w.panelWatts) !== 150) return null;
                 var req = $('#power-circuits-required') ? $('#power-circuits-required').textContent.trim() : '?';
-                return '200 W per cabinet at 208 V, 20 A. Circuits required: ' + req + '.';
+                return '150 W per cabinet at 208 V, 20 A. Circuits required: ' + req + '.';
             }
         },
         // The panel input (1.5.4, app-power.js panelInput): a TRUE1 or
@@ -3882,14 +3882,15 @@
             }
         },
         // 2fers and 3fers, straight through (the owner's rulings,
-        // 2026-10-19). At 200 W a cabinet a row of the demo wall is more
-        // than half a circuit, so no two rows ever share; two columns fit
-        // one (a 208V / 20A circuit packs to 80%, 3,328 W, 2026-10-22). So
-        // the section turns the circuits down the columns, shares them in
-        // automatic mode as 2fers, takes one over by hand (it stays a
-        // 2fer), turns custom mode on (it starts empty), fills the wall as
-        // custom runs (the same 2fers as automatic) and deals two of them
-        // again with a sweep.
+        // 2026-10-19). At 150 W a cabinet a row of the demo wall (1,800 W)
+        // is more than half a circuit, so no two rows ever share; a column
+        // (900 W) is under a third of one (a 208V / 20A circuit packs to
+        // 80%, 3,328 W, 2026-10-22; the owner kept the 3fer story with
+        // lighter demo panels). So the section turns the circuits down the
+        // columns, shares them in automatic mode, takes one 3fer over by
+        // hand (it stays a 3fer), turns custom mode on (it starts empty),
+        // fills the wall as custom runs (the same 3fers as automatic) and
+        // re-deals two of them as 2fers with a sweep.
         powerColumns: {
             target: '.power-flow-pattern-btn[data-pattern="tl-v"]', place: 'right', title: 'Circuits down the columns',
             avoid: ['.power-flow-pattern-btn[data-pattern="tl-v"]'],
@@ -3938,7 +3939,7 @@
             since: '1.5.3',
             target: '#main-canvas', place: 'top', title: 'Take over a 3fer',
             avoid: [function () { var w = wall(); return w ? T.cabinetPoint(w, { circuit: 1, mid: true, raw: true }) : null; }],
-            body: 'Hold Alt and click a circuit to take it over and redraw it by hand. A shared circuit you take over keeps its runs, so a 2fer stays a 2fer.',
+            body: 'Hold Alt and click a circuit to take it over and redraw it by hand. A 3fer you take over keeps its three runs, so it stays a 3fer.',
             before: function () { switchView('power'); },
             act: function (t) {
                 var w = wall();
@@ -4002,7 +4003,7 @@
                 var paths = w.powerCustomPaths || {};
                 var drawn = Object.keys(paths).filter(function (k) { return (paths[k] || []).length; }).length;
                 if (drawn || (w.powerCustomOverrides || []).length) return null;
-                return mem.taken ? 'Custom mode is on and nothing is drawn: the taken-over circuit went with the rest.'
+                return mem.taken ? 'Custom mode is on and nothing is drawn: the taken-over 3fer went with the rest.'
                     : 'Custom mode is on and nothing is drawn yet.';
             }
         },
@@ -4015,7 +4016,7 @@
             since: '1.5.3',
             target: '.power-flow-pattern-btn[data-pattern="tl-v"]', place: 'right', title: 'Draw the circuits',
             avoid: ['.power-flow-pattern-btn[data-pattern="tl-v"]', '#main-canvas'],
-            body: 'Drag across the cabinets, then press Top-left, vertical first. With sharing on you get what automatic mode makes: a run per column (or per row on a wall cabled across), neighbors sharing a 2fer while the load fits.',
+            body: 'Drag across the cabinets, then press Top-left, vertical first. With sharing on you get what automatic mode makes: a run per column (or per row on a wall cabled across), neighbors sharing a 3fer while the load fits.',
             before: function () { switchView('power'); },
             act: function (t) {
                 var w = wall();
