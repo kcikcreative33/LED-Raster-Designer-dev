@@ -139,7 +139,8 @@ SEED_JS = """async (spec) => {
             // screen is refused (owner, 2026-10-16: 110, 115 and 120 are 120V;
             // anything else that does not fit the system is refused). 110V x 5A
             // still fits five 100W cabinets a circuit, so the plans are unchanged.
-            powerVoltage: '110', powerAmperage: '5', panelWatts: '100',
+            // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+            powerVoltage: '110', powerAmperage: '6.25', panelWatts: '100',
             powerOrganized: true, powerMaximize: false,
             powerFlowPattern: 'tl-v',
         }, s.fields || {});

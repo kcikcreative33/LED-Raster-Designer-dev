@@ -294,8 +294,8 @@ class _PixelSelect {
                 ? `${undone[0].layer.name}: ` : '';
             this._toast(
                 `Custom mode off. ${who}${this._runListText(first.runIds, undone[0].layer)
-                } drew ${first.load.amps.toFixed(1)} A on a `
-                + `${+first.load.cap.toFixed(1)} A circuit, so the share was `
+                } drew ${first.load.amps.toFixed(1)} A on `
+                + `${this.circuitLimitText(undone[0].layer)}, so the share was `
                 + 'undone'
                 + (count > 1 ? ` (${count - 1} more like it)` : '')
                 + '. A share past the amps holds only in custom mode.',

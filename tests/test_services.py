@@ -94,7 +94,8 @@ SEED_JS = """async () => {
 SETUP_JS = """(o) => {
     const app = window.app;
     for (const l of app.project.layers) {
-        Object.assign(l, { powerVoltage: 120, powerAmperage: 20, panelWatts: o.watts || 198,
+        // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+        Object.assign(l, { powerVoltage: 120, powerAmperage: 25, panelWatts: o.watts || 198,
                            powerSocaDistro: {}, powerSocaNumber: {}, powerSocaPhasePos: {},
                            powerSocaLengths: {}, powerSocaSplits: [], powerSocaNames: {},
                            powerBreakoutType: null, locked: false });

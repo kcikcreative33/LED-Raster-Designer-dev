@@ -700,7 +700,7 @@ def test_clear_run_leaves_a_locked_peers_run_alone_and_says_so(page, kind):
                                  {'row': 0, 'col': 0}], out
     assert out['sb'].get('1') == out['b'].get('1'), out
     peer = page.evaluate("(id) => window.__gi.layer(id).name", ids[1])
-    assert toasts == ['%s is locked - unlock it to change it.' % peer], toasts
+    assert toasts == ['%s is locked. Unlock it to change it.' % peer], toasts
 
 
 @pytest.mark.parametrize('kind', ['power', 'data'])
@@ -731,7 +731,7 @@ def test_clear_all_leaves_a_locked_member_alone_and_says_so(page, kind):
     assert out['sb']['paths'] == expected_b, out
     assert out['steps'] - n0 == 1, out
     peer = page.evaluate("(id) => window.__gi.layer(id).name", ids[1])
-    assert toasts == ['%s is locked - unlock it to change it.' % peer], toasts
+    assert toasts == ['%s is locked. Unlock it to change it.' % peer], toasts
 
 
 @pytest.mark.parametrize('kind', ['power', 'data'])
@@ -758,7 +758,7 @@ def test_clear_run_on_a_locked_current_screen_changes_nothing_and_says_why(page,
     assert out['runs'] == before, (before, out)
     assert out['steps'] == n0, out
     name = page.evaluate("(id) => window.__gi.layer(id).name", ids[0])
-    assert _toasts(page) == ['%s is locked - unlock it to change it.' % name], _toasts(page)
+    assert _toasts(page) == ['%s is locked. Unlock it to change it.' % name], _toasts(page)
 
 
 @pytest.mark.parametrize('kind', ['power', 'data'])
@@ -801,7 +801,7 @@ def test_clear_all_that_clears_nothing_takes_no_step_and_makes_no_put(page, kind
                sbPaths: sb[paths] };
     }""", [ids, k['paths'], k['index'], k['overrides']])
     peer = page.evaluate("(id) => window.__gi.layer(id).name", ids[1])
-    assert toasts == ['%s is locked - unlock it to change it.' % peer], toasts
+    assert toasts == ['%s is locked. Unlock it to change it.' % peer], toasts
     assert out['steps'] == n0, 'Clear All that cleared nothing took %d undo steps' % (out['steps'] - n0)
     layer_puts = [u for u in out['puts'] if u.endswith('/api/layer/%d' % ids[0])]
     assert layer_puts == [], out['puts']

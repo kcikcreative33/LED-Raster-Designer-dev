@@ -405,6 +405,21 @@ def test_each_stage_alone_composes_back_to_the_flat_render(page):
     layer order gives the flat render (to a rounding level, alpha
     compositing being done in 8 bits twice instead of once)."""
     pg, errors = page
+    # The default screen (8 x 200 W rows at 110 V / 15 A) cannot fit a row
+    # on a circuit held to 80% (2026-10-22), and the red POWER ERROR badge
+    # is painted over every stage. A 20 A circuit routes it, so the Power
+    # stage is the circuits this test is about.
+    saved = pg.evaluate("""() => window.app.project.layers.map(l => {
+        const was = l.powerAmperage; l.powerAmperage = 20; return was; })""")
+    try:
+        _stages_compose_back(pg)
+    finally:
+        pg.evaluate("""(saved) => window.app.project.layers.forEach((l, i) => {
+            l.powerAmperage = saved[i]; })""", saved)
+    assert errors == []
+
+
+def _stages_compose_back(pg):
     for view in ('pixel-map', 'cabinet-id', 'data-flow', 'power'):
         items = pg.evaluate(CAPTURE_JS, [[view], 'elements', True])
         assert len(items) == 1 and items[0]['filterAfter'] is None
@@ -434,7 +449,6 @@ def test_each_stage_alone_composes_back_to_the_flat_render(page):
         by = {s['name']: _decode(s['image_data']) for s in item['stages']}
         panels_alpha = by['Panels'].getchannel('A').getbbox()
         assert panels_alpha is not None
-    assert errors == []
 
 
 def test_the_default_export_posts_what_it_always_did_and_elements_reads_back_as_groups(page):

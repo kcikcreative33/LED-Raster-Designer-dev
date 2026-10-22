@@ -99,7 +99,8 @@ window.__sp = {
             cabinet_width: 128, cabinet_height: 128,
             offset_x: 0, offset_y: 0,
             panel_weight: 20, weight_unit: 'kg',
-            panelWatts: 200, powerVoltage: 208, powerAmperage: 20,
+            // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+            panelWatts: 200, powerVoltage: 208, powerAmperage: 25,
             processorType: 'brompton', bitDepth: 8, frameRate: 60,
             lowLatency: false,
             flowPattern: 'tl-h', portMappingMode: 'organized',
@@ -127,7 +128,7 @@ window.__sp = {
     column_wall(cols, extra) {
         return this.screen(Object.assign({
             id: 1, name: 'Wall', columns: cols, rows: 5,
-            panelWatts: 100, powerVoltage: 100, powerAmperage: 15,
+            panelWatts: 100, powerVoltage: 100, powerAmperage: 18.75,
             powerFlowPattern: 'tl-v', powerOrganized: true,
         }, extra || {}));
     },
@@ -145,7 +146,7 @@ window.__sp = {
         const s = this.screen(Object.assign({
             id: 1, name: 'Tower', columns: 6, rows: 11,
             cabinet_width: 104, cabinet_height: 208,
-            panelWatts: 344, powerVoltage: 208, powerAmperage: 20,
+            panelWatts: 344, powerVoltage: 208, powerAmperage: 25,
             powerFlowPattern: 'tr-h', powerOrganized: true,
         }, extra || {}));
         s.panels.forEach(p => {
@@ -216,7 +217,7 @@ def test_max_ways_caps_the_gang_even_when_watts_would_fit(page):
     out = page.evaluate("""() => {
         const sp = window.__sp;
         const S = sp.column_wall(4, {
-            powerAmperage: 20,  // 100V x 20A / 100W = 20-tile capacity
+            powerAmperage: 25,  // 100V x 25A at 80% / 100W = 20-tile capacity
             powerSplitters: sp.splitters(3),
         });
         return sp.withProject({ layers: [S] }, () =>
@@ -230,7 +231,7 @@ def test_raising_max_ways_lets_the_fourth_run_join(page):
     out = page.evaluate("""() => {
         const sp = window.__sp;
         const S = sp.column_wall(4, {
-            powerAmperage: 20,
+            powerAmperage: 25,
             powerSplitters: sp.splitters(4),
         });
         return sp.withProject({ layers: [S] }, () =>
@@ -247,7 +248,7 @@ def test_capacity_allows_only_2fers_when_three_runs_exceed_the_circuit(page):
     out = page.evaluate("""() => {
         const sp = window.__sp;
         const S = sp.column_wall(4, {
-            powerAmperage: 10,  // 100V x 10A / 100W = 10-tile capacity
+            powerAmperage: 12.5,  // 100V x 12.5A at 80% / 100W = 10-tile capacity
             powerSplitters: sp.splitters(3),
         });
         return sp.withProject({ layers: [S] }, () =>
@@ -265,7 +266,7 @@ def test_non_adjacent_runs_never_gang_across_a_big_middle_run(page):
     out = page.evaluate("""() => {
         const sp = window.__sp;
         const S = sp.screen({ id: 1, name: 'Adj', columns: 3, rows: 12,
-            panelWatts: 100, powerVoltage: 100, powerAmperage: 15,
+            panelWatts: 100, powerVoltage: 100, powerAmperage: 18.75,
             powerFlowPattern: 'tl-v', powerOrganized: true,
             powerSplitters: sp.splitters(3) });
         // shape the wall: columns 1 and 3 keep 5 tiles, column 2 keeps 12
@@ -391,8 +392,8 @@ TOWER_JS = """() => {
     const shape = (S) => sp.withProject({ layers: [S] }, () => {
         const app = window.app;
         const res = app.calculatePowerAssignments(S);
-        const cap = (parseFloat(S.powerVoltage) || 0)
-            * (parseFloat(S.powerAmperage) || 0);
+        // 80% of the breaker on a US screen (circuitCapacity)
+        const cap = app.circuitCapacityWatts(S);
         return {
             panels: (res.circuits || []).map(c => c.length),
             rows: (res.circuits || []).map(c =>
@@ -545,7 +546,7 @@ def test_a_manual_edit_writes_its_own_space_and_clears_the_foreign_one(page):
             paths[r + 1] = [0, 1, 2, 3, 4, 5].map(c => ({ row: r, col: c }));
         }
         const S = sp.srrr_tower({
-            powerAmperage: 40,
+            powerAmperage: 50,
             powerCustomPaths: paths,
             powerSplitters: sp.splitters(3, {
                 merge: [[7, 8, 9], [10, 11, 12]], split: [] }),
@@ -618,7 +619,7 @@ def test_engine_output_with_field_absent_equals_pre_change_capture(page):
         const sp = window.__sp;
         const battery = {
             org_v: sp.screen({ id: 1, name: 'OrgV', columns: 6, rows: 5,
-                panelWatts: 100, powerVoltage: 100, powerAmperage: 15,
+                panelWatts: 100, powerVoltage: 100, powerAmperage: 18.75,
                 powerFlowPattern: 'tl-v', powerOrganized: true }),
             org_h: sp.screen({ id: 2, name: 'OrgH', columns: 4, rows: 3,
                 panelWatts: 500, powerFlowPattern: 'tl-h', powerOrganized: true }),
@@ -627,7 +628,7 @@ def test_engine_output_with_field_absent_equals_pre_change_capture(page):
             greedy: sp.screen({ id: 4, name: 'Greedy', columns: 4, rows: 3,
                 panelWatts: 500 }),
             org_br: sp.screen({ id: 5, name: 'OrgBR', columns: 6, rows: 5,
-                panelWatts: 100, powerVoltage: 100, powerAmperage: 15,
+                panelWatts: 100, powerVoltage: 100, powerAmperage: 18.75,
                 powerFlowPattern: 'br-v', powerOrganized: true }),
         };
         const out = {};
@@ -1090,7 +1091,9 @@ def test_mixed_selection_shows_the_panel_screen_and_the_tick_settles_both(page, 
 # in the toggle's one history entry, with a toast saying why.
 #
 # The column wall: 3 column runs of 5 tiles at 100 W = 500 W = 5 A each on
-# 100 V. Two runs are 10 A - past an 8 A circuit, within a 12 A one.
+# 100 V. Two runs are 10 A - past an 8 A circuit, within a 12 A one. A US
+# circuit carries 80% of its breaker (2026-10-22), so those are 10 A and
+# 15 A breakers (and the custom wall's 3 A circuit a 3.75 A one).
 
 # The share entry at circuit `num`'s chip in full: label, disabled, title,
 # and whether .run() exists (a refused entry carries none).
@@ -1155,13 +1158,13 @@ NAMES_JS = """(nums) => {
 
 
 def test_auto_mode_refuses_a_share_past_the_amps(page, panel):
-    """Automatic mode, an 8 A circuit, 5 A runs: the Share item is on the
+    """Automatic mode, an 8 A circuit (80% of 10 A), 5 A runs: the Share item is on the
     menu disabled, its title the reason with the figures; the swept "2fer
     them", which never deals a group past the amps (the owner's ruling,
     2026-10-19), finds no two runs that fit and stays disabled naming the
     first pair; and the model writes nothing for either - the store stays
     empty."""
-    panel({'powerAmperage': 8,
+    panel({'powerAmperage': 10,
            'powerSplitters': {'enabled': True, 'maxWays': 3,
                               'manual': {'merge': [], 'split': []}}})
     assert page.evaluate(DOCK_INSTALL_JS) == 3, 'fixture: three circuit chips'
@@ -1174,14 +1177,14 @@ def test_auto_mode_refuses_a_share_past_the_amps(page, panel):
     assert share['disabled'] and not share['runnable'], (
         f"a share past the amps must be refused in automatic mode: {share}")
     names = page.evaluate(NAMES_JS, [1, 2])
-    assert share['title'] == (f'{names} together draw 10.0 A on a 8 A '
-                              'circuit. ' + OVER_TEXT), share
+    assert share['title'] == (f'{names} together draw 10.0 A on a 10 A circuit '
+                              'held to 8 A (80%). ' + OVER_TEXT), share
 
     batch = page.evaluate(BATCH_PROBE_JS, [1, 2])
     assert batch and batch[0]['label'].startswith('2fer them'), batch
     assert batch[0]['disabled'], f"a deal that shares nothing is refused: {batch}"
-    assert batch[0]['title'] == (f'{names} together draw 10.0 A on a 8 A '
-                                 'circuit, so ' + BATCH_NONE_TEXT), batch
+    assert batch[0]['title'] == (f'{names} together draw 10.0 A on a 10 A circuit '
+                                 'held to 8 A (80%), so ' + BATCH_NONE_TEXT), batch
 
     # a 3fer over all three runs: no two of them fit, so it names the
     # first pair that does not
@@ -1206,7 +1209,7 @@ def test_auto_mode_shares_runs_that_fit(page, panel):
     """Automatic mode, a 12 A circuit, the runs pinned apart: two 5 A runs
     fit, so Share is live with the figure in its title and a click shares
     them; the batch deal is live too."""
-    panel({'powerAmperage': 12,
+    panel({'powerAmperage': 15,
            'powerSplitters': {'enabled': True, 'maxWays': 3,
                               'manual': {'merge': [], 'split': [1, 2, 3]}}})
     assert page.evaluate(DOCK_INSTALL_JS) == 3
@@ -1231,7 +1234,7 @@ def test_custom_mode_honors_a_share_past_the_amps_and_flags_over(page, panel):
     wears the over fill. The swept "2fer them" is the exception: it never
     deals a group past the amps, custom mode included (the owner's
     ruling, 2026-10-19), so over these runs it stays disabled."""
-    panel(dict(CUSTOM3, powerAmperage=3))
+    panel(dict(CUSTOM3, powerAmperage=3.75))
     assert page.evaluate(DOCK_INSTALL_JS) == 3
     share = page.evaluate(SHARE_FULL_PROBE_JS, 1)
     assert share['found'] and not share['disabled'] and share['runnable'], (
@@ -1241,8 +1244,8 @@ def test_custom_mode_honors_a_share_past_the_amps_and_flags_over(page, panel):
     assert batch and batch[0]['disabled'], (
         f"the batch verb never deals past the amps, even in custom: {batch}")
     names = page.evaluate(NAMES_JS, [1, 2])
-    assert batch[0]['title'] == (f'{names} together draw 4.0 A on a 3 A '
-                                 'circuit, so ' + BATCH_NONE_TEXT), batch
+    assert batch[0]['title'] == (f'{names} together draw 4.0 A on a 3.75 A circuit '
+                                 'held to 3 A (80%), so ' + BATCH_NONE_TEXT), batch
 
     assert page.evaluate(SHARE_RUN_JS, [1, 'share']) is True
     state = page.evaluate(SPLIT_STATE_JS)
@@ -1277,7 +1280,7 @@ def test_leaving_custom_mode_unshares_a_share_past_the_amps(page, panel):
                       'powerSplitters': {'enabled': True, 'maxWays': 3,
                                          'manual': {'merge': [[1, 2]], 'split': [],
                                                     'space': 'auto'}}})
-    install(8)
+    install(10)
     before = page.evaluate(SPLIT_STATE_JS)
     assert before['custom'] and before['merge'] == [[1, 2]], before
     assert before['runIds'][0] == [1, 2] and before['over'] == [True], (
@@ -1302,11 +1305,11 @@ def test_leaving_custom_mode_unshares_a_share_past_the_amps(page, panel):
     assert out['added'] == 1 and out['action'] == 'Power Custom Mode Toggle', (
         f"the un-share rides in the toggle's one history entry: {out}")
     names = page.evaluate(NAMES_JS, [1, 2])
-    assert out['toast'] and f'{names} drew 10.0 A on a 8 A circuit' in out['toast'], out
+    assert out['toast'] and f'{names} drew 10.0 A on a 10 A circuit held to 8 A (80%)' in out['toast'], out
     assert 'holds only in custom mode' in out['toast'], out
 
     # a share within the amps survives the switch untouched, no toast
-    install(12)
+    install(15)
     kept = page.evaluate("""() => {
         const app = window.app;
         const host = document.getElementById('app-toast-host');

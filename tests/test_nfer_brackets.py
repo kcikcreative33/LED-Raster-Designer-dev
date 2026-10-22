@@ -59,7 +59,8 @@ BUILD_JS = """async (rot) => {
             row: r, col: c, x: o.offset_x + c * o.cabinet_width, y: o.offset_y + r * o.cabinet_height,
             width: o.cabinet_width, height: o.cabinet_height, hidden: false, blank: false, halfTile: 'none' });
         return Object.assign({ type: 'screen', visible: true, cabinet_width: 128, cabinet_height: 128,
-            panel_weight: 20, weight_unit: 'kg', panelWatts: 100, powerVoltage: 100, powerAmperage: 15,
+            // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+            panel_weight: 20, weight_unit: 'kg', panelWatts: 100, powerVoltage: 100, powerAmperage: 18.75,
             // stated, not implied: a screen with no breakout takes the
             // PREFERENCE (True1 as shipped), not Edison (2026-09-22)
             powerBreakoutType: 'soca-edison',
@@ -77,7 +78,7 @@ BUILD_JS = """async (rot) => {
         // PLAIN: a 5A circuit holds one row exactly, so with the splitters
         // off every row is a circuit of its own - five unshared discs.
         screen({ id: 3, name: 'PLAIN', columns: 5, rows: 5, offset_x: 1800, offset_y: 0,
-                 powerFlowPattern: 'tl-h', powerAmperage: 5, rotation: rot || 0 }),
+                 powerFlowPattern: 'tl-h', powerAmperage: 6.25, rotation: rot || 0 }),
     ];
     const j = (method, url, body) => fetch(url, {method, headers: {'Content-Type': 'application/json'},
         body: body === undefined ? undefined : JSON.stringify(body)}).then(r => r.json());

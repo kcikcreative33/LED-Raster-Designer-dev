@@ -4,7 +4,7 @@ The owner's ruling (2026-10-16): "If it's locked it stays locked and
 unchanged until unlocked. If you try to change it shows an error dialog and
 tells why it can't change." The lock guards EVERYTHING, not only position:
 every action that would modify a locked screen leaves it alone and shows the
-one locked error naming it ("<name> is locked - unlock it to change it."),
+one locked error naming it ("<name> is locked. Unlock it to change it."),
 the unlocked screens of the same action still take it, and an action that
 would change nothing says nothing. SELECTING a locked screen or its cabinets
 is not a change, so it is never an error.
@@ -100,9 +100,9 @@ MODIFIER = "Meta" if sys.platform == "darwin" else "Control"
 
 def locked_msg(*names):
     if len(names) == 1:
-        return f'{names[0]} is locked - unlock it to change it.'
+        return f'{names[0]} is locked. Unlock it to change it.'
     return (', '.join(names[:-1]) + ' and ' + names[-1]
-            + ' are locked - unlock them to change them.')
+            + ' are locked. Unlock them to change them.')
 
 
 # Three ungrouped 2x2 screens of 128 px cabinets, side by side and apart.

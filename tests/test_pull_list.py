@@ -332,19 +332,20 @@ SEED_JS = """async () => {
     await j('PUT', '/api/project', proj);
     const add = (body) => j('POST', '/api/layer/add', body);
     await add({name: 'WALL-A', columns: 4, rows: 3, cabinet_width: 200, cabinet_height: 200,
-               powerVoltage: 208, powerAmperage: 10, panelWatts: 200,
+               // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+               powerVoltage: 208, powerAmperage: 12.5, panelWatts: 200,
                powerFlowPattern: 'tl-h', powerOrganized: true, flowPattern: 'tl-h',
                dataJumpV: 2, dataJumpH: 1, powerJumpV: 2, powerJumpH: 1,
                processorType: 'novastar-armor'});
     await add({name: 'WALL-B', columns: 4, rows: 3, cabinet_width: 200, cabinet_height: 200,
-               powerVoltage: 208, powerAmperage: 10, panelWatts: 250,
+               powerVoltage: 208, powerAmperage: 12.5, panelWatts: 250,
                powerFlowPattern: 'tl-h', powerOrganized: true, flowPattern: 'tl-h',
                processorType: 'novastar-armor'});
     await add({name: 'CENTER', columns: 3, rows: 5, cabinet_width: 128, cabinet_height: 128,
                // stated, not implied: a screen with no breakout takes the
                // PREFERENCE (True1 as shipped), not Edison (2026-09-22)
                powerVoltage: 110, powerBreakoutType: 'soca-edison',
-               powerAmperage: 15, panelWatts: 100,
+               powerAmperage: 18.75, panelWatts: 100,
                powerFlowPattern: 'tl-v', powerOrganized: true, flowPattern: 'tl-h',
                powerSplitters: {enabled: true, maxWays: 2, manual: {merge: [], split: []}},
                dataJumpV: 1.5, dataJumpH: null, powerJumpV: 3, powerJumpH: null,
@@ -809,7 +810,7 @@ def test_jumpers_count_each_link_by_its_direction_horizontal_first_and_vertical_
         const keep = JSON.parse(JSON.stringify(c));
         const probe = (powerPattern, dataPattern) => {
             Object.assign(c, {powerFlowPattern: powerPattern, flowPattern: dataPattern,
-                              powerAmperage: 30, powerVoltage: 208, panelWatts: 100,
+                              powerAmperage: 37.5, powerVoltage: 208, panelWatts: 100,
                               dataJumpV: 2, dataJumpH: 1, powerJumpV: 2, powerJumpH: 1,
                               powerSplitters: {enabled: false, maxWays: 3, manual: {merge: [], split: []}}});
             app._circuitTailCache = null;

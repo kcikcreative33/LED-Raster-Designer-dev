@@ -548,6 +548,23 @@ class _DockMenus {
                 : this.screenCircuits(layer).map(c => c.num);
             scope = 'screen';
         }
+        if (!layer || !nums) return null;
+        // "2fer / 3fer this screen" on an automatic screen with sharing off
+        // is offered too (the owner's ruling, 2026-10-22): picking it ticks
+        // "Share circuits via splitters" and deals the screen in the one
+        // step, so the entries are worked out on the runs sharing gives.
+        if (scope === 'screen' && !this.usesCustomCircuits(layer)
+                && !this.getPowerSplitters(layer).enabled) {
+            return this._withWallSharingOn(layer, () => this._batchMenuEntries(
+                layer, this.screenCircuits(layer).map(c => c.num), null, scope, true));
+        }
+        return this._batchMenuEntries(layer, nums, refs, scope);
+    }
+
+    // The batch entries for `nums` (or a custom wall's `refs`) of `layer`.
+    // `ticking`: worked out with sharing on for a screen that has it off,
+    // so every entry ticks it, and nothing shared yet can be removed.
+    _batchMenuEntries(layer, nums, refs, scope, ticking = false) {
         if (!layer || !nums || (refs ? refs.length : nums.length) < 2) return null;
         // The deal is at RUN grain, so existing gangs inside the batch
         // re-deal with everything else - count the runs, not the circuits.
@@ -564,7 +581,9 @@ class _DockMenus {
         if (runCount < 2) return null;
         const sp = this.getPowerSplitters(layer);
         const custom = this.usesCustomCircuits(layer);
-        const gated = !sp.enabled && !custom;
+        // Sharing off gates the selection's entries; the whole screen's
+        // turn sharing on (above).
+        const gated = !sp.enabled && !custom && scope !== 'screen';
         const verb = scope === 'screen' ? 'this screen' : 'them';
         const entries = [];
         // The batch never deals past the wall's Max splitter (the owner,
@@ -604,8 +623,8 @@ class _DockMenus {
                     label, disabled: true,
                     title: load
                         ? `${this._runListText(deal.over, layer)} together draw `
-                            + `${load.amps.toFixed(1)} A on a `
-                            + `${+load.cap.toFixed(1)} A circuit, so no runs `
+                            + `${load.amps.toFixed(1)} A on `
+                            + `${this.circuitLimitText(layer)}, so no runs `
                             + 'here fit on one circuit together'
                         : (deal.tooWide.length
                             ? this._tooWideText(layer, deal.tooWide, n)
@@ -620,7 +639,7 @@ class _DockMenus {
                 + 'columns splits into a run per column on its own circuit.' : '';
             // "2fer / 3fer this screen" ticks the wall's "Share circuits via
             // splitters" in the same step (batchShareCircuits tickSharing).
-            const ticks = scope === 'screen' && !sp.enabled;
+            const ticks = ticking || (scope === 'screen' && !sp.enabled);
             const tickText = ticks ? ' Also turns on "Share circuits via '
                 + 'splitters" for this screen.' : '';
             entries.push({
@@ -643,7 +662,7 @@ class _DockMenus {
         });
         if (!entries.length) return null;
         const out = { entries, scope };
-        if (hasGang && !gated) {
+        if (hasGang && !gated && !ticking) {
             // "Remove 3fers from this screen", naming the sizes it takes
             // apart, like the single circuit's "Remove 3fer".
             const removed = this._nferKindsText(this._wallCircuits(layer)

@@ -369,7 +369,7 @@ def test_stored_true_survives_a_reload_and_default_stays_off(page):
 ERROR_SCREEN_JS = """() => {
     // The user's shape, in memory only: 13 columns of 200W cabinets on a
     // 110V/15A circuit, organized rows. A full row is 2,600W against a
-    // 1,650W circuit.
+    // 1,320W circuit (80% of the breaker on a US screen, 2026-10-22).
     const layer = {
         id: 99901, name: 'WideErr', type: 'screen', visible: true,
         columns: 13, rows: 2, group_id: null,
@@ -421,7 +421,7 @@ def test_dock_strip_states_the_power_error_with_the_layers_figures(page):
         "an error-emptied plan raised no strip row - the exact silence the "
         "user read as the feature being broken")
     for figure in ('No circuits on WideErr', 'a full row is 2,600 W',
-                   '110 V / 15 A', 'carries 1,650 W',
+                   '110 V / 15 A', 'carries 1,320 W (80% of the breaker)',
                    'higher voltage or amperage', 'column pattern',
                    'custom path'):
         assert figure in out['text'], (

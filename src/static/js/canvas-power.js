@@ -1045,7 +1045,9 @@ Object.assign(CanvasRenderer.prototype, {
         const shared = window.app.screenCircuits(layer)
             .filter(c => Array.isArray(c.runIds) && c.runIds.length > 1);
         if (!shared.length) return [];
-        const cap = parseFloat(layer.powerAmperage) || 0;
+        // 80% of the breaker on a US screen (app circuitCapacity).
+        const cap = typeof window.app.circuitCapacity === 'function'
+            ? window.app.circuitCapacity(layer).amps : (parseFloat(layer.powerAmperage) || 0);
         const byNum = new Map();
         if (typeof window.app.getSocaPlan === 'function') {
             (window.app.getSocaPlan(layer) || []).forEach(s =>

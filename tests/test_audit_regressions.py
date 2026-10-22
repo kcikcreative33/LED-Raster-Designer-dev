@@ -84,7 +84,8 @@ window.__ar = {
             panel_width_mm: 500, panel_height_mm: 500,
             offset_x: 0, offset_y: 0,
             panel_weight: 20, weight_unit: 'kg',
-            panelWatts: 200, powerVoltage: 208, powerAmperage: 20,
+            // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+            panelWatts: 200, powerVoltage: 208, powerAmperage: 25,
             processorType: 'brompton', bitDepth: 8, frameRate: 60,
             lowLatency: false,
             color1: { r: 64, g: 70, b: 128 }, color2: { r: 149, g: 156, b: 184 },
@@ -225,7 +226,7 @@ window.__fresh = async (props) => {
     Object.assign(l, {
         processorType: 'brompton', bitDepth: 8, frameRate: 60, lowLatency: false,
         portMappingMode: 'organized', rotation: 0,
-        panelWatts: 200, powerVoltage: 208, powerAmperage: 20,
+        panelWatts: 200, powerVoltage: 208, powerAmperage: 25,
         panel_weight: 20, weight_unit: 'kg',
         flowPattern: 'tl-h', powerFlowPattern: 'tl-h',
         customPortPaths: {}, customPortIndex: 1,

@@ -97,7 +97,8 @@ SEED_JS = """async () => {
 SETUP_JS = """(o) => {
     const app = window.app;
     const l = app.project.layers[0];
-    Object.assign(l, { powerVoltage: 120, powerAmperage: 20, panelWatts: 198,
+    // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+    Object.assign(l, { powerVoltage: 120, powerAmperage: 25, panelWatts: 198,
                        powerSocaDistro: {}, powerSocaNumber: {}, powerSocaPhasePos: {},
                        powerSocaLengths: {}, powerSocaSplits: [], powerSocaNames: {},
                        powerBreakoutType: null, locked: false }, o.wall || {});
@@ -448,7 +449,7 @@ def test_an_old_show_opens_unchanged_on_the_server(e2e_server, pw_browser, seede
     pg.evaluate("""async (d) => {
         const proj = await (await fetch('/api/project')).json();
         const l = proj.layers[0];
-        Object.assign(l, { powerVoltage: 208, powerAmperage: 20, panelWatts: 150,
+        Object.assign(l, { powerVoltage: 208, powerAmperage: 25, panelWatts: 150,
                            powerSocaDistro: { 1: 'd1', 2: 'd1' }, powerSocaNumber: {},
                            powerSocaPhasePos: {}, powerSocaSplits: [], locked: false });
         proj.distros = [d];

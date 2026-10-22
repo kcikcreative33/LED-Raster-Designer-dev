@@ -137,7 +137,8 @@ SEED_JS = """async () => {
         // default (Legacy) onto it and every drop here would refuse.
         await fetch(`/api/layer/${l.id}`, {method: 'PUT',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({powerVoltage: 208, powerAmperage: 20,
+            // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+            body: JSON.stringify({powerVoltage: 208, powerAmperage: 25,
                                   processorType: 'novastar-coex-1g'})});
     }
     const p = await (await fetch('/api/project')).json();
@@ -2661,7 +2662,7 @@ SPLIT_SEED_JS = """async (which) => {
             // screen is refused (owner, 2026-10-16: 110, 115 and 120 are 120V;
             // anything else that does not fit the system is refused). 110V x 5A
             // still fits five 100W cabinets a circuit, so the plans are unchanged.
-            body: JSON.stringify({powerVoltage: '110', powerAmperage: '5',
+            body: JSON.stringify({powerVoltage: '110', powerAmperage: '6.25',
                 panelWatts: '100', powerOrganized: true, powerMaximize: false,
                 powerFlowPattern: 'tl-v',
                 // Same platform stamp as the module seed: the only card in
@@ -3531,7 +3532,8 @@ def test_power_chips_fill_from_the_plans_leg_figures(dock_page):
         app._restateNaming();
         app.renderHardwareDock();
         const s = app.getSocaPlan(a).find(x => x.soca === 1);
-        const capA = parseFloat(a.powerAmperage);
+        // the circuit's capacity: 80% of the breaker on a US screen
+        const capA = app.circuitCapacity(a).amps;
         const leg = s.legs.find(l => l.leg === 1);
         return { amps: leg.amps, capA, pct: (leg.amps / capA) * 100 };
     }""", ids)
@@ -3571,7 +3573,7 @@ def test_power_chips_fill_from_the_plans_leg_figures(dock_page):
             const s = app.getSocaPlan(a).find(x => x.soca === 1);
             const leg = s.legs.find(l => l.leg === 1);
             return { amps: leg.amps, over: leg.amps
-                     > parseFloat(a.powerAmperage) };
+                     > app.circuitCapacity(a).amps };
         }""", ids)
         assert over_model['over'], (
             f'the drawn circuit must overload in the model first: '
@@ -4565,7 +4567,7 @@ SPLITTERS_ON_JS = """(ids) => {
     const a = app.project.layers.find(x => x.id === ids.aId);
     a.powerSplitters = { enabled: true, maxWays: 2,
                          manual: { merge: [], split: [] } };
-    a.powerAmperage = 30;
+    a.powerAmperage = 37.5;
     app._circuitTailCache = null;
     app.updateLayers([a]);
     app.resetHistory('Dock Seed');
@@ -4576,7 +4578,7 @@ SPLITTERS_OFF_JS = """(ids) => {
     const a = app.project.layers.find(x => x.id === ids.aId);
     a.powerSplitters = { enabled: false, maxWays: 3,
                          manual: { merge: [], split: [] } };
-    a.powerAmperage = 20;
+    a.powerAmperage = 25;
     app._circuitTailCache = null;
     app.updateLayers([a]);
     app._sweepSelection = null;
@@ -4784,9 +4786,11 @@ def test_whole_wall_right_click_batches_and_keeps_single_run_items(dock_page):
 
 
 def test_batch_entries_gated_off_with_reason(dock_page):
-    """Splitters off and circuits auto: the batch entries stay ON the menu,
-    disabled, with the sharing gate as their title - discoverable, never
-    rule-breaking - and a click on one changes nothing."""
+    """Splitters off and circuits auto: the whole screen's entries are
+    offered and tick sharing as they deal (the owner's ruling,
+    2026-10-22). Runs picked by a sweep stay gated: their entries stay ON
+    the menu, disabled, with the sharing gate as their title, and a click
+    on one changes nothing."""
     page, ids = dock_page
     open_view(page, 'power')
     page.evaluate(RESET_POWER_JS, ids)
@@ -4799,19 +4803,25 @@ def test_batch_entries_gated_off_with_reason(dock_page):
     landed(page)
     items = page.evaluate(BATCH_ITEMS_JS)
     assert items['shown'], items
-    assert items['n0'] and items['n0']['disabled'], items
-    assert 'Sharing is off' in items['n0']['title'], items
-    assert items['n1'] and items['n1']['disabled'], items
-    # three plain runs: no 4fer to offer
-    assert items['n2'] is None, items
+    assert items['n0'] and not items['n0']['disabled'], items
+    assert 'Also turns on "Share circuits via splitters"' in items['n0']['title'], items
+    close_menu(page)
 
-    page.locator('#context-menu [data-action="hw-batch-n0"]').click()
-    landed(page)
+    swept = page.evaluate("""([id, x, y]) => {
+        const app = window.app;
+        app._sweepSelection = { layerId: id, nums: [1, 2] };
+        const m = app._prepareBatchMenu(x, y);
+        app._sweepSelection = null;
+        return m && { scope: m.scope, entries: m.entries.map(e => ({
+            label: e.label, disabled: !!e.disabled, title: e.title || '' })) };
+    }""", [ids['aId'], p0['x'], p0['y']])
+    assert swept and swept['scope'] == 'selection', swept
+    assert swept['entries'] and all(e['disabled'] for e in swept['entries']), swept
+    assert 'Sharing is off' in swept['entries'][0]['title'], swept
     out = page.evaluate(SPLITTER_STATE_JS, ids['aId'])
     assert out['merge'] == [], f'a disabled entry still dealt: {out}'
     assert page.evaluate(HIST_LEN_JS) == before, (
         'a disabled batch entry earned a history entry')
-    close_menu(page)
     page.evaluate(RESET_POWER_JS, ids)
     landed(page)
 
