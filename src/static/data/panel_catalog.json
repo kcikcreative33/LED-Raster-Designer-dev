@@ -30919,7 +30919,37 @@
       "source": "catalog"
     },
     {
-      "name": "Graphite 2.6 (4 in 1) Full Tile",
+      "name": "Graphite GP1.9 (4 in 1) Full Tile",
+      "connector": null,
+      "width_mm": 500,
+      "height_mm": 1000,
+      "pixels_w": 256,
+      "pixels_h": 512,
+      "pitch_mm": 1.953,
+      "weight_kg": 9.32,
+      "weight_lb": 20.547058399999997,
+      "proc_type": null,
+      "watts_max": 250,
+      "watts_ave": 125,
+      "source": "roevisual graphite.pdf"
+    },
+    {
+      "name": "Graphite GP1.9 (4 in 1) Half Tile",
+      "connector": null,
+      "width_mm": 500,
+      "height_mm": 500,
+      "pixels_w": 256,
+      "pixels_h": 256,
+      "pitch_mm": 1.953,
+      "weight_kg": 5.51,
+      "weight_lb": 12.147456199999999,
+      "proc_type": null,
+      "watts_max": 125,
+      "watts_ave": 62,
+      "source": "roevisual graphite.pdf"
+    },
+    {
+      "name": "Graphite GP2.6 (4 in 1) Full Tile",
       "connector": null,
       "width_mm": 500,
       "height_mm": 1000,
@@ -30931,22 +30961,22 @@
       "proc_type": null,
       "watts_max": 250,
       "watts_ave": 125,
-      "source": "ledwallcentral"
+      "source": "roevisual graphite.pdf"
     },
     {
-      "name": "Graphite 2.6 (4 in 1) Half Tile",
+      "name": "Graphite GP2.6 (4 in 1) Half Tile",
       "connector": null,
       "width_mm": 500,
       "height_mm": 500,
       "pixels_w": 192,
       "pixels_h": 192,
       "pitch_mm": 2.604,
-      "weight_kg": 5.2,
-      "weight_lb": 11.464024,
+      "weight_kg": 5.1,
+      "weight_lb": 11.243561999999999,
       "proc_type": null,
-      "watts_max": 160,
-      "watts_ave": 80,
-      "source": "ledwallcentral"
+      "watts_max": 125,
+      "watts_ave": 62,
+      "source": "roevisual graphite.pdf"
     },
     {
       "name": "Graphite GP2.6 Full Tile",
@@ -30956,12 +30986,12 @@
       "pixels_w": 192,
       "pixels_h": 384,
       "pitch_mm": 2.604,
-      "weight_kg": 8.5,
-      "weight_lb": 18.739269999999998,
+      "weight_kg": 9.0,
+      "weight_lb": 19.841579999999997,
       "proc_type": null,
       "watts_max": 320,
       "watts_ave": 160,
-      "source": "roevisual graphite-specification.pdf"
+      "source": "roevisual graphite.pdf"
     },
     {
       "name": "Graphite GP2.6 Half Tile",
@@ -30976,7 +31006,37 @@
       "proc_type": null,
       "watts_max": 160,
       "watts_ave": 80,
-      "source": "roevisual graphite-specification.pdf"
+      "source": "roevisual graphite.pdf"
+    },
+    {
+      "name": "Graphite GP2.6 Right Angle",
+      "connector": null,
+      "width_mm": 500,
+      "height_mm": 500,
+      "pixels_w": 192,
+      "pixels_h": 192,
+      "pitch_mm": 2.604,
+      "weight_kg": 7.0,
+      "weight_lb": 15.432339999999998,
+      "proc_type": null,
+      "watts_max": 160,
+      "watts_ave": 80,
+      "source": "roevisual graphite.pdf (250 mm + 250 mm faces, unfolded)"
+    },
+    {
+      "name": "Graphite GP2.6 Right Angle (4 in 1)",
+      "connector": null,
+      "width_mm": 500,
+      "height_mm": 500,
+      "pixels_w": 192,
+      "pixels_h": 192,
+      "pitch_mm": 2.604,
+      "weight_kg": 7.0,
+      "weight_lb": 15.432339999999998,
+      "proc_type": null,
+      "watts_max": 125,
+      "watts_ave": 62.5,
+      "source": "roevisual graphite.pdf (250 mm + 250 mm faces, unfolded)"
     },
     {
       "name": "Graphite GP3.1 Full Tile",
@@ -30986,12 +31046,12 @@
       "pixels_w": 160,
       "pixels_h": 320,
       "pitch_mm": 3.125,
-      "weight_kg": 8.5,
-      "weight_lb": 18.739269999999998,
+      "weight_kg": 9.0,
+      "weight_lb": 19.841579999999997,
       "proc_type": null,
       "watts_max": 320,
       "watts_ave": 160,
-      "source": "roevisual graphite-specification.pdf"
+      "source": "roevisual graphite.pdf"
     },
     {
       "name": "Graphite GP3.1 Half Tile",
@@ -31006,7 +31066,7 @@
       "proc_type": null,
       "watts_max": 160,
       "watts_ave": 80,
-      "source": "roevisual graphite-specification.pdf"
+      "source": "roevisual graphite.pdf"
     },
     {
       "name": "Graphite GP3.9 Full Tile",
@@ -31016,12 +31076,12 @@
       "pixels_w": 128,
       "pixels_h": 256,
       "pitch_mm": 3.91,
-      "weight_kg": 8.5,
-      "weight_lb": 18.739269999999998,
+      "weight_kg": 9.0,
+      "weight_lb": 19.841579999999997,
       "proc_type": null,
       "watts_max": 320,
       "watts_ave": 160,
-      "source": "roevisual graphite-specification.pdf"
+      "source": "roevisual graphite.pdf"
     },
     {
       "name": "Graphite GP3.9 Half Tile",
@@ -31036,7 +31096,7 @@
       "proc_type": null,
       "watts_max": 160,
       "watts_ave": 80,
-      "source": "roevisual graphite-specification.pdf"
+      "source": "roevisual graphite.pdf"
     },
     {
       "name": "Hybrid 15 / Spotlight",
