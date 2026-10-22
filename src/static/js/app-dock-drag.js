@@ -858,11 +858,18 @@ class _DockDrag {
             const r = this.takeSocaOnto(layer, ordinal, payload.distroId,
                                         plan.number, 'Assign Multi Distro');
             if (!r.ok) {
+                // a locked screen it would repack is named by the lock's
+                // own error already
+                if (r.locked) return;
                 this._dockSay(this._takeRefusalText(
                     payload, r, this.getPowerCircuitLabel(layer, plan.nums[0]), layer));
                 return;
             }
         } else {
+            // A locked screen the assignment would repack (one grouped
+            // with this screen) refuses the whole drop before the pin or
+            // the entry (owner, 2026-10-22).
+            if (this._assignRepacksLocked(layer, [[plan.socaIndex, payload.distroId]])) return;
             const touched = new Set();
             this.setSocaDistro(layer, plan.socaIndex, payload.distroId, false)
                 .forEach(l => touched.add(l));
@@ -1015,6 +1022,10 @@ class _DockDrag {
             return;
         }
         if (plan.face) return this._faceDropPlug(payload, layer, plan);
+        // A locked screen the assignment would repack (one grouped with
+        // this screen) refuses the drop before anything is stamped or
+        // recorded (owner, 2026-10-22).
+        if (this._assignRepacksLocked(layer, [[plan.socaIndex, payload.distroId]])) return;
         // The box this makes wears the type it was dragged as - stamped
         // before the assignment's entry, so the gesture stays one step.
         if (plan.number != null) {
@@ -1345,12 +1356,17 @@ class _DockDrag {
                     this._dockSay(plan.message);
                     return;
                 }
+                // A locked screen the take would repack refuses the drop
+                // before the box type is stamped (owner, 2026-10-22).
+                if (this._takeRepacksLocked(layer, this._socaTakePlan(layer, ordinal,
+                        payload.distroId, payload.number), payload.distroId)) return;
                 this._stampBoxType(payload.distroId, payload.number,
                                    payload.output);
             }
             const r = this.takeSocaOnto(layer, ordinal, payload.distroId,
                                         payload.number, 'Assign Multi Distro');
             if (!r.ok) {
+                if (r.locked) return;
                 this._dockSay(this._takeRefusalText(payload, r, label, layer));
                 return;
             }
@@ -1466,6 +1482,19 @@ class _DockDrag {
         }
         const at = rec.circuits.indexOf(target.num);
         if (at < 0) return;
+        // A locked screen the move would repack - one grouped with this
+        // screen, whose packing % the group shares - stays unchanged
+        // (owner, 2026-10-22): the cuts and the assignment are tried and
+        // put back, and the drop is refused whole when they move its %.
+        if (this._repackRefused(() => {
+            let i = rec.index;
+            if (at > 0) {
+                if (!this._splitSocaApply(layer, i, at)) return;
+                i += 1;
+            }
+            if (rec.circuits.length - at > 1 && !this._splitSocaApply(layer, i, 1)) return;
+            (layer.powerSocaDistro || (layer.powerSocaDistro = {}))[i] = payload.distroId;
+        }, [layer])) return;
         // Leaving its box - for another distro, another box on this one,
         // or from no distro at all - the circuit leaves the old feed's
         // lengths behind (owner, 2026-10-17): its cable, and the home run
@@ -1549,6 +1578,11 @@ class _DockDrag {
                 return;
             }
         }
+        // All or nothing for the lock too: a locked screen the drop would
+        // repack (one grouped with this screen) refuses it whole (owner,
+        // 2026-10-22).
+        if (this._assignRepacksLocked(layer,
+                unassigned.map(s => [s.soca, payload.distroId]))) return;
         // The existing per-multi assignment, once per unassigned multi, in
         // plan order - the numbers fall out of the distro's own sequence.
         // Undo audit: one drag, one entry. The handle's own tooltip calls

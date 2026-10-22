@@ -169,14 +169,18 @@ def test_a_multi_that_exists_at_80_percent_keeps_the_screen_at_80(page):
 
 # ── 2. the amperage box is the breaker ───────────────────────────────────
 
-def test_the_breaker_box_shows_the_usable_amps(page):
+def test_the_amperage_box_shows_the_usable_amps(page):
     (wall,) = make(page, [{'name': 'Wall', 'columns': 4}])
     label = page.evaluate("""() => {
         const row = document.getElementById('power-amperage-select').closest('.info-row');
         return { label: row.querySelector('label').textContent,
                  tip: row.getAttribute('data-tooltip') };
     }""")
-    assert label['label'] == 'Breaker (A)', label
+    # The box keeps its Amperage label (owner, 2026-10-22); the tooltip
+    # says it takes the breaker size, and the usable amps show beside it.
+    assert label['label'] == 'Amperage (A)', label
+    assert label['tip'].startswith('Amperage, the size of the breaker'), label
+    assert 'Breaker (A)' not in page.content()
     assert 'breaker' in label['tip'] and '16 A usable' in label['tip'], label
     cap = capacity(page, wall)
     assert cap['usable'] == '20 A breaker · 16 A usable', cap

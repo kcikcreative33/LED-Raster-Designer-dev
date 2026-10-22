@@ -26,7 +26,7 @@ window.WHATS_NEW_CONTENT = {
             { h: 'A panel input for Edison and L6-20 screens',
               d: 'An Edison or L6-20 breakout now asks which connector your panels take, TRUE1 or powerCON, and the jumpers and splitters follow it. Each circuit gets one cable from its Edison or L6-20 plug to that panel input, with the 2fers at the panels.' },
             { h: 'US circuits filled to 80%',
-              d: 'A circuit on a US distro is now filled to 80% of its breaker, so a US screen may need more circuits than before. The amperage box is the breaker size, with the amps you can use shown beside it, and a distro with 100% rated breakers still fills them to 100%.' },
+              d: 'A circuit on a US distro is now filled to 80% of its breaker unless its breakers are 100% rated, so a US screen may need more circuits than before. You still type the breaker size in the Amperage box, and the amps you can use now show beside it.' },
             { h: 'A feeder for every distro',
               d: 'Open a distro\'s gear, type its feeder length and pick whether it\'s fed from the service or thru another distro. A cam input lists a 400 A cam set with 5-wire, and the feeder is on the pull sheet even before you type a length.' },
             { h: 'The panel saved on each screen',

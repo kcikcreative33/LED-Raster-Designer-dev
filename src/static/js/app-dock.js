@@ -3868,24 +3868,32 @@ class _HardwareDock {
         });
         this._showLockedError(lockedMet);
         if (!jobs.length) return;
+        const strip = () => {
+            jobs.forEach(j =>
+                this._wipeSocaProgramming(j.layer, j.soca, j.targets));
+            // The wipe deleted the cleared multis' entries under their OLD
+            // indexes; now the cuts go and the survivors move to their new
+            // ones - per layer, every cleared multi of that layer at once.
+            const byLayer = new Map();
+            jobs.forEach(j => {
+                const arr = byLayer.get(j.layer) || [];
+                arr.push(j.soca);
+                byLayer.set(j.layer, arr);
+            });
+            for (const [layer, socas] of byLayer) {
+                this._resegmentSocaStores(
+                    layer, this._socaClearSplitPoints(layer, socas));
+            }
+        };
+        // A locked screen the clear would REPACK - one grouped with a
+        // screen it clears, whose packing % the group shares - stays
+        // unchanged (owner, 2026-10-22): the clear is tried and put back,
+        // and refused whole when it moves a locked screen's %.
+        if (this._repackRefused(strip, [...new Set(jobs.map(j => j.layer))])) return;
         // The pull-sheet rows as they print now, so an edit on a row this
         // clear takes away goes with it (_dropPullEditsGoneWith).
         const pullBefore = this._pullLiveRowKeys();
-        jobs.forEach(j =>
-            this._wipeSocaProgramming(j.layer, j.soca, j.targets));
-        // The wipe deleted the cleared multis' entries under their OLD
-        // indexes; now the cuts go and the survivors move to their new
-        // ones - per layer, every cleared multi of that layer at once.
-        const byLayer = new Map();
-        jobs.forEach(j => {
-            const arr = byLayer.get(j.layer) || [];
-            arr.push(j.soca);
-            byLayer.set(j.layer, arr);
-        });
-        for (const [layer, socas] of byLayer) {
-            this._resegmentSocaStores(
-                layer, this._socaClearSplitPoints(layer, socas));
-        }
+        strip();
         // The clear renumbers both buckets it touches, so every label
         // on the show can move - same cache drop the setters make.
         this._circuitTailCache = null;
@@ -3928,6 +3936,22 @@ class _HardwareDock {
         // (_shareRunSegments, as _socaClearTargets).
         const runIds = this._shareRunSegments(layer, [circuitNum]).flat();
         const rec = this._powerNaming(layer).socas.get(idx);
+        // A locked screen taking this circuit off would REPACK - one
+        // grouped with this screen - stays unchanged (owner, 2026-10-22):
+        // the release is tried and put back, refused whole when it moves
+        // the locked screen's %.
+        if (this._repackRefused(() => {
+            if (rec && rec.circuits.length > 1) {
+                this._socaReleaseCircuit(layer, idx, circuitNum);
+                return;
+            }
+            for (const field of ['powerSocaNumber', 'powerSocaDistro',
+                                 'powerSocaPhasePos', 'powerSocaPhaseOffset']) {
+                if (layer[field]) delete layer[field][idx];
+            }
+            this._resegmentSocaStores(
+                layer, this._socaClearSplitPoints(layer, [idx]));
+        }, [layer])) return;
         const pullBefore = this._pullLiveRowKeys();
         if (rec && rec.circuits.length > 1) {
             const r = this._socaReleaseCircuit(layer, idx, circuitNum);

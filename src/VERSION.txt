@@ -71,11 +71,11 @@ a panel that matches its size, pixels and weight, or its size, like
 
 THE AMPERAGE BOX
 
-A screen's amperage box is the breaker size, and the amps you can use
-show beside it: 20 A breaker · 16 A usable on US power, or 20 A usable
-where the breakers are 100% rated and on EU and UK power. If you typed 16
-in an older show to allow for the 80% rule, it now reads 12.8 A usable,
-so change it to the breaker size.
+You still type the breaker size in a screen's Amperage box, and the
+amps you can use now show beside it: 20 A breaker · 16 A usable on US
+power, or 20 A usable where the breakers are 100% rated and on EU and UK
+power. If you typed 16 in an older show to allow for the 80% rule, it now
+reads 12.8 A usable, so change it to the breaker size.
 
 NEW TILES IN THE PANEL LIBRARY
 

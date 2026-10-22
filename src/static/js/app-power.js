@@ -391,7 +391,7 @@ class _Power {
             + `(${Math.round(cap.pct * 100)}%)`;
     }
 
-    // The sidebar's line beside the Breaker box: "20 A breaker · 16 A
+    // The sidebar's line beside the Amperage box: "20 A breaker · 16 A
     // usable" on an 80% circuit, "20 A breaker · 20 A usable" at 100%.
     // Empty with no breaker typed.
     circuitUsableText(layer) {
@@ -565,8 +565,8 @@ class _Power {
         const amps1El = document.getElementById('power-total-amps-1ph');
         const amps3El = document.getElementById('power-total-amps-3ph');
 
-        // The Breaker box is the BREAKER SIZE (the owner's ruling,
-        // 2026-10-22); the usable amps show beside it, so a 16 typed on a
+        // The Amperage box is the BREAKER SIZE (the owner's rulings,
+        // 2026-10-22: it keeps its Amperage label); the usable amps show beside it, so a 16 typed on a
         // US screen reads "16 A breaker · 12.8 A usable" and a double
         // derating is there to see.
         const usableEl = document.getElementById('power-amperage-usable');
@@ -1153,6 +1153,33 @@ class _Power {
         const plan = this._socaTakePlan(layer, ordinal, distroId, number);
         if (!plan.ok) return { ok: false, why: plan.why, free: plan.free,
                                tailLen: plan.remaining };
+        // A locked screen the take would REPACK - one grouped with this
+        // screen, whose packing % the group shares - keeps it unchanged
+        // (owner, 2026-10-22): the take is tried and put back, and when it
+        // moves a locked screen's % it is refused whole, the screen named.
+        if (this._takeRepacksLocked(layer, plan, distroId)) {
+            return { ok: false, why: 'locked', free: 0, tailLen: 0, locked: true };
+        }
+        const touched = this._takeSocaApply(layer, plan, distroId);
+        this.updateLayers([...touched], true, action || 'Assign Multi Distro');
+        return { ok: true, took: plan.take, tailLen: plan.remaining,
+                 free: plan.free };
+    }
+
+    // True (the locked screens named) when the take `plan` onto `distroId`
+    // would repack a locked screen (_repackRefused). A plan that cannot
+    // happen moves nothing. Asked by takeSocaOnto, and by a drop before
+    // anything of it is written (the box type it stamps).
+    _takeRepacksLocked(layer, plan, distroId) {
+        if (!layer || !plan || !plan.ok) return false;
+        return this._repackRefused(() => this._takeSocaApply(layer, plan, distroId), [layer]);
+    }
+
+    // takeSocaOnto's store moves on their own, no history entry and no
+    // checks: resegment, re-key, stamp, assign. Returns the touched layers
+    // (a Set). Run for real by takeSocaOnto, and as the trial its repack
+    // check puts back (_repackRefused).
+    _takeSocaApply(layer, plan, distroId) {
         const count = this.screenCircuits(layer).length;
         const size = this.socaBoxSize(layer);
         const segs = this._socaSegments(layer, count);
@@ -1236,9 +1263,7 @@ class _Power {
         (layer.powerSocaNumber || (layer.powerSocaNumber = {}))[idx]
             = plan.number;
         this._circuitTailCache = null;
-        this.updateLayers([...touched], true, action || 'Assign Multi Distro');
-        return { ok: true, took: plan.take, tailLen: plan.remaining,
-                 free: plan.free };
+        return touched;
     }
 
     // The drop-implied cut spelled as it always was - multi `socaIndex`,
@@ -1277,6 +1302,15 @@ class _Power {
         const seg = this._socaSegments(layer, count)
             .find(s => s.index === Number(socaIndex));
         if (!seg || !seg.userEnd) return false;
+        // The weld can take the second part's distro off the wall (the
+        // first part's identity wins): a locked screen that would repack -
+        // one grouped with this screen - refuses it whole (owner,
+        // 2026-10-22).
+        if (this._repackRefused(() => {
+            layer.powerSocaSplits = this._socaSplitPoints(layer, count)
+                .filter(p => p !== seg.end);
+            this._spliceSocaStores(layer, Number(socaIndex) + 1, -1);
+        }, [layer])) return false;
         // The welded multi keeps the first part's pin with MORE circuits,
         // so it re-deals on its box exactly like a split part does - the
         // other members of a shared box hold their rendered tails first.
@@ -2876,7 +2910,9 @@ class _Power {
             if (typeof this._hwPopoverClose === 'function') {
                 this._hwPopoverClose();
             }
-            this.removeDistro(d.id);
+            // Refused (a locked screen it would repack): nothing went, so
+            // its fold keys stay.
+            if (!this.removeDistro(d.id)) return;
             // The distro is gone and its id never comes back, so its fold
             // keys go with it - the dock section's, and the per-number
             // multi keys under it (a prefix sweep catches however many the

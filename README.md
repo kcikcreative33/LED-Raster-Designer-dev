@@ -113,8 +113,8 @@ when you're done.
   powerCON, Edison and CEE, on US or EU power. Start from a preset or build
   your own.
 - Every circuit is checked against its breaker, and on US power the
-  circuits are filled to 80% of it. A screen's amperage box is the breaker
-  size, with the amps you can use shown beside it. Balance spreads the
+  circuits are filled to 80% of it. You type the breaker size in a
+  screen's Amperage box, and the amps you can use show beside it. Balance spreads the
   multis across the legs for you.
 - Drag a multi onto the wall and the circuits it will feed light up with
   the amps they add before you let go. Share circuits through a 2fer or 3fer.

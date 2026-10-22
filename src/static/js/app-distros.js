@@ -251,33 +251,150 @@ class _Distros {
     // True (and the locked screens named) when `patch` would change the
     // packing % (circuitCapacity) of any locked screen: one this distro
     // feeds, or one grouped with a screen it feeds, since a wall packs as
-    // one. Worked out by laying the patch's breakers100 / system on the
-    // distro for a moment and putting them back.
+    // one. Worked out by laying the patch's breakers100 / system (or an
+    // old caller's voltage / phase) on the distro for a moment and putting
+    // it back (_repackRefused).
     _repacksLockedScreens(d, patch) {
-        if (!d || !patch || typeof this.circuitCapacity !== 'function') return false;
+        if (!d || !patch) return false;
         const flips = patch.breakers100 !== undefined && !!patch.breakers100 !== !!d.breakers100;
         const sys = patch.system !== undefined && typeof this.distroSystemById === 'function'
             ? this.distroSystemById(patch.system) : null;
-        const moves = sys && sys.id !== d.system;
-        if (!flips && !moves) return false;
-        const locked = ((this.project && this.project.layers) || [])
-            .filter(l => l && l.locked && (l.type || 'screen') === 'screen');
+        const moves = !!sys && sys.id !== d.system;
+        const pair = patch.system === undefined
+            && (patch.voltage !== undefined || patch.phase !== undefined);
+        if (!flips && !moves && !pair) return false;
+        return this._repackRefused(() => {
+            if (flips) d.breakers100 = !!patch.breakers100;
+            if (moves) {
+                d.system = sys.id; d.voltage = sys.voltage; d.phase = sys.phase;
+            } else if (pair) {
+                // the pair re-read the way updateDistro reads it, without
+                // the migration's own logging
+                if (patch.voltage !== undefined) d.voltage = Number(patch.voltage) || d.voltage;
+                if (patch.phase !== undefined) d.phase = Number(patch.phase) === 1 ? 1 : 3;
+                const m = typeof this._systemForVoltagePhase === 'function'
+                    ? this._systemForVoltagePhase(d.voltage, d.phase) : { id: null };
+                const to = m.id && this.distroSystemById(m.id);
+                d.system = to ? to.id : null;
+                if (to) { d.voltage = to.voltage; d.phase = to.phase; }
+            }
+        });
+    }
+
+    // THE LOCK HOLDS THE PACKING TOO (the owner's ruling, 2026-10-22): a
+    // distro or multi change that would move a LOCKED screen's packing %
+    // (circuitCapacity, through the distros its multis are on and
+    // _distroPackPct) is refused whole, the locked screens named in the
+    // one error, and nothing changes - no store, no history entry. That
+    // takes in a locked screen reached through an unlocked member of its
+    // group, since a wall packs as one.
+    //
+    // `apply` makes the change on the live records for a moment, with the
+    // same store moves the real gesture runs; everything it can reach is
+    // put back exactly before this returns (_holdPowerRecords). `near`
+    // (a layer or a list) narrows the check to the locked screens that
+    // pack with those screens - themselves and their groups - for a
+    // change that touches only their multis; left out, every locked
+    // screen is checked (a distro's own change reaches any of them).
+    // True when the change must not happen.
+    _repackRefused(apply, near) {
+        if (typeof this.circuitCapacity !== 'function' || typeof apply !== 'function') return false;
+        const layers = (this.project && this.project.layers) || [];
+        let locked = layers.filter(l => l && l.locked && (l.type || 'screen') === 'screen');
+        if (locked.length && near) {
+            const reach = new Set();
+            (Array.isArray(near) ? near : [near]).filter(Boolean).forEach(l => {
+                reach.add(l);
+                if (l.group_id && typeof this.groupMembersOf === 'function') {
+                    this.groupMembersOf(l).forEach(m => reach.add(m));
+                }
+            });
+            locked = locked.filter(l => reach.has(l));
+        }
         if (!locked.length) return false;
         const pctOf = () => new Map(locked.map(l => [l, this.circuitCapacity(l).pct]));
         const before = pctOf();
-        const keys = ['breakers100', 'system', 'voltage', 'phase'];
-        const keep = {};
-        keys.forEach(k => { keep[k] = Object.prototype.hasOwnProperty.call(d, k) ? d[k] : undefined; });
+        const release = this._holdPowerRecords();
         let after;
         try {
-            if (flips) d.breakers100 = !!patch.breakers100;
-            if (moves) { d.system = sys.id; d.voltage = sys.voltage; d.phase = sys.phase; }
+            apply();
+            this._circuitTailCache = null;
             after = pctOf();
         } finally {
-            keys.forEach(k => { if (keep[k] === undefined) delete d[k]; else d[k] = keep[k]; });
+            release();
         }
         const repacked = locked.filter(l => before.get(l) !== after.get(l));
         return repacked.length ? this._lockedRefused(repacked) : false;
+    }
+
+    // A hold on everything a trial distro or multi change can write: the
+    // distro list and each distro record (held multi numbers, system,
+    // breakers), every screen's power fields (assignments, numbers, cuts,
+    // tails, names, lengths, cables, label overrides, splitters) and the
+    // held-number baseline. The returned release() puts back whatever
+    // changed, in place, and drops the naming cache that read the trial.
+    _holdPowerRecords() {
+        const project = this.project || {};
+        const list = Array.isArray(project.distros) ? project.distros : null;
+        const distros = list ? list.slice() : [];
+        const distroJson = distros.map(d => JSON.stringify(d));
+        const layers = (project.layers || []).slice();
+        const powerOf = (l) => {
+            const out = {};
+            Object.keys(l || {}).forEach(k => {
+                if (k.startsWith('power')) out[k] = JSON.stringify(l[k]);
+            });
+            return out;
+        };
+        const fields = layers.map(powerOf);
+        const baseline = this._multiBaseline;
+        const baselineCopy = baseline instanceof Map ? new Map(baseline) : null;
+        const dirty = this._multiHoldsDirty;
+        return () => {
+            if (list) {
+                if (list.length !== distros.length || list.some((d, i) => d !== distros[i])) {
+                    list.length = 0;
+                    distros.forEach(d => list.push(d));
+                }
+                distros.forEach((d, i) => {
+                    if (!d || typeof d !== 'object' || JSON.stringify(d) === distroJson[i]) return;
+                    Object.keys(d).forEach(k => { delete d[k]; });
+                    Object.assign(d, JSON.parse(distroJson[i]));
+                });
+            }
+            layers.forEach((l, i) => {
+                if (!l) return;
+                const was = fields[i];
+                Object.keys(l).forEach(k => {
+                    if (k.startsWith('power') && !Object.prototype.hasOwnProperty.call(was, k)) delete l[k];
+                });
+                Object.keys(was).forEach(k => {
+                    if (JSON.stringify(l[k]) === was[k]) return;
+                    l[k] = was[k] === undefined ? undefined : JSON.parse(was[k]);
+                });
+            });
+            this._multiBaseline = baseline;
+            if (baselineCopy) {
+                baseline.clear();
+                baselineCopy.forEach((v, k) => baseline.set(k, v));
+            }
+            this._multiHoldsDirty = dirty;
+            this._circuitTailCache = null;
+        };
+    }
+
+    // The multi assignment `pairs` ([socaIndex, distroId | null], ...) would
+    // make on `layer`, refused when it repacks a locked screen
+    // (_repackRefused): the setter's check, and a composite drop's before
+    // anything of the drop is written.
+    _assignRepacksLocked(layer, pairs) {
+        if (!layer || !pairs || !pairs.length) return false;
+        return this._repackRefused(() => {
+            const map = layer.powerSocaDistro || (layer.powerSocaDistro = {});
+            pairs.forEach(([idx, id]) => {
+                if (id) map[idx] = id; else delete map[idx];
+            });
+        }, [layer]);
     }
 
     removeDistro(id) {
@@ -290,6 +407,17 @@ class _Distros {
         const fedLocked = (this.project.layers || []).filter(l => l && l.locked
             && Object.values(l.powerSocaDistro || {}).includes(id));
         if (this._lockedRefused(fedLocked)) return false;
+        // ...and so does a locked screen the removal would REPACK (owner,
+        // 2026-10-22): one grouped with a screen it feeds, whose packing %
+        // the group shares (_repackRefused). Refused whole, nothing moved.
+        if (this._repackRefused(() => {
+            list.splice(i, 1);
+            for (const layer of this.project.layers || []) {
+                const map = layer && layer.powerSocaDistro;
+                if (!map) continue;
+                for (const k of Object.keys(map)) if (map[k] === id) delete map[k];
+            }
+        })) return false;
         // The multis it fed lose their typed lengths with it (owner,
         // 2026-10-17): each one's home run - a direct output's included -
         // and its circuits' cables. Read off the naming index before any
@@ -352,6 +480,10 @@ class _Distros {
         // A locked screen stays unchanged (owner, 2026-10-16) - the setter
         // refuses and names it, whichever control called it.
         if (this._lockedRefused(layer)) return [];
+        // Nor does a locked screen this move would REPACK - one grouped
+        // with this screen, whose packing % the group shares (owner,
+        // 2026-10-22): refused whole, nothing written.
+        if (this._assignRepacksLocked(layer, [[socaIndex, distroId || null]])) return [];
         // A multi carrying its pin onto another distro never lands on a
         // one-circuit output with more than it carries (2026-10-18).
         const carried = (layer.powerSocaNumber || {})[socaIndex];
