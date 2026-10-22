@@ -2493,7 +2493,7 @@ class _HardwareDock {
             },
             gear: {
                 id: `distro-${d.id}`,
-                title: 'Configure this distro - rating, voltage, phase, '
+                title: 'Configure this distro: rating, voltage, phase, '
                     + 'phasing, location, remove.',
                 build: () => {
                     const raw = this.getDistros().find(x => x.id === d.id);
@@ -2666,7 +2666,7 @@ class _HardwareDock {
                 const l = layerOf(h);
                 if (!l) return;
                 const tip = `The cable from ${d.name || d.id} ${box.number} to ${l.name}, in `
-                    + `${this.cableUnitWord()} - it goes on the pull sheet as `
+                    + `${this.cableUnitWord()}. It goes on the pull sheet as `
                     + `${this.directCableType(type.cable, l)}.`
                     + this.cableStockHint((l.powerSocaLengths || {})[h.soca], 'direct');
                 const cell = this._buildPortNameField(
@@ -3089,9 +3089,9 @@ class _HardwareDock {
                 placeholder: (first.s && first.s.name)
                     || `${d.name || d.id} ${n}`,
                 key: `power-soca-name-${first.layer.id}-${first.m.soca}`,
-                title: 'Name this multi by hand - all screens sharing it '
-                    + 'follow. Left blank it follows its distro - '
-                    + 'multis on a distro named SL are SL1, SL2 - so '
+                title: 'Name this multi by hand, and all screens sharing it '
+                    + 'follow. Left blank it follows its distro '
+                    + '(multis on a distro named SL are SL1, SL2), so '
                     + 'renaming the distro renames them all.',
                 onCommit: (val) => {
                     writeThrough(this.setSocaName, 'Rename Multi', val);

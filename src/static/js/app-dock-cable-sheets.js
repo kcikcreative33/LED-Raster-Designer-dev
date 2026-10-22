@@ -49,8 +49,8 @@ class _DockCableSheets {
         btn.className = 'hw-dock-cablebtn' + (open ? ' hw-dock-cablebtn-on' : '');
         btn.textContent = '≡';
         btn.title = open
-            ? 'Cable sheet - click to show the chips again.'
-            : 'Cable sheet - a length and connector per circuit, for the '
+            ? 'Cable sheet. Click to show the chips again.'
+            : 'Cable sheet: a length and connector per circuit, for the '
                 + 'paperwork. Click to flip the chips into the sheet.';
         btn.dataset.lrdField = `power-cable-sheet-${d.id}-${n}`;
         btn.addEventListener('click', (e) => {
@@ -389,8 +389,8 @@ class _DockCableSheets {
             + (open ? ' hw-dock-cablebtn-on' : '');
         btn.textContent = '≡';
         btn.title = open
-            ? 'Cable sheet - click to show the chips again.'
-            : 'Cable sheet - snakes and home runs per port, for the '
+            ? 'Cable sheet. Click to show the chips again.'
+            : 'Cable sheet: snakes and home runs per port, for the '
                 + 'paperwork. Click to flip into the sheet.';
         btn.dataset.lrdField = `data-cable-sheet-${owner.id}`;
         btn.addEventListener('click', (e) => {
@@ -705,7 +705,7 @@ class _DockCableSheets {
                                stored && stored.ft,
                                (snake
                                    ? 'Extension from the snake to this '
-                                     + `panel, in ${this.cableUnitWord()} - the shorter cable `
+                                     + `panel, in ${this.cableUnitWord()}: the shorter cable `
                                      + 'a snake’s fan-out sometimes needs. '
                                      + 'Blank = none.'
                                    : `This port’s own home run in ${this.cableUnitWord()}. `

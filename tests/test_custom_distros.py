@@ -376,11 +376,13 @@ def test_us_circuits_are_checked_at_80_percent_unless_breakers_are_100_rated(see
     assert out['legs'] == 1 and out['amps'] == pytest.approx(3600 / 208)
     assert out['label'] == 'SL1', 'a direct output names its circuit with no tail'
     assert [w for w in out['warn'] if 'over the 80% continuous limit (16 A)' in w], out
+    # plain punctuation in the warning, never an em dash (2026-10-22)
+    assert not [w for w in out['warn'] if '—' in w or ' - ' in w], out
     out = _direct_load(pg, dict(dist, breakers100=True), 208, 600)
     assert not [w for w in out['warn'] if 'breaker' in w], out
     # 6 x 700 W = 4200 W at 208 = 20.2 A: over even a 100%-rated 20 A.
     out = _direct_load(pg, dict(dist, breakers100=True), 208, 700, amps=25)
-    assert [w for w in out['warn'] if 'on a 20 A breaker — OVER' in w], out
+    assert [w for w in out['warn'] if 'on a 20 A breaker: OVER' in w], out
 
 
 def test_eu_circuits_are_checked_at_the_breaker_and_true1_at_16a(seeded):
@@ -392,7 +394,7 @@ def test_eu_circuits_are_checked_at_the_breaker_and_true1_at_16a(seeded):
     assert not [w for w in out['warn'] if 'breaker' in w or 'rated' in w], out
     # 6 x 650 W = 3900 W = 17.0 A: over the breaker and over a TRUE1's 16 A.
     out = _direct_load(pg, dist, 230, 650)
-    assert [w for w in out['warn'] if 'on a 16 A breaker — OVER' in w], out
+    assert [w for w in out['warn'] if 'on a 16 A breaker: OVER' in w], out
     assert [w for w in out['warn'] if 'a TRUE1 is rated 16 A here' in w], out
 
 

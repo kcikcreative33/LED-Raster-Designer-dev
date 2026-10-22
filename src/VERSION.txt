@@ -1,15 +1,16 @@
 LED RASTER DESIGNER - VERSION HISTORY
 =====================================
 
-v1.5.4 - October 21, 2026
+v1.5.4 - October 22, 2026
 ----------------------------
 
 The pull sheet and the binder now say exactly which cable to pull: TRUE1
 or powerCON for power, Cat6 or etherCON for data, and every distro gets a
 row for its feeder. Edison and L6-20 screens pick the connector their
-panels take, and each kind of cable can have its own stock list. Three of
-the fixes below change counts on the pull sheet, so check any show you've
-already ordered cable from.
+panels take, and each kind of cable can have its own stock list. US
+screens now fill their circuits to 80% of the breaker, and several other
+fixes change counts on the pull sheet, so check any show you've already
+ordered cable from. They're all listed under Opening an older show.
 
 POWER CABLES NAME THEIR CONNECTOR
 
@@ -24,8 +25,10 @@ THE PANEL INPUT
 
 An Edison or L6-20 breakout doesn't say what your panels take, so those
 screens now have a Panel input under Breakout: TRUE1 or powerCON. The
-jumpers and splitters follow it, each circuit gets one Edison → TRUE1
-cable (or L6-20 → powerCON), and the 2fers and 3fers sit at the panels.
+jumpers and splitters follow it, and each circuit gets one cable from the
+breakout's plug to the panel input: Edison → TRUE1, Edison → powerCON,
+L6-20 → TRUE1 or L6-20 → powerCON. The 2fers and 3fers sit at the
+panels.
 
 DATA CABLES NAME THEIR CONNECTOR
 
@@ -53,56 +56,104 @@ get lists for L21-30 and Harting home runs, direct-output cables and
 feeders, as well as multis, data and power. Older shows and presets read
 the new lists from the ones those cables used before.
 
-FIXES
+OPENING AN OLDER SHOW
 
+Some counts will change when you open a show from an earlier version.
+The first one changes how many circuits a US screen needs, and the rest
+were wrong before. Export the pull sheet again and compare it with
+anything you've already ordered.
+
+- FIX (IMPORTANT): US screens (110V, 120V and 208V) now fill each circuit
+  to 80% of its breaker, the same limit the distro checks it against, so
+  a US screen may need more circuits than before. The panels per circuit
+  and watts per circuit readouts follow. A distro with 100% rated
+  breakers still fills them to 100%, and screens on 220V to 240V are
+  unchanged.
 - FIX (IMPORTANT): powerCON screens listed their jumpers as TRUE1 power
   jumpers. They list powerCON jumpers now, under the powerCON jumper name.
 - FIX (IMPORTANT): Edison screens listed the wrong cables and splitters.
-  Each circuit now gets one Edison → TRUE1 cable (or Edison → powerCON),
-  and the splitters at the panels are the panels' own connector.
+  Each circuit now gets one cable to the panel input (Edison → TRUE1 or
+  Edison → powerCON), and the splitters at the panels are the panels' own
+  connector.
 - FIX (IMPORTANT): Blank cabinets on a hand-drawn run counted jumpers.
   They count nothing now, on power and data.
-- FIX: A placed data port with no home run typed is still listed on the
-  pull sheet, with no length.
-- FIX: When the cable stock makes a run from more than one piece, the pull
-  sheet adds a barrel for each join on data (one per channel on a snake)
-  and a powerCON Coupler on powerCON. TRUE1 cables and multis need none.
+- FIX (IMPORTANT): When the cable stock makes a run from more than one
+  piece, the pull sheet adds a barrel for each join on data (one per
+  channel on a snake) and a powerCON Coupler on powerCON. TRUE1 cables and
+  multis need none.
+- FIX (IMPORTANT): A multi shared by screens with different breakouts
+  lists a breakout for each connector, and the binder's band names the
+  connector.
+- FIX (IMPORTANT): A placed data port with no home run typed is still
+  listed on the pull sheet, as a Cat6 or etherCON row with no length.
+- FIX (IMPORTANT): The QD-S input fiber is listed where its boxes are,
+  and with the screen's cables.
+- FIX (IMPORTANT): Every distro has a feeder row on the pull sheet, even
+  before you type its length.
+- FIX (IMPORTANT): The pull sheet counts your panels: a row for each
+  panel type on each screen, under the screen's position, and TOTALS adds
+  them up across the show. Half tiles get rows of their own, and blank and
+  hidden cabinets aren't counted.
+
+FIXES
+
 - FIX: A direct output's cable names both ends, like CEE 16A → TRUE1, or
   just TRUE1 when the outlet already is one.
-- FIX: A multi shared by screens with different breakouts lists a breakout
-  for each connector, and the binder's band names the connector.
 - FIX: Distro boxes are listed by their own names everywhere (SR1,
-  DISTRO 1-1, or the name you typed), with -1 and -2 only when two boxes
-  share a name.
+  DISTRO 1-1, or the name you typed).
+- FIX: When two distros share a name they read SR-1 and SR-2 everywhere,
+  and their boxes and circuits are named from that, so a box name never
+  matches a circuit name.
 - FIX: A single name is never split, so SR 13x5 stays SR 13x5, and a run
   of names folds into one, like SR-1 … SR-6.
 - FIX: Rows you hide and counts you change on the pull sheet reach the
   binder's cable tables for each screen and the distro and processor pull
   lists.
-- FIX: Snakes are labelled by their ports, with the snake's name and size
+- FIX: Pull sheet edits saved in an older version follow their rows when
+  the rows are renamed. Where one old row is now two, like TRUE1 and
+  powerCON jumpers of the same length, a hidden row hides both and a
+  count you changed is listed for you to redo.
+- FIX: Rows you typed on the pull sheet yourself in an older version are
+  updated to today's spellings, like TRUE1 and etherCON.
+- FIX: Snakes are labeled by their ports, with the snake's name and size
   in Notes (SNAKE A · 4 channel), and an extension by its port. Two snakes
   are never merged into one row.
 - FIX: The exported workbook's GEAR LIST lists only the connectors the
   show uses, spelled etherCON and TRUE1.
 - FIX: A fiber cable with no length is flagged in the binder's cable
   tables, strand maps and fiber connections.
-- FIX: The QD-S input fiber is listed where its boxes are, and with the
-  screen's cables.
+- FIX: A data port with no home run says no length in the binder's Ports
+  table, the same as in its cable list.
+- FIX: The binder's tables no longer cut off names or overlap. Distro
+  names and cable types wrap onto another line instead of folding into
+  +N more.
+- FIX: The binder says a distro's feeder once, like Feeder: 50', instead
+  of Feeder: Feeder 50'.
+- FIX: A screen on a distro fed thru another distro shows the service
+  it's really on in the binder's FACTS.
+- FIX: A distro's power system can't be changed while it's fed thru, or
+  feeds, a distro on another system. The app tells you which distro is
+  linked.
+- FIX: A length typed in the other unit, like 30m in a feet show,
+  converts wherever you type a cable length, not just on the feeder.
 - FIX: A custom Share with next run no longer joins a wide circuit, or a
   circuit already on a 2fer or 3fer.
 - FIX: Clear Circuit clears a whole custom 3fer, not just one leg of it.
-- FIX: Locked screens keep their settings when you group them.
+- FIX: After Clear Circuit, the circuit field still matches the numbers
+  on the wall, and Next and Previous skip the gap.
 - FIX: On a custom wall, a 2fer or 3fer shows its circuit number in the
   field and in messages.
+- FIX: The custom fill readout and its limit count every leg of a 2fer
+  or 3fer, so you can't click a shared circuit past its amps.
 - FIX: Picking 2fer this screen or 3fer this screen ticks Share circuits
-  via splitters for you.
+  via splitters for you, in automatic mode as well as custom.
 - FIX: Sharing a whole screen or a selection from the right-click menu
   keeps to the screen's splitter size.
+- FIX: Locked screens keep their settings when you group them, Share
+  circuits via splitters included, and screens you ungroup keep the
+  settings they had in the group.
 - FIX: Every distro's rating reads the same way, like
   400 A service · 120/208V 3φ.
-- FIX: The binder's tables no longer cut off names or overlap.
-- FIX: Pull sheet edits saved in an older version follow their rows when
-  the rows are renamed.
 - FIX: The tray's chips on direct outputs name the same cable as the
   paperwork.
 
@@ -164,7 +215,7 @@ FIXES
   for two columns, 3fer for three, 4fer for four.
 - FIX: The 3fer Screen button splits a circuit that spans three columns
   into its own three legs, the way automatic mode does, instead of joining
-  it to its neighbours.
+  it to its neighbors.
 - FIX: In a group, Share circuits via splitters is one setting for the
   whole wall. Before, each screen had its own, and a fill followed the
   first screen's even when another screen showed it ticked.

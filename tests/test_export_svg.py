@@ -154,7 +154,7 @@ def _groups(root):
 
 def test_the_format_option_is_served(client):
     html = client.get('/').get_data(as_text=True)
-    assert ('<option value="svg">SVG (Vector - editable in Illustrator, '
+    assert ('<option value="svg">SVG (Vector, editable in Illustrator, '
             'smart object in Photoshop)</option>') in html
     assert 'Supported by PNG, SVG and PSD.' in html
 

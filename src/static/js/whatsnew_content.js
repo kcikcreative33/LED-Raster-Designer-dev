@@ -15,28 +15,28 @@
  * cannot ship without its highlights.
  *
  * Shape: { 'MAJOR.MINOR' | 'X.Y.Z': { title: str, items: [{ h: str, d: str }] } }
- *   h - short heading, d - one or two plain sentences. No markup, no emoji.
+ *   h: short heading, d: one or two plain sentences. No markup, no emoji.
  */
 window.WHATS_NEW_CONTENT = {
     '1.5.4': {
-        title: 'Every cable named by its connector, a panel input for each screen, and a feeder for every distro',
+        title: 'Every cable named by its connector, a panel input for Edison and L6-20 screens, and a feeder for every distro',
         items: [
             { h: 'TRUE1 or powerCON, Cat6 or etherCON',
               d: 'The pull sheet and the binder say exactly which cable to pull. Power reads TRUE1 or powerCON from each screen\'s breakout, and data reads Cat6 or etherCON from each box\'s own outputs.' },
             { h: 'A panel input for Edison and L6-20 screens',
-              d: 'An Edison or L6-20 breakout now asks which connector your panels take, TRUE1 or powerCON, and the jumpers and splitters follow it. Each circuit gets one Edison → TRUE1 or L6-20 → powerCON cable, with the 2fers at the panels.' },
+              d: 'An Edison or L6-20 breakout now asks which connector your panels take, TRUE1 or powerCON, and the jumpers and splitters follow it. Each circuit gets one cable from its Edison or L6-20 plug to that panel input, with the 2fers at the panels.' },
+            { h: 'US circuits filled to 80%',
+              d: 'On 110V, 120V and 208V screens each circuit is now filled to 80% of its breaker, so a US screen may need more circuits than before. A distro with 100% rated breakers still fills them to 100%.' },
             { h: 'A feeder for every distro',
               d: 'Open a distro\'s gear, type its feeder length and pick whether it\'s fed from the service or thru another distro. A cam input lists a 400 A cam set with 5-wire, and the feeder is on the pull sheet even before you type a length.' },
             { h: 'A stock list for each kind of cable',
               d: 'In Preferences > Cable stock, tick A list for each kind of cable to give multis, data, power, L21-30 and Harting home runs, direct-output cables and feeders their own lengths. Shows and presets from before keep the lists they had.' },
-            { h: 'A name for each power jumper',
-              d: 'Preferences and the Export dialog have a name for the TRUE1 jumper and one for the powerCON jumper, so a show with both lists each one by its own name. A jumper name you changed before carries over to TRUE1.' },
-            { h: 'Boxes and snakes by their own names',
-              d: 'Distro boxes are listed by their own names everywhere, with -1 and -2 only when two share a name. Snakes are labelled by their ports, and two snakes are never merged into one row.' },
+            { h: 'Distros, boxes and snakes by their own names',
+              d: 'Distro boxes are listed by their own names everywhere, and two distros with the same name read SR-1 and SR-2, with their boxes and circuits named to match. Snakes are labeled by their ports, and two snakes are never merged into one row.' },
             { h: 'Check paperwork you\'ve already ordered from',
-              d: 'powerCON screens listed TRUE1 jumpers, Edison screens had the wrong cables and splitters, and blank cabinets on a drawn run counted jumpers. If you ordered cable from a 1.5.3 pull sheet, export it again and compare.' },
+              d: 'US screens may need more circuits, powerCON screens listed TRUE1 jumpers, Edison screens had the wrong cables, and the pull sheet now counts panels, feeders and the barrels at each join. If you ordered from an older pull sheet, export it again and compare.' },
             { h: '2fers and 3fers in custom mode',
-              d: 'Share with next run no longer joins wide circuits, Clear Circuit clears a whole custom 3fer, and custom 2fers and 3fers show their circuit numbers. Picking 2fer this screen or 3fer this screen turns Share circuits on for you.' }
+              d: 'Share with next run no longer joins wide circuits, Clear Circuit clears a whole custom 3fer, and the fill readout counts every leg of a shared circuit. Picking 2fer this screen or 3fer this screen turns Share circuits on for you, in automatic mode too.' }
         ]
     },
     '1.5.3': {
@@ -155,15 +155,15 @@ window.WHATS_NEW_CONTENT = {
             { h: 'Hardware lives in a tray',
               d: 'Processors, cards, breakout boxes and distros sit in a tray under the canvas, and the middle sidebars are gone. Drag a port, a card, a multi or a whole unit onto a screen to wire it; a red flag on the tray counts what is still unattached and flies you to it.' },
             { h: 'Nothing lands by itself',
-              d: 'A port is on a socket because you put it there, Clear always takes it off, and the drawing prints the socket it sits on - 6, 7, 8, 9 - the same numbers the tray shows.' },
+              d: 'A port is on a socket because you put it there, Clear always takes it off, and the drawing prints the socket it sits on (6, 7, 8, 9), the same numbers the tray shows.' },
             { h: 'Redundancy is one bar',
               d: 'Off, Whole unit, Per card or Per port, behind the processor’s gear, with exactly one thing beneath it. Every tray header wears a gold pill that reads the shape in force.' },
             { h: 'Power that adds up',
-              d: 'A distro has a rating, a voltage and a phase, its legs are summed the way a genset spec means it, and every number on it is a plug you drag - Multi 208, Multi 120, L21-30. Shared circuits never pass their amps unless you draw the runs yourself.' },
+              d: 'A distro has a rating, a voltage and a phase, its legs are summed the way a genset spec means it, and every number on it is a plug you drag: Multi 208, Multi 120, L21-30. Shared circuits never pass their amps unless you draw the runs yourself.' },
             { h: 'Every cable on paper',
               d: 'A cable sheet on every multi and card, snakes under a blue bracket, an extension off the fan-out, and Show Cable Tags to print them on the wall.' },
             { h: 'Beaches',
-              d: 'A position the show keeps. Screens, distros and boxes pick theirs - select several screens and right-click to put them on one - and the pull sheet and binder follow that order.' },
+              d: 'A position the show keeps. Screens, distros and boxes pick theirs (select several screens and right-click to put them on one), and the pull sheet and binder follow that order.' },
             { h: 'The binder is a drawing set',
               d: 'Numbered sheets with a title block and a revision log, real text in the PDF, a wiring sheet behind every map, and a screen’s own amps on the legs that feed it. Export Pull Sheet fills the shop workbook.' },
             { h: 'Guides that show you each step',
@@ -184,9 +184,9 @@ window.WHATS_NEW_CONTENT = {
             { h: 'Export treats a group as one screen',
               d: 'One shape in the Resolume XML named for the group, one Photoshop layer, and a rectangular group exports as a plain rectangle.' },
             { h: 'Drop shadows on logos and images',
-              d: 'An image layer can cast a drop shadow - color, opacity, angle, distance, spread and size. It is drawn into the artwork, so it exports exactly as you see it.' },
+              d: 'An image layer can cast a drop shadow, with its color, opacity, angle, distance, spread and size. It is drawn into the artwork, so it exports exactly as you see it.' },
             { h: 'Export asks where to save',
-              d: 'On the machine running the app, export asks for a folder even when you opened the app at its network address, and cancelling the chooser actually cancels.' }
+              d: 'On the machine running the app, export asks for a folder even when you opened the app at its network address, and canceling the chooser actually cancels.' }
         ]
     }
 };

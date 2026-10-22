@@ -1155,15 +1155,15 @@ class _DistroSystems {
                 const label = list.map(c => c.leg.label).join(' + ');
                 const numbers = new Set(list.map(c => c.box.number));
                 if (numbers.size > 1) {
-                    say(`pair:${key}`, `${label} are one circuit on two connectors (paired) — `
-                        + 'patch it to one or the other.');
+                    say(`pair:${key}`, `${label} are one circuit on two connectors (paired). `
+                        + 'Patch it to one or the other.');
                 }
                 const lim = limitOf(box);
                 if (amps > lim.amps + 1e-9) {
                     say(`brk:${key}`, sys.region === 'us' && lim.pct < 1
-                        ? `${label} draws ${amps.toFixed(1)} A on a ${box.breakerA} A breaker — `
+                        ? `${label} draws ${amps.toFixed(1)} A on a ${box.breakerA} A breaker, `
                             + `over the 80% continuous limit (${+lim.amps.toFixed(1)} A)`
-                        : `${label} draws ${amps.toFixed(1)} A on a ${box.breakerA} A breaker — OVER`);
+                        : `${label} draws ${amps.toFixed(1)} A on a ${box.breakerA} A breaker: OVER`);
                 }
                 for (const c of list) {
                     const rating = this.faceConnectorRatingA(d, c.box);

@@ -49,7 +49,7 @@ GROUP_HEADINGS = [
     'Power view & the tray',
     'Screens & Beaches panels',
     'Cable sheets',
-    'Guided tours',
+    'Guides',
 ]
 
 # One distinctive phrase per row of the modal. Platform-neutral on purpose:
@@ -162,13 +162,13 @@ GESTURE_PHRASES = [
     'Show the chips again',
     'Enter in a pull sheet cell',
     'the board redraws',
-    # Guided tours
+    # Guides
     'Next (Done on the last step)',
-    'Leave the tour',
+    'Leave the guide',
     'Return to the previous step',
     'Play this step again',
     'Go to N',
-    'End the tour',
+    'End the guide',
 ]
 
 # (handler marker, source file under src/static/js, phrase in the modal).
