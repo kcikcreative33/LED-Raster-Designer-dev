@@ -567,7 +567,7 @@ class _DockDrag {
         }
         if (unit.type === 'box' && unit.beyondTrunks) {
             return { ok: false, nums: [],
-                     message: `${unit.title} has no trunk on its ${this.unitWordForCard(unit.cardId)} - its `
+                     message: `${unit.title} has no trunk on its ${this.unitWordForCard(unit.cardId)}, so its `
                         + 'ports are not delivered, so nothing can land on '
                         + 'them.' };
         }
@@ -580,7 +580,7 @@ class _DockDrag {
         if (!unplaced.length) {
             return { ok: false, nums: [],
                      message: `Every port of ${scr.name} is already on a `
-                        + 'processor - clear it first' };
+                        + 'processor. Clear it first.' };
         }
         const wanted = upTo == null
             ? unplaced : unplaced.filter(n => n <= upTo);
@@ -761,7 +761,7 @@ class _DockDrag {
                 if (!faceRow) {
                     const why = fits.length
                         ? this.faceBoxEligible(d, fits[0].boxes[0], layer).why
-                        : `${this.distroLabel(d)} has no multi outputs — drag one of its `
+                        : `${this.distroLabel(d)} has no multi outputs. Drag one of its `
                             + 'outputs onto a circuit';
                     return { ok: false, glyph: 'soca', message: why };
                 }
@@ -801,8 +801,8 @@ class _DockDrag {
         if (!type.breakouts.includes(bt.id)) {
             return { ok: false, glyph,
                      message: `${layer.name} is set to `
-                        + `${this._breakoutShortName(bt)} — change its `
-                        + 'breakout first' };
+                        + `${this._breakoutShortName(bt)}. Change its `
+                        + 'breakout first.' };
         }
         return { ok: true, d, type, glyph };
     }
@@ -918,7 +918,7 @@ class _DockDrag {
             // A paired connector whose circuits are already patched
             // through its pair (1.5, ruling 7).
             return `${payload.title} shares its circuits with ${r.busy[0].label} `
-                + '(paired) - a circuit can be patched to either connector, not both.';
+                + '(paired). A circuit can be patched to either connector, not both.';
         }
         if (r.why === 'other-box') {
             // A circuit on another box is somebody's feed: the drop never
@@ -927,13 +927,13 @@ class _DockDrag {
             const rec = layer && r.seg && typeof this._powerNaming === 'function'
                 ? this._powerNaming(layer).socas.get(r.seg.index) : null;
             const where = rec && rec.name ? rec.name : 'another distro';
-            return `${label} is already on ${where} - clear it first; `
+            return `${label} is already on ${where}. Clear it first; `
                 + `${payload.title} never takes a circuit that is already fed.`;
         }
         // The place-overflow refusal, in circuits: a box with no free
         // circuit takes nothing, and no cut happens for nothing.
         const len = r.tailLen != null ? r.tailLen : r.remaining;
-        return `${payload.title} has no free circuits - the ${len} circuit`
+        return `${payload.title} has no free circuits: the ${len} circuit`
             + `${len === 1 ? '' : 's'} up to ${label} stay where they are.`;
     }
 
@@ -986,7 +986,7 @@ class _DockDrag {
             if (p.glyph) pill.appendChild(this.plugGlyph(p.glyph));
             const t = document.createElement('span');
             t.textContent = p.ok
-                ? p.text + (p.warn ? ` — ${p.warn}` : '') : p.message;
+                ? p.text + (p.warn ? `. ${p.warn}` : '') : p.message;
             pill.appendChild(t);
         }
         pill.style.display = '';
@@ -1025,7 +1025,7 @@ class _DockDrag {
         this.updateLayers([...new Set(touched)], true, 'Assign Multi Distro');
         this._restateNaming();
         if (plan.warn) {
-            this._dockSay(`${plan.boxName} landed on ${layer.name} — `
+            this._dockSay(`${plan.boxName} landed on ${layer.name}: `
                 + `${plan.warn}.`);
         }
     }
@@ -1060,7 +1060,7 @@ class _DockDrag {
                 const fig = load && load.ratingA > 0
                     ? ` ${load.amps.toFixed(0)}/${+load.limitA.toFixed(1)} A` : '';
                 if (!gate.ok) {
-                    return { label: `${name} — ${gate.message}`, disabled: true,
+                    return { label: `${name}: ${gate.message}`, disabled: true,
                              title: gate.message };
                 }
                 const payload = { type: 'plug', distroId: d.id,
@@ -1078,7 +1078,7 @@ class _DockDrag {
             }
             if (!this.distroOffers(d, type.id)) {
                 return {
-                    label: `${name} — does not offer ${type.name}`,
+                    label: `${name} does not offer ${type.name}`,
                     disabled: true,
                     title: `Tick ${type.name} under ${name}'s ⚙ Outputs to `
                         + 'offer it.',
@@ -1094,7 +1094,7 @@ class _DockDrag {
                 label: `${name}${fig}`,
                 disabled: !plan.ok,
                 title: plan.ok
-                    ? `${plan.text}${plan.warn ? ` — ${plan.warn}` : ''}. `
+                    ? `${plan.text}${plan.warn ? `. ${plan.warn}` : ''}. `
                         + 'One undoable step.'
                     : plan.message,
                 run: () => {
@@ -1359,7 +1359,7 @@ class _DockDrag {
                 // place-overflow follows with spare ports: the FIRST
                 // circuits land, the rest wait.
                 this._dockSay(`${payload.title} had ${r.free} free `
-                    + `circuit${r.free === 1 ? '' : 's'} - took ${r.took} `
+                    + `circuit${r.free === 1 ? '' : 's'} and took ${r.took} `
                     + `of the ${r.tailLen} circuits up to ${label}; `
                     + 'the rest stay as their own unassigned multi.');
             }
@@ -1433,7 +1433,7 @@ class _DockDrag {
             const busy = this._facePairedHolders(tailD, n, payload.tail);
             if (busy.length) {
                 this._dockSay(`${payload.title} is the same circuit as `
-                    + `${busy[0].label} (paired) - a circuit can be patched to `
+                    + `${busy[0].label} (paired). A circuit can be patched to `
                     + 'either connector, not both.');
                 return;
             }
@@ -1460,8 +1460,8 @@ class _DockDrag {
             if (ml === layer && m.soca === rec.index
                     && mr.circuits[i] === target.num) continue;
             this._dockSay(`Circuit ${payload.tail} is held by ${ml.name} `
-                + `${this.getPowerCircuitLabel(ml, mr.circuits[i])} - `
-                + 'clear it first, or drop on a free pip.');
+                + `${this.getPowerCircuitLabel(ml, mr.circuits[i])}. `
+                + 'Clear it first, or drop on a free pip.');
             return;
         }
         const at = rec.circuits.indexOf(target.num);
@@ -1622,13 +1622,13 @@ class _DockDrag {
         const bt = this.getPowerBreakout(layer);
         const type = this.outputTypeForBreakout(bt, layer.powerVoltage);
         if (!type) {
-            return `${layer.name} is set to ${this._breakoutShortName(bt)} `
-                + '— change its breakout first';
+            return `${layer.name} is set to ${this._breakoutShortName(bt)}. `
+                + 'Change its breakout first.';
         }
         if (!this.distroOffers(d, type.id)) {
             return `${this.distroLabel(d)} does not offer `
-                + `${type.name} — tick ${type.name} under its `
-                + '⚙ Outputs first';
+                + `${type.name}. Tick ${type.name} under its `
+                + '⚙ Outputs first.';
         }
         const gate = this._plugGate({ distroId: d.id, output: type.id }, layer);
         return gate.ok ? null : gate.message;

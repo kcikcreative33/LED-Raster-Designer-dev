@@ -159,7 +159,7 @@ def test_the_crowded_output_is_the_flagged_error_state(walls):
         return { labels: s.legs.map(g => g.label),
                  checks: app.distroChecks(app.getDistros()[0]).map(w => w.text) };""")
     assert out['labels'] == [f'PD4-{i}' for i in range(1, 7)], out
-    assert ("WALL A's 6 circuits are on PD4, a TRUE1 — one circuit only. "
+    assert ("WALL A's 6 circuits are on PD4, a TRUE1 that takes one circuit only. "
             'Move it to a multi output.') in out['checks'], out['checks']
 
 

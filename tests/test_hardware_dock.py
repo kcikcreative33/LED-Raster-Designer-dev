@@ -1238,7 +1238,7 @@ def test_a_whole_card_is_refused_when_nothing_is_unassigned(dock_page):
         status: document.getElementById('status-message').textContent,
         pins: (window.app.project.port_assignments || {}).pins || []})""")
     assert out['status'] == (
-        'Every port of WALL B is already on a processor - clear it first'), out
+        'Every port of WALL B is already on a processor. Clear it first.'), out
     assert out['pins'] == parked, f'the refusal still moved something: {out}'
     assert page.evaluate(HIST_LEN_JS) == before, (
         'a refused drop must not write history')
@@ -1937,7 +1937,7 @@ def test_the_redundancy_pill_reads_the_state_and_opens_the_processor_gear(
     """The user's pick of option D's cheap half (2026-09-04): a read-only
     pill on the processor and card headers that states the shape in force
     and opens the PROCESSOR's gear, where the bar that sets it lives.
-    Nothing while redundancy is off; `R per card` / `R 1:1 — no partner`
+    Nothing while redundancy is off; `R per card` / `R 1:1, no partner`
     with nothing paired; `R per card` on the main and `backs up SR` on the
     partner once every card is paired onto it (the partner's consumed cards
     carry the role in their names and get no pill); `R per port` / `R
@@ -2038,7 +2038,7 @@ def test_the_redundancy_pill_reads_the_state_and_opens_the_processor_gear(
             'mainCards': [None, None], 'backCards': [None, None]}
         assert pills({'redundancy': True}) == {
             'main': 'R per card', 'back': None, 'bu': None,
-            'mainCards': ['R 1:1 — no partner', 'R 1:1 — no partner'],
+            'mainCards': ['R 1:1, no partner', 'R 1:1, no partner'],
             'backCards': [None, None]}
         out = pills({'partner': made['backId']})
         assert out['main'] == 'R per card', out
@@ -2053,7 +2053,7 @@ def test_the_redundancy_pill_reads_the_state_and_opens_the_processor_gear(
         assert out['mainCards'] == ['R manual', 'R OPT split'], out
         out = pills({'modes': ['1to1', 'halves']})
         assert out['main'] == 'R per card', out
-        assert out['mainCards'] == ['R 1:1 — no partner', 'R OPT split'], out
+        assert out['mainCards'] == ['R 1:1, no partner', 'R OPT split'], out
         # the backup processor rides the main's header beside it
         out = pills({'backupUnit': {}})
         assert out['bu'] == 'Backup: SR BU' and out['main'] == 'R per card', out
@@ -2765,7 +2765,7 @@ def test_a_multi_section_wears_six_circuit_chips(dock_page):
     # the chip face says tail number + derived label + occupant screen
     assert 'C2-2-1' in occ[0]['text'] and 'OFF SL' in occ[0]['text'], occ
     assert 'OFF SL' in occ[0]['title'] and 'C2-2-1' in occ[0]['title'], occ
-    assert 'Circuit 5 - free' in occ[4]['title'], occ
+    assert 'Circuit 5: free' in occ[4]['title'], occ
     assert 'free' in occ[4]['text'], occ
     empty = out['empty']
     assert empty and len(empty) == 6 and all(empty), out

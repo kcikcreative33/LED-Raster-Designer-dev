@@ -432,7 +432,7 @@ class _DistroSystems {
         if (this.systemVoltsFor(sys, layer.powerVoltage) !== null) return null;
         const v = this.voltageNumber(layer.powerVoltage);
         const figures = this._systemFigures(sys);
-        return `${layer.name} runs at ${v}V — ${this.distroLabel(d)} gives `
+        return `${layer.name} runs at ${v}V, and ${this.distroLabel(d)} gives `
             + `${figures.map(f => `${f}V`).join(' or ')}. `
             + `Set the screen to ${this._nearestFigure(figures, v)}V.`;
     }
@@ -749,10 +749,10 @@ class _DistroSystems {
         if (v > 0 && !this.voltsMatch(v, box.volts)) {
             const sys = this.distroSystem(d);
             if (box.conn.id === 'stagepin' && sys.vll && this.voltsMatch(v, sys.vll)) {
-                return { ok: false, why: `${layer.name} runs at ${v}V — stage pin is never `
+                return { ok: false, why: `${layer.name} runs at ${v}V, and stage pin is never `
                     + `${sys.vll}V (ANSI E1.24)` };
             }
-            return { ok: false, why: `${layer.name} runs at ${v}V — `
+            return { ok: false, why: `${layer.name} runs at ${v}V, and `
                 + `${this.distroLabel(d)} ${box.number} (${type.name}) gives ${box.volts}V. `
                 + `Set the screen to ${box.volts}V.` };
         }
@@ -760,7 +760,7 @@ class _DistroSystems {
             const bt = this.getPowerBreakout(layer);
             if (!type.breakouts.includes(bt.id)) {
                 return { ok: false, why: `${layer.name} is set to `
-                    + `${this._breakoutShortName(bt)} — a ${type.name} breaks out to `
+                    + `${this._breakoutShortName(bt)}, and a ${type.name} breaks out to `
                     + `${box.conn.id === 'l2130' ? 'an L21-30 box' : 'a six-circuit multi'}; `
                     + 'change its breakout first' };
             }
@@ -1093,7 +1093,7 @@ class _DistroSystems {
         const name = this.distroLabel(d);
         if (!sys) {
             out.push({ mild: true,
-                       text: `${name} is ${this.distroSystemName(d)} — pick its system `
+                       text: `${name} is ${this.distroSystemName(d)}. Pick its system `
                            + '(120/208V, 120/240V, 120V, 230/400V or 230V) behind its ⚙.' });
             return out;
         }
@@ -1116,18 +1116,22 @@ class _DistroSystems {
             for (const r of face.rows) {
                 if (r.connector === 'powerconxx' && sys.region === 'us'
                         && r.coupling === 'll' && sys.vll > 127) {
-                    say(`xx:${r.id}`, `powerCON XX is only US-listed to 127V — ${name}'s `
+                    say(`xx:${r.id}`, `powerCON XX is only US-listed to 127V, and ${name}'s `
                         + `${r.count} powerCON XX output${r.count === 1 ? '' : 's'} run at ${sys.vll}V.`);
                 }
             }
             const physical = new Map();     // key -> [{c, label}]
+            // The region's packing % (app-power _distroPackPct), the one
+            // the screens on this distro are packed to, so a fully packed
+            // circuit never trips this check.
             const limitOf = (box) => {
-                const pct = sys.region === 'us' && !d.breakers100 ? 0.8 : 1;
+                const own = typeof this._distroPackPct === 'function' ? this._distroPackPct(d) : null;
+                const pct = own === null ? (sys.region === 'us' && !d.breakers100 ? 0.8 : 1) : own;
                 return { amps: box.breakerA * pct, pct };
             };
             for (const c of circuits) {
                 if (!c.box) {
-                    say(`past:${c.s.number}`, `${name} ${c.s.number} is not on ${name}'s face — `
+                    say(`past:${c.s.number}`, `${name} ${c.s.number} is not on ${name}'s face: `
                         + `it has ${face.boxes.length} output${face.boxes.length === 1 ? '' : 's'}.`);
                     continue;
                 }
@@ -1140,7 +1144,7 @@ class _DistroSystems {
                     const an = /^(?:[aeiou]|L\d)/i.test(conn) ? 'an' : 'a';
                     say(`dir:${c.layer.id}:${c.s.soca}`, `${c.layer.name}'s ${c.s.legs.length} `
                         + `circuits are on ${c.s.name || `${name} ${c.box.number}`}, ${an} ${conn} `
-                        + '— one circuit only. Move it to a multi output.');
+                        + 'that takes one circuit only. Move it to a multi output.');
                 }
                 const elig = this.faceBoxEligible(d, c.box, c.layer);
                 if (!elig.ok && !/breakout/.test(elig.why)) say(`fv:${c.layer.id}:${c.box.number}`, elig.why);
@@ -1168,7 +1172,7 @@ class _DistroSystems {
                 for (const c of list) {
                     const rating = this.faceConnectorRatingA(d, c.box);
                     if (rating != null && amps > rating + 1e-9 && c.box.kind === 'direct') {
-                        say(`conn:${key}:${c.box.number}`, `${label} draws ${amps.toFixed(1)} A — `
+                        say(`conn:${key}:${c.box.number}`, `${label} draws ${amps.toFixed(1)} A, and `
                             + `a ${c.box.conn.short} is rated ${rating} A here`);
                     }
                 }
@@ -1243,7 +1247,7 @@ class _DistroSystems {
         const cap = this._crowdCapacityA(d, cr.box);
         if (cap == null || !(cr.amps > cap + 1e-9)) return null;
         return `${cr.where} ${cr.box.conn.short} at `
-            + `${cr.amps.toFixed(1)} A of ${+cap.toFixed(1)} A — over capacity`;
+            + `${cr.amps.toFixed(1)} A of ${+cap.toFixed(1)} A: over capacity`;
     }
 
     // The distro a patch would make, for asking - never stored: its system
@@ -1398,9 +1402,9 @@ class _DistroSystems {
         if (s.legs.length + others <= box.size) return null;
         const where = `${this.distroLabel(d)} ${n}`;
         return s.legs.length > box.size
-            ? `${layer.name}'s ${s.legs.length}-circuit multi cannot go on ${where} — `
+            ? `${layer.name}'s ${s.legs.length}-circuit multi cannot go on ${where}: `
                 + `a ${box.conn.short} carries ${this._circuitsWord(box.size)}. Use a multi output.`
-            : `${where} already carries its ${this._circuitsWord(box.size)} — `
+            : `${where} already carries its ${this._circuitsWord(box.size)}, and `
                 + `a ${box.conn.short} takes no more.`;
     }
 
@@ -1483,14 +1487,14 @@ class _DistroSystems {
             method, headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         }).catch(() => {
-            throw new Error(`${failed} - the app's server could not be reached.`);
+            throw new Error(`${failed}: the app's server could not be reached.`);
         }).then(r => r.text().then(text => {
             let j = null;
             try { j = JSON.parse(text); } catch (e) { j = null; }
             if (!r.ok || !j || typeof j !== 'object') {
                 const why = j && typeof j.error === 'string' && j.error
                     ? j.error : `the server said ${r.status}`;
-                throw new Error(`${failed} - ${why}.`);
+                throw new Error(`${failed}: ${why}.`);
             }
             this._customDistroPresets = Array.isArray(j.presets) ? j.presets : [];
             return this._customDistroPresets;
@@ -1538,8 +1542,8 @@ class _DistroSystems {
         type.style.flex = '1 1 0';
         type.style.minWidth = '0';
         type.dataset.lrdField = `distro-type-${d.id}`;
-        type.title = 'What this distro is, the way the pull sheet lists it - '
-            + 'e.g. "200A 24 circuits". Blank prints "Distro". Starting from a '
+        type.title = 'What this distro is, the way the pull sheet lists it, '
+            + 'like "200A 24 circuits". Blank prints "Distro". Starting from a '
             + 'preset fills it with the preset\'s name.';
         type.addEventListener('change', () => patch({ typeName: type.value }));
         r0.appendChild(type);
@@ -1556,7 +1560,7 @@ class _DistroSystems {
         if (!sys) {
             const opt = document.createElement('option');
             opt.value = '';
-            opt.textContent = `${this.distroSystemName(d)} — pick a system`;
+            opt.textContent = `${this.distroSystemName(d)}: pick a system`;
             opt.selected = true;
             sel.appendChild(opt);
         }
@@ -1630,7 +1634,14 @@ class _DistroSystems {
             cb.type = 'checkbox';
             cb.checked = !!on;
             cb.dataset.lrdField = `distro-${field}-${d.id}`;
-            cb.addEventListener('change', () => patch({ [key]: cb.checked }));
+            cb.addEventListener('change', () => {
+                // A refused tick (a locked screen it would repack) puts
+                // the box back the way the distro still is.
+                if (patch({ [key]: cb.checked }) === null) {
+                    const live = this.getDistros().find(x => x.id === d.id);
+                    cb.checked = !!(live && live[key]);
+                }
+            });
             lab.appendChild(cb);
             lab.appendChild(document.createTextNode(text));
             lab.title = title;
@@ -1664,7 +1675,7 @@ class _DistroSystems {
                     + (rule.pct < 1 ? ` (${this.distroMainLimitNote(rule)})` : '')
                 : 'under the limit now';
             r4.appendChild(check('overload-accepted', d.overloadAccepted,
-                `Accept overload — ${why}`,
+                `Accept overload: ${why}`,
                 'Accept this distro\'s overload: its error turns amber and reads '
                 + 'accepted. The figures stay as they are, and the acceptance '
                 + 'stays until you untick it.', 'overloadAccepted'));
@@ -1753,7 +1764,7 @@ class _DistroSystems {
             count.style.width = '44px';
             count.dataset.lrdField = `distro-row-count-${d.id}-${r.id}`;
             count.title = r.connector === 'edison'
-                ? 'How many receptacles - each receptacle of a duplex is its own circuit.'
+                ? 'How many receptacles. Each receptacle of a duplex is its own circuit.'
                 : 'How many of this connector the face carries.';
             count.addEventListener('change', () => {
                 const next = rows.map(x => ({ ...x }));
@@ -1844,8 +1855,8 @@ class _DistroSystems {
                 const pw = document.createElement('select');
                 pw.className = 'info-select';
                 pw.dataset.lrdField = `distro-row-paired-${d.id}-${r.id}`;
-                pw.title = 'Paired: the same circuits on a second set of connectors - '
-                    + 'they count once, and a circuit can be patched to either, not both.';
+                pw.title = 'Paired: the same circuits on a second set of connectors. '
+                    + 'They count once, and a circuit can be patched to either, not both.';
                 const noneOpt = document.createElement('option');
                 noneOpt.value = '';
                 noneOpt.textContent = 'not paired';

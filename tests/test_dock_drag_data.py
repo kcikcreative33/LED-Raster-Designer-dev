@@ -424,10 +424,10 @@ def test_a_fully_placed_screen_lights_nothing_and_refuses_the_drop(dock_page):
     assert mid['target']['nums'] == [], mid
     assert mid['lit'] == [], f'a fully placed screen lit under the drag: {mid}'
     assert mid['pill'] == {
-        'text': 'Every port of WALL is already on a processor - clear it first',
+        'text': 'Every port of WALL is already on a processor. Clear it first.',
         'bad': True}, mid
     assert page.evaluate(STATUS_JS) == (
-        'Every port of WALL is already on a processor - clear it first')
+        'Every port of WALL is already on a processor. Clear it first.')
     assert wall_pins(page, wall) == placed, 'the refusal moved something'
     assert wall_pins(page, wall, from_server=True) == placed
     assert page.evaluate(HIST_LEN_JS) == before, (

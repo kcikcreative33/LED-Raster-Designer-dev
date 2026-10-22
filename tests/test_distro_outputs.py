@@ -503,10 +503,10 @@ def test_a_mismatched_connector_is_refused_with_the_fix(page):
     assert mid['target']['nums'] == [] and mid['lit'] == [], mid
     assert mid['pill']['cls'] == 'hw-dock-pill-bad', mid
     assert mid['pill']['text'] == \
-        'WALL B is set to L21-30 — change its breakout first', mid
+        'WALL B is set to L21-30. Change its breakout first.', mid
     assert pg.evaluate(POWER_STATE_JS, ids['bId'])['distro'] == {}
     assert pg.evaluate(STATUS_JS) == \
-        'WALL B is set to L21-30 — change its breakout first'
+        'WALL B is set to L21-30. Change its breakout first.'
     assert pg.evaluate(HIST_LEN_JS) == n, 'a refused drop earned an entry'
     # an L21-30 against a soca screen (WALL A defaults to Multi → True1)
     sx, sy = chip_center(pg, f'plug-{d}-l2130')
@@ -515,7 +515,7 @@ def test_a_mismatched_connector_is_refused_with_the_fix(page):
                mid_check=lambda p: p.evaluate(MID_JS, ids['aId']))
     assert mid['lit'] == [] and mid['pill']['cls'] == 'hw-dock-pill-bad', mid
     assert mid['pill']['text'] == \
-        'WALL A is set to Multi → TRUE1 — change its breakout first', mid
+        'WALL A is set to Multi → TRUE1. Change its breakout first.', mid
     assert pg.evaluate(POWER_STATE_JS, ids['aId'])['distro'] == {}
     # the L21-30 chip DOES land on the L21-30 box - three circuits, one box
     sx, sy = chip_center(pg, f'plug-{d}-l2130')
@@ -729,7 +729,7 @@ def test_the_submenu_lists_offering_distros_with_loads(page):
             # the figure is against the main's continuous limit - 80%
             # of a 400 A US distro's rating (2026-10-18)
             ('PD 0/320 A', False),
-            ('SR — does not offer Multi 208', True)], m
+            ('SR does not offer Multi 208', True)], m
         assert 'Tick Multi 208 under SR' in m['entries'][1]['title'], m
         # hover opens the submenu; the pick is the drop
         pg.locator('#context-menu [data-action="hw-outputs"]').hover()
@@ -950,7 +950,7 @@ def test_a_220v_or_230v_screen_is_refused_by_a_120_208_distro(page):
                        mid_check=lambda p: p.evaluate(MID_JS, ids['bId']))
             assert mid['lit'] == [] and mid['pill']['cls'] == 'hw-dock-pill-bad', (chip, mid)
             assert mid['pill']['text'] == (
-                f'WALL B runs at {volts}V — PD gives 120V or 208V. Set the screen to 208V.'), mid
+                f'WALL B runs at {volts}V, and PD gives 120V or 208V. Set the screen to 208V.'), mid
             assert pg.evaluate(POWER_STATE_JS, ids['bId'])['distro'] == {}
         assert pg.evaluate(HIST_LEN_JS) == n
     cls = pg.evaluate("""() => { const app = window.app;
@@ -1346,7 +1346,7 @@ def test_a_whole_distro_drag_passes_the_plug_gate(page):
     assert pg.evaluate(POWER_STATE_JS, ids['aId'])['distro'] == {}, \
         'a refused whole-distro drop assigned a multi'
     assert pg.evaluate(STATUS_JS) == \
-        'PD does not offer Multi 208 — tick Multi 208 under its ⚙ Outputs first'
+        'PD does not offer Multi 208. Tick Multi 208 under its ⚙ Outputs first.'
     assert pg.evaluate(HIST_LEN_JS) == n, 'a refused drop earned an entry'
     # an L6-20 screen: no output type names the breakout
     pg.evaluate(RESET_JS, ids)
@@ -1361,7 +1361,7 @@ def test_a_whole_distro_drag_passes_the_plug_gate(page):
         return {
             refusal: app._distroDropRefusal({ distroId: dd.id }, a, s),
             expect: `WALL A is set to ${app._breakoutShortName(
-                app.getPowerBreakout(a))} — change its breakout first`,
+                app.getPowerBreakout(a))}. Change its breakout first.`,
         };
     }""", ids)
     assert out['refusal'] == out['expect'], out
@@ -1657,9 +1657,9 @@ def test_a_typed_spare_box_drags_as_its_plug(page):
     assert mid['lit'] == [], mid
     assert mid['pill'] and mid['pill']['cls'] == 'hw-dock-pill-bad', mid
     assert mid['pill']['text'] == \
-        'WALL A is set to Multi → TRUE1 — change its breakout first', mid
+        'WALL A is set to Multi → TRUE1. Change its breakout first.', mid
     assert pg.evaluate(STATUS_JS) == \
-        'WALL A is set to Multi → TRUE1 — change its breakout first'
+        'WALL A is set to Multi → TRUE1. Change its breakout first.'
     assert pg.evaluate(POWER_STATE_JS, ids['aId'])['distro'] == {}
     assert pg.evaluate(HIST_LEN_JS) == n, 'a refused drop earned an entry'
     # onto an L21-30 screen, dropped on its THIRD circuit: the anchored

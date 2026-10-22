@@ -561,6 +561,13 @@ class _DockMenus {
         return this._batchMenuEntries(layer, nums, refs, scope);
     }
 
+    // "A", "A and B", "A, B and C".
+    _namesListText(names) {
+        const list = (names || []).filter(Boolean);
+        if (list.length < 2) return list[0] || '';
+        return `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
+    }
+
     // The batch entries for `nums` (or a custom wall's `refs`) of `layer`.
     // `ticking`: worked out with sharing on for a screen that has it off,
     // so every entry ticks it, and nothing shared yet can be removed.
@@ -639,9 +646,15 @@ class _DockMenus {
                 + 'columns splits into a run per column on its own circuit.' : '';
             // "2fer / 3fer this screen" ticks the wall's "Share circuits via
             // splitters" in the same step (batchShareCircuits tickSharing).
+            // On a grouped wall the box is the group's: it goes on for
+            // every member, and the title says so.
             const ticks = ticking || (scope === 'screen' && !sp.enabled);
-            const tickText = ticks ? ' Also turns on "Share circuits via '
-                + 'splitters" for this screen.' : '';
+            const wall = ticks ? this._splitterWallMembers(layer) : [];
+            const tickText = !ticks ? ''
+                : (wall.length > 1
+                    ? ' Also turns on "Share circuits via splitters" for every screen '
+                        + `in its group (${this._namesListText(wall.map(m => m.name || `Screen ${m.id}`))}).`
+                    : ' Also turns on "Share circuits via splitters" for this screen.');
             entries.push({
                 label,
                 title: `Deal ${runCount} run${runCount === 1 ? '' : 's'} `

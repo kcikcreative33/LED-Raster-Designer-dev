@@ -181,7 +181,7 @@ def test_a_multi_left_on_a_direct_output_is_said_and_kept_apart(seeded):
     assert out['kinds'] == ['direct', 'direct'], out
     assert out['aCircuits'] == 6 and out['bCircuits'] == 1
     name_a = 'PD4'
-    want = (f"WALL A's 6 circuits are on {name_a}, a TRUE1 — one circuit only. "
+    want = (f"WALL A's 6 circuits are on {name_a}, a TRUE1 that takes one circuit only. "
             'Move it to a multi output.')
     assert want in out['checks'], out['checks']
     assert want in out['strip'], 'the dock strip carries the check'
@@ -220,7 +220,7 @@ def test_a_socapex_row_turned_true1_under_a_multi_is_said(seeded):
         return true;""")
     out = ev(pg, READ_FACE)
     assert out['kinds'] == ['direct', 'direct'], out
-    assert ("WALL A's 6 circuits are on PD4, a TRUE1 — one circuit only. "
+    assert ("WALL A's 6 circuits are on PD4, a TRUE1 that takes one circuit only. "
             'Move it to a multi output.') in out['checks'], out['checks']
     assert not [c for c in out['checks'] if 'paired' in c], out['checks']
 
@@ -319,7 +319,7 @@ def test_an_l2130_box_on_an_old_208v_single_phase_distro_keeps_its_feed_check(se
     worst = max(out['fl'])
     assert worst > 30
     # an old 208 V record is a US one: the leg is held to 80% of 30 A
-    assert any(f'feed leg at {worst:.2f} A / 24 A (80% of 30 A) — OVER' in w for w in out['strip']), out['strip']
+    assert any(f'feed leg at {worst:.2f} A / 24 A (80% of 30 A), OVER' in w for w in out['strip']), out['strip']
 
 
 # ── EU phasing select ─────────────────────────────────────────────────────

@@ -283,7 +283,7 @@ def test_a_screen_voltage_the_system_lacks_is_refused_with_the_reason(seeded):
         return { why: app.distroVoltageRefusal(d, B), plan,
                  assigned: Object.keys(B.powerSocaDistro || {}).length,
                  status: document.getElementById('status-message').textContent };""")
-    want = 'WALL B runs at 230V — SL gives 120V or 208V. Set the screen to 208V.'
+    want = 'WALL B runs at 230V, and SL gives 120V or 208V. Set the screen to 208V.'
     assert out['why'] == want
     assert out['plan']['ok'] is False and out['plan']['message'] == want
     assert out['assigned'] == 0, out
@@ -337,7 +337,7 @@ def test_stage_pin_is_refused_at_208v(seeded):
         return { coupling: rows[0].coupling, plan };""")
     assert out['coupling'] == 'ln', 'a stage pin row cannot be stored line-to-line'
     assert out['plan']['ok'] is False
-    assert out['plan']['message'] == 'WALL A runs at 208V — stage pin is never 208V (ANSI E1.24)'
+    assert out['plan']['message'] == 'WALL A runs at 208V, and stage pin is never 208V (ANSI E1.24)'
 
 
 def test_powercon_xx_at_208v_warns(seeded):
@@ -345,7 +345,7 @@ def test_powercon_xx_at_208v_warns(seeded):
     setup(pg, distros=[{'id': 'd1', 'name': 'SL', 'ratingA': 200, 'system': '120/208',
                         'outputRows': [{'connector': 'powerconxx', 'count': 3, 'coupling': 'll'}]}])
     warn = ev(pg, "return app.distroChecks(app.getDistros()[0]).map(w => w.text);")
-    assert "powerCON XX is only US-listed to 127V — SL's 3 powerCON XX outputs run at 208V." in warn
+    assert "powerCON XX is only US-listed to 127V, and SL's 3 powerCON XX outputs run at 208V." in warn
     setup(pg, distros=[{'id': 'd1', 'name': 'SL', 'ratingA': 200, 'system': '120/208',
                         'outputRows': [{'connector': 'powerconxx', 'count': 3, 'coupling': 'ln'}]}])
     warn = ev(pg, "return app.distroChecks(app.getDistros()[0]).map(w => w.text);")
