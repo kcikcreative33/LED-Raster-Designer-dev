@@ -238,7 +238,8 @@ SEED_JS = """async (o) => {
     app.project = await (await fetch('/api/project')).json();
     app.dedupeProjectLayers('rulings_1018');
     const l = app.project.layers.find(x => (x.type || 'screen') === 'screen');
-    Object.assign(l, { powerVoltage: 208, powerAmperage: 20, panelWatts: 200 });
+    // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+    Object.assign(l, { powerVoltage: 208, powerAmperage: 25, panelWatts: 200 });
     app.currentLayer = l;
     app.selectedLayerIds = new Set([l.id]);
     app.renderLayers();
@@ -317,7 +318,7 @@ L2130_JS = """(o) => {
     const S = { id: 98, name: 'L21', type: 'screen', visible: true, columns: 2, rows: 5,
                 cabinet_width: 128, cabinet_height: 128, offset_x: 0, offset_y: 0,
                 panel_weight: 20, weight_unit: 'kg', panelWatts: 600, powerVoltage: 208,
-                powerAmperage: 15, processorType: 'brompton', bitDepth: 8, frameRate: 60,
+                powerAmperage: 18.75, processorType: 'brompton', bitDepth: 8, frameRate: 60,
                 flowPattern: 'tl-h', portMappingMode: 'organized', powerFlowPattern: 'tl-v',
                 powerOrganized: true, powerMaximize: false, group_id: null,
                 powerBreakoutType: 'l2130-powercon', powerSocaDistro: { 1: 'dq' } };
@@ -422,7 +423,7 @@ HALF_JS = """([catalog, cases]) => {
         const l = Object.assign({ id: 1, name: 'S', type: 'screen', visible: true, canvas_id: 'c1',
             columns: 2, rows: 2, cabinet_width: 128, cabinet_height: 256,
             panel_width_mm: 500, panel_height_mm: 1000, offset_x: 0, offset_y: 0,
-            panel_weight: 13, weight_unit: 'kg', panelWatts: 200, powerVoltage: 208, powerAmperage: 20,
+            panel_weight: 13, weight_unit: 'kg', panelWatts: 200, powerVoltage: 208, powerAmperage: 25,
             processorType: 'brompton', bitDepth: 8, frameRate: 60, flowPattern: 'tl-h',
             portMappingMode: 'organized', powerFlowPattern: 'tl-h', color1: { r: 64, g: 70, b: 128 },
             color2: { r: 149, g: 156, b: 184 }, show_numbers: false, rotation: 0,

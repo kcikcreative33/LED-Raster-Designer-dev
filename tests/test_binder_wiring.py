@@ -1643,7 +1643,8 @@ TOP_RUN_SEED_JS = """async () => {
     delete proj.port_assignments; delete proj.pullSheet; delete proj.binder;
     await j('PUT', '/api/project', proj);
     await j('POST', '/api/layer/add', {name: 'OVERHEAD', columns: 12, rows: 4,
-        cabinet_width: 200, cabinet_height: 200, powerVoltage: 208, powerAmperage: 10,
+        // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+        cabinet_width: 200, cabinet_height: 200, powerVoltage: 208, powerAmperage: 12.5,
         panelWatts: 500, powerFlowPattern: 'tl-v', powerOrganized: true, flowPattern: 'tl-h',
         processorType: 'novastar-armor'});
     app.project = await j('GET', '/api/project');
@@ -1761,7 +1762,7 @@ BOTTOM_DATA_SEED_JS = """async () => {
     delete proj.port_assignments; delete proj.pullSheet; delete proj.binder;
     await j('PUT', '/api/project', proj);
     await j('POST', '/api/layer/add', {name: 'UNDER', columns: 8, rows: 2,
-        cabinet_width: 400, cabinet_height: 400, powerVoltage: 208, powerAmperage: 10,
+        cabinet_width: 400, cabinet_height: 400, powerVoltage: 208, powerAmperage: 12.5,
         panelWatts: 200, powerFlowPattern: 'tl-h', powerOrganized: true, flowPattern: 'bl-v',
         processorType: 'novastar-armor'});
     // the add takes the layer's size; its data flow is set on the layer

@@ -659,28 +659,28 @@ class _PhaseBalance {
             ? this.getDistros().find(d => d.id === distroId) : null;
         const plural = (n, one, many) => (n === 1 ? one : many);
         const lockedLines = (r.locked || []).map(l =>
-            `${esc(l.name)} (${esc(l.layerName)}) stays where it is — ${esc(l.layers.join(', '))} ${plural(l.layers.length, 'is', 'are')} locked.`);
+            `${esc(l.name)} (${esc(l.layerName)}) stays where it is. ${esc(l.layers.join(', '))} ${plural(l.layers.length, 'is', 'are')} locked.`);
         const lockedHtml = lockedLines.length
             ? lockedLines.map(l => `<div style="color:#a6b0bb; margin:6px 0 0; padding-left:10px;">· ${l}</div>`).join('')
             : '';
         let noTargets = `<p style="margin:0; color:#a6b0bb;">Every multi on a three-phase distro is full, so the legs are already
                as even as the pattern allows. Imbalance comes from partly-filled
-               multis — there are none here.</p>`;
+               multis, and there are none here.</p>`;
         if (distroId) {
             const b = this._balanceBlockers(distroId);
             const lines = [];
             if (b.full.length) lines.push(
-                `${b.full.map(f => esc(f.name)).join(', ')} ${b.full.length === 1 ? 'is' : 'are'} full — with every circuit taken the legs are already as even as they get, there is nothing to choose.`);
+                `${b.full.map(f => esc(f.name)).join(', ')} ${b.full.length === 1 ? 'is' : 'are'} full. With every circuit taken the legs are already as even as they get, so there is nothing to choose.`);
             b.crowded.forEach(c => lines.push(
-                `${esc(c.name)} (${esc(c.layers)}) has ${c.legs} circuits on ${c.conn ? `${/^(?:[aeiou]|L\d)/i.test(c.conn) ? 'an' : 'a'} ${esc(c.conn)}, which carries ` : 'a connector that carries '}${c.size === 1 ? 'one circuit' : `${c.size} circuits`} — move it to a multi output.`));
+                `${esc(c.name)} (${esc(c.layers)}) has ${c.legs} circuits on ${c.conn ? `${/^(?:[aeiou]|L\d)/i.test(c.conn) ? 'an' : 'a'} ${esc(c.conn)}, which carries ` : 'a connector that carries '}${c.size === 1 ? 'one circuit' : `${c.size} circuits`}. Move it to a multi output.`));
             b.clashed.forEach(c => lines.push(
                 `${esc(c.name)} (${esc(c.layers)}) is shared ${c.overflow
-                    ? `with more circuits than the ${Number.isFinite(c.size) ? c.size : 'tails'} it holds`
-                    : 'with a circuit claimed twice'} — resolve the clash first.`));
+                    ? (Number.isFinite(c.size) ? `with more circuits than the ${c.size} it holds` : 'with more circuits than it holds')
+                    : 'with a circuit claimed twice'}. Resolve the clash first.`));
             b.phantom.forEach(p => lines.push(
                 `${esc(p.layers)} assigns ${p.count === 1 ? 'a multi' : p.count + ' multis'} to this distro but ${esc(p.reason)}`));
             lines.push(...lockedLines);
-            noTargets = `<p style="margin:0 0 6px; color:#a6b0bb;">Nothing on this distro can move${lines.length ? ':' : ' — no partly-filled multi lands on it.'}</p>`
+            noTargets = `<p style="margin:0 0 6px; color:#a6b0bb;">Nothing on this distro can move${lines.length ? ':' : '. No partly-filled multi lands on it.'}</p>`
                 + lines.map(l => `<div style="color:#a6b0bb; margin:0 0 4px; padding-left:10px;">· ${l}</div>`).join('');
         } else if (lockedLines.length) {
             noTargets += lockedHtml;
@@ -689,7 +689,7 @@ class _PhaseBalance {
         const multis = `${n} partly-filled multi${n === 1 ? '' : 's'}`;
         const checked = r.exhaustive
             ? `Checked all ${r.searched} arrangement${plural(r.searched, '', 's')} of ${multis}`
-            : `Checked ${r.searched} of ${r.total} arrangements of ${multis} — too many to try them all, so this is the best found, not necessarily the best there is`;
+            : `Checked ${r.searched} of ${r.total} arrangements of ${multis}. That is too many to try them all, so this is the best found, not necessarily the best there is`;
         const amps = (a) => `${a.toFixed(1)} A`;
         const body = !r.targets.length
             ? noTargets

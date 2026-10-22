@@ -99,7 +99,8 @@ window.__fl = {
             type: 'screen', visible: true, locked: false,
             columns: 3, rows: 5, cabinet_width: 128, cabinet_height: 128,
             offset_x: 0, offset_y: 0, panel_weight: 20, weight_unit: 'kg',
-            panelWatts: 208, powerVoltage: 208, powerAmperage: 5,
+            // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+            panelWatts: 208, powerVoltage: 208, powerAmperage: 6.25,
             processorType: 'novastar-armor', bitDepth: 8, frameRate: 60, lowLatency: false,
             flowPattern: 'tl-h', portMappingMode: 'organized',
             powerFlowPattern: 'tl-v', powerOrganized: true, powerMaximize: false,

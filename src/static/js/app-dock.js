@@ -2602,7 +2602,7 @@ class _HardwareDock {
                 const l = (this.project.layers || []).find(x => x.id === m.layerId);
                 const s = l ? this.getSocaPlan(l).find(x => x.soca === m.soca) : null;
                 if (!s) continue;
-                const capA = parseFloat(l.powerAmperage) || 0;
+                const capA = this.circuitCapacity(l).amps;
                 s.legs.forEach(leg => holders.push({
                     who: l.name, layerId: l.id, circuit: leg.circuit, label: leg.label,
                     amps: leg.amps, capA, soca: m.soca, length: s.length || null,
@@ -2906,7 +2906,8 @@ class _HardwareDock {
         // (report table, breaker stickers and brackets all read it), so the
         // chips can never disagree with the paperwork. Circuit capacity is
         // the owner screen's amps-per-circuit figure - the same
-        // powerAmperage the plan's own circuits were sized against.
+        // circuitCapacity the plan's own circuits were sized against (80%
+        // of the breaker on a US screen).
         const byTail = new Map();   // tail 1..size -> [{who, label, amps, capA}]
         const memberRecs = [];      // {layer, m, s} - the header's inline fields
         let legs = 0;
@@ -2930,7 +2931,7 @@ class _HardwareDock {
             const s = this.getSocaPlan(l).find(x => x.soca === m.soca);
             memberRecs.push({ layer: l, m, s });
             if (s) {
-                const a = parseFloat(l.powerAmperage) || 0;
+                const a = this.circuitCapacity(l).amps;
                 if (a > 0) capA = capA > 0 ? Math.min(capA, a) : a;
                 s.legs.forEach(leg => {
                     const list = byTail.get(leg.leg) || [];

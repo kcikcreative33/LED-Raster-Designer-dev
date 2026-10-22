@@ -341,18 +341,19 @@ SEED_JS = """async () => {
     await j('PUT', '/api/project', proj);
     const add = (body) => j('POST', '/api/layer/add', body);
     await add({name: 'WALL-A', columns: 4, rows: 3, cabinet_width: 200, cabinet_height: 200,
-               powerVoltage: 208, powerAmperage: 10, panelWatts: 200,
+               // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+               powerVoltage: 208, powerAmperage: 12.5, panelWatts: 200,
                powerFlowPattern: 'tl-h', powerOrganized: true, flowPattern: 'tl-h',
                processorType: 'novastar-armor'});
     await add({name: 'WALL-B', columns: 4, rows: 3, cabinet_width: 200, cabinet_height: 200,
-               powerVoltage: 208, powerAmperage: 10, panelWatts: 250,
+               powerVoltage: 208, powerAmperage: 12.5, panelWatts: 250,
                powerFlowPattern: 'tl-h', powerOrganized: true, flowPattern: 'tl-h',
                processorType: 'novastar-armor', offset_x: 900});
     await add({name: 'CENTER', columns: 3, rows: 5, cabinet_width: 128, cabinet_height: 128,
                // stated, not implied: a screen with no breakout takes the
                // PREFERENCE (True1 as shipped), not Edison (2026-09-22)
                powerVoltage: 110, powerBreakoutType: 'soca-edison',
-               powerAmperage: 15, panelWatts: 100,
+               powerAmperage: 18.75, panelWatts: 100,
                powerFlowPattern: 'tl-v', powerOrganized: true, flowPattern: 'tl-h',
                powerSplitters: {enabled: true, maxWays: 2, manual: {merge: [], split: []}},
                processorType: 'novastar-armor', offset_x: 1800});
@@ -3335,7 +3336,7 @@ NINE_BY_FIVE_JS = """async () => {
     proj.name = 'Nine by Five';
     await j('PUT', '/api/project', proj);
     await j('POST', '/api/layer/add', {name: 'D - OffSL IMAG', columns: 9, rows: 5, cabinet_width: 216, cabinet_height: 216,
-               powerVoltage: 208, powerAmperage: 20, panelWatts: 800,
+               powerVoltage: 208, powerAmperage: 25, panelWatts: 800,
                powerFlowPattern: 'tl-v', powerOrganized: true, flowPattern: 'tl-h',
                processorType: 'novastar-armor'});
     let st = await j('POST', '/api/processors', {deviceId: 'novastar-h9'});
@@ -3497,7 +3498,7 @@ ORDER_SEED_JS = """async () => {
     let x = 0;
     for (const name of ['B - X', 'A - Y', 'C - Z']) {
         await j('POST', '/api/layer/add', {name, columns: 4, rows: 3, cabinet_width: 200, cabinet_height: 200,
-                   powerVoltage: 208, powerAmperage: 10, panelWatts: 200,
+                   powerVoltage: 208, powerAmperage: 12.5, panelWatts: 200,
                    powerFlowPattern: 'tl-h', powerOrganized: true, flowPattern: 'tl-h',
                    processorType: 'novastar-armor', offset_x: x});
         x += 900;

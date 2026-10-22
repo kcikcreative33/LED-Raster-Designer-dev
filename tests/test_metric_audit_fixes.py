@@ -127,7 +127,8 @@ def _reset(pg, bodies, unit='ft', strip=()):
 def _screen(name, cols, rows, w=60, h=60, **extra):
     body = {'name': name, 'columns': cols, 'rows': rows, 'cabinet_width': w, 'cabinet_height': h,
             'processorType': 'novastar-armor', 'flowPattern': 'tl-h',
-            'powerVoltage': 208, 'powerAmperage': 20, 'panelWatts': 200}
+            # A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+            'powerVoltage': 208, 'powerAmperage': 25, 'panelWatts': 200}
     body.update(extra)
     return body
 

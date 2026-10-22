@@ -93,7 +93,8 @@ window.__gc = {
             flowPattern: o.custom ? 'custom' : 'tl-v', lastFlowPattern: 'tl-v',
             powerFlowPattern: o.custom ? 'custom' : 'tl-v', lastPowerFlowPattern: 'tl-v',
             powerCustomPath: !!o.custom, powerOrganized: true, powerMaximize: false,
-            powerVoltage: 208, powerAmperage: 20, panelWatts: 200,
+            // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+            powerVoltage: 208, powerAmperage: 25, panelWatts: 200,
             customPortPaths: {}, customPortIndex: 1, customPortOverrides: [],
             powerCustomPaths: {}, powerCustomIndex: 1, powerCustomOverrides: [],
             group_id: 'g2',
@@ -297,7 +298,7 @@ def test_tile_with_the_group_selected_fills_the_whole_group(page, kind, view):
         assert after['action'] == 'Custom Pattern Apply', out
     else:
         # Both members draw 200 W: one wattage keeps the cabinet count.
-        assert any('up to 20 panels each at 208V/20A' in t for t in out['toasts']), out
+        assert any('up to 20 panels each at 208V/25A at 80%' in t for t in out['toasts']), out
         assert after['action'] == 'Power Custom Pattern Apply', out
 
 

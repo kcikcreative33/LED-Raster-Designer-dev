@@ -337,7 +337,7 @@ class _CrossLayerPaths {
     }
 
     // The one error every custom-mode change gives when it meets a locked
-    // screen, naming each one: "Upper is locked - unlock it to change it."
+    // screen, naming each one: "Upper is locked. Unlock it to change it."
     // An error toast (the app's error style), up a little longer than the
     // default so a list of names can be read.
     _showLockedError(layers) {
@@ -354,8 +354,8 @@ class _CrossLayerPaths {
         const list = one ? names[0]
             : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
         const msg = one
-            ? `${list} is locked - unlock it to change it.`
-            : `${list} are locked - unlock them to change them.`;
+            ? `${list} is locked. Unlock it to change it.`
+            : `${list} are locked. Unlock them to change them.`;
         // One gesture, one error: a verb guarded at its entry and again in
         // the setter it calls would otherwise say the same thing twice in
         // the same turn. An action that runs on across awaits (a chain of

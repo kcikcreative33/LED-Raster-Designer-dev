@@ -3883,12 +3883,13 @@
         },
         // 2fers and 3fers, straight through (the owner's rulings,
         // 2026-10-19). At 200 W a cabinet a row of the demo wall is more
-        // than half a circuit, so no two rows ever share; a column is a
-        // third of one. So the section turns the circuits down the
-        // columns, shares them in automatic mode, takes one 3fer over by
-        // hand (it stays a 3fer), turns custom mode on (it starts empty),
-        // fills the wall as custom runs (the same 3fers as automatic) and
-        // re-deals two of them as 2fers with a sweep.
+        // than half a circuit, so no two rows ever share; two columns fit
+        // one (a 208V / 20A circuit packs to 80%, 3,328 W, 2026-10-22). So
+        // the section turns the circuits down the columns, shares them in
+        // automatic mode as 2fers, takes one over by hand (it stays a
+        // 2fer), turns custom mode on (it starts empty), fills the wall as
+        // custom runs (the same 2fers as automatic) and deals two of them
+        // again with a sweep.
         powerColumns: {
             target: '.power-flow-pattern-btn[data-pattern="tl-v"]', place: 'right', title: 'Circuits down the columns',
             avoid: ['.power-flow-pattern-btn[data-pattern="tl-v"]'],
@@ -3937,7 +3938,7 @@
             since: '1.5.3',
             target: '#main-canvas', place: 'top', title: 'Take over a 3fer',
             avoid: [function () { var w = wall(); return w ? T.cabinetPoint(w, { circuit: 1, mid: true, raw: true }) : null; }],
-            body: 'Hold Alt and click a circuit to take it over and redraw it by hand. A 3fer you take over keeps its three runs, so it stays a 3fer.',
+            body: 'Hold Alt and click a circuit to take it over and redraw it by hand. A shared circuit you take over keeps its runs, so a 2fer stays a 2fer.',
             before: function () { switchView('power'); },
             act: function (t) {
                 var w = wall();
@@ -4001,7 +4002,7 @@
                 var paths = w.powerCustomPaths || {};
                 var drawn = Object.keys(paths).filter(function (k) { return (paths[k] || []).length; }).length;
                 if (drawn || (w.powerCustomOverrides || []).length) return null;
-                return mem.taken ? 'Custom mode is on and nothing is drawn: the taken-over 3fer went with the rest.'
+                return mem.taken ? 'Custom mode is on and nothing is drawn: the taken-over circuit went with the rest.'
                     : 'Custom mode is on and nothing is drawn yet.';
             }
         },
@@ -4014,7 +4015,7 @@
             since: '1.5.3',
             target: '.power-flow-pattern-btn[data-pattern="tl-v"]', place: 'right', title: 'Draw the circuits',
             avoid: ['.power-flow-pattern-btn[data-pattern="tl-v"]', '#main-canvas'],
-            body: 'Drag across the cabinets, then press Top-left, vertical first. With sharing on you get what automatic mode makes: a run per column (or per row on a wall cabled across), neighbors sharing a 3fer while the load fits.',
+            body: 'Drag across the cabinets, then press Top-left, vertical first. With sharing on you get what automatic mode makes: a run per column (or per row on a wall cabled across), neighbors sharing a 2fer while the load fits.',
             before: function () { switchView('power'); },
             act: function (t) {
                 var w = wall();

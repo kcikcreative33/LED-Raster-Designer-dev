@@ -15,8 +15,15 @@ class _Power {
             // A custom wall steps circuit by circuit, never leg by leg
             // (customCircuitRun below).
             if (kind === 'power' && this.isCustomPower(layer)) {
-                return this.customCircuitRun(layer,
-                    Math.max(1, this.customCircuitShown(layer, current) + delta));
+                // A cleared gap reads as the place of the circuit after it
+                // (customCircuitShown), so Next from the gap lands on that
+                // circuit, not past it.
+                const shown = this.customCircuitShown(layer, current);
+                const head = parseInt(this._customCircuitHead(layer, current), 10);
+                const onCircuit = !this.usesCustomCircuits(layer)
+                    || this.screenCircuits(layer).some(c => c.num === head);
+                const target = shown + delta - (!onCircuit && delta > 0 ? 1 : 0);
+                return this.customCircuitRun(layer, Math.max(1, target));
             }
             return Math.max(1, current + delta);
         }
@@ -37,8 +44,9 @@ class _Power {
     // not 10), Next / Prev / Tab step circuit by circuit, a typed number
     // is that circuit (5 is the next free one, not the middle leg of
     // S1-2), and a refusal names labels. The drawn numbers stay the
-    // store's keys. With no share drawn every one of these is the
-    // identity, so a wall without 2fers reads exactly as before.
+    // store's keys. With no share and no cleared gap every one of these is
+    // the identity. A gap a Clear Circuit left is not a circuit, so the
+    // field counts past it the way the labels do (2026-10-22).
 
     // The share groups of a custom screen's drawn runs, as the wall reads
     // them (appliedSplitterGroups): [[first, ...legs], ...].
@@ -60,28 +68,33 @@ class _Power {
     }
 
     // The circuit number run `num` reads as: the circuit's place among the
-    // wall's circuits, a share counted once (powerCircuitDisplayNum). A
-    // number past the drawn ones counts on from the last circuit.
+    // wall's circuits (screenCircuits, a share counted once), the place its
+    // label is named by. A number no circuit holds - past the last one, or
+    // a gap a Clear Circuit left - reads as the place a circuit drawn there
+    // would take, so the field and the label agree after a clear (the
+    // owner's ruling, 2026-10-22: the drawn number counted the gap, and
+    // the field read 4 over S1-3). With nothing drawn it is the number.
     customCircuitShown(owner, num) {
-        const head = this._customCircuitHead(owner, num);
-        const shown = parseInt(this.powerCircuitDisplayNum(owner, head), 10);
-        return Number.isFinite(shown) ? shown : (parseInt(num, 10) || 1);
+        const n = parseInt(num, 10) || 1;
+        if (!owner || !this.usesCustomCircuits(owner)) return n;
+        const head = parseInt(this._customCircuitHead(owner, n), 10) || n;
+        return this.screenCircuits(owner).filter(c => c.num < head).length + 1;
     }
 
-    // The drawn number circuit `shown` is written under: that circuit's
-    // first run, or past the drawn circuits the free number it would be
-    // drawn as. The inverse of customCircuitShown.
+    // The drawn number circuit `shown` is written under: the first run of
+    // the circuit in that place, or past the last circuit the next free
+    // number, one after the highest drawn. The inverse of
+    // customCircuitShown, so stepping and typing land on circuits and the
+    // next free one, never on a cleared gap.
     customCircuitRun(owner, shown) {
         const want = Math.max(1, parseInt(shown, 10) || 1);
-        if (!owner || !this.isCustomPower(owner)) return want;
-        const folded = new Set(this._customMergeGroups(owner).flatMap(g => g.slice(1)));
-        if (!folded.size) return want;
-        let count = 0;
-        for (let r = 1; ; r++) {
-            if (folded.has(r)) continue;
-            count += 1;
-            if (count === want) return r;
-        }
+        if (!owner || !this.isCustomPower(owner) || !this.usesCustomCircuits(owner)) return want;
+        const circuits = this.screenCircuits(owner);
+        if (want <= circuits.length) return circuits[want - 1].num;
+        const paths = owner.powerCustomPaths || {};
+        const drawn = Object.keys(paths).map(k => parseInt(k, 10))
+            .filter(k => Number.isFinite(k) && (paths[k] || []).length > 0);
+        return Math.max(0, ...drawn) + 1;
     }
 
     // A step button (Next / Prev, data and power) is a MOUSE control. A
@@ -180,7 +193,7 @@ class _Power {
             ? ' NovaStar Armor reserves a pixel rectangle enclosing every cabinet in the port, so a port holds fewer pixels than the raw limit.'
             : '';
         mappingOrgBtn.title = 'Ports fill complete rows or columns only.' + rectNote;
-        mappingMaxBtn.title = 'Ports fill to max pixel capacity - may split mid-row/column.' + rectNote;
+        mappingMaxBtn.title = 'Ports fill to max pixel capacity, and may split mid-row/column.' + rectNote;
 
         // v0.11.0: the theme styles .mapping-mode-btn / .mapping-mode-btn.active
         // with !important, so the .active class is the ONLY thing that can move
@@ -329,6 +342,66 @@ class _Power {
         this._syncCustomFillReadout('data');
     }
 
+    // ---- what one circuit carries (the owner's ruling, 2026-10-22) ---------
+    //
+    // A show load is continuous, so a US circuit is packed to 80% of its
+    // breaker: a 120V / 20A circuit carries 16 A, 1,920 W. US here is the
+    // screen's voltage, 208 V or under (110, 120, 208). A 220/230/240V
+    // screen stays on the 230/400 math, at the breaker. A US screen whose
+    // circuits are all on distros marked "100% rated breakers" packs at the
+    // breaker too. This is the ONE figure everything that asks "does it fit
+    // on a circuit" reads: the automatic packer, the sidebar's Watts/Circuit
+    // and Panels/Circuit, the custom caps and readouts, the share and Nfer
+    // amps rule. It is the same 80% the distro's breaker check holds a
+    // circuit to, so a fully packed circuit never trips that warning.
+    //   { voltage, breakerA, pct, amps, watts, us, rated100 }
+    circuitCapacity(layer) {
+        const voltage = parseFloat(layer && layer.powerVoltage) || 0;
+        const breakerA = parseFloat(layer && layer.powerAmperage) || 0;
+        const us = voltage > 0 && voltage < 208.5;
+        const rated100 = us && this._circuitsOn100Rated(layer);
+        const pct = us && !rated100 ? 0.8 : 1;
+        const amps = breakerA * pct;
+        return { voltage, breakerA, pct, amps, watts: voltage * amps, us, rated100 };
+    }
+
+    // The watts one circuit of `layer` carries (circuitCapacity).
+    circuitCapacityWatts(layer) {
+        return this.circuitCapacity(layer).watts;
+    }
+
+    // How a sentence names the circuit: "a 15 A circuit held to 12 A (80%)"
+    // on a US screen, "a 16 A circuit" at the breaker.
+    circuitLimitText(layer) {
+        const cap = this.circuitCapacity(layer);
+        const breaker = +cap.breakerA.toFixed(2);
+        if (cap.pct >= 1) return `a ${breaker} A circuit`;
+        return `a ${breaker} A circuit held to ${+cap.amps.toFixed(2)} A `
+            + `(${Math.round(cap.pct * 100)}%)`;
+    }
+
+    // Are this screen's circuits all on US distros with 100% rated
+    // breakers? The distros its multis are assigned to, every member of its
+    // group counted (a wall packs as one), at least one of them, and every
+    // one marked. A screen with nothing assigned packs at 80%.
+    _circuitsOn100Rated(layer) {
+        if (!layer || typeof this.getDistros !== 'function') return false;
+        const group = (layer.group_id && typeof this.groupMembersOf === 'function')
+            ? this.groupMembersOf(layer) : [];
+        const screens = group.length ? group : [layer];
+        const ids = new Set();
+        screens.forEach(s => Object.values((s && s.powerSocaDistro) || {})
+            .forEach(id => { if (id) ids.add(id); }));
+        if (!ids.size) return false;
+        const distros = this.getDistros() || [];
+        for (const id of ids) {
+            const d = distros.find(x => x && x.id === id);
+            if (!d || !d.breakers100) return false;
+            if (typeof this.distroRegion === 'function' && this.distroRegion(d) !== 'us') return false;
+        }
+        return true;
+    }
+
     updatePowerCapacityDisplay() {
         if (!this.currentLayer) return;
         if ((this.currentLayer.type || 'screen') === 'image') {
@@ -348,7 +421,9 @@ class _Power {
         const voltage = parseFloat(layer.powerVoltage) || 0;
         const amperage = parseFloat(layer.powerAmperage) || 0;
         const panelWatts = parseFloat(layer.panelWatts) || 0;
-        const wattsPerCircuit = voltage * amperage;
+        // 80% of the breaker on a US screen (circuitCapacity).
+        const capacity = this.circuitCapacity(layer);
+        const wattsPerCircuit = capacity.watts;
         const panelsPerCircuit = panelWatts > 0 ? Math.floor(wattsPerCircuit / panelWatts) : 0;
         // v0.11.0 audit fix: `!p.blank` as well as `!p.hidden`. This filter used
         // to drop hidden cabinets only, so a 2 x 2 screen with one cabinet
@@ -375,7 +450,14 @@ class _Power {
         const amps1El = document.getElementById('power-total-amps-1ph');
         const amps3El = document.getElementById('power-total-amps-3ph');
 
-        if (wattsEl) wattsEl.textContent = wattsPerCircuit > 0 ? wattsPerCircuit.toLocaleString('en-US') : '0';
+        if (wattsEl) {
+            wattsEl.textContent = wattsPerCircuit > 0 ? wattsPerCircuit.toLocaleString('en-US') : '0';
+            wattsEl.title = capacity.pct < 1 && wattsPerCircuit > 0
+                ? `${Math.round(capacity.pct * 100)}% of ${voltage} V × ${amperage} A: a US circuit `
+                    + 'carries a continuous load to 80% of its breaker. A distro marked '
+                    + '"100% rated breakers" packs to the breaker.'
+                : '';
+        }
         if (panelsEl) panelsEl.textContent = panelsPerCircuit > 0 ? panelsPerCircuit.toLocaleString('en-US') : '0';
         const powerAssignments = this.calculatePowerAssignments(layer);
         // count via the shared authority so a custom-routed screen reports the
@@ -1624,7 +1706,7 @@ class _Power {
         if (!type || !layer || this._outputFeedsVoltage(type, layer.powerVoltage)) return null;
         const v = this.voltageNumber(layer.powerVoltage);
         const article = /^(?:[AEIOU]|[FHLMNRSX](?![a-z]))/.test(type.name) ? 'an' : 'a';
-        return `${layer.name} runs at ${v}V — ${article} ${type.name} output `
+        return `${layer.name} runs at ${v}V, and ${article} ${type.name} output `
             + `feeds ${this._outputFeedsText(type)}`;
     }
 
@@ -2438,7 +2520,7 @@ class _Power {
             .filter(sc => sc.lineToLine === ph.derived.lineToLine);
         if (ph.explicit && !offered.some(sc => sc.id === ph.scheme.id)) {
             offered.push({ ...ph.scheme,
-                name: `${ph.scheme.name} — does not match the `
+                name: `${ph.scheme.name}, which does not match the `
                     + `${Math.round(ph.circuitVoltage)} V circuits `
                     + `(${ph.derived.coupling.toLowerCase()})` });
         }
@@ -2516,7 +2598,7 @@ class _Power {
             const followOpt = document.createElement('option');
             followOpt.value = '';
             followOpt.textContent =
-                `Follow the circuit voltage — ${this.distroSchemeName(d, ph.derived)}`;
+                `Follow the circuit voltage: ${this.distroSchemeName(d, ph.derived)}`;
             if (!ph.explicit) followOpt.selected = true;
             derive.appendChild(followOpt);
             sel.appendChild(derive);
@@ -2711,15 +2793,15 @@ class _Power {
         if (this.usesCustomCircuits(layer)) return null;
         const err = this.calculatePowerAssignments(layer).error;
         if (!err) return null;
-        const voltage = parseFloat(layer.powerVoltage) || 0;
-        const amperage = parseFloat(layer.powerAmperage) || 0;
+        const cap = this.circuitCapacity(layer);
         const fmt = (w) => `${Math.round(w).toLocaleString('en-US')} W`;
-        const circuit = `a circuit at ${voltage} V / ${amperage} A carries ${fmt(voltage * amperage)}`;
+        const held = cap.pct < 1 ? ` (${Math.round(cap.pct * 100)}% of the breaker)` : '';
+        const circuit = `a circuit at ${cap.voltage} V / ${cap.breakerA} A carries ${fmt(cap.watts)}${held}`;
         if (err.unitType) {
             const across = err.unitType === 'row' ? 'column' : 'row';
             return `a full ${err.unitType} is ${fmt(err.unitLoad || 0)} and ${circuit}. `
                 + `Fix in Power Settings: higher voltage or amperage, a ${across} pattern, or a custom path `
-                + `(select a narrower block and apply a pattern — circuits cut at capacity).`;
+                + `(select a narrower block and apply a pattern, and circuits cut at capacity).`;
         }
         // PANEL WATTS EXCEED CIRCUIT CAPACITY: one cabinet alone is over,
         // so no pattern can help.
@@ -3034,7 +3116,8 @@ class _Power {
     // so a caller that only wants the figure reads amps/cap. `runAmps` lets
     // a batch reuse one _splitterRunAmps walk across its groups.
     shareLoad(layer, runIds, runAmps) {
-        const cap = parseFloat(layer && layer.powerAmperage) || 0;
+        // 80% of the breaker on a US screen (circuitCapacity).
+        const cap = layer ? this.circuitCapacity(layer).amps : 0;
         const byRun = runAmps || this._splitterRunAmps(layer);
         const amps = (runIds || []).reduce((s, id) => s + (byRun.get(id) || 0), 0);
         const over = cap > 0 && amps > cap + 1e-9 && !this.isCustomPower(layer);
@@ -3088,8 +3171,8 @@ class _Power {
             return {
                 runs: g.slice(), amps: load.amps, cap: load.cap,
                 text: `${this._runListText(g, layer)} together draw `
-                    + `${load.amps.toFixed(1)} A on a ${+load.cap.toFixed(1)} A `
-                    + 'circuit. Share past the amps only in custom mode.',
+                    + `${load.amps.toFixed(1)} A on ${this.circuitLimitText(layer)}. `
+                    + 'Share past the amps only in custom mode.',
             };
         }
         return null;
@@ -3404,10 +3487,6 @@ class _Power {
         // A locked screen stays unchanged (owner, 2026-10-16) - the setter
         // refuses and names it, whichever control called it.
         if (this._lockedRefused(layer)) return false;
-        const deal = this.batchShareGroups(layer, circuitNums, n, refs);
-        let { runIds, groups, splits } = deal;
-        if (!runIds.length) return false;
-        if (!groups.some(g => g.length >= 2) && !splits.length) return false;
         const wallWays = this.getPowerSplitters(layer).maxWays;
         const tick = (opts && opts.tickSharing && !this.getPowerSplitters(layer).enabled)
             ? this._splitterWallMembers(layer).filter(m => {
@@ -3416,6 +3495,21 @@ class _Power {
             }) : [];
         if (tick.some(m => m.locked)) {
             this._showLockedError(tick.filter(m => m.locked));
+            return false;
+        }
+        // An automatic screen with sharing off (the owner's ruling,
+        // 2026-10-22): its runs are the ones sharing gives, so sharing goes
+        // on first and the whole screen is dealt on those. A deal that
+        // shares nothing puts it back as it was.
+        let untick = null;
+        if (tick.length && !this.usesCustomCircuits(layer) && !refs) {
+            untick = this._wallSharingOn(layer);
+            circuitNums = this.screenCircuits(layer).map(c => c.num);
+        }
+        const deal = this.batchShareGroups(layer, circuitNums, n, refs);
+        let { runIds, groups, splits } = deal;
+        if (!runIds.length || (!groups.some(g => g.length >= 2) && !splits.length)) {
+            if (untick) untick();
             return false;
         }
         // A split rewrites its run's path: a run drawn across a locked
@@ -3428,13 +3522,17 @@ class _Power {
                 .forEach(l => lockedRuns.set(l.id, l));
         });
         if (lockedRuns.size) {
+            if (untick) untick();
             this._showLockedError([...lockedRuns.values()]);
             return false;
         }
         let adopted = null;
         if (refs && this._refsAdopt(layer, refs)) {
             adopted = this._adoptWallCircuits(layer, refs);
-            if (!adopted) return false;
+            if (!adopted) {
+                if (untick) untick();
+                return false;
+            }
             const num = id => (typeof id === 'string' ? adopted.ids.get(id) : id);
             runIds = runIds.map(num).filter(id => id !== undefined);
             groups = groups.map(g => g.map(num).filter(id => id !== undefined))
@@ -3475,6 +3573,41 @@ class _Power {
         });
         this._commitWallShare([...written.values()], action);
         return true;
+    }
+
+    // Turn "Share circuits via splitters" on for every member of `layer`'s
+    // wall, at the wall's size, keeping each member's own shares. Returns
+    // the undo: each member's stored field put back exactly as it was.
+    // Unrecorded; the naming caches are dropped both ways.
+    _wallSharingOn(layer) {
+        const ways = this.getPowerSplitters(layer).maxWays;
+        const saved = this._splitterWallMembers(layer).map(m => ({
+            m, had: Object.prototype.hasOwnProperty.call(m, 'powerSplitters'),
+            value: m.powerSplitters,
+        }));
+        saved.forEach(({ m }) => {
+            m.powerSplitters = { ...(m.powerSplitters || {}), enabled: true, maxWays: ways };
+        });
+        this._circuitTailCache = null;
+        this._displayNumCache = null;
+        return () => {
+            saved.forEach(({ m, had, value }) => {
+                if (had) m.powerSplitters = value; else delete m.powerSplitters;
+            });
+            this._circuitTailCache = null;
+            this._displayNumCache = null;
+        };
+    }
+
+    // `fn()` read with the wall's sharing on, then put back - the menu
+    // works out "2fer this screen" on the runs it would deal.
+    _withWallSharingOn(layer, fn) {
+        const undo = this._wallSharingOn(layer);
+        try {
+            return fn();
+        } finally {
+            undo();
+        }
     }
 
     // ---- custom mode: a group is ONE wall -----------------------------------
@@ -3885,7 +4018,8 @@ class _Power {
         const voltage = parseFloat(layer.powerVoltage) || 0;
         const watts = this._circuitWatts(layer, c.panels, c.layers);
         const amps = voltage > 0 ? watts / voltage : 0;
-        const cap = parseFloat(layer.powerAmperage) || 0;
+        // 80% of the breaker on a US screen (circuitCapacity).
+        const cap = this.circuitCapacity(layer).amps;
         const name = this.getPowerCircuitLabel(layer, num);
         const label = ways >= 2 ? `${ways}fer it (${ways} ${noun} runs)` : '2fer / 3fer it';
         let reason = null;
@@ -3893,8 +4027,8 @@ class _Power {
             reason = `${name} feeds one ${noun}. A 2fer or 3fer needs a run `
                 + `per ${noun} on the circuit.`;
         } else if (cap > 0 && amps > cap + 1e-9) {
-            reason = `${name} draws ${amps.toFixed(1)} A on a ${+cap.toFixed(1)} A `
-                + 'circuit. That is over the amps, so it cannot be one splitter circuit.';
+            reason = `${name} draws ${amps.toFixed(1)} A on ${this.circuitLimitText(layer)}. `
+                + 'That is over the amps, so it cannot be one splitter circuit.';
         }
         return { mode, layer, num, path, noun, legs, ways, amps, cap,
                  label, reason };
@@ -4558,10 +4692,9 @@ class _Power {
             return this._mergeOverrideCircuits(layer, { circuits: [], error: null });
         }
 
-        const voltage = parseFloat(layer.powerVoltage) || 0;
-        const amperage = parseFloat(layer.powerAmperage) || 0;
         const panelWatts = parseFloat(layer.panelWatts) || 0;
-        const wattsPerCircuit = voltage * amperage;
+        // 80% of the breaker on a US screen (circuitCapacity).
+        const wattsPerCircuit = this.circuitCapacityWatts(layer);
         const pattern = this.autoPowerPattern(layer);
         const maximize = !!layer.powerMaximize;
         const organized = !!layer.powerOrganized && !maximize;

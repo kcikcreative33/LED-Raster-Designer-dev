@@ -91,7 +91,8 @@ SETUP_JS = """(o) => {
     const app = window.app;
     for (const l of app.project.layers) {
         const key = l.name === 'WALL A' ? 'a' : 'b';
-        Object.assign(l, { powerVoltage: 208, powerAmperage: 10, panelWatts: 200,
+        // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+        Object.assign(l, { powerVoltage: 208, powerAmperage: 12.5, panelWatts: 200,
                            powerSocaDistro: {}, powerSocaNumber: {}, powerSocaPhasePos: {},
                            powerSocaLengths: {}, powerSocaSplits: [], powerSocaNames: {},
                            powerLabelOverrides: {}, powerCircuitCables: {},

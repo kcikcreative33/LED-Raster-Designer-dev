@@ -652,7 +652,8 @@ def test_a_distro_is_named_by_its_type_never_its_holes(page):
             headers: {'Content-Type': 'application/json'},
             body: body === undefined ? undefined : JSON.stringify(body)}).then(r => r.json());
         await j('POST', '/api/layer/add', {name: 'TALL', columns: 54, rows: 1, cabinet_width: 100, cabinet_height: 100,
-                                           powerVoltage: 208, powerAmperage: 10, panelWatts: 2000,
+                                           // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+                                           powerVoltage: 208, powerAmperage: 12.5, panelWatts: 2000,
                                            powerFlowPattern: 'tl-v', powerOrganized: true, flowPattern: 'tl-h',
                                            processorType: 'novastar-armor', offset_x: 3000});
         app.project = await j('GET', '/api/project');

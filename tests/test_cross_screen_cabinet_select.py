@@ -19,7 +19,7 @@ itself is under test:
 * LOCKED screens stay unchanged, but SELECTING is not changing (the
   owner's ruling, 2026-10-16): a marquee or click selects a locked screen's
   cabinets without a word, and the verb that would change them leaves them
-  alone and names the screen ("<name> is locked - unlock it to change
+  alone and names the screen ("<name> is locked. Unlock it to change
   it."). The other screens still go.
 * CUSTOM DATA / POWER on a group: a marquee selects cabinets on every member
   it touches, whichever member it starts on and whichever member is current -
@@ -437,7 +437,7 @@ def test_a_bulk_verb_skips_a_locked_screen_and_names_it(page):
     assert cells_where(server_panels(page, b), hidden) == [], 'the locked screen changed'
     assert cells_where(local_panels(page, b), hidden) == []
     assert history(page)[0] == h0[0] + 1
-    assert state(page)['toasts'] == ['Pair Right is locked - unlock it to change it.']
+    assert state(page)['toasts'] == ['Pair Right is locked. Unlock it to change it.']
 
 
 def test_a_click_on_a_locked_cabinet_selects_it_quietly(page):
@@ -565,7 +565,7 @@ def test_alt_paint_leaves_a_locked_screen_unchanged(page):
     assert cells_where(local_panels(page, b), hidden) == []
     assert cells_where(server_panels(page, b), hidden) == []
     assert history(page)[0] == h0[0]
-    assert state(page)['toasts'] == ['Pair Right is locked - unlock it to change it.']
+    assert state(page)['toasts'] == ['Pair Right is locked. Unlock it to change it.']
 
     # The unlocked screen still paints.
     sx, sy = to_client(page, 64, 64)

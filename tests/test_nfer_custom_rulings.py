@@ -656,7 +656,7 @@ def test_batch_with_nothing_that_fits_is_disabled_with_the_reason(page):
     page.evaluate("""(id) => {
         const app = window.app, l = window.__nf.layer(id);
         const col = (c) => [0, 1, 2, 3, 4].map(r => ({ row: r, col: c }));
-        l.powerAmperage = 6;
+        l.powerAmperage = 7.5;
         l.powerCustomPaths = { 1: col(0), 2: col(1), 3: col(2) };
         app._circuitTailCache = null;
         app.updateLayers([l]);
@@ -667,21 +667,21 @@ def test_batch_with_nothing_that_fits_is_disabled_with_the_reason(page):
     items = menu_at(page, pt(page, wall, 0, 0))
     assert items['n0'] and items['n0']['disabled'], items
     assert items['n0']['title'] == ('S1-1 and S1-2 together draw 7.2 A on a '
-                                    '6 A circuit, so no runs here fit on one '
-                                    'circuit together'), items
+                                    '7.5 A circuit held to 6 A (80%), so no runs '
+                                    'here fit on one circuit together'), items
     take(page, 'hw-batch-n0')
     assert manual(page, wall)['merge'] == [] and len(history(page)) == h0
 
 
 def test_batch_in_auto_deals_what_fits_instead_of_refusing(page):
-    """Auto at 10 A (2080 W): two 750 W columns fit a circuit, three do
+    """Auto at 10 A (2080 W, 80% of a 12.5 A breaker): two 750 W columns fit a circuit, three do
     not - except the first three, the first column being two blanks short
     (450 W). "3fer this screen" used to refuse the whole deal for the
     groups past the amps; now it deals the one 3fer that fits and pairs
     the rest, every group within the amps."""
     (wall,) = make(page, [{'name': 'Wall', 'columns': 10,
                            'blank': [[3, 0], [4, 0]],
-                           'props': {'powerAmperage': 10}}])
+                           'props': {'powerAmperage': 12.5}}])
     page.evaluate("""(id) => {
         const app = window.app, l = window.__nf.layer(id);
         l.powerSplitters.manual = { merge: [], split: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] };
@@ -859,7 +859,7 @@ def test_a_taken_over_circuit_never_lends_its_load_to_an_auto_run(page):
         const app = window.app, l = window.__nf.layer(id);
         app._circuitTailCache = null;
         const amps = app.shareLoad(l, [4, 5, 6]).amps;
-        l.powerAmperage = 10;
+        l.powerAmperage = 12.5;
         app._circuitTailCache = null;
         const nums = app.screenCircuits(l).map(c => c.num);
         const deal = app.batchShareGroups(l, nums, 3).groups;
@@ -869,7 +869,7 @@ def test_a_taken_over_circuit_never_lends_its_load_to_an_auto_run(page):
     }""", wall)
     assert abs(out['amps'] - 3 * 750 / 208) < 1e-6, out
     assert out['deal'] == [[1, 2], [3, 4], [5, 6], [7, 8], [9]], (
-        f'no group may pass the 10 A circuit: {out}')
+        f'no group may pass the 10 A circuit (80% of 12.5 A): {out}')
 
 
 # ── custom mode: a group is ONE wall ───────────────────────────────────────

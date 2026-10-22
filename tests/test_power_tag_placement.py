@@ -62,7 +62,8 @@ BUILD_JS = """async ([walls, pattern, rot]) => {
             row: r, col: c, x: o.offset_x + c * o.cabinet_width, y: o.offset_y + r * o.cabinet_height,
             width: o.cabinet_width, height: o.cabinet_height, hidden: false, blank: false, halfTile: 'none' });
         return Object.assign({ type: 'screen', visible: true, cabinet_width: 128, cabinet_height: 128,
-            panel_weight: 20, weight_unit: 'kg', panelWatts: 100, powerVoltage: 100, powerAmperage: 15,
+            // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+            panel_weight: 20, weight_unit: 'kg', panelWatts: 100, powerVoltage: 100, powerAmperage: 18.75,
             powerBreakoutType: 'soca-true1',
             processorType: 'brompton', bitDepth: 8, frameRate: 60, lowLatency: false,
             flowPattern: dataFlow ? pattern : 'tl-h', portMappingMode: 'organized',

@@ -60,13 +60,15 @@ class _CustomRuns {
         const none = { known: false, limit: 0, unit: 0, count: 0, at: '', describe: '' };
         if (!layer) return none;
         if (kind === 'power') {
-            const voltage = parseFloat(layer.powerVoltage) || 0;
-            const amperage = parseFloat(layer.powerAmperage) || 0;
+            // 80% of the breaker on a US screen (circuitCapacity), the
+            // figure the automatic packer and the distro's check use.
+            const c = this.circuitCapacity(layer);
             const unit = parseFloat(layer.panelWatts) || 0;
-            const limit = voltage * amperage;
+            const limit = c.watts;
             if (!(limit > 0 && unit > 0)) return none;
             const count = Math.floor(limit / unit);
-            const at = `${voltage}V/${amperage}A`;
+            const at = `${c.voltage}V/${c.breakerA}A`
+                + (c.pct < 1 ? ` at ${Math.round(c.pct * 100)}%` : '');
             return { known: true, limit, unit, count, at,
                 describe: `${count} panels at ${at}` };
         }
@@ -153,9 +155,7 @@ class _CustomRuns {
     // load pair.
     customRunFill(owner, kind, num) {
         const isPower = kind === 'power';
-        const pathsKey = isPower ? 'powerCustomPaths' : 'customPortPaths';
-        const path = (owner && owner[pathsKey] && owner[pathsKey][num]) || [];
-        const hits = this.getResolvedPathPanels(owner, path, kind);
+        const hits = this._customRunHits(owner, kind, num);
         const cap = this.customRunCapacity(owner, kind, hits.map(h => h.panel));
         const load = this.customRunLoad(owner, kind, hits);
         const eps = CUSTOM_RUN_EPS;
@@ -250,15 +250,30 @@ class _CustomRuns {
         return out;
     }
 
+    // The cabinets a run's fill is judged on. A port is its own run. A
+    // custom circuit is the WHOLE circuit (the owner's ruling, 2026-10-22):
+    // every leg of its 2fer or 3fer, whichever leg is active, since the legs
+    // share one breaker. The readout, the badge and the click cap all read
+    // this, so a 3fer is full when its three legs together are.
+    _customRunHits(owner, kind, num) {
+        const pathsKey = kind === 'power' ? 'powerCustomPaths' : 'customPortPaths';
+        const paths = (owner && owner[pathsKey]) || {};
+        const n = parseInt(num, 10);
+        let legs = [num];
+        if (kind === 'power' && Number.isFinite(n)) {
+            const g = this._customMergeGroups(owner).find(ids => ids.includes(n));
+            if (g) legs = g;
+        }
+        return legs.flatMap(k => this.getResolvedPathPanels(owner, paths[k] || [], kind));
+    }
+
     // Does this cabinet still fit on the run? Judged as the run would be
     // WITH it, load and limit both - on Low Latency or 5G a cabinet can move
     // the port's limit, and on Armor it can grow the rectangle the port pays
     // for by a whole row or column (customRunLoad), exactly as the automatic
     // walk and the pattern fill's cut weigh it.
     customRunAccepts(owner, kind, num, hitLayer, panel) {
-        const pathsKey = kind === 'power' ? 'powerCustomPaths' : 'customPortPaths';
-        const path = (owner && owner[pathsKey] && owner[pathsKey][num]) || [];
-        const hits = this.getResolvedPathPanels(owner, path, kind)
+        const hits = this._customRunHits(owner, kind, num)
             .concat(panel ? [{ layer: hitLayer, panel }] : []);
         const cap = this.customRunCapacity(owner, kind, hits.map(h => h.panel));
         if (!cap.known) return true;
@@ -343,7 +358,7 @@ class _CustomRuns {
     _customRunFullMessage(owner, kind, num) {
         const cap = this.customRunFill(owner, kind, num);
         const noun = kind === 'power' ? 'Circuit' : 'Port';
-        return `${noun} ${this._customRunLabel(owner, kind, num)} is full — `
+        return `${noun} ${this._customRunLabel(owner, kind, num)} is full, `
             + `${cap.describe}. Step to the next ${noun.toLowerCase()} (Tab / ]).`;
     }
 
@@ -368,10 +383,10 @@ class _CustomRuns {
         const fill = this.customRunFill(layer, kind, num);
         const head = `${kind === 'power' ? 'Circuit' : 'Port'} ${this._customRunLabel(layer, kind, num)}`;
         if (!fill.known) {
-            const pathsKey = kind === 'power' ? 'powerCustomPaths' : 'customPortPaths';
-            const n = this.getResolvedPathPanels(layer,
-                (layer[pathsKey] && layer[pathsKey][num]) || [], kind).length;
-            el.textContent = `${head}: ${n} panels — no cap (`
+            // The whole circuit, blank cabinets left out (they draw nothing).
+            const n = this._customRunHits(layer, kind, num)
+                .filter(h => kind !== 'power' || !(h.panel && h.panel.blank)).length;
+            el.textContent = `${head}: ${n} panels, no cap (`
                 + (kind === 'power'
                     ? 'set voltage, amperage and watts per panel)'
                     : 'no published port capacity for this processor)');
@@ -1416,7 +1431,7 @@ class _CustomRuns {
         return this.getPathScopeLayers(owner).filter(l => l && hit.has(l.id));
     }
 
-    // "Runs that crossed into LOWER were redone — LOWER's cabinets on them
+    // "Runs that crossed into LOWER were redone, so LOWER's cabinets on them
     // are now unwired." Power says circuits.
     _customFillUnwiredMessage(kind, layers) {
         const names = layers.map(l => l.name || `Screen ${l.id}`);
@@ -1425,7 +1440,7 @@ class _CustomRuns {
             : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
         const runs = kind === 'power' ? 'Circuits' : 'Runs';
         const whose = one ? `${list}'s cabinets` : `those screens' cabinets`;
-        return `${runs} that crossed into ${list} were redone — ${whose} on them are now unwired.`;
+        return `${runs} that crossed into ${list} were redone, so ${whose} on them are now unwired.`;
     }
 
     // The next number a fill may step into after `num`: the open number line
@@ -1548,7 +1563,7 @@ class _CustomRuns {
                 const taken = this.getOverrideNums(owner, kind)
                     .map(n => this._customRunLabel(owner, kind, n)).join(', ');
                 return `the selection does not fit on the taken-over `
-                    + `${noun}s (${taken}) - ${describe()}. Take over another `
+                    + `${noun}s (${taken}), ${describe()}. Take over another `
                     + `run or select a narrower block.`;
             }
             cur = { num: next, picks: [], load: 0 };

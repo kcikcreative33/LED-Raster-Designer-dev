@@ -2,7 +2,7 @@
 widths (1.5).
 
 A distro's gear opened in a narrow window used to cut the panel's contents
-off on the right - "A per leç", "Follow the circuit voltage — Lir",
+off on the right - "A per leç", "Follow the circuit voltage: Lir",
 "Edison / True1 / powerCC" - and the selects read as text boxes, their
 chevrons lost under a background shorthand. The panel now:
 

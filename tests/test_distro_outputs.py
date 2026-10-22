@@ -112,7 +112,8 @@ SEED_JS = """async () => {
     for (const l of p1.layers) {
         await fetch(`/api/layer/${l.id}`, {method: 'PUT',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({powerVoltage: 208, powerAmperage: 10,
+            // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+            body: JSON.stringify({powerVoltage: 208, powerAmperage: 12.5,
                                   panelWatts: 200,
                                   processorType: 'novastar-coex-1g'})});
     }
@@ -543,7 +544,7 @@ def test_a_mismatched_connector_is_refused_with_the_fix(page):
                mid_check=lambda p: p.evaluate(MID_JS, ids['bId']))
     assert mid['lit'] == [] and mid['pill']['cls'] == 'hw-dock-pill-bad', mid
     assert mid['pill']['text'] == \
-        'WALL B runs at 120V — a Multi 208 output feeds screens above 120V', mid
+        'WALL B runs at 120V, and a Multi 208 output feeds screens above 120V', mid
     assert pg.evaluate(POWER_STATE_JS, ids['bId'])['distro'] == {}
     # and the Multi 120 chip is what that screen takes
     sx, sy = chip_center(pg, f'plug-{d}-soca120')
@@ -580,7 +581,7 @@ def test_a_true1_screen_is_matched_by_its_voltage(page):
                mid_check=lambda p: p.evaluate(MID_JS, ids['bId']))
     assert mid['lit'] == [] and mid['pill']['cls'] == 'hw-dock-pill-bad', mid
     assert mid['pill']['text'] == \
-        'WALL B runs at 120V — a Multi 208 output feeds screens above 120V', mid
+        'WALL B runs at 120V, and a Multi 208 output feeds screens above 120V', mid
     assert pg.evaluate(POWER_STATE_JS, ids['bId'])['distro'] == {}
     assert pg.evaluate(HIST_LEN_JS) == n
     # 120V True1 on a Multi 120: lands
@@ -599,7 +600,7 @@ def test_a_true1_screen_is_matched_by_its_voltage(page):
                mid_check=lambda p: p.evaluate(MID_JS, ids['aId']))
     assert mid['lit'] == [] and mid['pill']['cls'] == 'hw-dock-pill-bad', mid
     assert mid['pill']['text'] == \
-        'WALL A runs at 208V — a Multi 120 output feeds screens up to 120V', mid
+        'WALL A runs at 208V, and a Multi 120 output feeds screens up to 120V', mid
     assert pg.evaluate(POWER_STATE_JS, ids['aId'])['distro'] == {}
     assert pg.evaluate(HIST_LEN_JS) == n
     # and the Multi 208 lands on it

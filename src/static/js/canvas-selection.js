@@ -383,11 +383,19 @@ Object.assign(CanvasRenderer.prototype, {
         return this._resolvePathPanels(layer, path).length;
     },
 
+    // A circuit counts WHOLE (the owner's ruling, 2026-10-22): every leg of
+    // its 2fer or 3fer, the cabinets the fill and the click cap judge
+    // (app _customRunHits), and a blank cabinet, which draws nothing, is
+    // never counted.
     _getCustomPowerCircuitPanelCount(layer, circuitNum) {
+        if (window.app && typeof window.app._customRunHits === 'function') {
+            return window.app._customRunHits(layer, 'power', circuitNum)
+                .filter(h => h && h.panel && !h.panel.blank).length;
+        }
         const path = (layer.powerCustomPaths && layer.powerCustomPaths[circuitNum]) || [];
         if (!Array.isArray(path)) return 0;
         if (!window.app || typeof window.app.getPanelByRowCol !== 'function') return path.length;
-        return this._resolvePathPanels(layer, path).length;
+        return this._resolvePathPanels(layer, path).filter(h => !(h && h.panel && h.panel.blank)).length;
     },
 
     // The active-port / active-circuit READOUT while a custom flow is being

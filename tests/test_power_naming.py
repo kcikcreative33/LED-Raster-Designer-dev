@@ -117,7 +117,8 @@ SETUP_JS = """(o) => {
     for (const l of app.project.layers) {
         const key = l.name === 'WALL A' ? 'a' : 'b';
         for (const p of l.panels || []) delete p.blank;
-        Object.assign(l, { powerVoltage: 208, powerAmperage: 20, panelWatts: 200,
+        // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+        Object.assign(l, { powerVoltage: 208, powerAmperage: 25, panelWatts: 200,
                            powerFlowPattern: 'tl-h', powerCustomPaths: {}, powerCustomIndex: 1,
                            powerSocaDistro: {}, powerSocaNumber: {}, powerSocaPhasePos: {},
                            powerSocaLengths: {}, powerSocaSplits: [], powerSocaNames: {},
@@ -187,10 +188,10 @@ def test_jumpers_and_breakouts_follow_each_screens_connector(page):
     its own connector's name, one row per length."""
     pg, errors = page
     setup(pg, distros=[DIST], walls={
-        'a': {'powerBreakoutType': 'soca-true1', 'powerSocaSplits': [3], 'powerAmperage': 10,
+        'a': {'powerBreakoutType': 'soca-true1', 'powerSocaSplits': [3], 'powerAmperage': 12.5,
               'powerSocaDistro': {'1': 'd1', '2': 'd1'}, 'powerSocaNumber': {'1': 1, '2': 2},
               'powerSocaLengths': {'1': '100', '2': '50'}},
-        'b': {'powerBreakoutType': 'soca-powercon', 'powerJumpV': 2, 'powerJumpH': 2, 'powerAmperage': 10,
+        'b': {'powerBreakoutType': 'soca-powercon', 'powerJumpV': 2, 'powerJumpH': 2, 'powerAmperage': 12.5,
               'powerSocaDistro': {'1': 'd1'}, 'powerSocaNumber': {'1': 1},
               'powerSocaLengths': {'1': '100'}}})
     plan = ev(pg, "return [A, B].map(l => app.getSocaPlan(l).map(s => [s.number, s.legs.length]));")
@@ -246,7 +247,7 @@ def test_an_edison_screen_picks_its_panel_input(page):
     the adapter cables, the jumpers and the splitters are powerCON. A TRUE1 wall
     has no Panel input row - its breakout is its input."""
     pg, errors = page
-    nums = setup(pg, walls={'b': {'powerVoltage': 120, 'powerAmperage': 10,
+    nums = setup(pg, walls={'b': {'powerVoltage': 120, 'powerAmperage': 12.5,
                                   'powerBreakoutType': 'soca-edison'}})['WALL B']
     assert len(nums) == 3, nums
     rows = pg.evaluate(ROWS_JS)
@@ -391,7 +392,7 @@ def test_an_edit_on_the_old_edison_tail_row_answers_to_the_cable_row(page):
     "tail"). An edit a file saved on the old row (its count, its note)
     lands on the cable row, and the sheet says tail nowhere."""
     pg, errors = page
-    setup(pg, walls={'b': {'powerVoltage': 120, 'powerAmperage': 10,
+    setup(pg, walls={'b': {'powerVoltage': 120, 'powerAmperage': 12.5,
                            'powerBreakoutType': 'soca-edison'}})
     keys = ev(pg, """return ['Edison → TRUE1 tail|EA', 'L6-20 → powerCON tail|EA',
                              'Edison → TRUE1 tail', 'Edison → TRUE1 tailgate|EA',

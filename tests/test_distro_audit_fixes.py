@@ -73,7 +73,8 @@ SETUP_JS = """(o) => {
     const app = window.app;
     for (const l of app.project.layers) {
         const key = l.name === 'WALL A' ? 'a' : 'b';
-        Object.assign(l, { powerVoltage: 208, powerAmperage: 20, panelWatts: 200,
+        // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+        Object.assign(l, { powerVoltage: 208, powerAmperage: 25, panelWatts: 200,
                            powerSocaDistro: {}, powerSocaNumber: {}, powerSocaPhasePos: {},
                            powerSocaLengths: {}, powerSocaSplits: [], powerSocaNames: {},
                            powerLabelOverrides: {}, powerBreakoutType: null, locked: false },
@@ -128,9 +129,9 @@ FACE = {'id': 'd1', 'name': 'PD', 'ratingA': 200, 'system': '120/208',
 # first circuit cut off on its own and pinned on output 5 (the other one).
 # At 10 A a circuit is one row of ten cabinets (9.6 A at 208V), so WALL A
 # makes six circuits and every circuit sits inside its 80% breaker figure.
-WALLS = {'a': {'powerAmperage': 10, 'powerSocaDistro': {'1': 'd1'},
+WALLS = {'a': {'powerAmperage': 12.5, 'powerSocaDistro': {'1': 'd1'},
                'powerSocaNumber': {'1': 4}},
-         'b': {'powerAmperage': 10, 'powerSocaSplits': [1], 'powerSocaDistro': {'1': 'd1'},
+         'b': {'powerAmperage': 12.5, 'powerSocaSplits': [1], 'powerSocaDistro': {'1': 'd1'},
                'powerSocaNumber': {'1': 5}}}
 
 READ_FACE = """

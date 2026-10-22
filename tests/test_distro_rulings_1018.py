@@ -94,7 +94,8 @@ SETUP_JS = """(o) => {
     document.getElementById('crowd-modal')?.remove();
     for (const l of app.project.layers) {
         const key = l.name === 'WALL A' ? 'a' : 'b';
-        Object.assign(l, { powerVoltage: 208, powerAmperage: 10, panelWatts: 200,
+        // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+        Object.assign(l, { powerVoltage: 208, powerAmperage: 12.5, panelWatts: 200,
                            powerSocaDistro: {}, powerSocaNumber: {}, powerSocaPhasePos: {},
                            powerSocaLengths: {}, powerSocaSplits: [], powerSocaNames: {},
                            powerCircuitCables: {}, powerLabelOverrides: {},
@@ -391,7 +392,7 @@ def test_an_old_crowded_show_prints_distro_and_opens_unchanged(e2e_server, pw_br
     pg.evaluate("""async (d) => {
         const proj = await (await fetch('/api/project')).json();
         const a = proj.layers.find(l => l.name === 'WALL A');
-        Object.assign(a, { powerVoltage: 208, powerAmperage: 10, panelWatts: 200,
+        Object.assign(a, { powerVoltage: 208, powerAmperage: 12.5, panelWatts: 200,
                            powerSocaDistro: { 1: 'd1' }, powerSocaNumber: { 1: 2 },
                            powerSocaPhasePos: {}, powerSocaSplits: [], powerSocaLengths: { 1: '50' },
                            locked: false });

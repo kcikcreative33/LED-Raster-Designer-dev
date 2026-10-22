@@ -92,7 +92,8 @@ SETUP_JS = """(o) => {
     const app = window.app;
     for (const l of app.project.layers) {
         const key = l.name === 'WALL A' ? 'a' : 'b';
-        Object.assign(l, { powerVoltage: 208, powerAmperage: 20, panelWatts: 200,
+        // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+        Object.assign(l, { powerVoltage: 208, powerAmperage: 25, panelWatts: 200,
                            powerSocaDistro: {}, powerSocaNumber: {}, powerSocaPhasePos: {},
                            powerSocaLengths: {}, powerSocaSplits: [], powerSocaNames: {},
                            powerBreakoutType: null, locked: false },
@@ -256,7 +257,7 @@ def test_the_screens_3_phase_readout_uses_the_services_line_voltage(seeded):
     """Bug fix 3: "Total Amps (3φ)" divided by the screen voltage as if it
     were line-to-line. A 120V screen rides 120/208: W / (208 x 1.73)."""
     pg, _, _ = seeded
-    setup(pg, walls={'a': {'powerVoltage': 120, 'powerAmperage': 20}})
+    setup(pg, walls={'a': {'powerVoltage': 120, 'powerAmperage': 25}})
     out = ev(pg, """
         const saved = app.currentLayer;
         app.currentLayer = A;
@@ -371,14 +372,24 @@ def test_us_circuits_are_checked_at_80_percent_unless_breakers_are_100_rated(see
     pg, _, _ = seeded
     dist = {'id': 'd1', 'name': 'SL', 'ratingA': 30, 'system': '120/208',
             'outputRows': [{'connector': 'true1', 'count': 3, 'coupling': 'll', 'breakerA': 20}]}
-    # 6 x 600 W = 3600 W at 208 = 17.3 A: over 16 A (80% of 20), under 20.
-    out = _direct_load(pg, dist, 208, 600)
-    assert out['legs'] == 1 and out['amps'] == pytest.approx(3600 / 208)
+    # A US screen packs to 80% of its breaker (2026-10-22), the same 80% the
+    # distro checks, so a full circuit never trips it: a row of 6 x 500 W =
+    # 3000 W at 208 = 14.4 A, under 16 A (80% of 20).
+    out = _direct_load(pg, dist, 208, 500)
+    assert out['legs'] == 1 and out['amps'] == pytest.approx(3000 / 208)
     assert out['label'] == 'SL1', 'a direct output names its circuit with no tail'
+    assert not [w for w in out['warn'] if 'breaker' in w], out
+    # A screen set to 25 A packs to 20 A: 6 x 600 W = 17.3 A on the 20 A
+    # outlet, over its 16 A.
+    out = _direct_load(pg, dist, 208, 600, amps=25)
+    assert out['amps'] == pytest.approx(3600 / 208)
     assert [w for w in out['warn'] if 'over the 80% continuous limit (16 A)' in w], out
     # plain punctuation in the warning, never an em dash (2026-10-22)
     assert not [w for w in out['warn'] if '—' in w or ' - ' in w], out
+    # 100% rated breakers: the screen packs to its 20 A breaker, and 17.3 A
+    # passes.
     out = _direct_load(pg, dict(dist, breakers100=True), 208, 600)
+    assert out['amps'] == pytest.approx(3600 / 208)
     assert not [w for w in out['warn'] if 'breaker' in w], out
     # 6 x 700 W = 4200 W at 208 = 20.2 A: over even a 100%-rated 20 A.
     out = _direct_load(pg, dict(dist, breakers100=True), 208, 700, amps=25)
@@ -516,7 +527,7 @@ def test_a_direct_row_drop_takes_one_circuit_pinned(seeded):
     pg, _, _ = seeded
     dist = {'id': 'd1', 'name': 'SL', 'ratingA': 30, 'system': '120/208',
             'outputRows': [{'connector': 'true1', 'count': 3, 'coupling': 'll'}]}
-    setup(pg, distros=[dist], walls={'b': {'powerAmperage': 6}})
+    setup(pg, distros=[dist], walls={'b': {'powerAmperage': 7.5}})
     out = ev(pg, """
         const payload = { type: 'plug', distroId: 'd1', output: 'face:r1', title: 'SL · TRUE1 208V' };
         const plan = app._plugDropPlan(payload, B);
@@ -541,7 +552,7 @@ def test_a_locked_screen_refuses_a_face_drop(seeded):
         app._dockDropPlug({ type: 'plug', distroId: 'd1', output: 'face:r1', title: 'x' },
                           { kind: 'screen', layerId: B.id });
         return { assigned: Object.keys(B.powerSocaDistro).length,
-                 toast: document.body.innerText.includes('WALL B is locked - unlock it to change it.') };""")
+                 toast: document.body.innerText.includes('WALL B is locked. Unlock it to change it.') };""")
     assert out['assigned'] == 0
     assert out['toast'], 'the locked screen was not named'
     setup(pg)

@@ -72,7 +72,8 @@ SEED_JS = """async () => {
     for (const l of p1.layers) {
         await fetch(`/api/layer/${l.id}`, {method: 'PUT',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({powerVoltage: 208, powerAmperage: 10,
+            // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+            body: JSON.stringify({powerVoltage: 208, powerAmperage: 12.5,
                                   panelWatts: 200,
                                   processorType: 'novastar-coex-1g'})});
     }

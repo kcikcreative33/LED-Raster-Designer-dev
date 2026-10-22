@@ -594,6 +594,9 @@ class _ScreenGroups {
         if (!Array.isArray(this.project.groups)) this.project.groups = [];
         this.project.groups.push(group);
         screens.forEach(layer => { layer.group_id = group.id; });
+        // One "Share circuits via splitters" for the wall, stored on every
+        // member (_shareGroupSplitters).
+        this._shareGroupSplitters(group, keep);
         // A group is ONE row in the list, so its members have to be one block
         // in the layer order before that row can be drawn.
         this._reflowGroupBlocks();
@@ -625,6 +628,7 @@ class _ScreenGroups {
             group.layer_ids.push(layer.id);
             layer.group_id = group.id;
         });
+        this._shareGroupSplitters(group, keep);
         this._reflowGroupBlocks();
         await this._commitGroupChange('Add to Group');
         return true;
@@ -880,6 +884,41 @@ class _ScreenGroups {
         return { ok: true, locked: pick === 'lock' };
     }
 
+    // "Share circuits via splitters" - the box and the splitter size - is
+    // ONE setting for a wall (app-power.js _splitterWallHost), and grouping
+    // stores it on every member (the owner's ruling, 2026-10-22): the
+    // locked screen's setting under "Lock the whole group", where the
+    // locked screens do not change, else the group's own, which is its
+    // first member's (the selection's first screen on a new group, the
+    // group's first member on Add to group). Only the two knobs are
+    // written; each member's own shares stay its own. Ungrouping or
+    // unlocking later reverts nothing: the members keep what they had.
+    _shareGroupSplitters(group, keep = []) {
+        if (typeof this._ownPowerSplitters !== 'function') return;
+        const members = this.getGroupMembers(group)
+            .filter(m => m && (m.type || 'screen') === 'screen');
+        if (!members.length) return;
+        const win = this._ownPowerSplitters(keep.length ? keep[0] : members[0]);
+        members.forEach(m => {
+            if (keep.includes(m)) return;
+            const own = this._ownPowerSplitters(m);
+            if (own.enabled === win.enabled && own.maxWays === win.maxWays) return;
+            m.powerSplitters = { ...(m.powerSplitters || {}),
+                                 enabled: win.enabled, maxWays: win.maxWays };
+        });
+    }
+
+    // Do locked screens disagree on "Share circuits via splitters"? Under
+    // "Lock the whole group" each would have to keep its own.
+    _lockedSplittersDisagree(locked) {
+        if (typeof this._ownPowerSplitters !== 'function') return false;
+        const keys = new Set((locked || []).map(l => {
+            const sp = this._ownPowerSplitters(l);
+            return `${sp.enabled}:${sp.maxWays}`;
+        }));
+        return keys.size > 1;
+    }
+
     // "Lock the whole group" over locked and unlocked screens (the owner's
     // ruling, 2026-10-21): the locked screens' settings win, and nothing on
     // a locked screen changes. The settings the group has to share are
@@ -889,12 +928,14 @@ class _ScreenGroups {
     // they are named. Returns the values to write, or null.
     _lockedGroupSettings(screens, locked) {
         const own = this.validateGroupSettings(locked);
-        if (!own.ok) {
+        const splitters = this._lockedSplittersDisagree(locked);
+        if (!own.ok || splitters) {
             const n = locked.map(l => l.name || `Screen ${l.id}`);
             const names = n.length <= 1 ? (n[0] || '')
                 : `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}`;
             const fields = Object.keys(own.conflicts)
-                .map(f => this._groupSettingFieldLabel(f));
+                .map(f => this._groupSettingFieldLabel(f))
+                .concat(splitters ? ['Share circuits via splitters'] : []);
             const what = fields.length <= 1 ? fields[0]
                 : `${fields.slice(0, -1).join(', ')} and ${fields[fields.length - 1]}`;
             const msg = `${names} are locked and disagree on ${what}. A locked `

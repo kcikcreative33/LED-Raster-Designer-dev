@@ -439,7 +439,7 @@ def test_two_clicks_a_held_clock_apart_both_apply(page, kind, view):
 
 # ── 5. locked screens stay unchanged and say why ──────────────────────────
 
-LOCKED = 'Lower is locked - unlock it to change it.'
+LOCKED = 'Lower is locked. Unlock it to change it.'
 
 
 @pytest.mark.parametrize('kind,view', KINDS)
@@ -470,7 +470,7 @@ def test_tile_on_a_locked_owner_changes_nothing(page, kind, view):
                  steps, after: window.app.historyIndex, sel: ca.sel(arg.kind).size };
     """, {'kind': kind, 'view': view})
     assert out['runs']['cabinets'] == 0, out
-    assert out['errors'] == ['Upper is locked - unlock it to change it.'], out
+    assert out['errors'] == ['Upper is locked. Unlock it to change it.'], out
     assert out['after'] == out['steps'], out
     assert out['sel'] == 0, out
 
@@ -587,7 +587,7 @@ def test_stepping_the_active_run_on_a_locked_screen_is_refused(page, kind, view,
     _tab(page, view)
     out = _run(page, STEP_JS, {'kind': kind, 'view': view, 'way': way, 'locked': True})
     assert all(v == 1 for v in out['seen']), out
-    assert out['errors'] == ['Upper is locked - unlock it to change it.'], out
+    assert out['errors'] == ['Upper is locked. Unlock it to change it.'], out
     assert out['after'] == out['steps'], out
 
 

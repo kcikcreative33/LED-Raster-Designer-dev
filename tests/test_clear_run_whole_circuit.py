@@ -242,4 +242,4 @@ def test_clear_run_with_the_owner_locked_removes_nothing_and_says_so(page, kind)
     layer_puts = [u for u in puts if '/api/layer/' in u or u.endswith('/api/project')]
     assert layer_puts == [], puts
     owner = page.evaluate("(id) => window.__q.layer(id).name", ids[1])
-    assert toasts == ['%s is locked - unlock it to change it.' % owner], toasts
+    assert toasts == ['%s is locked. Unlock it to change it.' % owner], toasts
