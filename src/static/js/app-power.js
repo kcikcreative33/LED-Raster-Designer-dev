@@ -2038,9 +2038,23 @@ class _Power {
         return Number.isFinite(n) && n > 0 ? n : (this.cableUnit() === 'm' ? 3 : 10);
     }
 
+    // A length TYPED as text ("30m", "25 ft") reads the way every typed
+    // length does (readTypedLength, 2026-10-22): the other unit converted
+    // and said, text that is no length refused and said, the cable that
+    // was there kept.
     setCircuitCable(layer, circuitNum, cable, record = true) {
         if (!layer) return false;
-        const ft = cable ? Number(cable.ft) : NaN;
+        let ft = cable ? Number(cable.ft) : NaN;
+        if (cable && typeof cable.ft === 'string') {
+            if (layer.locked) {
+                const read = this.parseTypedCableLength(cable.ft);
+                ft = read.n === null ? NaN : read.n;
+            } else {
+                const read = this.readTypedLength(cable.ft, 'cable');
+                if (!read.ok) return false;
+                ft = read.n === null ? NaN : read.n;
+            }
+        }
         const next = (!Number.isFinite(ft) || ft <= 0) ? null : {
             ft,
             connector: cable.connector && this.cableConnectorName(cable.connector)
@@ -2310,7 +2324,7 @@ class _Power {
             }
             return {
                 id: d ? d.id : null,
-                name: d ? d.name : 'Unassigned',
+                name: d ? this.distroLabel(d) : 'Unassigned',
                 location: (d && d.location) || null,
                 ratingA: rating, voltage: v, phase: d ? d.phase : null,
                 system: d ? (d.system || null) : null,
@@ -2370,26 +2384,30 @@ class _Power {
     // `record` mirrors setSocaName's: false for the dock's shared-box
     // write-through, which issues one updateLayers over every member itself.
     setSocaLength(layer, socaIndex, length, record = true) {
-        if (!layer) return;
-        const v = String(length || '').trim();
-        // "100ft" keeps its number (relabelled by number on a unit
-        // change); text that is no length here stays as typed and prints
-        // as no length.
-        const n = this.parseCableLength(v);
-        const stored = v ? (n !== null ? String(n) : v) : '';
+        if (!layer) return false;
+        const v = String(length == null ? '' : length).trim();
+        // A length typed in the show's unit keeps its number ("100ft" is
+        // 100, relabelled by number on a unit change); one in the other
+        // unit is converted and said ("30m" in a feet show is 98.4 ft);
+        // text that is no length is refused, said, and the length that
+        // was there stays (2026-10-22, the feeder field's rule).
+        const read = this.parseTypedCableLength(v);
+        const stored = read.bad ? v : (read.n !== null ? String(read.n) : '');
         // A locked screen stays unchanged (owner, 2026-10-16) - the setter
         // refuses and names it, whichever control called it - when the
         // length would really change.
         if (layer.locked) {
             const cur = String((layer.powerSocaLengths || {})[socaIndex] || '').trim();
             if (cur !== stored) this._showLockedError([layer]);
-            return;
+            return false;
         }
+        if (!this.readTypedLength(v, 'home run').ok) return false;
         const store = layer.powerSocaLengths || (layer.powerSocaLengths = {});
         if (stored) store[socaIndex] = stored; else delete store[socaIndex];
         if (record) {
             this.updateLayers([layer], true, 'Set Multi Home Run');
         }
+        return true;
     }
 
     // The distro list died with the Power sidebar: the dock's distro

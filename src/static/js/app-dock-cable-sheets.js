@@ -93,9 +93,10 @@ class _DockCableSheets {
             const changed = this.setCircuitCable(
                 layer, circuit, { ft, connector: connector || null });
             if (!changed) {
-                // A locked screen refused it (the setter named it): redraw
-                // so the row shows the cable it kept.
-                if (layer && layer.locked) this._rebuildAfterGesture(() => this.renderHardwareDock());
+                // A locked screen or a length that is no length refused it
+                // (the setter said why), or "30m" converted to the figure
+                // already stored: redraw so the row shows the cable kept.
+                this._rebuildAfterGesture(() => this.renderHardwareDock());
                 return;
             }
             this.saveClientSideProperties();
@@ -139,10 +140,11 @@ class _DockCableSheets {
                 // the sheet exists so six cables is one open - and the
                 // connector stays a click away for the odd one.
                 const td3 = document.createElement('td');
+                // Text, so a length in the other unit can be typed and
+                // converted ("30m" in a feet show, readTypedLength).
                 const ft = document.createElement('input');
-                ft.type = 'number';
-                ft.min = '0';
-                ft.step = 'any';
+                ft.type = 'text';
+                ft.inputMode = 'decimal';
                 ft.placeholder = '—';
                 ft.className = 'hw-dock-cable-ft';
                 ft.value = stored && Number(stored.ft) > 0
@@ -307,9 +309,8 @@ class _DockCableSheets {
     _cableQuickAny(row, key, label, title, run) {
         const memo = this._cableQuickAnyFt || (this._cableQuickAnyFt = {});
         const box = document.createElement('input');
-        box.type = 'number';
-        box.min = '0';
-        box.step = 'any';
+        box.type = 'text';
+        box.inputMode = 'decimal';
         box.placeholder = this.cableUnitAbbr();
         box.className = 'hw-dock-cable-ft';
         box.value = memo[key] ? String(memo[key]) : '';
@@ -317,10 +318,13 @@ class _DockCableSheets {
         box.title = `A length of your own, in ${this.cableUnitWord()}. Enter, or the button `
             + 'beside it, fills with it.';
         const go = () => {
-            const ft = Number(box.value.trim());
-            if (!(Number.isFinite(ft) && ft > 0)) {
+            // read the way every typed length is: "30m" in a feet show
+            // fills with 98.4, said; text that is no length is refused
+            const read = this.readTypedLength(box.value.trim(), 'cable');
+            const ft = read.n;
+            if (!read.ok || ft === null) {
                 box.value = memo[key] ? String(memo[key]) : '';
-                this._dockSay(`Type a length in ${this.cableUnitWord()} first.`);
+                if (read.ok) this._dockSay(`Type a length in ${this.cableUnitWord()} first.`);
                 return;
             }
             memo[key] = ft;
@@ -503,10 +507,10 @@ class _DockCableSheets {
             if (window.canvasRenderer) window.canvasRenderer.render();
         };
         const ftInput = (key, value, title) => {
+            // text, so "30m" in a feet show can be typed (readTypedLength)
             const ft = document.createElement('input');
-            ft.type = 'number';
-            ft.min = '0';
-            ft.step = 'any';
+            ft.type = 'text';
+            ft.inputMode = 'decimal';
             ft.placeholder = '—';
             ft.className = 'hw-dock-cable-ft';
             ft.value = Number(value) > 0 ? String(value) : '';
@@ -997,9 +1001,8 @@ class _DockCableSheets {
         const wrap = document.createElement('span');
         wrap.className = 'hw-dock-fiber-field';
         const f = document.createElement('input');
-        f.type = 'number';
-        f.min = '0';
-        f.step = 'any';
+        f.type = 'text';
+        f.inputMode = 'decimal';
         f.className = 'hw-dock-cable-ft';
         f.placeholder = this.cableUnitAbbr();
         f.dataset.lrdField = `fiber-copper-ft-${box.id}-${l.key}`;
@@ -1009,13 +1012,11 @@ class _DockCableSheets {
         f.title = `The ${l.copper.copper} run's length in ${this.cableUnitWord()}`
             + (max ? ` - ${this.copperLinkMaxWords(max)} is its 10G maximum.` : '.');
         f.addEventListener('change', () => {
-            const raw = f.value.trim();
-            const v = raw === '' ? null : Number(raw);
-            if (v !== null && !(Number.isFinite(v) && v >= 0)) {
-                this._dockSay(`Type a length in ${this.cableUnitWord()}, or leave it blank.`);
-                return;
-            }
-            this.setFiberLink(box, l.key, { copper: l.copper.copper, ft: v }, 'Set Copper Length');
+            // read the way every typed length is (readTypedLength): the
+            // other unit converted and said, text that is no length refused
+            const read = this.readTypedLength(f.value.trim(), 'cable');
+            if (!read.ok) return;
+            this.setFiberLink(box, l.key, { copper: l.copper.copper, ft: read.n }, 'Set Copper Length');
         });
         wrap.appendChild(f);
         wrap.appendChild(document.createTextNode(` ${this.cableUnitAbbr()}`));
@@ -1260,16 +1261,16 @@ class _DockCableSheets {
         } else if (wz.step === 'ft') {
             cap.textContent = `New ${word} · length:`;
             const go = () => {
-                const raw = f.value.trim();
-                const v = raw === '' ? null : Number(raw);
-                if (v !== null && !(Number.isFinite(v) && v >= 0)) {
-                    this._dockSay(`Type a length in ${this.cableUnitWord()}, or leave it blank.`);
-                    return;
-                }
+                const read = this.readTypedLength(f.value.trim(), word);
+                if (!read.ok) return;
+                const v = read.n;
                 if (wz.kind === 'tac') step({ ft: v, step: 'connector' });
                 else { wz.ft = v; create(); }
             };
-            const f = field('number', `${base}-ft`, wz.ft, this.cableUnitAbbr(), go);
+            // text, so "30m" in a feet show can be typed (readTypedLength)
+            const f = field('text', `${base}-ft`, wz.ft, this.cableUnitAbbr(), go);
+            f.className = 'hw-dock-cable-ft';
+            f.inputMode = 'decimal';
             div.appendChild(document.createTextNode(` ${this.cableUnitAbbr()} `));
             button(wz.kind === 'tac' ? 'Next' : 'Create', `${base}-ft-next`,
                 wz.kind === 'tac' ? 'On to the ends.' : `Make the ${word} on this link.`, go);
@@ -1336,14 +1337,15 @@ class _DockCableSheets {
                 put({ strands: v }, 'Set Fiber Strand Count');
             });
         }
-        const ft = field(this.cableUnitAbbr(), input('number', `fiber-cable-ft-${cable.id}`,
-            Number(cable.ft) > 0 ? cable.ft : ''));
-        ft.min = '0';
-        ft.step = 'any';
+        const ft = field(this.cableUnitAbbr(), input('text', `fiber-cable-ft-${cable.id}`,
+            Number(cable.ft) > 0 ? cable.ft : '', 'hw-dock-cable-ft'));
+        ft.inputMode = 'decimal';
         ft.placeholder = '—';
         ft.addEventListener('change', () => {
-            const v = ft.value.trim();
-            put({ ft: v === '' ? null : Number(v) }, 'Set Fiber Length');
+            // read the way every typed length is (readTypedLength)
+            const read = this.readTypedLength(ft.value.trim(), 'fiber');
+            if (!read.ok) return;
+            put({ ft: read.n }, 'Set Fiber Length');
         });
         if (cable.kind === 'tac') {
             const conn = field('ends', input('text', `fiber-cable-connector-${cable.id}`, cable.connector));

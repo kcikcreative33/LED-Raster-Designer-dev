@@ -4037,6 +4037,11 @@ class _Binder {
             h: (Number.isFinite(area.h) ? area.h : Infinity) - G.top - G.bottom,
         };
         let geo = null;
+        // the screens' visibility as the user left it, for the labels that
+        // compare names across the show (distroLabel) while the map below
+        // hides every screen but its subject's
+        const hadVis = this._labelVisibility;
+        if (!hadVis) this._labelVisibility = new Map(saved.layerVis);
         try {
             r.viewMode = view;
             const cid = (layer.show_canvas_id || layer.canvas_id) || null;
@@ -4211,6 +4216,7 @@ class _Binder {
         } finally {
             saved.canvasVis.forEach(([c, v]) => { c.visible = v; });
             saved.layerVis.forEach(([l, v]) => { l.visible = v; });
+            if (!hadVis) this._labelVisibility = null;
             if (this.project) this.project.active_canvas_id = saved.active;
             if (this.project && subject.kind !== 'layer') {
                 if (hadBy) this.project.groupNameDisplayByView = saved.nameBy;
@@ -4663,7 +4669,7 @@ class _Binder {
             const svc = typeof this.distroService === 'function' ? this.distroService(rec) : null;
             let feed = svc && feeds.find(f => f.svc === svc);
             if (!feed) feeds.push(feed = { svc, rows: [] });
-            const parts = [d.name, `${rec.ratingA} A`, svc ? null : this.distroSystemName(rec),
+            const parts = [this.distroLabel(rec), `${rec.ratingA} A`, svc ? null : this.distroSystemName(rec),
                            rec.breakers100 && this.distroRegion(rec) === 'us' ? '100% rated breakers' : null];
             const legs = grouped ? this._bSubjectLegsOn(s.carriers, id, listed) : this._bScreenLegsOn(layer, id);
             if (legs) {
@@ -5732,7 +5738,7 @@ class _Binder {
                 if (box.distroId && !seenDistro.has(box.distroId)) {
                     seenDistro.add(box.distroId);
                     const d = (this.getDistros ? this.getDistros() : []).find(x => x.id === box.distroId);
-                    if (d) hw.push({ cells: ['', d.name, `distro · ${this._bDistroRatingText(d)}`] });
+                    if (d) hw.push({ cells: ['', this.distroLabel(d), `distro · ${this._bDistroRatingText(d)}`] });
                 }
             }
             const asg = ((this._assignment && this._assignment.screens) || [])
@@ -5910,7 +5916,7 @@ class _Binder {
         // a distro fed thru another counts here (thru loads, 2026-10-21)
         // and says which one it is fed thru
         const rows = load.distros.map(({ distro: d, load: L, thru }) => ({
-            cells: [thru ? `${d.name || d.id} · thru ${thru.name || thru.id}` : (d.name || d.id),
+            cells: [thru ? `${this.distroLabel(d)} · thru ${this.distroLabel(thru)}` : this.distroLabel(d),
                     `${this._bNum(d.ratingA, 0)} A`, ...amps(L)],
         }));
         if (rows.length) {
@@ -5987,7 +5993,7 @@ class _Binder {
                 typeText = one ? one.name : this.directCableType(fbox.conn.cable, lone.layer);
             }
             allCircuits += circuits;
-            boxes.push({ cells: [labels.get(`${d.id}|${number}`) || `${d.name} ${number}`, typeText,
+            boxes.push({ cells: [labels.get(`${d.id}|${number}`) || `${this.distroLabel(d)} ${number}`, typeText,
                                  homeRun ? this.pullLengthText(homeRun,
                                      this.pullHomeRunKind(fbox || (typed ? { typeId: typed.id } : null))) : 'no length',
                                  names.join(' + '), String(circuits), this._bNum(amps, 1)] });
@@ -5998,7 +6004,7 @@ class _Binder {
         const counts = [...byType.entries()].map(([name, n]) => `${n} ${name}`).join(' · ')
             || 'nothing on this distro';
         if (!boxes.length && !load) return null;
-        return { kind: 'distro', name: d.name, blocks: this._bDistroBlocks(book, d, load, boxes, counts, allCircuits) };
+        return { kind: 'distro', name: this.distroLabel(d), blocks: this._bDistroBlocks(book, d, load, boxes, counts, allCircuits) };
     }
 
     _bDistroBlocks(book, d, load, boxes, counts, allCircuits) {

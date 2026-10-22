@@ -312,7 +312,9 @@ def test_a_multi_home_run_typed_with_the_shows_unit_prints_its_length(page):
 
 def test_typing_a_home_run_with_the_unit_stores_the_number(page):
     """setSocaLength keeps the number of a length typed with the show's
-    unit, so a later unit change relabels it by number like any other."""
+    unit, so a later unit change relabels it by number like any other. A
+    length in the other unit is converted (2026-10-22): "30m" in a feet
+    show is 98.4."""
     pg, _ = page
     _power_show(pg)
     pg.evaluate(SETUP_JS, {'distros': [DIST_US],
@@ -323,8 +325,8 @@ def test_typing_a_home_run_with_the_unit_stores_the_number(page):
         app.setSocaLength(W, 1, '30m', false);
         const b = W.powerSocaLengths[1];
         return [a, b];""")
-    # the other unit's suffix is kept as typed - it reads as no length
-    assert out == ['125', '30m'], out
+    # the other unit's suffix is converted to the show's unit
+    assert out == ['125', '98.4'], out
 
 
 def test_a_direct_output_reads_the_same_lengths(page):

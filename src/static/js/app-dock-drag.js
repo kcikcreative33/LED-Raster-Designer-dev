@@ -151,11 +151,11 @@ class _DockDrag {
         if (!d || !s) return;
         const cur = this.distroService(d);
         if (cur && cur.id === s.id) {
-            this._dockSay(`${d.name || d.id} is already on ${s.name || s.id}.`);
+            this._dockSay(`${this.distroLabel(d)} is already on ${s.name || s.id}.`);
             return;
         }
         if (this.setDistroService(d.id, s.id)) {
-            this._dockSay(`${d.name || d.id} is on ${this.serviceLabel(s)}.`);
+            this._dockSay(`${this.distroLabel(d)} is on ${this.serviceLabel(s)}.`);
         }
         this.renderHardwareDock();
     }
@@ -702,8 +702,8 @@ class _DockDrag {
             if (load && load.ratingA > 0 && load.over) {
                 const lim = `${+load.limitA.toFixed(1)} A`;
                 warn = load.legs
-                    ? `${d.name || d.id} legs to ${load.amps.toFixed(0)} A of ${lim}`
-                    : `${d.name || d.id} to ${load.amps.toFixed(0)} A of ${lim}`;
+                    ? `${this.distroLabel(d)} legs to ${load.amps.toFixed(0)} A of ${lim}`
+                    : `${this.distroLabel(d)} to ${load.amps.toFixed(0)} A of ${lim}`;
             }
         } finally {
             if (had) map[s.soca] = prev; else delete map[s.soca];
@@ -711,7 +711,7 @@ class _DockDrag {
         }
         const nums = s.legs.map(g => g.circuit);
         const boxName = name
-            || `${d.name || d.id}${number != null ? ` ${number}` : ''}`;
+            || `${this.distroLabel(d)}${number != null ? ` ${number}` : ''}`;
         return {
             ok: true, glyph, socaIndex: s.soca, nums, number, boxName,
             amps: s.amps, badge: type.badge, warn,
@@ -761,7 +761,7 @@ class _DockDrag {
                 if (!faceRow) {
                     const why = fits.length
                         ? this.faceBoxEligible(d, fits[0].boxes[0], layer).why
-                        : `${d.name || d.id} has no multi outputs — drag one of its `
+                        : `${this.distroLabel(d)} has no multi outputs — drag one of its `
                             + 'outputs onto a circuit';
                     return { ok: false, glyph: 'soca', message: why };
                 }
@@ -819,7 +819,7 @@ class _DockDrag {
         const box = this.faceRowFreeBoxes(d, faceRow)[0];
         if (!box) {
             return { ok: false, glyph,
-                     message: `Every ${type.name} on ${d.name || d.id} is in use.` };
+                     message: `Every ${type.name} on ${this.distroLabel(d)} is in use.` };
         }
         const plan = this.getSocaPlan(layer);
         const s = plan.find(x => !x.distroId);
@@ -832,7 +832,7 @@ class _DockDrag {
         }
         const nums = direct ? [s.legs[0].circuit] : s.legs.map(g => g.circuit);
         const amps = direct ? (s.legs[0].amps || 0) : s.amps;
-        const boxName = `${d.name || d.id} ${box.number}`;
+        const boxName = `${this.distroLabel(d)} ${box.number}`;
         return {
             ok: true, glyph, face: true, direct,
             socaIndex: (!direct || s.legs.length === 1) ? s.soca : null,
@@ -899,7 +899,7 @@ class _DockDrag {
             .flatMap(s => s.legs)
             .filter(g => nums.includes(g.circuit))
             .reduce((t, g) => t + (g.amps || 0), 0);
-        const boxName = `${d.name || d.id} ${plan.number}`;
+        const boxName = `${this.distroLabel(d)} ${plan.number}`;
         const whole = plan.seg && plan.spanStart === plan.seg.start
             && plan.spanEnd === plan.seg.end;
         return {
@@ -1052,7 +1052,7 @@ class _DockDrag {
         const loads = (typeof this.getDistroLoads === 'function'
             && this.getDistroLoads()) || [];
         const entries = distros.map(d => {
-            const name = d.name || d.id;
+            const name = this.distroLabel(d);
             if (this.distroFace(d)) {
                 // A face distro offers what its rows feed this screen.
                 const gate = this._plugGate({ distroId: d.id, output: null }, layer);
@@ -1626,7 +1626,7 @@ class _DockDrag {
                 + '— change its breakout first';
         }
         if (!this.distroOffers(d, type.id)) {
-            return `${d.name || d.id} does not offer `
+            return `${this.distroLabel(d)} does not offer `
                 + `${type.name} — tick ${type.name} under its `
                 + '⚙ Outputs first';
         }
