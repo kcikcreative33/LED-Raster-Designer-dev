@@ -2762,7 +2762,7 @@
                 var name = proc() && proc().name ? proc().name : '';
                 var odd = proc() && proc().redundancy && socks.every(function (s) { return s % 2 === 1; });
                 return ps.length + ' ports on ' + (odd ? 'the odd sockets ' : 'sockets ') + socks[0] + ' to ' + socks[socks.length - 1]
-                    + (name ? ', labelled ' + name + '-' + socks[0] + ' …' : '')
+                    + (name ? ', labeled ' + name + '-' + socks[0] + ' …' : '')
                     + (odd ? ' Their returns ride the even sockets.' : '.');
             }
         },

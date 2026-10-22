@@ -237,6 +237,204 @@ def test_retired_wording_guard_catches_each_word():
         "Multi to TRUE1, 'soca-true1', powerJumpNameTrue1, powerCON, etherCON, Cat6, the data cable")
 
 
+# US spelling and no dashes as punctuation, in everything a user reads as
+# prose: the guide copy, What's New, the release being shipped (the top
+# entry of VERSION.txt, which becomes the GitHub release post) and the
+# README (owner rulings, 2026-10-18 and 2026-10-22). Commas, colons and
+# full stops do the job a " - " or an em dash was doing.
+#
+# Only text a user sees is checked: in a .js file that is its string
+# literals, never its comments. "metre" and "metres" are also unit words
+# the length parser accepts (app-cable-units.js), so a string that is
+# nothing but that unit word is exempt; in a sentence they fail.
+VERSION_TXT = os.path.join(os.path.dirname(__file__), '..', 'src', 'VERSION.txt')
+README_MD = os.path.join(os.path.dirname(__file__), '..', 'README.md')
+WHATS_NEW_JS = os.path.join(os.path.dirname(__file__), '..', 'src', 'static',
+                            'js', 'whatsnew_content.js')
+
+PLAIN_US_WORDING = [
+    (r'\blabell(?:ed|ing)\b', 'US spelling: labeled, labeling'),
+    (r'\bneighbour', 'US spelling: neighbor'),
+    (r'\bcolour', 'US spelling: color'),
+    (r'\bcentr(?:e|es|ed|ing)\b', 'US spelling: center'),
+    (r'\b(?:milli|centi|kilo)?metres?\b', 'US spelling: meter, meters'),
+    (r'\bbehaviour', 'US spelling: behavior'),
+    (r'\bfavourite', 'US spelling: favorite'),
+    (r'\bcancell(?:ed|ing)\b', 'US spelling: canceled, canceling'),
+    (r'\btravell(?:ed|ing|er)\b', 'US spelling: traveled, traveling'),
+    (r'\bmodell(?:ed|ing)\b', 'US spelling: modeled, modeling'),
+    (r'\bfibres?\b', 'US spelling: fiber'),
+    (r'\bcatalogue', 'US spelling: catalog'),
+    (r'\bgrey\b', 'US spelling: gray'),
+    (r'\blicence\b', 'US spelling: license'),
+    (r'\b(?:organ|optim|minim|maxim|custom|recogn|real|summar|priorit|'
+     r'initial|normal|visual|synchron|author|final|categor|apolog|emphas|'
+     r'util|standard)is(?:e|es|ed|ing|ation|ations)\b', 'US spelling: -ize, not -ise'),
+    (r'[—–]', 'no em or en dashes; use a comma, colon or full stop'),
+    (r'(?<=\S) - (?=\S)', 'no " - " as a dash; use a comma, colon or full stop'),
+]
+
+# Words a string may be on its own without being prose (see above).
+_UNIT_WORDS = {'metre', 'metres'}
+
+
+def _plain_wording_hits(text, first_line=1):
+    hits = []
+    # CSS arithmetic in a style string is not punctuation
+    text = re.sub(r'calc\([^)]*\)', lambda m: ' ' * len(m.group(0)), text)
+    for pattern, rule in PLAIN_US_WORDING:
+        for m in re.finditer(pattern, text, re.I):
+            line = first_line + text.count('\n', 0, m.start())
+            hits.append('line %d: %r (%s)' % (line, m.group(0), rule))
+    return hits
+
+
+def _js_string_literals(src):
+    """[(line, text)] for every string literal in a JS source, comments
+    skipped. A template literal gives one piece per run of text between
+    its ${...} parts; a regex literal is skipped."""
+    out, i, n = [], 0, len(src)
+    templates = []          # brace depth at each open ${ of a template
+    depth = 0
+    prev = ''               # last significant character, '' at the start
+    while i < n:
+        c = src[i]
+        if src.startswith('//', i):
+            j = src.find('\n', i)
+            i = n if j < 0 else j
+            continue
+        if src.startswith('/*', i):
+            j = src.find('*/', i + 2)
+            i = n if j < 0 else j + 2
+            continue
+        if c == '/' and (prev == '' or prev in '(,=:[!&|?{};+-*%<>~^'):
+            j, in_class = i + 1, False
+            while j < n and src[j] != '\n':
+                ch = src[j]
+                if ch == '\\':
+                    j += 2
+                    continue
+                if ch == '[':
+                    in_class = True
+                elif ch == ']':
+                    in_class = False
+                elif ch == '/' and not in_class:
+                    break
+                j += 1
+            i, prev = j + 1, 'r'
+            continue
+        if c in '\'"':
+            j, buf = i + 1, []
+            while j < n and src[j] != c and src[j] != '\n':
+                if src[j] == '\\':
+                    buf.append(src[j + 1:j + 2])
+                    j += 2
+                    continue
+                buf.append(src[j])
+                j += 1
+            out.append((src.count('\n', 0, i) + 1, ''.join(buf)))
+            i, prev = j + 1, 's'
+            continue
+        if c == '`' or (c == '}' and templates and templates[-1] == depth):
+            if c == '}':
+                templates.pop()
+            j, buf = i + 1, []
+            while j < n:
+                if src[j] == '\\':
+                    buf.append(src[j + 1:j + 2])
+                    j += 2
+                    continue
+                if src[j] == '`':
+                    j += 1
+                    break
+                if src.startswith('${', j):
+                    templates.append(depth)
+                    j += 2
+                    break
+                buf.append(src[j])
+                j += 1
+            out.append((src.count('\n', 0, i) + 1, ''.join(buf)))
+            i, prev = j, 's'
+            continue
+        if c == '{':
+            depth += 1
+        elif c == '}':
+            depth -= 1
+        if not c.isspace():
+            prev = 'a' if (c.isalnum() or c in '_$') else c
+        i += 1
+    return out
+
+
+def _js_copy_hits(path):
+    with open(path, encoding='utf-8') as f:
+        src = f.read()
+    hits = []
+    for line, text in _js_string_literals(src):
+        if text.strip().lower() in _UNIT_WORDS:
+            continue
+        hits.extend(_plain_wording_hits(text, line))
+    return hits
+
+
+def _top_version_entry():
+    """The top entry of VERSION.txt below its header and underline, and the
+    file line it starts on."""
+    with open(VERSION_TXT, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+    starts = [i for i, l in enumerate(lines) if re.match(r'^v\d[\w.]* - ', l)]
+    assert starts, 'VERSION.txt has no version entry'
+    end = starts[1] if len(starts) > 1 else len(lines)
+    return '\n'.join(lines[starts[0] + 2:end]), starts[0] + 3
+
+
+def test_guide_copy_is_us_spelling_without_dashes():
+    hits = _js_copy_hits(QUICKSTART_JS)
+    assert not hits, 'quickstart.js copy says:\n' + '\n'.join(hits)
+
+
+def test_whats_new_is_us_spelling_without_dashes():
+    hits = _js_copy_hits(WHATS_NEW_JS)
+    assert not hits, 'whatsnew_content.js says:\n' + '\n'.join(hits)
+
+
+def test_top_release_notes_are_us_spelling_without_dashes():
+    body, first = _top_version_entry()
+    hits = _plain_wording_hits(body, first)
+    assert not hits, 'the top entry of VERSION.txt says:\n' + '\n'.join(hits)
+
+
+def test_readme_is_us_spelling_without_dashes():
+    with open(README_MD, encoding='utf-8') as f:
+        hits = _plain_wording_hits(f.read())
+    assert not hits, 'README.md says:\n' + '\n'.join(hits)
+
+
+def test_plain_wording_guard_catches_each_word():
+    """The guard itself: each spelling and dash is caught in a sentence,
+    and the things that only look like them are not."""
+    for sample in ('Snakes are labelled by their ports', 'joining its neighbours',
+                   'a default colour', 'centred on the wall', 'lengths in metres',
+                   'the behaviour', 'cancelling the chooser', 'organise the binder',
+                   'a fibre link', 'the catalogue', 'a grey bar',
+                   'the socket it sits on - 6, 7, 8, 9 - the same',
+                   'a breaker — over the limit', 'pages 1–2'):
+        assert _plain_wording_hits(sample), sample
+    assert not _plain_wording_hits(
+        "labeled, neighbors, color, centered, meters, millimeter, canceling, "
+        "organize, fiber, catalog, SR-1 … SR-6, L21-30, Edison → TRUE1, "
+        "max-width:calc(100vw - 32px)")
+    # markdown bullets and indented sub points are not dashes
+    assert not _plain_wording_hits('- FIX: one\n  - a sub point\n   - **The first time**')
+    # a .js file is checked by its strings: a comment or a unit word passes
+    src = ("// centred, labelled - a comment\n"
+           "const u = new Set(['m', 'metre', 'metres']);\n"
+           "const t = `${n} labelled ${m}`; /* travelling */ const r = /a - b/;\n")
+    texts = [t for _, t in _js_string_literals(src)]
+    assert ' labelled ' in texts and 'metre' in texts, texts
+    assert not any('centred' in t or 'travelling' in t or 'a - b' in t for t in texts), texts
+
+
 def test_tour_registry_exposes_all_tours(page):
     names = page.evaluate("Object.keys(window.QuickStart.tours())")
     assert {'quick', 'advanced'} <= set(names), names

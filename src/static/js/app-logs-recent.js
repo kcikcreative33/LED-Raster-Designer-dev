@@ -258,8 +258,8 @@ class _LogsRecent {
             input.style.width = '70px';
             input.placeholder = from ? '10' : '5';
             input.title = from
-                ? `Start of range, included — this many ${word} ago. Pick a unit next to it, or Date… to type an absolute date. Blank = no start bound.`
-                : `End of range, included — this many ${word} ago. Same units as From. Blank = now.`;
+                ? `Start of range, included: this many ${word} ago. Pick a unit next to it, or Date… to type an absolute date. Blank = no start bound.`
+                : `End of range, included: this many ${word} ago. Same units as From. Blank = now.`;
         }
     }
 

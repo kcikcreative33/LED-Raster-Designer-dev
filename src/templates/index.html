@@ -717,7 +717,7 @@
                             <input type="checkbox" id="show-data-flow-port-load">
                             <label for="show-data-flow-port-load">Show Port Load %</label>
                         </div>
-                        <div class="info-row checkbox-row" data-tooltip="Show Cable Tags, Print each port's home run beside its label - the snake it rides (SNAKE A) or its own cable (50' Cat6). Off by default; turn on for the per-screen docs." data-cable-unit-tip="Show Cable Tags, Print each port's home run beside its label - the snake it rides (SNAKE A) or its own cable ({len:50:15} Cat6). Off by default; turn on for the per-screen docs.">
+                        <div class="info-row checkbox-row" data-tooltip="Show Cable Tags, Print each port's home run beside its label: the snake it rides (SNAKE A) or its own cable (50' Cat6). Off by default; turn on for the per-screen docs." data-cable-unit-tip="Show Cable Tags, Print each port's home run beside its label: the snake it rides (SNAKE A) or its own cable ({len:50:15} Cat6). Off by default; turn on for the per-screen docs.">
                             <input type="checkbox" id="show-data-cable-tags">
                             <label for="show-data-cable-tags">Show Cable Tags</label>
                         </div>
@@ -1319,7 +1319,7 @@
                                 <button id="power-label-apply-selected" class="btn" style="flex: 1; padding: 5px 10px;">Apply</button>
                                 <button id="power-label-clear-selected" class="btn" style="flex: 1; padding: 5px 10px; background: #333;">Clear</button>
                             </div>
-                            <p style="font-size: 11px; color: #888; margin: 6px 0 0;">Left blank, a circuit is named by its multi — which is named by its distro, or by this template.</p>
+                            <p style="font-size: 11px; color: #888; margin: 6px 0 0;">Left blank, a circuit is named by its multi, which is named by its distro or by this template.</p>
                         </div>
 
                         <div style="margin-bottom: 12px;">
@@ -2060,11 +2060,11 @@
                 <label style="display: block; margin-bottom: 6px; color: #ccc; font-size: 13px;">Export Format:</label>
                 <select id="export-format" style="width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #3a3a3a; color: #fff; border-radius: 4px;">
                     <option value="png">PNG (Separate files per view)</option>
-                    <option value="svg">SVG (Vector - editable in Illustrator, smart object in Photoshop)</option>
-                    <option value="psd">PSD (Layered standard editors - screens as layers)</option>
+                    <option value="svg">SVG (Vector, editable in Illustrator, smart object in Photoshop)</option>
+                    <option value="psd">PSD (Layered for standard editors, screens as layers)</option>
                     <option value="pdf">PDF (All views combined)</option>
                     <option value="resolume-xml">Resolume XML (Advanced Output)</option>
-                    <option value="pull-sheet">Pull Sheet (Excel workbook - cable list by position)</option>
+                    <option value="pull-sheet">Pull Sheet (Excel workbook, cable list by position)</option>
                     <option value="binder">Binder (PDF)</option>
                     <!-- NovaStar SCR export is parked, not gone: the .scr file
                          layer lives in src/scr_project.py / scr_encoder.py /
@@ -3120,14 +3120,14 @@
                 </table>
             </section>
             <section class="sc-group">
-                <h3>Guided tours</h3>
+                <h3>Guides</h3>
                 <table class="sc-table">
                     <tr><td class="sc-key">Enter</td><td>Next (Done on the last step)</td></tr>
-                    <tr><td class="sc-key">Esc</td><td>Leave the tour</td></tr>
+                    <tr><td class="sc-key">Esc</td><td>Leave the guide</td></tr>
                     <tr><td class="sc-key">Back</td><td>Return to the previous step</td></tr>
                     <tr><td class="sc-key">↻ Replay</td><td>Play this step again</td></tr>
                     <tr><td class="sc-key">Go to N, then Enter</td><td>Jump to step N</td></tr>
-                    <tr><td class="sc-key">Skip</td><td>End the tour</td></tr>
+                    <tr><td class="sc-key">Skip</td><td>End the guide</td></tr>
                 </table>
             </section>
             </div>
@@ -3273,7 +3273,7 @@
             <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap;">
                 <label style="color: #ccc; font-size: 12px;">From:
                     <input id="logs-since" type="number" step="any" min="0" placeholder="10"
-                           title="Start of range, included — this many minutes ago. Pick a unit next to it, or Date… to type an absolute date. Blank = no start bound."
+                           title="Start of range, included: this many minutes ago. Pick a unit next to it, or Date… to type an absolute date. Blank = no start bound."
                            style="background: #1a1a1a; border: 1px solid #333; color: #fff; padding: 4px 6px; border-radius: 4px; margin-left: 4px; width: 70px; font-family: inherit; font-size: 12px;">
                     <select id="logs-since-unit"
                             title="Unit for the From number. Date… switches the field to an absolute date (YYYY-MM-DD HH:MM), today, or yesterday."
@@ -3287,7 +3287,7 @@
                 </label>
                 <label style="color: #ccc; font-size: 12px;">To:
                     <input id="logs-until" type="number" step="any" min="0" placeholder="5"
-                           title="End of range, included — this many minutes ago. Same units as From. Blank = now."
+                           title="End of range, included: this many minutes ago. Same units as From. Blank = now."
                            style="background: #1a1a1a; border: 1px solid #333; color: #fff; padding: 4px 6px; border-radius: 4px; margin-left: 4px; width: 70px; font-family: inherit; font-size: 12px;">
                     <select id="logs-until-unit"
                             title="Unit for the To number. Date… switches the field to an absolute date; a date with no time covers that whole day."

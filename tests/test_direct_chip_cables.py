@@ -108,7 +108,7 @@ def test_the_chip_names_the_cable_outlet_to_panel_from_the_direct_stock(page):
         out = ev(pg, CHIPS_JS)
         assert want in out['corners'], out
         assert not [c for c in out['corners'] if c and c.endswith(' Edison')], out
-        assert out['tip'] and 'it goes on the pull sheet as Edison → powerCON.' in out['tip'], out
+        assert out['tip'] and 'in feet. It goes on the pull sheet as Edison → powerCON.' in out['tip'], out
         assert ' run.' not in out['tip'], out
     finally:
         ev(pg, "delete app.project.cableStock; return null;")
