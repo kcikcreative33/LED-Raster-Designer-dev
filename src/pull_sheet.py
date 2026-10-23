@@ -287,14 +287,21 @@ def connector_spelling(text):
 # The app reads it as TRUE1, etherCON and "... cable" (owner, 2026-10-22:
 # "Rewrite to TRUE1 / etherCON"), and so does the copy: the new word counts
 # as a connector in use and the old one never prints.
-_OLD_FREE_TRUE1 = re.compile(r'(?<![\w-])(?:Tru-1|TRU-1|tru-1|True1|true1)(?![\w-])')
-_OLD_FREE_ETHERCON = re.compile(r'(?<![\w-])(?:Ether-con|ether-con|Ether-Con|ETHER-CON)(?![\w-])')
+# (an old word glued to a plural "s" or a "-" is still the old word:
+# "Tru-1s", "Ether-con-50" - 2026-10-23)
+_FREE_WORD_END = r'(?:(?![\w-])|(?=s(?![\w-]))|(?=-))'
+_OLD_FREE_TRUE1 = re.compile(r'(?<![\w-])(?:Tru-1|TRU-1|tru-1|True1|true1)' + _FREE_WORD_END)
+_OLD_FREE_ETHERCON = re.compile(r'(?<![\w-])(?:Ether-con|ether-con|Ether-Con|ETHER-CON)' + _FREE_WORD_END)
 _OLD_FREE_TAIL = re.compile(r'(?<![\w-])(tail|Tail|TAIL)(?![\w-])')
 # "tail" is "cable" only on an ADAPTER (owner, 2026-10-22): a type with
 # "→" in it, or "Edison tail" / "L6-20 tail". "Tail rope" stays as typed.
 _OLD_FREE_ADAPTER = re.compile(r'→|->')
 _OLD_FREE_PLUG_TAIL = re.compile(
     r'(?<![\w-])((?:Edison|EDISON|edison|L6-20|l6-20)\s+)(tail|Tail|TAIL)(?![\w-])')
+# In NOTES, an arrow says nothing about the rest of the sentence: only the
+# "tail" right after "→ <word>" is the adapter's (2026-10-23: "Tail rope
+# for the Edison → TRUE1 tail" keeps its "Tail rope").
+_OLD_FREE_ARROW_TAIL = re.compile(r'((?:→|->)\s*\S+\s+)(tail|Tail|TAIL)(?![\w-])')
 _FREE_NOTES_SPLIT = re.compile(r'( · |; |, )')
 
 
@@ -314,13 +321,23 @@ def free_row_spelling(text):
     return _OLD_FREE_PLUG_TAIL.sub(lambda m: m.group(1) + _cable_word(m.group(2)), text)
 
 
+def _free_note_piece(text):
+    """One thing a free row's notes say, in the app's spelling: the old
+    connector words, and "tail" only right after "→ <word>" or after
+    Edison / L6-20."""
+    text = _OLD_FREE_ETHERCON.sub('etherCON', _OLD_FREE_TRUE1.sub('TRUE1', text))
+    text = _OLD_FREE_ARROW_TAIL.sub(lambda m: m.group(1) + _cable_word(m.group(2)), text)
+    return _OLD_FREE_PLUG_TAIL.sub(lambda m: m.group(1) + _cable_word(m.group(2)), text)
+
+
 def free_row_notes_spelling(text):
     """A free row's notes in the app's spelling too (owner, 2026-10-22):
-    each thing they say, between " · ", "; " and ", ", read as a type is."""
+    each thing they say, between " · ", "; " and ", ", read the way a type
+    is - except that an arrow turns only its own "tail" into "cable"."""
     if not isinstance(text, str):
         return text
     parts = _FREE_NOTES_SPLIT.split(text)
-    return ''.join(p if i % 2 else free_row_spelling(p) for i, p in enumerate(parts))
+    return ''.join(p if i % 2 else _free_note_piece(p) for i, p in enumerate(parts))
 
 
 # The connectors whose families the GEAR LIST lists only when the show uses
@@ -356,9 +373,33 @@ def _drop_unused_connectors(ws, used):
         cell.value = keep[i] if i < len(keep) else None
 
 
+# The template's own words use " - " as a dash (TOTALS' title, three READ
+# ME lines). The app writes no dash that way (owner, 2026-10-23), so the
+# copy it hands out reads them rewritten; the shipped template is left as
+# it is. Exact texts only: anything else in a cell is the user's.
+TEMPLATE_DASH_TEXTS = {
+    'TOTALS  -  SHOP PULL': 'TOTALS · SHOP PULL',
+    'LED CABLE PULL SHEET  -  how it works': 'LED CABLE PULL SHEET: how it works',
+    'Or use the one-click button - see APPS SCRIPT.': 'Or use the one-click button (see APPS SCRIPT).',
+    'automatically - no button needed there.': 'automatically, no button needed there.',
+}
+TOTALS = 'TOTALS'
+
+
+def dash_spelling(text):
+    """`text` with the template's own " - " dashes rewritten
+    (TEMPLATE_DASH_TEXTS)."""
+    if not isinstance(text, str) or ' - ' not in text:
+        return text
+    for old, new in TEMPLATE_DASH_TEXTS.items():
+        text = text.replace(old, new)
+    return text
+
+
 def _true1_workbook(wb):
     """The GEAR LIST cable types and the READ ME in the app's spelling
-    (connector_spelling)."""
+    (connector_spelling), and the READ ME's and TOTALS' text without the
+    template's " - " dashes (dash_spelling)."""
     gear = wb[GEAR]
     for r in range(GEAR_FIRST_ROW, GEAR_TYPE_LAST_ROW + 1):
         cell = gear.cell(r, GEAR_TYPE_COL)
@@ -366,7 +407,12 @@ def _true1_workbook(wb):
     if README in wb.sheetnames:
         for row in wb[README].iter_rows():
             for cell in row:
-                cell.value = connector_spelling(cell.value)
+                cell.value = dash_spelling(connector_spelling(cell.value))
+    if TOTALS in wb.sheetnames:
+        for row in wb[TOTALS].iter_rows():
+            for cell in row:
+                if isinstance(cell.value, str) and not cell.value.startswith('='):
+                    cell.value = dash_spelling(cell.value)
 
 
 def _sort_keys(row):

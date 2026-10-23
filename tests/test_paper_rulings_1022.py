@@ -273,7 +273,8 @@ def test_feeder_said_once_and_kv_separators_end_their_line(page):
 
 def test_a_thru_fed_distros_screens_read_the_service_in_facts(page):
     """SR fed thru SL, SL on HOUSE: WALL B's FACTS (on SR) read "Service:
-    HOUSE · ..." then a Distro row "SR · thru SL · ..."."""
+    HOUSE · ..." then a Distro row "SR · 400 A · thru SL · ..." (its
+    rating beside its name, 2026-10-23)."""
     pg, errors = page
     sl = {'id': 'd1', 'name': 'SL', 'ratingA': 400, 'system': '120/208', 'serviceId': 's1'}
     sr = {'id': 'd2', 'name': 'SR', 'ratingA': 400, 'system': '120/208', 'feeder': {'from': 'd1'}}
@@ -290,7 +291,7 @@ def test_a_thru_fed_distros_screens_read_the_service_in_facts(page):
         keys = [k for k, _ in b_facts]
         assert 'Service' in keys and keys.index('Service') < keys.index('Distro'), b_facts
         assert dict(b_facts)['Service'].startswith('HOUSE · 600 A'), b_facts
-        assert dict(b_facts)['Distro'].startswith('SR · thru SL · 400 A'), b_facts
+        assert dict(b_facts)['Distro'].startswith('SR · 400 A · thru SL'), b_facts
     finally:
         ev(pg, "delete app.project.services; app._distroFaceMemo = null; return null;")
     assert errors == [], errors
