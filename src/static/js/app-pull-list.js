@@ -2167,25 +2167,42 @@ class _PullList {
     // with "→" in it, or "Edison tail" / "L6-20 tail". Any other "tail"
     // is the user's word: "Tail rope" stays "Tail rope".
     pullFreeRowType(type) {
+        return this._pullFreeRowWords(type, false);
+    }
+
+    // The old words in a free row's text: TRUE1 and etherCON - an old
+    // word glued to a plural "s" or a "-" too ("Tru-1s", "Ether-con-50",
+    // 2026-10-23) - and "tail" as "cable" where it names an adapter. In a
+    // TYPE an arrow makes the whole row an adapter; in NOTES (`notes`) an
+    // arrow says nothing about the rest of the sentence, so only the
+    // "tail" right after "→ <word>" is the adapter's ("Tail rope for the
+    // Edison → TRUE1 tail" keeps its "Tail rope").
+    _pullFreeRowWords(type, notes) {
         if (type == null) return type;
         const t = String(type)
-            .replace(/(^|[^\w-])(?:Tru-1|TRU-1|tru-1|True1|true1)(?![\w-])/g, '$1TRUE1')
-            .replace(/(^|[^\w-])(?:Ether-con|ether-con|Ether-Con|ETHER-CON)(?![\w-])/g, '$1etherCON');
+            .replace(/(^|[^\w-])(?:Tru-1|TRU-1|tru-1|True1|true1)(?:(?![\w-])|(?=s(?![\w-]))|(?=-))/g, '$1TRUE1')
+            .replace(/(^|[^\w-])(?:Ether-con|ether-con|Ether-Con|ETHER-CON)(?:(?![\w-])|(?=s(?![\w-]))|(?=-))/g,
+                '$1etherCON');
         const cable = (w) => (w === 'TAIL' ? 'CABLE' : w === 'Tail' ? 'Cable' : 'cable');
+        const plug = (text) => text.replace(/(^|[^\w-])((?:Edison|EDISON|edison|L6-20|l6-20)\s+)(tail|Tail|TAIL)(?![\w-])/g,
+            (m, lead, p, w) => lead + p + cable(w));
+        if (notes) {
+            return plug(t.replace(/((?:→|->)\s*\S+\s+)(tail|Tail|TAIL)(?![\w-])/g, (m, lead, w) => lead + cable(w)));
+        }
         if (/→|->/.test(t)) {
             return t.replace(/(^|[^\w-])(tail|Tail|TAIL)(?![\w-])/g, (m, lead, w) => lead + cable(w));
         }
-        return t.replace(/(^|[^\w-])((?:Edison|EDISON|edison|L6-20|l6-20)\s+)(tail|Tail|TAIL)(?![\w-])/g,
-            (m, lead, plug, w) => lead + plug + cable(w));
+        return plug(t);
     }
 
     // A FREE ROW'S NOTES in today's spelling too (owner, 2026-10-22: "Old
     // free-row NOTES are rewritten too"): each thing the notes say - the
-    // pieces between " · ", "; " and ", " - read the way a type is.
+    // pieces between " · ", "; " and ", " - read the way a type is, but
+    // for an arrow, which turns only its own "tail" into "cable".
     pullFreeRowNotes(notes) {
         if (notes == null) return notes;
         return String(notes).split(/( · |; |, )/)
-            .map((piece, i) => (i % 2 ? piece : this.pullFreeRowType(piece))).join('');
+            .map((piece, i) => (i % 2 ? piece : this._pullFreeRowWords(piece, true))).join('');
     }
 
     // A free row in today's spelling, its type and its notes.
@@ -2466,7 +2483,12 @@ class _PullList {
         if (PULL_POWER_WORDS.test(text)) return 'power';
         if (PULL_DATA_WORDS.test(text)) return 'data';
         if (PULL_PANEL_WORDS.test(text) && !PULL_NOT_PANEL_WORDS.test(text)) return 'panel';
-        return this._pullDataDeviceNames().some(n => this._pullModelIsHead(lower, n)) ? 'data' : 'power';
+        // an old row's "Tessera SX40" is the SX40 (2026-10-23): the device
+        // check reads the model with the retired prefix off as well
+        const prefix = PULL_LEGACY_TYPE_PREFIX.toLowerCase();
+        const bare = lower.startsWith(prefix) ? lower.slice(prefix.length).trim() : null;
+        return this._pullDataDeviceNames().some(n => this._pullModelIsHead(lower, n)
+            || (!!bare && this._pullModelIsHead(bare, n))) ? 'data' : 'power';
     }
 
     // `model` (lower-cased) is the whole of `lower`, or its head with only

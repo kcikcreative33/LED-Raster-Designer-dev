@@ -1227,9 +1227,12 @@ class _Binder {
         // the note saying why, and no wiring sheet: nothing is wired)
         const emit = (subject, pos, side) => {
             this._bScreenPage(book, subject, pos, side);
-            const one = subject && (!subject.layers ? subject : subject.kind === 'layer' ? subject.layers[0] : null);
-            const unwired = side === 'power' && !!one
-                && !this._bHasPower(one, (book.list.byScreen || {})[one.id] || {});
+            // a group's or a member's sheet is wired where any screen of
+            // the wall carries circuits (the carrier holds them all)
+            const s = subject && this._bSubject(subject);
+            const wall = !s ? [] : s.kind === 'layer' ? [s.layers[0]] : (s.carriers || s.layers);
+            const unwired = side === 'power' && !!wall.length
+                && !wall.some(l => this._bHasPower(l, (book.list.byScreen || {})[l.id] || {}));
             if (wiring && !unwired) this._bWiringPage(book, subject, pos, { power: side === 'power', data: side === 'data' });
         };
         // A GROUP ROUTED AS ONE SCREEN prints by its tab's Names switch,
@@ -1305,6 +1308,13 @@ class _Binder {
     // with circuits, a hidden one, a custom-routed one (its drawn paths
     // are its circuits), a group member counted on its owner.
     _bCannotFit(layer) {
+        const why = this._bCannotFitWhy(layer);
+        return why ? why.note : null;
+    }
+
+    // { note, panel } behind _bCannotFit: `panel` true where ONE panel
+    // alone draws more than a circuit carries, so no pattern helps.
+    _bCannotFitWhy(layer) {
         if (!layer || (layer.type || 'screen') !== 'screen' || layer.visible === false) return null;
         if (typeof this.calculatePowerAssignments !== 'function' || typeof this.circuitCapacity !== 'function') return null;
         if (typeof this.usesCustomCircuits === 'function' && this.usesCustomCircuits(layer)) return null;
@@ -1316,32 +1326,72 @@ class _Binder {
         const what = err.unitType ? `a full ${err.unitType} is ${fmt(err.unitLoad)}`
             : `${fmt(parseFloat(layer.panelWatts))} panels`;
         const usable = `${+cap.amps.toFixed(2)} A usable${cap.pct < 1 ? ` at ${Math.round(cap.pct * 100)}%` : ''}`;
-        return `Cannot fit a circuit: ${what}, ${cap.voltage} V / ${+cap.breakerA.toFixed(2)} A breaker, ${usable}`;
+        return { note: `Cannot fit a circuit: ${what}, ${cap.voltage} V / ${+cap.breakerA.toFixed(2)} A breaker, ${usable}`,
+                 panel: !err.unitType };
+    }
+
+    // A SHEET SUBJECT'S cannot-fit note (_bSubject): a screen's own; on a
+    // group routed as one - its sheet or a member's - the note of the
+    // member that owns the walk (owner, 2026-10-23: the group's power
+    // sheet prints the note too, never an empty CIRCUITS table).
+    _bSubjectCannotFit(target) {
+        const s = this._bSubject(target);
+        if (s.kind === 'layer') return this._bCannotFit(s.layers[0]);
+        for (const m of s.carriers || s.layers) {
+            const note = this._bCannotFit(m);
+            if (note) return note;
+        }
+        return null;
     }
 
     // The screens a binder with these options prints that cannot fit a
-    // circuit (_bCannotFit): [{ layer, note }], in layer order - what the
-    // export warns about.
+    // circuit (_bCannotFit): [{ layer, note, panel, name }], in layer
+    // order - what the export warns about. `name` is what the binder
+    // titles it: a group routed as one is its GROUP with its screens,
+    // "MAIN WALL (WALL A, WALL B)", not the member that owns the walk.
     binderCannotFit(opts) {
         const o = opts || this.readBinderOptions();
         if (!o.sides || !o.sides.power) return [];
         const scoped = o.scope && o.scope.kind === 'screen' ? String(o.scope.layerId) : null;
         const screens = typeof this._pullScreens === 'function' ? this._pullScreens()
             : ((this.project && this.project.layers) || []).filter(l => (l.type || 'screen') === 'screen');
-        return screens.filter(l => !scoped || String(l.id) === scoped)
-            .map(l => ({ layer: l, note: this._bCannotFit(l) }))
-            .filter(x => x.note);
+        const shown = new Set(screens);
+        const out = [];
+        for (const l of screens) {
+            const why = this._bCannotFitWhy(l);
+            if (!why) continue;
+            const plan = typeof this.getAutoRoutePlan === 'function' ? this.getAutoRoutePlan(l, 'power') : null;
+            const members = plan && Array.isArray(plan.members)
+                ? plan.members.filter(m => shown.has(m)) : [l];
+            if (scoped && !members.some(m => String(m.id) === scoped)) continue;
+            const group = members.length > 1 && l.group_id != null
+                ? ((this.project && this.project.groups) || []).find(g => g && String(g.id) === String(l.group_id))
+                : null;
+            const name = group
+                ? `${group.name || group.id} (${members.map(m => m.name).join(', ')})` : l.name;
+            out.push({ layer: l, note: why.note, panel: why.panel, name });
+        }
+        return out;
     }
 
     // The export's warning: each such screen and why, one sentence each.
+    // Where one panel alone is more than a circuit carries, no pattern
+    // helps, and the warning says so rather than offering one.
     binderCannotFitWarning(opts) {
         const list = this.binderCannotFit(opts);
         if (!list.length) return '';
         const one = list.length === 1;
+        const panels = list.filter(x => x.panel);
+        const fix = 'Fix in Power Settings: higher voltage or amperage'
+            + (panels.length < list.length ? ', or another pattern.' : '.');
+        const none = !panels.length ? ''
+            : panels.length === list.length
+                ? ` No pattern helps: one panel alone draws more than ${one ? 'a circuit carries' : 'their circuits carry'}.`
+                : ` No pattern helps ${panels.map(x => x.name).join(', ')}: one panel alone draws more than a circuit carries.`;
         return `${one ? 'This screen' : 'These screens'} can't fit ${one ? 'its' : 'their'} circuits, `
             + `so ${one ? 'its power sheet says' : 'their power sheets say'} so: `
-            + list.map(x => `${x.layer.name}: ${x.note.replace(/^Cannot fit a circuit: /, '')}`).join('; ')
-            + '. Fix in Power Settings: higher voltage or amperage, or another pattern.';
+            + list.map(x => `${x.name}: ${x.note.replace(/^Cannot fit a circuit: /, '')}`).join('; ')
+            + `. ${fix}${none}`;
     }
 
     // ---- grouped screens ----------------------------------------------------
@@ -1601,7 +1651,7 @@ class _Binder {
     // another member reading "Cat6 · also on WALL SL", wrapped under its
     // type. A cable nobody gave a length (a TAC, a home run) says "no
     // length" in LENGTH, as the pull sheet says it in Notes.
-    _bCableTable(book, s, side) {
+    _bCableTable(book, s, side, emptyText = null) {
         const rows = this._bSubjectRows(book, s, side);
         const crossing = rows.some(r => r.also);
         return this._bTableLines(book, {
@@ -1613,7 +1663,7 @@ class _Binder {
                 ? rows.map(r => ({ cells: [r.also ? `${this._bType(r.type)} · ${r.also}` : this._bType(r.type),
                                            r.length || (/(^|; |· )no length\b/.test(r.notes || '') ? 'no length' : '—'),
                                            this._bQty(r.qty)] }))
-                : [{ cells: ['no cables typed', '', ''] }],
+                : [{ cells: [emptyText || 'no cables typed', '', ''] }],
         });
     }
 
@@ -2096,16 +2146,40 @@ class _Binder {
     // shrinking a little (to 20 px); a title too long for that (owner, 2026-10-22:
     // "… · POWER WIRING · FRONT …" lost its view) goes on two lines at a
     // " · ", the dot staying on the first, each line shrinking on its own
-    // before it is cut - three smaller lines at its words where two will
-    // not hold it - so the view name is never lost. Logged as one text,
-    // the whole title.
+    // (to 21 px) - then three lines at 21 px, then four at 17, broken at
+    // its " · " and its ", " (a combined sheet's list, "PROCESSORS · H9 A,
+    // H9 B, …", 2026-10-23: six processors on an ARCH C sheet cut at 14
+    // px) and, only inside a piece too long for a line, at its words - so
+    // the view name is never lost and a title is cut only when even four
+    // lines will not hold it. Logged as one text, the whole title.
     _bSheetTitle(book, text, cx, y, maxWidth) {
         const opts = { size: SZ.tbTitle, weight: 700, upper: true, align: 'center', maxWidth, shrink: true };
         const t = this._bCaps(String(text == null ? '' : text));
         const ctxM = book.measureCtx;
         const width = (str, size) => { ctxM.font = this._bFont(size, 700); return ctxM.measureText(str).width; };
         const pieces = t.split(' · ');
-        if (width(t, 20) <= maxWidth || pieces.length < 2) return this._bText(book, text, cx, y + 58, opts);
+        // the pieces a line may break after: " · " and ", " keep their
+        // mark on the line before
+        const tokens = t.split(/(?<=(?: ·|,) )/);
+        if (width(t, 20) <= maxWidth || tokens.length < 2) return this._bText(book, text, cx, y + 58, opts);
+        // tokens packed greedily onto lines that fit at `size`; a token too
+        // long for a line of its own breaks at its words
+        const pack = (size) => {
+            const out = [];
+            let cur = '';
+            const put = (piece) => {
+                if (!cur || width((cur + piece).trim(), size) <= maxWidth) { cur += piece; return; }
+                out.push(cur.trim());
+                cur = piece;
+            };
+            for (const tok of tokens) {
+                if (width(tok.trim(), size) <= maxWidth) { put(tok); continue; }
+                for (const w of tok.split(/(?<= )/)) put(w);
+            }
+            if (cur.trim()) out.push(cur.trim());
+            return out;
+        };
+        const fits = (lines, size) => lines.every(l => width(l, size) <= maxWidth);
         let best = null;
         for (let k = 1; k < pieces.length; k++) {
             const a = `${pieces.slice(0, k).join(' · ')} ·`, b = pieces.slice(k).join(' · ');
@@ -2116,12 +2190,20 @@ class _Binder {
                 best = { a, b, score };
             }
         }
-        let lines = [best.a, best.b], size = 26, top = 40, step = 34;
-        if (Math.max(width(best.a, 14), width(best.b, 14)) > maxWidth) {
-            // still too long: three lines at its words, smaller, the view
-            // on the last (_bCellLines keeps a " · " with the word before)
-            const three = this._bCellLines(book, t, 21, 700, maxWidth, Infinity, true);
+        let lines = null, size = 26, top = 40, step = 34;
+        if (best && fits([best.a, best.b], 21)) lines = [best.a, best.b];
+        if (!lines) {
+            const two = pack(21);
+            if (two.length <= 2) lines = two;
+        }
+        if (!lines) {
+            const three = pack(21);
             if (three.length <= 3) { lines = three; size = 21; top = 30; step = 26; }
+        }
+        if (!lines) {
+            const four = pack(17);
+            lines = four.length <= 4 ? four : [...four.slice(0, 3), four.slice(3).join(' ')];
+            size = 17; top = 24; step = 20;
         }
         const drawn = lines.map((line, k) => this._bText(book, line, cx, y + top + k * step,
             { ...opts, upper: false, size, log: false }));
@@ -2454,6 +2536,27 @@ class _Binder {
         const s = book.fill ? book.fill.s : 1;
         const round = (v) => Math.round(v * 100) / 100;
         return { x, y, w: round(r.w * s), h: round(r.h * s) };
+    }
+
+    // A band's text on its lines (_bTableLines): one while it holds 18 px
+    // in `maxWidth`, else its " · " pieces packed onto lines that fit at
+    // the cell size - at most three, the last holding the rest.
+    _bBandLines(book, text, maxWidth) {
+        const t = String(text == null ? '' : text);
+        const ctxM = book.measureCtx;
+        const width = (str, size) => { ctxM.font = this._bFont(size, 700); return ctxM.measureText(str).width; };
+        if (!t || width(t, 18) <= maxWidth) return [t];
+        const pieces = t.split(/(?<= ·) /);
+        if (pieces.length < 2) return [t];
+        const out = [];
+        let cur = '';
+        for (const p of pieces) {
+            const next = cur ? `${cur} ${p}` : p;
+            if (cur && width(next, SZ.cell) > maxWidth) { out.push(cur); cur = p; }
+            else cur = next;
+        }
+        if (cur) out.push(cur);
+        return out.length <= 3 ? out : [...out.slice(0, 2), out.slice(2).join(' ')];
     }
 
     // Words onto lines no wider than maxWidth, at most maxLines - the
@@ -3071,20 +3174,28 @@ class _Binder {
                 // unit and which is the loom hanging off it.
                 const sub = !!r.sub;
                 const ind = sub ? 22 : 0;
-                lines.push({ h: BAND_H, band: true, draw: (ctx, x, y, cw) => {
+                // A band too long for one line at 18 px (2026-10-23: "… FOR
+                // VIDEO1 · Socapex 208V TRUE1 breakout · no…" with a long
+                // distro name) wraps at its " · " - the dot staying on the
+                // line before - onto a second line, and a third if it
+                // must, each shrinking on its own, rather than being cut.
+                const bandText = String(r.band == null ? '' : r.band);
+                const bandLines = this._bBandLines(book, bandText, mW - ind - padX * 2);
+                const bandH = BAND_H + (bandLines.length - 1) * LIST_H;
+                lines.push({ h: bandH, band: true, draw: (ctx, x, y, cw) => {
                     const w = tableW(cw);
                     if (book.meta.palette === 'printer') {
                         ctx.fillStyle = INK;
                         ctx.fillRect(x + ind, y + 2, w - ind, sub ? 2 : 3);
                     } else if (!sub) {
                         ctx.fillStyle = BAND_BG;
-                        ctx.fillRect(x, y, w, BAND_H - 4);
+                        ctx.fillRect(x, y, w, bandH - 4);
                     }
-                    this._bText(book, r.band, x + ind + padX, y + 31,
-                                { size: SZ.cell, weight: 700, shrink: true,
-                                  maxWidth: w - ind - padX * 2 });
+                    const room = w - ind - padX * 2;
+                    bandLines.forEach((t, i) => this._bText(book, t, x + ind + padX, y + 31 + i * LIST_H,
+                                { size: SZ.cell, weight: 700, shrink: true, maxWidth: room }));
                     ctx.fillStyle = RULE;
-                    ctx.fillRect(x + ind, y + BAND_H - 4, w - ind, sub ? 2 : 4);
+                    ctx.fillRect(x + ind, y + bandH - 4, w - ind, sub ? 2 : 4);
                 } });
                 if (lead && topBand(r)) lines.push(underBand);
                 continue;
@@ -4665,48 +4776,85 @@ class _Binder {
             const crosses = (a, b) => Math.min(y2, b) - Math.max(y1, a) > 4;
             let depth = 0;
             while (stack.some(s => s.depth === depth && crosses(s.y1, s.y2))) depth++;
-            stack.push({ y1, y2, depth });
-            const dir = side === 'R' ? 1 : -1;
-            const x = side === 'R'
-                ? geo.wall.x + geo.wall.w + 44 + depth * 78
-                : geo.wall.x - 74 - depth * 78;
-            const ya = y1 + 3, yb = y2 - 3;
-            if (book.log && book.page && book.page.painting) {
-                const [lx, ly1] = this._bLogXY(book, x, y1);
-                (book.log.brackets || (book.log.brackets = []))
-                    .push({ name: box.name, side, depth, x: lx, y1: ly1, y2: this._bLogXY(book, x, y2)[1] });
+            stack.push({ y1, y2, depth, box });
+        }
+        // A LABEL NEVER REACHES ITS NEIGHBOUR'S (2026-10-23: on a dense map
+        // "SR-1-1 · no length" ran into the next bracket's): it is centred
+        // on its own bracket and may use the bracket's height and half the
+        // gap to the next bracket on its side at its distance, either way -
+        // the neighbour takes the other half. Where the label will not fit
+        // that on one line it goes on two, the name then the length; each
+        // line shrinks to the room, and only a name too long even then is
+        // cut.
+        const minLabel = 10;
+        for (const side of ['L', 'R']) {
+            for (const b of placed[side]) {
+                const ya = b.y1 + 3, yb = b.y2 - 3;
+                let up = Infinity, down = Infinity;
+                for (const o of placed[side]) {
+                    if (o === b || o.depth !== b.depth) continue;
+                    if (o.y2 <= b.y1 + 4) up = Math.min(up, (b.y1 - o.y2 + 6) / 2);
+                    else if (o.y1 >= b.y2 - 4) down = Math.min(down, (o.y1 - b.y2 + 6) / 2);
+                }
+                const spare = Math.max(0, Math.min(up, down));
+                // no neighbour on either side: the old floor of 80; with
+                // one, a little clear space between the two labels
+                const room = Number.isFinite(spare) ? Math.max(8, (yb - ya) + 2 * spare - 10) : Math.max(80, yb - ya);
+                b.ya = ya; b.yb = yb; b.room = room;
             }
-            ctx.strokeStyle = INK;
-            ctx.lineWidth = 3;
-            ctx.setLineDash([]);
-            ctx.beginPath();
-            ctx.moveTo(x - dir * 14, ya);
-            ctx.lineTo(x, ya);
-            ctx.lineTo(x, yb);
-            ctx.lineTo(x - dir * 14, yb);
-            ctx.stroke();
-            // a multi with no length says so, the way its band does
-            const parts = [box.name, box.homeRun
-                ? this.pullLengthText(box.homeRun, this.pullHomeRunKind(box)) : 'no length'];
-            const label = parts.join(' · ');
-            const span = Math.max(80, yb - ya);
-            ctx.save();
-            ctx.translate(x + dir * 24, (ya + yb) / 2);
-            ctx.rotate(dir > 0 ? Math.PI / 2 : -Math.PI / 2);
-            if (parts.length < 2 || this._bTextWidth(book, label, { size: SZ.bracket, weight: 700 }) <= span) {
-                this._bText(book, label, 0, 9, { size: SZ.bracket, weight: 700, align: 'center',
-                                                  maxWidth: span });
-            } else {
-                // A label longer than its span wraps the way the other tags
-                // do, at its " · " (owner, 2026-10-21: "DISTRO 1-4 · 50
-                // m+…" in a meters show): the name, then the length on a
-                // line nearer the bracket - a length in stock pieces ("50
-                // m+20 m") never split - each shrinking a little before it
-                // is cut. Both stay inside the 78 a stepped bracket takes.
-                parts.forEach((t, i) => this._bText(book, t, 0, 9 - (parts.length - 1 - i) * 28,
-                    { size: SZ.bracket, weight: 700, align: 'center', maxWidth: span, shrink: true }));
+        }
+        for (const side of ['L', 'R']) {
+            for (const { box, y1, y2, depth, ya, yb, room } of placed[side]) {
+                const dir = side === 'R' ? 1 : -1;
+                const x = side === 'R'
+                    ? geo.wall.x + geo.wall.w + 44 + depth * 78
+                    : geo.wall.x - 74 - depth * 78;
+                ctx.strokeStyle = INK;
+                ctx.lineWidth = 3;
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.moveTo(x - dir * 14, ya);
+                ctx.lineTo(x, ya);
+                ctx.lineTo(x, yb);
+                ctx.lineTo(x - dir * 14, yb);
+                ctx.stroke();
+                // a multi with no length says so, the way its band does
+                const parts = [box.name, box.homeRun
+                    ? this.pullLengthText(box.homeRun, this.pullHomeRunKind(box)) : 'no length'];
+                const label = parts.join(' · ');
+                // the size a text shrinks to in the room, no smaller than
+                // `floor`; one line only where the whole label fits at its
+                // full size (2026-10-21: a longer one wraps)
+                const sizeFor = (t, floor) => {
+                    const w = this._bTextWidth(book, t, { size: SZ.bracket, weight: 700 });
+                    return w <= room ? SZ.bracket : Math.max(floor, Math.floor(SZ.bracket * room / w * 2) / 2);
+                };
+                const lines = parts.length < 2 || sizeFor(label, 1) >= SZ.bracket ? [label] : parts;
+                const drawn = [];
+                ctx.save();
+                ctx.translate(x + dir * 24, (ya + yb) / 2);
+                ctx.rotate(dir > 0 ? Math.PI / 2 : -Math.PI / 2);
+                // two lines: the name, then the length on a line nearer
+                // the bracket - a length in stock pieces ("50 m+20 m")
+                // never split. Both stay inside the 78 a stepped bracket
+                // takes.
+                lines.forEach((t, i) => {
+                    const size = sizeFor(t, minLabel);
+                    const out = this._bText(book, t, 0, 9 - (lines.length - 1 - i) * 28,
+                        { size: Math.min(SZ.bracket, size), weight: 700, align: 'center', maxWidth: room });
+                    drawn.push({ text: out, w: this._bTextWidth(book, out, { size: Math.min(SZ.bracket, size), weight: 700 }) });
+                });
+                ctx.restore();
+                if (book.log && book.page && book.page.painting) {
+                    const [lx, ly1] = this._bLogXY(book, x, y1);
+                    const k = book.fill ? book.fill.s : 1;
+                    const cy = this._bLogXY(book, x, (ya + yb) / 2)[1];
+                    const half = Math.max(...drawn.map(d => d.w)) * k / 2;
+                    (book.log.brackets || (book.log.brackets = []))
+                        .push({ name: box.name, side, depth, x: lx, y1: ly1, y2: this._bLogXY(book, x, y2)[1],
+                                lines: drawn.map(d => d.text), labelY1: cy - half, labelY2: cy + half });
+                }
             }
-            ctx.restore();
         }
     }
 
@@ -4869,7 +5017,10 @@ class _Binder {
                                     this._bNum(c.amps, 1), c.cable || '—'] });
             }
         }
-        const cannot = !rows.length && s.kind === 'layer' ? this._bCannotFit(layer) : null;
+        // a screen that cannot fit a circuit - or a group routed as one
+        // whose wall cannot (the owner's note, on the group's sheet and
+        // each member's) - says why in place of circuits
+        const cannot = !rows.length ? this._bSubjectCannotFit(s) : null;
         if (cannot) {
             blocks.push({ lines: this._bTableLines(book, {
                 title: 'Circuits',
@@ -4885,8 +5036,9 @@ class _Binder {
                    { title: 'cable', w: 1.4 }],
             rows,
         }) });
-        // Cables this screen (power side).
-        blocks.push({ lines: this._bCableTable(book, s, 'power') });
+        // Cables this screen (power side): nothing to list where it cannot
+        // fit, and it says why rather than "no cables typed".
+        blocks.push({ lines: this._bCableTable(book, s, 'power', cannot ? 'no circuits, cannot fit' : null) });
         // Facts.
         const f = s.kind === 'group' ? this._bGroupFacts(s.members) : this._bScreenFacts(s.member || layer);
         const circuits = units.flatMap(u => u.box.circuits || []);
@@ -4923,8 +5075,10 @@ class _Binder {
                 && typeof this._feederSource === 'function' ? this._feederSource(rec) : null;
             let feed = svc && feeds.find(f => f.svc === svc);
             if (!feed) feeds.push(feed = { svc, rows: [] });
-            const parts = [this.distroLabel(rec), thru ? `thru ${this.distroLabel(thru)}` : null,
-                           `${rec.ratingA} A`, svc ? null : this.distroSystemName(rec),
+            // its rating beside its name, then what it is fed thru: "B ·
+            // 400 A · thru A · …" (owner, 2026-10-23)
+            const parts = [this.distroLabel(rec), `${rec.ratingA} A`,
+                           thru ? `thru ${this.distroLabel(thru)}` : null, svc ? null : this.distroSystemName(rec),
                            rec.breakers100 && this.distroRegion(rec) === 'us' ? '100% rated breakers' : null];
             const legs = grouped ? this._bSubjectLegsOn(s.carriers, id, listed) : this._bScreenLegsOn(layer, id);
             if (legs) {
@@ -5608,7 +5762,10 @@ class _Binder {
             for (const b of byVoltage.values()) loads.push([`Load @ ${b.voltage} V`, loadText(b)]);
             loads.push(['Load', `${this._bNum(watts / 1000, 1)} kW`]);
         }
-        const distros = (typeof this.getDistros === 'function') ? this.getDistros() : [];
+        // the distros the binder prints (_bDistroPrints): one with
+        // nothing at all is not counted
+        const distros = ((typeof this.getDistros === 'function') ? this.getDistros() : [])
+            .filter(d => this._bDistroPrints(d));
         const procs = this._processorsResolved || [];
         blocks.push({ lines: this._bKvLines(book, 'Show totals', [
             ['Screens', String(screens.length)],
@@ -6184,14 +6341,23 @@ class _Binder {
     // up against it, its load against its limit (OVER named per leg) and
     // its imbalance. House power is not pulled, so no pull list.
     _bServiceGroup(book, s) {
-        const load = this.getServiceLoads().find(x => x.id === s.id);
+        let load = this.getServiceLoads().find(x => x.id === s.id);
         if (!load) return null;
         const names = load.legs ? (load.legs.names || []) : [];
         const amps = (L) => names.length
             ? names.map(k => this._bNum(L && L.legs ? L.legs[k].amps : 0, 1))
             : [this._bNum(L ? L.amps : 0, 1)];
         // a distro fed thru another counts here (thru loads, 2026-10-21)
-        // and says which one it is fed thru
+        // and says which one it is fed thru. A distro with nothing at all
+        // is off this sheet too (owner, 2026-10-23): no row, its rating
+        // not in the total, not in the count - it carries no load, so the
+        // legs are unchanged.
+        const printed = load.distros.filter(r => this._bDistroPrints(r.distro));
+        if (printed.length !== load.distros.length) {
+            const ratingSum = printed.reduce((t, r) => t + (Number(r.distro.ratingA) || 0), 0);
+            load = { ...load, distros: printed, ratingSum,
+                     ratingsOver: load.ratingA > 0 && ratingSum > load.ratingA + 1e-9 };
+        }
         const rows = load.distros.map(({ distro: d, load: L, thru }) => ({
             cells: [thru ? `${this.distroLabel(d)} · thru ${this.distroLabel(thru)}` : this.distroLabel(d),
                     `${this._bNum(d.ratingA, 0)} A`, ...amps(L)],
@@ -6235,7 +6401,12 @@ class _Binder {
         // each box by its own name, as the pull sheet says it (2026-10-21)
         const labels = typeof this.distroBoxLabels === 'function' ? this.distroBoxLabels() : new Map();
         for (const number of [...numbers.keys()].sort((a, b) => a - b)) {
-            const members = numbers.get(number) || [];
+            // A hidden screen is off the binder everywhere (owner,
+            // 2026-10-23): its multis are not this distro's boxes, and a
+            // box on hidden screens only is not listed - the table, its
+            // counts and Circuits read what the pull sheet pulls.
+            const members = (numbers.get(number) || []).filter(m => this._bShownScreen(book.layers.get(String(m.layerId))));
+            if (!members.length) continue;
             const typed = this.distroBoxType(d, number, members).type;
             if (typed) byType.set(typed.name, (byType.get(typed.name) || 0) + 1);
             let homeRun = null, circuits = 0, amps = 0;
@@ -6282,16 +6453,36 @@ class _Binder {
             || 'nothing on this distro';
         // A distro with nothing at all is off the binder, the way it is off
         // the pull sheet (owner, 2026-10-22): nothing plugged into it, no
-        // distro fed thru it, no feeder set.
-        if (!boxes.length) {
-            const all = typeof this.getDistros === 'function' ? this.getDistros() : [];
-            const passes = all.some(x => x && x.feeder && typeof x.feeder === 'object'
-                && x.feeder.from != null && String(x.feeder.from) === String(d.id) && String(x.id) !== String(d.id));
-            const fed = !!(d.feeder && typeof d.feeder === 'object');
-            if (!passes && !fed) return null;
-        }
+        // distro fed thru it, no feeder set (_bDistroPrints).
+        if (!boxes.length && !this._bDistroPrints(d)) return null;
         if (!boxes.length && !load) return null;
         return { kind: 'distro', name: this.distroLabel(d), blocks: this._bDistroBlocks(book, d, load, boxes, counts, allCircuits) };
+    }
+
+    // A screen the binder prints: a visible screen layer (_pullScreens).
+    _bShownScreen(layer) {
+        return !!layer && (layer.type || 'screen') === 'screen' && layer.visible !== false;
+    }
+
+    // DOES THIS DISTRO PRINT? The pull sheet's test (buildPullList), one
+    // for every sheet that names distros - its own sheet, the Service
+    // sheet's rows and ratings, the Overview's count: something plugged
+    // into it on a screen that prints, another distro fed thru it, or its
+    // feeder set. A distro with nothing at all is off the binder (owner,
+    // 2026-10-22), and so is one whose screens are all hidden (2026-10-23).
+    _bDistroPrints(d) {
+        if (!d) return false;
+        const id = String(d.id);
+        if (d.feeder && typeof d.feeder === 'object') return true;
+        const all = typeof this.getDistros === 'function' ? this.getDistros() : [];
+        if (all.some(x => x && x.feeder && typeof x.feeder === 'object' && x.feeder.from != null
+                && String(x.feeder.from) === id && String(x.id) !== id)) return true;
+        const layers = new Map(((this.project && this.project.layers) || []).map(l => [String(l.id), l]));
+        const numbers = typeof this._distroMultiNumbers === 'function' ? this._distroMultiNumbers(d.id) : new Map();
+        for (const members of numbers.values()) {
+            if ((members || []).some(m => this._bShownScreen(layers.get(String(m.layerId))))) return true;
+        }
+        return false;
     }
 
     _bDistroBlocks(book, d, load, boxes, counts, allCircuits) {
@@ -6339,7 +6530,16 @@ class _Binder {
         // A multi left on a one-circuit output (a show already in that
         // state, 2026-10-18): the output's load against what it carries.
         if (typeof this._faceCrowding === 'function') {
-            for (const cr of this._faceCrowding(d)) {
+            // (what the screens that print put on it: a hidden screen's
+            // multi crowds no output on paper)
+            const crowding = this._faceCrowding(d).map(cr => {
+                const members = (cr.members || []).filter(m => this._bShownScreen(m.layer));
+                if (members.length === (cr.members || []).length) return cr;
+                return { ...cr, members, circuits: members.reduce((t, m) => t + m.legs, 0),
+                         amps: members.reduce((t, m) => t + m.amps, 0),
+                         where: (members[0] && members[0].name) || cr.where };
+            }).filter(cr => cr.circuits > cr.box.size);
+            for (const cr of crowding) {
                 const cap = this._crowdCapacityText(d, cr);
                 pairs.push([cap ? 'Over capacity' : 'Crowded',
                     `${cap || `${cr.where} ${cr.box.conn.short} carries ${cr.circuits} circuits`}`
