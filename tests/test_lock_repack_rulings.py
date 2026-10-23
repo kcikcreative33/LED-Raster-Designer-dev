@@ -7,6 +7,13 @@ history entry. That includes a locked screen reached through an unlocked
 member of its group, since a wall packs as one. Screens that are not
 locked, and locked screens the action does not repack, are unaffected.
 
+Round 6 (the owner's ruling): a group with some members locked and some
+not (an old file's) is treated as fully locked until the user picks Lock
+or Unlock, so every action on its unlocked member A is refused with the
+plain error naming B, whether it would repack B or not. The repack checks
+stay for the cases still possible: a distro change that repacks a locked
+screen it feeds, and grouping.
+
 The walls are the nfer module's (208 V x 20 A). A is unlocked, B is
 locked and fed by nothing, and the two are one group: B packs at the % of
 the distros A's multis are on. SL is a US distro with 100% rated breakers
@@ -209,11 +216,12 @@ def test_the_tray_unplug_and_clear_refuse_a_locked_group_member(page):
     assert_refused(page, [a, b], before, h0)
 
 
-def test_a_circuit_off_a_multi_that_stays_on_the_distro_takes(page):
+def test_a_circuit_off_a_multi_that_stays_on_the_distro_is_refused_too(page):
     """A's multi has two circuits: clearing one leaves the rest on SL, so
-    B's packing does not move and the clear takes."""
+    B's packing would not move. Round 6: A is a member of a half-locked
+    group, so it is locked as well, and the clear is refused, B named."""
     a, b = walls(page, {1: 'sl'})
-    h0 = len(history(page))
+    before, h0 = state(page, [a, b]), len(history(page))
     out = run(page, """([a]) => {
         const app = window.app, l = window.__nf.layer(a);
         app._circuitTailCache = null;
@@ -222,8 +230,7 @@ def test_a_circuit_off_a_multi_that_stays_on_the_distro_takes(page):
         return rec.circuits.length;
     }""", [a])
     assert out >= 2, out
-    assert len(history(page)) == h0 + 1, history(page)
-    assert errors(page)['locked'] == [], errors(page)
+    assert_refused(page, [a, b], before, h0)
     assert capacity(page, b)['pct'] == 1
 
 
@@ -308,16 +315,19 @@ def test_a_locked_screen_the_action_does_not_repack_does_not_block_it(page):
     assert errors(page)['locked'] == [], errors(page)
 
 
-def test_a_move_that_keeps_the_locked_members_packing_takes(page):
-    """A from SL onto another 100% rated distro leaves B at 100%."""
+def test_a_move_that_keeps_the_locked_members_packing_is_refused_too(page):
+    """A from SL onto another 100% rated distro would leave B at 100%.
+    Round 6: A is a member of a half-locked group, so it is locked as
+    well, and the move is refused, B named."""
     a, b = make(page, [{'name': 'A', 'columns': 4, 'props': SHARING_OFF},
                        {'name': 'B', 'columns': 4, 'x': 800,
                         'props': dict(SHARING_OFF, locked=True)}], group=True)
     set_distros(page, [_distro('sl', 'SL', breakers100=True),
                        _distro('eu', 'EU', '230/400')], {a: {1: 'sl'}})
     errors_on(page)
+    before, h0 = state(page, [a, b]), len(history(page))
     out = run(page, """([a]) => window.app.setSocaDistro(window.__nf.layer(a), 1, 'eu')
         .map(l => l.name)""", [a])
-    assert out == ['A'], out
+    assert out == [], out
+    assert_refused(page, [a, b], before, h0)
     assert capacity(page, b)['pct'] == 1
-    assert errors(page)['locked'] == [], errors(page)

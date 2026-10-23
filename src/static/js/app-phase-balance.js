@@ -96,7 +96,7 @@ class _PhaseBalance {
                     out.push({
                         layer, soca: s.soca, name: s.name, distroId: d.id,
                         legs: total, members, boxSize,
-                        locked: members.some(m => !!m.layer.locked),
+                        locked: members.some(m => !!this._layerLocked(m.layer)),
                         layerName: members.map(m => m.layer.name).join(' + '),
                         positions: members.flatMap(m => m.tails)
                             .sort((a, b) => a - b),
@@ -116,7 +116,7 @@ class _PhaseBalance {
                     layer, soca: s.soca, name: s.name, distroId: d.id,
                     legs: s.legs.length,
                     boxSize: ownSize,
-                    locked: !!layer.locked,
+                    locked: !!this._layerLocked(layer),
                     positions,
                     fromFlat: positions.slice(),
                     circuits: s.legs.map((leg, li) => ({ layer, s, li, leg })),
@@ -611,7 +611,7 @@ class _PhaseBalance {
             locked: solved.flatMap(r => r.locked).map(t => ({
                 name: t.name, layerName: t.layerName || t.layer.name,
                 layers: [...new Set((t.members ? t.members.map(m => m.layer) : [t.layer])
-                    .filter(l => l.locked).map(l => l.name))],
+                    .filter(l => this._layerLocked(l)).map(l => l.name))],
             })),
             moves,
         };
@@ -629,7 +629,7 @@ class _PhaseBalance {
         for (const m of moves || []) {
             const ids = (m.members && m.members.length)
                 ? m.members.map(mem => mem.layerId) : [m.layerId];
-            const locked = ids.map(byId).filter(l => l && l.locked);
+            const locked = ids.map(byId).filter(l => l && this._layerLocked(l));
             if (locked.length) {
                 locked.forEach(l => lockedMet.set(l.id, l));
                 continue;
@@ -1268,7 +1268,7 @@ class _PhaseBalance {
         this._showPairedResetError(this._resetAroundPairedRows(screens, distroId, preReset));
         this._circuitTailCache = null;
         // Locked screens are not written: nothing on them changed.
-        const writable = screens.filter(l => !l.locked);
+        const writable = screens.filter(l => !this._layerLocked(l));
         if (writable.length) this.updateLayers(writable, true, 'Reset Phase Offsets');
         return screens.length;
     }
@@ -1304,7 +1304,7 @@ class _PhaseBalance {
                     if (!share) {
                         units.push({ members: [{ layer, soca: s.soca, legs: s.legs.length }],
                                      number: s.number, s, shared: false,
-                                     locked: !!layer.locked });
+                                     locked: !!this._layerLocked(layer) });
                         continue;
                     }
                     if (seen.has(share.key)) continue;
@@ -1314,7 +1314,7 @@ class _PhaseBalance {
                     }));
                     if (members.some(m => !m.layer)) continue;
                     units.push({ members, number: s.number, s, shared: true,
-                                 locked: members.some(m => !!m.layer.locked) });
+                                 locked: members.some(m => !!this._layerLocked(m.layer)) });
                 }
             }
             const tailsOf = (u) => {
@@ -1397,7 +1397,7 @@ class _PhaseBalance {
                     if (!ml) return null;
                     const saved = (ml.powerSocaPhasePos || {})[m.soca];
                     return { layer: ml, soca: m.soca, legs: m.legs,
-                             tails: m.tails.slice(), locked: !!ml.locked,
+                             tails: m.tails.slice(), locked: !!this._layerLocked(ml),
                              store: Array.isArray(saved) ? saved.slice() : null };
                 });
                 if (members.some(m => !m)) continue;

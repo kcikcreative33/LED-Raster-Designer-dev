@@ -268,7 +268,7 @@ class _CrossLayerPaths {
         const overrides = (typeof this.getOverrideNums === 'function')
             ? this.getOverrideNums(member, kind) : [];
         const drawn = drawnNums.length > 0 || overrides.length > 0;
-        if (member.locked) {
+        if (this._layerLocked(member)) {
             // Reported only when there was something to leave alone.
             if (drawn) skipped.set(member.id, member);
             return false;
@@ -327,11 +327,11 @@ class _CrossLayerPaths {
         if (!owner) return [];
         const k = this._customRunKeys(kind);
         const out = new Map();
-        if (owner.locked) out.set(owner.id, owner);
+        if (this._layerLocked(owner)) out.set(owner.id, owner);
         const path = (owner[k.paths] && owner[k.paths][num]) || [];
         path.forEach(e => {
             const target = this.resolvePathEntryLayer(owner, e);
-            if (target && target.locked) out.set(target.id, target);
+            if (target && this._layerLocked(target)) out.set(target.id, target);
         });
         return [...out.values()];
     }
@@ -348,13 +348,7 @@ class _CrossLayerPaths {
     // on the locked screen itself keeps the plain wording.
     _showLockedError(layers, why = null) {
         if (!layers || layers.length === 0 || typeof this._toast !== 'function') return;
-        const seen = new Set();
-        const names = [];
-        layers.forEach(l => {
-            if (!l || seen.has(l.id)) return;
-            seen.add(l.id);
-            names.push(l.name || `Screen ${l.id}`);
-        });
+        const names = this._lockedErrorNames(layers);
         if (names.length === 0) return;
         const one = names.length === 1;
         const list = one ? names[0]
@@ -381,6 +375,25 @@ class _CrossLayerPaths {
         this._toast(msg, true, 5000);
     }
 
+    // The screens the locked error names for `layers`, once each, in order.
+    // An unlocked member of a half-locked group is held by the group's
+    // locked members (_layerLocked): those are the screens named.
+    _lockedErrorNames(layers) {
+        const seen = new Set();
+        const names = [];
+        const say = (l) => {
+            if (!l || seen.has(l.id)) return;
+            seen.add(l.id);
+            names.push(l.name || `Screen ${l.id}`);
+        };
+        (layers || []).forEach(l => {
+            const holders = l && !l.locked ? this._halfLockHolders(l) : [];
+            if (holders.length) holders.forEach(say);
+            else say(l);
+        });
+        return names;
+    }
+
     // One action for the locked error, from here until the returned end()
     // is called - however many awaits lie between: each error is said once
     // within it. Call end() in a finally.
@@ -396,7 +409,7 @@ class _CrossLayerPaths {
     // locked screen refuses it with the same error (the owner's ruling,
     // 2026-10-16: "Block it too"). True when the step must not happen.
     _lockedStepRefused(layer) {
-        if (!layer || !layer.locked) return false;
+        if (!layer || !this._layerLocked(layer)) return false;
         this._showLockedError([layer]);
         return true;
     }
@@ -407,12 +420,51 @@ class _CrossLayerPaths {
     // shared shape of that rule; the lock toggle itself, visibility and
     // selection are not changes and never come through here.
     //
+    // A HALF-LOCKED GROUP IS LOCKED (the owner's ruling, round 6): a group
+    // an old file left with some members locked and some not is treated as
+    // fully locked until the user picks Lock or Unlock for it (the first
+    // lock toggle asks, askGroupLock). Every guard reads a screen's lock
+    // through _layerLocked, so an unlocked member of such a group refuses
+    // every change the way a locked screen does, and the error names the
+    // group's locked members. The stored `locked` flags stay as the file
+    // had them, so the lock toggle can still ask which way.
+    //
+    // The locked members of `layer`'s group when that group is half
+    // locked; [] otherwise (an ungrouped screen, a group locked or unlocked
+    // as one).
+    _halfLockedGroupHolders(layer) {
+        if (!layer || !layer.group_id || !this.project) return [];
+        const group = typeof this.resolveGroup === 'function'
+            ? this.resolveGroup(layer.group_id) : null;
+        if (!group) return [];
+        const members = (this.project.layers || []).filter(l => l
+            && l.group_id === group.id && (l.type || 'screen') === 'screen');
+        const locked = members.filter(l => l.locked);
+        if (!locked.length || locked.length === members.length) return [];
+        return locked;
+    }
+
+    // The locked members holding an UNLOCKED `layer` through its half-locked
+    // group; [] for a screen that is locked itself or not held.
+    _halfLockHolders(layer) {
+        if (!layer || layer.locked) return [];
+        return this._halfLockedGroupHolders(layer);
+    }
+
+    // Is `layer` locked for a change: locked itself, or a member of a
+    // half-locked group. The one predicate every lock guard reads.
+    _layerLocked(layer) {
+        if (!layer) return false;
+        if (layer.locked) return true;
+        return this._halfLockHolders(layer).length > 0;
+    }
+
     // True when any of `layers` (one layer or a list) is locked; the locked
     // ones are named in the one error. For a change that must happen whole
     // or not at all.
     _lockedRefused(layers, why = null) {
         const list = (Array.isArray(layers) ? layers : [layers]).filter(Boolean);
-        const locked = list.filter(l => l.locked);
+        const locked = list.filter(l => this._layerLocked(l));
         if (locked.length === 0) return false;
         this._showLockedError(locked, why);
         return true;
@@ -422,10 +474,10 @@ class _CrossLayerPaths {
     // are named in the one error. The unlocked ones still take the change.
     _writableLayers(layers) {
         const list = (layers || []).filter(Boolean);
-        const locked = list.filter(l => l.locked);
+        const locked = list.filter(l => this._layerLocked(l));
         if (locked.length === 0) return list;
         this._showLockedError(locked);
-        return list.filter(l => !l.locked);
+        return list.filter(l => !this._layerLocked(l));
     }
 
     // A HOLD on the locked screens among `layers` for the edit funnels
@@ -441,7 +493,7 @@ class _CrossLayerPaths {
     _holdLockedLayers(layers) {
         const held = [];
         (layers || []).forEach(layer => {
-            if (!layer || !layer.locked) return;
+            if (!layer || !this._layerLocked(layer)) return;
             const fields = new Map();
             Object.keys(layer).forEach(k => {
                 if (LOCK_EXEMPT_FIELD(k)) return;
@@ -514,7 +566,7 @@ class _CrossLayerPaths {
         const locked = new Map();
         let keep = (ids || []).filter(id => {
             const l = byId.get(id);
-            if (l && l.locked) { locked.set(l.id, l); return false; }
+            if (l && this._layerLocked(l)) { locked.set(l.id, l); return false; }
             return true;
         });
         const going = new Set(keep);
@@ -524,7 +576,7 @@ class _CrossLayerPaths {
             if (!l || !l.group_id || heldGroups.has(l.group_id)) return;
             const members = typeof this.groupMembersOf === 'function' ? this.groupMembersOf(l) : [];
             const left = members.filter(m => !going.has(m.id));
-            const lockedLeft = left.filter(m => m.locked);
+            const lockedLeft = left.filter(m => this._layerLocked(m));
             if (lockedLeft.length && left.length < 2) {
                 heldGroups.add(l.group_id);
                 lockedLeft.forEach(m => locked.set(m.id, m));

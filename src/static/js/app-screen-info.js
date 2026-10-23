@@ -1273,6 +1273,16 @@ class _ScreenInfo {
     toggleLayerVisibility(layerId) {
         const layer = this.project.layers.find(l => l.id === layerId);
         if (!layer) return;
+        // A member of a half-locked group (an old file's) is locked until
+        // the user picks Lock or Unlock for the group (_layerLocked), and
+        // its eye is refused with the rest: hiding one member can repack
+        // the wall's circuits.
+        const holders = typeof this._halfLockedGroupHolders === 'function'
+            ? this._halfLockedGroupHolders(layer) : [];
+        if (holders.length) {
+            this._showLockedError(holders);
+            return;
+        }
         layer.visible = !layer.visible;
         // Undo audit: the eye toggle recorded history but never told the
         // server, so any server-sourced adoption (a canvas edit's response,
@@ -1995,7 +2005,7 @@ class _ScreenInfo {
         if (groupMoves) {
             groupMoves.forEach(move => {
                 move.members.forEach(member => {
-                    if (member.locked) {
+                    if (this._layerLocked(member)) {
                         // A locked member stays where it is, and is named.
                         if ((move.dx || move.dy || move.sdx || move.sdy)
                                 && !lockedRefused.includes(member)) {
@@ -2024,7 +2034,7 @@ class _ScreenInfo {
             if (movedByGroup.has(layer.id)) {
                 // its position was set with its group above; the rest of the
                 // fields apply below as for any screen
-            } else if (!layer.locked) {
+            } else if (!this._layerLocked(layer)) {
                 // (a locked screen is put back by the hold anyway; skipping
                 // its offset here keeps the footprint math off it)
                 // Capture whether the show offset is currently linked to the

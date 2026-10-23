@@ -57,7 +57,7 @@ Object.assign(CanvasRenderer.prototype, {
                 // The name's place is part of a locked screen too: the press
                 // is held, and if it turns into a drag the error says why
                 // the label stays put (a click on it changes nothing).
-                if (window.app.currentLayer.locked) {
+                if (window.app._layerLocked(window.app.currentLayer)) {
                     this._armLockedDrag([window.app.currentLayer], e);
                     return;
                 }
@@ -252,7 +252,7 @@ Object.assign(CanvasRenderer.prototype, {
                 const layerType = window.app.currentLayer.type || 'screen';
                 const isScreenLayer = layerType === 'screen';
                 if (isScreenLayer && this.viewMode !== 'pixel-map' && this.viewMode !== 'show-look') {
-                    if (window.app.currentLayer.locked) {
+                    if (window.app._layerLocked(window.app.currentLayer)) {
                         this._armLockedDrag([window.app.currentLayer], e);
                         return;
                     }
@@ -427,11 +427,11 @@ Object.assign(CanvasRenderer.prototype, {
                     // Relative offsets are preserved for free: the drag applies
                     // ONE delta to every entry in dragLayerOffsets below.
                     this._addGroupPeersToDrag(uniqueSelected);
-                    const movable = uniqueSelected.filter(layer => !layer.locked);
+                    const movable = uniqueSelected.filter(layer => !window.app._layerLocked(layer));
                     // A locked screen stays where it is; once the press is
                     // really a drag, the error names it - once per gesture,
                     // not on every move. The unlocked ones still move.
-                    const lockedInDrag = uniqueSelected.filter(layer => layer.locked);
+                    const lockedInDrag = uniqueSelected.filter(layer => window.app._layerLocked(layer));
                     if (lockedInDrag.length) this._armLockedDrag(lockedInDrag, e);
                     if (movable.length === 0) {
                         if (typeof sendClientLog === 'function') {
@@ -493,7 +493,7 @@ Object.assign(CanvasRenderer.prototype, {
                     }
                 } else {
                     // Dragging screen name on cabinet-id, data-flow, power modes
-                    if (window.app.currentLayer.locked) {
+                    if (window.app._layerLocked(window.app.currentLayer)) {
                         this._armLockedDrag([window.app.currentLayer], e);
                         return;
                     }
@@ -616,7 +616,7 @@ Object.assign(CanvasRenderer.prototype, {
                     // says why.
                     const paintLayer = window.app.project
                         && window.app.project.layers.find(l => l.id === clickedPanel.layerId);
-                    if (paintLayer && paintLayer.locked) {
+                    if (paintLayer && window.app._layerLocked(paintLayer)) {
                         if (typeof window.app._showLockedError === 'function') {
                             window.app._showLockedError([paintLayer]);
                         }
@@ -841,7 +841,7 @@ Object.assign(CanvasRenderer.prototype, {
                     : [{ id: window.app.currentLayer.id, startX: this.layerStartOffset.x, startY: this.layerStartOffset.y }];
                 const movable = selected.filter(item => {
                     const layer = window.app.project.layers.find(l => l.id === item.id);
-                    return layer && !layer.locked;
+                    return layer && !window.app._layerLocked(layer);
                 });
                 if (movable.length === 0) {
                     return;
@@ -849,7 +849,7 @@ Object.assign(CanvasRenderer.prototype, {
                 const showMode = this.dragLayerMode === 'show';
                 movable.forEach(item => {
                     const layer = window.app.project.layers.find(l => l.id === item.id);
-                    if (!layer || layer.locked) return;
+                    if (!layer || window.app._layerLocked(layer)) return;
                     const nextX = item.startX + snapDx;
                     const nextY = item.startY + snapDy;
                     if (showMode) {
@@ -1218,7 +1218,7 @@ Object.assign(CanvasRenderer.prototype, {
                         // click adds no step and says nothing. A click on a
                         // locked screen that was already current is the
                         // draw verb, and that names it.
-                        const pickedLocked = !!(clickedLayer && clickedLayer.locked
+                        const pickedLocked = !!(clickedLayer && window.app._layerLocked(clickedLayer)
                             && this._pressPickedLayerId === clickedLayer.id);
                         if (pickedLocked) {
                             // nothing to draw - the screen is picked
@@ -1449,12 +1449,12 @@ Object.assign(CanvasRenderer.prototype, {
                 
                 const movable = selected.filter(item => {
                     const layer = window.app.project.layers.find(l => l.id === item.id);
-                    return layer && !layer.locked;
+                    return layer && !window.app._layerLocked(layer);
                 });
                 const showMode = this.dragLayerMode === 'show';
                 movable.forEach(item => {
                     const layer = window.app.project.layers.find(l => l.id === item.id);
-                    if (!layer || layer.locked) return;
+                    if (!layer || window.app._layerLocked(layer)) return;
                     const nextX = item.startX + snapDx;
                     const nextY = item.startY + snapDy;
                     if (showMode) {
@@ -1530,12 +1530,12 @@ Object.assign(CanvasRenderer.prototype, {
                         const peerCanvasId = (l) => isShowMode
                             ? (l.show_canvas_id || l.canvas_id)
                             : l.canvas_id;
-                        const movedIds = primary.locked ? [] : [primary.id];
+                        const movedIds = window.app._layerLocked(primary) ? [] : [primary.id];
                         if (window.app.selectedLayerIds && window.app.selectedLayerIds.size > 1) {
                             window.app.selectedLayerIds.forEach(id => {
                                 if (id === primary.id) return;
                                 const l = window.app.project.layers.find(x => x.id === id);
-                                if (!l || l.locked) return;
+                                if (!l || window.app._layerLocked(l)) return;
                                 if (peerCanvasId(l) === targetCanvas.id) return; // already there
                                 if (isShowMode) {
                                     movedIds.push(id);
@@ -1653,7 +1653,7 @@ Object.assign(CanvasRenderer.prototype, {
                 if (!crossCanvasHandled && crossRefused) {
                     const stillMoved = movable.some(item => {
                         const l = window.app.project.layers.find(x => x.id === item.id);
-                        if (!l || l.locked) return false;
+                        if (!l || window.app._layerLocked(l)) return false;
                         return showMode
                             ? (l.showOffsetX !== item.startX || l.showOffsetY !== item.startY)
                             : (l.offset_x !== item.startX || l.offset_y !== item.startY);
@@ -1808,7 +1808,7 @@ Object.assign(CanvasRenderer.prototype, {
             const clickedLayer = clicked
                 ? (window.app.project.layers.find(l => l.id === clicked.layerId) || null)
                 : null;
-            if (clickedLayer && !clickedLayer.locked
+            if (clickedLayer && !window.app._layerLocked(clickedLayer)
                     && (clickedLayer.id === window.app.currentLayer.id
                         || window.app.isPixelMapScopeLayer(clickedLayer))) {
                 const key = window.app.getScopedPanelKey(clickedLayer.id, clicked.panel);
@@ -2115,7 +2115,7 @@ Object.assign(CanvasRenderer.prototype, {
     // that only picks the screen is not a change and says nothing. Said
     // once per gesture (handleMouseMove clears it), never per move.
     _armLockedDrag(layers, e) {
-        const locked = (layers || []).filter(l => l && l.locked);
+        const locked = (layers || []).filter(l => l && window.app._layerLocked(l));
         if (locked.length === 0) return;
         this._lockedDragPending = { layers: locked };
         if (e && (this._pressClientX === undefined || this._pressClientX === null)) {

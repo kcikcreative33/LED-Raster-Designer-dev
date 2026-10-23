@@ -848,7 +848,7 @@ class _DockDrag {
     _faceDropPlug(payload, layer, plan) {
         // A locked screen stays unchanged until unlocked, and says so
         // (owner, 2026-10-16).
-        if (layer.locked) {
+        if (this._layerLocked(layer)) {
             this._showLockedError([layer]);
             return;
         }
@@ -1264,9 +1264,9 @@ class _DockDrag {
             // released, and the locked screens are named.
             const layerOf = (o) => (this.project.layers || [])
                 .find(l => String(l.id) === String(o.layerId));
-            const lockedClaims = claimants.map(layerOf).filter(l => l && l.locked);
+            const lockedClaims = claimants.map(layerOf).filter(l => l && this._layerLocked(l));
             this._showLockedError(lockedClaims);
-            const occupants = claimants.filter(o => { const l = layerOf(o); return !(l && l.locked); });
+            const occupants = claimants.filter(o => { const l = layerOf(o); return !(l && this._layerLocked(l)); });
             if (!occupants.length) return;
             // Every claim on a socket is a pin - nothing lands any other
             // way - so every claimant is released. One release per

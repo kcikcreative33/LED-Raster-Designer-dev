@@ -3808,7 +3808,7 @@ class _HardwareDock {
         const lockedMet = [];
         const going = (pins || []).filter(p => {
             const l = layerOf(p);
-            if (l && l.locked) {
+            if (l && this._layerLocked(l)) {
                 if (!lockedMet.includes(l)) lockedMet.push(l);
                 return false;
             }
@@ -3859,7 +3859,7 @@ class _HardwareDock {
             const layer = (this.project.layers || [])
                 .find(l => l.id === m.layerId);
             if (!layer) return;
-            if (layer.locked) {
+            if (this._layerLocked(layer)) {
                 if (!lockedMet.includes(layer)) lockedMet.push(layer);
                 return;
             }
@@ -3868,6 +3868,11 @@ class _HardwareDock {
         });
         this._showLockedError(lockedMet);
         if (!jobs.length) return;
+        // A clear touching a member of a half-locked group (an old file's,
+        // locked until the user picks Lock or Unlock: _layerLocked) is
+        // refused whole, as a clear that would repack a locked group
+        // member is (round 5): nothing clears, the other screens' included.
+        if (lockedMet.some(l => !l.locked)) return;
         const strip = () => {
             jobs.forEach(j =>
                 this._wipeSocaProgramming(j.layer, j.soca, j.targets));

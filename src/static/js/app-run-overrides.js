@@ -250,7 +250,7 @@ class _RunOverrides {
         if (!owner || !num) return;
         // A locked screen stays unchanged (the owner's ruling, 2026-10-16):
         // taking a run over writes its owner's overrides and path.
-        if (owner.locked) {
+        if (this._layerLocked(owner)) {
             if (typeof this._showLockedError === 'function') this._showLockedError([owner]);
             return;
         }
@@ -299,7 +299,7 @@ class _RunOverrides {
         // picked (selecting is not changing) and the error says why the run
         // did not become the active one. Alt+click on the run that is
         // already active changes nothing and says nothing.
-        if (owner.locked && (idxChanged || undoLabel)) {
+        if (this._layerLocked(owner) && (idxChanged || undoLabel)) {
             this._showLockedError([owner]);
             return;
         }

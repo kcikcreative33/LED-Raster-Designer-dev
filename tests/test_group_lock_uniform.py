@@ -48,7 +48,7 @@ def two(page, a_locked=False, b_locked=False, grouped=False, extra=None):
     ids = make(page, specs, group=grouped)
     page.evaluate("""() => { window.__nf.errors = [];
         window.app._showLockedError = (ls) => { if (ls && ls.length)
-            window.__nf.errors.push(ls.map(l => l.name)); }; }""")
+            window.__nf.errors.push(window.app._lockedErrorNames(ls)); }; }""")
     return ids
 
 

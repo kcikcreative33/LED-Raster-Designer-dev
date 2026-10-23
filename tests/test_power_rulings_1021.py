@@ -97,7 +97,7 @@ def errors_on(page):
         const realToast = app._toast.bind(app);
         app._toast = (m, err, ms) => { if (err) window.__r2.toasts.push(m); return realToast(m, err, ms); };
         app._showLockedError = (ls) => { if (ls && ls.length)
-            window.__r2.locked.push(ls.map(l => l.name)); };
+            window.__r2.locked.push(window.app._lockedErrorNames(ls)); };
     }""")
 
 

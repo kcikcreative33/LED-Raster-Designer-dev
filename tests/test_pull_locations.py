@@ -548,7 +548,7 @@ def test_the_box_gear_has_a_beach_picker_with_the_projects_beaches(page):
     out = _beach_picker(pg, key)
     assert out['found'] and out['inPop'] and out['tag'] == 'SELECT', out
     assert out['value'] == sl_id, out
-    assert out['options'] == [['', '— no beach —'], [sl_id, 'SL Beach'], [sr_id, 'SR Beach'],
+    assert out['options'] == [['', 'No beach'], [sl_id, 'SL Beach'], [sr_id, 'SR Beach'],
                               ['__new_beach__', '+ New beach…']], out['options']
     assert 'Beach' in out['labels'] and out['typed'] == [], out
     # pick SR Beach: one 'Set Box Beach' entry, the box's beachId follows
@@ -606,7 +606,7 @@ def test_the_box_gear_has_a_beach_picker_with_the_projects_beaches(page):
     pg.wait_for_timeout(300)
     d = _beach_picker(pg, f"distro-beach-{ids['distroId']}")
     assert d['found'] and d['inPop'] and d['tag'] == 'SELECT' and d['value'] == '', d
-    assert d['options'] == [['', '— no beach —'], [sl_id, 'SL Beach'], [sr_id, 'SR Beach'],
+    assert d['options'] == [['', 'No beach'], [sl_id, 'SL Beach'], [sr_id, 'SR Beach'],
                             ['__new_beach__', '+ New beach…']], d['options']
     assert 'Beach' in d['labels'] and d['typed'] == [], d
     pg.keyboard.press('Escape')

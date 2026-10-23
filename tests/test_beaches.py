@@ -356,7 +356,7 @@ def test_the_panel_and_the_picker_start_empty_and_list_what_is_made(page):
     pg, ids = page
     st = pg.evaluate(PANEL_JS)
     assert st['rows'] == [] and st['beaches'] == []
-    assert st['picker'] == [['', '— no beach —'], ['__new_beach__', '+ New beach…']]
+    assert st['picker'] == [['', 'No beach'], ['__new_beach__', '+ New beach…']]
     assert pg.locator('#beaches-panel .beaches-empty').count() == 1
     # made in the app (the same route the panel's + Add beach uses)
     pg.evaluate("async () => { await window.app.createBeach('SR'); await window.app.createBeach('SL'); }")
@@ -364,7 +364,7 @@ def test_the_panel_and_the_picker_start_empty_and_list_what_is_made(page):
     st = pg.evaluate(PANEL_JS)
     assert st['beaches'] == [{'id': 'b1', 'name': 'SR'}, {'id': 'b2', 'name': 'SL'}]
     assert st['rows'] == [['b1', 'SR', ''], ['b2', 'SL', '']]
-    assert st['picker'] == [['', '— no beach —'], ['b1', 'SR'], ['b2', 'SL'], ['__new_beach__', '+ New beach…']]
+    assert st['picker'] == [['', 'No beach'], ['b1', 'SR'], ['b2', 'SL'], ['__new_beach__', '+ New beach…']]
     # a duplicate is the same beach, and the history took one entry per make
     assert pg.evaluate("async () => (await window.app.createBeach('sr')).id") == 'b1'
     assert _history(pg)['action'] == 'Add Beach'
@@ -542,7 +542,7 @@ def test_the_distro_picker_pulls_the_power_rows_to_its_beach(page):
                  typed: !!document.querySelector(`[data-lrd-field="distro-location-${id}"]`) };
     }""", ids['distroId'])
     assert out['inPop'] and out['tag'] == 'SELECT' and out['value'] == '', out
-    assert out['options'] == ['— no beach —', 'SR', 'SL', '+ New beach…'], out
+    assert out['options'] == ['No beach', 'SR', 'SL', '+ New beach…'], out
     assert 'Beach' in out['labels'] and 'Location' not in out['labels'] and not out['typed'], out
     h0 = _history(pg)
     pg.select_option(f'[data-lrd-field="distro-beach-{ids["distroId"]}"]', 'b2')
@@ -623,7 +623,7 @@ def test_the_box_picker_pulls_its_rows_to_its_beach(page):
                  typed: !!document.querySelector(`[data-lrd-field="processor-cvt-location-${bid}"]`) };
     }""", box)
     assert out['inPop'] and out['tag'] == 'SELECT' and out['value'] == '', out
-    assert out['options'] == ['— no beach —', 'SR', 'SL', '+ New beach…'], out
+    assert out['options'] == ['No beach', 'SR', 'SL', '+ New beach…'], out
     # the box's fiber moved to its ≡ cable sheet (2026-09-25); the gear
     # keeps the Beach picker
     assert 'Beach' in out['labels'] and 'Fiber' not in out['labels'] and 'Location' not in out['labels'], out

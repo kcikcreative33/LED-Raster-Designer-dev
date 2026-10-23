@@ -532,6 +532,14 @@ class _Naming {
     // feeder and nothing fed thru it, or only hidden screens on it, is not
     // counted: an unused duplicate never forces SR-1 / SR-2 on the one
     // that prints.
+    //
+    // "Plugged in" reads the screen's REAL multis (round 6): its plan's
+    // multi count, as the naming index deals them (_powerNaming's countBy),
+    // so a stale powerSocaDistro entry for a multi the screen no longer
+    // has (300 W typed, one multi left, `{2: 'd2'}` still stored) plugs
+    // nothing in, and the names agree with the binder (_bDistroPrints).
+    // Not through _distroMultiNumbers: that reads the naming index, which
+    // reads these labels.
     _distroShownIds() {
         const distros = typeof this.getDistros === 'function' ? this.getDistros() : [];
         const prints = new Set();
@@ -548,7 +556,14 @@ class _Naming {
         for (const l of ((this.project && this.project.layers) || [])) {
             if (!l || (l.type || 'screen') !== 'screen') continue;
             const hidden = this._screenHidden(l);
-            for (const id of Object.values(l.powerSocaDistro || {})) {
+            const assign = l.powerSocaDistro || {};
+            // counted only where it could still change the answer: a
+            // distro some shown screen already feeds needs no more
+            if (!Object.values(assign).some(id => id && fed.get(id) !== true)) continue;
+            const count = typeof this._socaSegments === 'function'
+                ? this._socaSegments(l, this._labelCircuits(l).length).length : 0;
+            for (let idx = 1; idx <= count; idx++) {
+                const id = assign[idx];
                 if (!id) continue;
                 fed.set(id, (fed.get(id) || false) || !hidden);
             }
@@ -956,7 +971,7 @@ class _Naming {
         if (!this.project) return false;
         const now = this._multiNumberMap();
         const locked = new Set(((this.project.layers) || [])
-            .filter(l => l && l.locked).map(l => String(l.id)));
+            .filter(l => l && this._layerLocked(l)).map(l => String(l.id)));
         let any = false;
         for (const d of (this.project.distros || [])) {
             if (!d || (distroId && d.id !== distroId)) continue;

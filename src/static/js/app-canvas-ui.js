@@ -434,7 +434,7 @@ class _CanvasUi {
         const locked = new Map();
         let ids = (layerIds || []).filter(id => {
             const l = byId.get(id);
-            if (l && l.locked) {
+            if (l && this._layerLocked(l)) {
                 if (targetCanvasId == null || where(l) !== targetCanvasId) locked.set(l.id, l);
                 return false;
             }
@@ -449,7 +449,7 @@ class _CanvasUi {
                     ? this.groupMembersOf(l)
                     : layers.filter(m => m && m.group_id === l.group_id);
                 const lockedStaying = (members || []).filter(m => m && m.id !== l.id
-                    && m.locked && m.canvas_id !== targetCanvasId);
+                    && this._layerLocked(m) && m.canvas_id !== targetCanvasId);
                 if (lockedStaying.length === 0) return;
                 held.add(id);
                 lockedStaying.forEach(m => locked.set(m.id, m));
@@ -1386,7 +1386,7 @@ class _CanvasUi {
             renameFinished = true;
             let newName = input.value.trim() || currentName;
             // A locked screen keeps its name, and the error says why.
-            if (newName !== currentName && layer.locked) {
+            if (newName !== currentName && this._layerLocked(layer)) {
                 this._showLockedError([layer]);
                 newName = currentName;
             }

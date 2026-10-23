@@ -1183,9 +1183,25 @@ class _DistroSystems {
             // state) says the output's whole load against what it can
             // carry - its breaker and its connector's rating, the row's
             // override included (2026-10-18, "it should show over capacity").
+            // Under its capacity, an output holding more circuits than it
+            // takes is still crowded (several multis each within it - a
+            // hidden screen's among them, which keeps its output: round
+            // 6), said the way the pull sheet and the distro sheet say it.
+            // A single multi past it already has its own line above.
             for (const cr of this._faceCrowding(d)) {
+                const hidden = [...new Set(cr.members.filter(m => m.hidden).map(m => m.layer.name))];
+                const held = !hidden.length ? ''
+                    : ` ${hidden.length === 1 ? hidden[0]
+                        : `${hidden.slice(0, -1).join(', ')} and ${hidden[hidden.length - 1]}`} `
+                        + `${hidden.length === 1 ? 'is hidden and still holds' : 'are hidden and still hold'} it.`;
                 const text = this._crowdCapacityText(d, cr);
-                if (text) say(`cap:${cr.number}`, text);
+                if (text) {
+                    say(`cap:${cr.number}`, held ? `${text}.${held}` : text);
+                } else if (cr.members.every(m => m.legs <= cr.box.size)) {
+                    say(`cap:${cr.number}`, `${cr.where} ${cr.box.conn.short} carries ${cr.circuits} `
+                        + `circuits, and it takes ${this._circuitsWord(cr.box.size)} only. `
+                        + `Move one to a multi output.${held}`);
+                }
             }
         }
         return out;
@@ -1204,15 +1220,27 @@ class _DistroSystems {
     // The direct outputs on `d`'s face (d may be a prospective copy) whose
     // PINNED multis carry more circuits than the output has:
     // [{ number, box, circuits, amps, members: [{ layer, soca, legs, amps,
-    // name }] }]. Autos never land on a direct output, so pins are all of it.
-    _faceCrowding(d) {
+    // name, hidden }] }]. Autos never land on a direct output, so pins are
+    // all of it.
+    //
+    // HIDDEN SCREENS KEEP THEIR SLOTS (the owner's ruling, round 6): a
+    // hidden screen's multi still holds its output, so a visible screen
+    // pinned onto that output crowds it, and the tray, the distro checks,
+    // the pull sheet and the distro sheet all say so (the pull sheet reads
+    // directOutputCircuitCount, which counts the box's every member). Its
+    // LOAD stays out (round 5): `amps` is what the visible screens draw.
+    // An output only hidden screens crowd is on no paper and is left out.
+    //
+    // `includeHidden` (the face-edit guard, _crowdingMadeBy): every member
+    // counts whole, hidden or not, and an output only hidden screens crowd
+    // is crowded too, as in v1.5.3 - an edit that would crowd one asks.
+    _faceCrowding(d, { includeHidden = false } = {}) {
         const face = d ? this.distroFace(d) : null;
         if (!face) return [];
         const by = new Map();
         for (const layer of (this.project && this.project.layers) || []) {
             if ((layer.type || 'screen') !== 'screen') continue;
-            // a hidden screen is not on the distro's paper or its load
-            if (layer.visible === false) continue;
+            const hidden = layer.visible === false;
             const assign = layer.powerSocaDistro || {};
             const pins = layer.powerSocaNumber || {};
             for (const s of this.getSocaPlan(layer)) {
@@ -1224,16 +1252,22 @@ class _DistroSystems {
                 const amps = (s.legs || []).reduce((t, g) => t + (Number(g.amps) || 0), 0);
                 const rec = by.get(n) || { number: n, box, circuits: 0, amps: 0, members: [] };
                 rec.circuits += s.legs.length;
-                rec.amps += amps;
-                rec.members.push({ layer, soca: s.soca, legs: s.legs.length, amps, name: s.name });
+                if (includeHidden || !hidden) rec.amps += amps;
+                rec.members.push({ layer, soca: s.soca, legs: s.legs.length, amps, name: s.name, hidden });
                 by.set(n, rec);
             }
         }
         // `where` is the output as the labels name it ("PD4" - the name the
-        // multis on it wear), else the distro and number.
-        return [...by.values()].filter(r => r.circuits > r.box.size)
-            .map(r => ({ ...r, where: (r.members[0] && r.members[0].name)
-                || `${this.distroLabel(d)} ${r.number}` }))
+        // multis on it wear, a visible one's first), else the distro and
+        // number.
+        return [...by.values()]
+            .filter(r => r.circuits > r.box.size
+                && (includeHidden || r.members.some(m => !m.hidden)))
+            .map(r => {
+                const named = r.members.find(m => !m.hidden && m.name)
+                    || r.members.find(m => m.name);
+                return { ...r, where: (named && named.name) || `${this.distroLabel(d)} ${r.number}` };
+            })
             .sort((a, b) => a.number - b.number);
     }
 
@@ -1278,8 +1312,12 @@ class _DistroSystems {
         if (!d || (patch.outputRows === undefined && patch.system === undefined)) return [];
         const key = (m, n) => `${m.layer.id}:${m.soca}@${n}`;
         const before = new Set();
-        this._faceCrowding(d).forEach(cr => cr.members.forEach(m => before.add(key(m, cr.number))));
-        return this._faceCrowding(this._distroAfterPatch(d, patch))
+        // Hidden screens' multis count (the owner's ruling, round 6: "Yes,
+        // still ask for hidden screens"): a hidden screen keeps its output,
+        // so an edit that would crowd it asks like any other.
+        const all = { includeHidden: true };
+        this._faceCrowding(d, all).forEach(cr => cr.members.forEach(m => before.add(key(m, cr.number))));
+        return this._faceCrowding(this._distroAfterPatch(d, patch), all)
             .filter(cr => cr.members.some(m => !before.has(key(m, cr.number))));
     }
 
@@ -1309,7 +1347,7 @@ class _DistroSystems {
             { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
         const name = this.distroLabel(d);
         const members = made.flatMap(cr => cr.members.map(m => ({ ...m, cr })));
-        const locked = [...new Set(members.filter(m => m.layer.locked).map(m => m.layer))];
+        const locked = [...new Set(members.filter(m => this._layerLocked(m.layer)).map(m => m.layer))];
         const lines = made.map(cr => {
             const where = cr.where;
             const cap = this._crowdCapacityText(d, cr);

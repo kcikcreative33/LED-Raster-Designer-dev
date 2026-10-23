@@ -452,7 +452,10 @@ def test_group_tile_leaves_a_locked_member_and_names_it(page, kind, view):
         await ca.settle(200);
         return { runs: ca.runs(ca.layer(ids[0]), arg.kind), errors: ca.errors() };
     """, {'kind': kind, 'view': view})
-    assert out['runs']['cabinets'] == 80, out
+    # Round 6: one member locked and one not is a half-locked group (an old
+    # file's), locked as a whole until the user picks Lock or Unlock, so
+    # the tile changes neither member.
+    assert out['runs']['cabinets'] == 0, out
     assert out['runs']['onPeer'] == 0, out
     assert out['errors'] == [LOCKED], out
 
@@ -488,7 +491,9 @@ def test_custom_toggle_leaves_a_locked_member_and_names_it(page, kind, view):
         const f = arg.kind === 'power' ? 'powerFlowPattern' : 'flowPattern';
         return { u: ca.layer(ids[0])[f], l: ca.layer(ids[1])[f], errors: ca.errors() };
     """, {'kind': kind, 'view': view})
-    assert out['u'] == 'custom', out
+    # Round 6: a half-locked group is locked as a whole, so neither member
+    # goes custom.
+    assert out['u'] == 'tl-v', out
     assert out['l'] == 'tl-v', out
     assert out['errors'] == [LOCKED], out
 

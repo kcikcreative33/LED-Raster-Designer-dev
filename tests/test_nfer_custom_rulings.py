@@ -481,7 +481,9 @@ def test_custom_on_wipes_the_labels_typed_by_hand(page):
 def test_custom_on_keeps_a_run_across_a_locked_member(page):
     """A locked screen is never changed: a path the open screen drew onto
     its locked neighbour's cabinets stays when custom goes on, and the
-    locked screen is named."""
+    locked screen is named. Round 6: Left and Right are a half-locked group
+    (an old file's), locked as a whole until the user picks Lock or Unlock,
+    so Left keeps all its runs too."""
     left, right = make(page, [{'name': 'Left', 'columns': 4},
                               {'name': 'Right', 'columns': 3, 'x': 800}],
                        group=True)
@@ -494,7 +496,7 @@ def test_custom_on_keeps_a_run_across_a_locked_member(page):
         R.locked = true;
         window.__nf.errors = [];
         app._showLockedError = (ls) => { if (ls && ls.length)
-            window.__nf.errors.push(ls.map(l => l.name)); };
+            window.__nf.errors.push(window.app._lockedErrorNames(ls)); };
         app.updateLayers([L, R]);
         app.resetHistory('Seeded');
     }""", [left, right])
@@ -503,8 +505,8 @@ def test_custom_on_keeps_a_run_across_a_locked_member(page):
     out = page.evaluate("""(a) => ({
         paths: Object.keys(window.__nf.layer(a).powerCustomPaths),
         errors: window.__nf.errors })""", left)
-    assert out['paths'] == ['9'], (
-        f'only the run across the locked screen survives: {out}')
+    assert out['paths'] == ['9', '10'], (
+        f'the half-locked group changed: {out}')
     assert ['Right'] in out['errors'], out
 
 
@@ -1077,7 +1079,7 @@ def test_adopting_from_a_locked_member_is_refused(page):
     page.evaluate(LEGACY_JS, [left, right, {'locked': True}])
     page.evaluate("""() => { window.__nf.errors = [];
         window.app._showLockedError = (ls) => { if (ls && ls.length)
-            window.__nf.errors.push(ls.map(l => l.name)); }; }""")
+            window.__nf.errors.push(window.app._lockedErrorNames(ls)); }; }""")
     landed(page)
     h0 = len(history(page))
     items = menu_at(page, pt(page, left, 2, 0))

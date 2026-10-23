@@ -148,7 +148,7 @@ def box(page):
 def catch_locked(page):
     page.evaluate("""() => { window.__nf.errors = [];
         window.app._showLockedError = (ls) => { if (ls && ls.length)
-            window.__nf.errors.push(ls.map(l => l.name)); }; }""")
+            window.__nf.errors.push(window.app._lockedErrorNames(ls)); }; }""")
 
 
 # ── 1. one splitter setting per wall ──────────────────────────────────────
@@ -218,13 +218,16 @@ def test_a_locked_member_blocks_the_wall_setting(page):
     assert ['C'] in page.evaluate("() => window.__nf.errors")
     assert box(page)['checked'] is False
 
+    # Round 6: C locked and A, B not is a half-locked group (an old
+    # file's), locked as a whole until the user picks Lock or Unlock, so
+    # even with C already holding the new value nothing changes.
     a, b, c = old_wall(page, c_props={'locked': True})
     catch_locked(page)
     select(page, b)
     page.locator('#power-splitters-enabled').click()
     landed(page)
-    assert raw(page, [a, b, c]) == [[True, 3]] * 3, raw(page, [a, b, c])
-    assert page.evaluate("() => window.__nf.errors") == []
+    assert raw(page, [a, b, c]) == [[False, 3], [True, 3], [True, 3]], raw(page, [a, b, c])
+    assert ['C'] in page.evaluate("() => window.__nf.errors")
 
 
 def test_a_custom_fill_on_a_member_follows_the_box_it_shows(page):

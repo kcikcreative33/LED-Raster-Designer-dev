@@ -136,7 +136,7 @@ class _Power {
             return this._steppedCustomIndex(layer, kind, delta) !== current;
         };
         if (view === 'data-flow' && this.isCustomFlowEditing(this.currentLayer)) {
-            if (layer.locked && !moves('data')) return;
+            if (this._layerLocked(layer) && !moves('data')) return;
             if (this._lockedStepRefused(this.currentLayer)) return;
             this.ensureCustomFlowState(this.currentLayer);
             this.currentLayer.customPortIndex =
@@ -159,7 +159,7 @@ class _Power {
             const owner = this.powerPathOwner(layer);
             const ownerMoves = this._steppedCustomIndex(owner, 'power', delta)
                 !== (owner.powerCustomIndex || 1);
-            if (owner.locked && !ownerMoves) return;
+            if (this._layerLocked(owner) && !ownerMoves) return;
             if (this._lockedStepRefused(owner)) return;
             this.ensureCustomPowerState(owner);
             owner.powerCustomIndex = this._steppedCustomIndex(owner, 'power', delta);
@@ -374,7 +374,8 @@ class _Power {
         const pct = rule.pct;
         const amps = breakerA * pct;
         return { voltage, breakerA, pct, amps, watts: voltage * amps,
-                 us: rule.us, rated100: rule.us && pct >= 1, byDistro: !!rule.byDistro };
+                 us: rule.us, rated100: rule.us && pct >= 1, byDistro: !!rule.byDistro,
+                 onDistro: !!rule.onDistro };
     }
 
     // The watts one circuit of `layer` carries (circuitCapacity).
@@ -409,9 +410,13 @@ class _Power {
                 + 'A US distro marked "100% rated breakers" packs to the breaker.';
         }
         if (cap.us) return 'Its distro has 100% rated breakers, so it packs to the breaker.';
-        // on no distro the voltage decides (_circuitPackRule)
-        return cap.byDistro ? 'A UK/EU circuit packs to its breaker.'
-            : 'A screen on no distro above 208 V packs to its breaker.';
+        if (cap.byDistro) return 'A UK/EU circuit packs to its breaker.';
+        // an old distro record with no system picked has no say, so the
+        // voltage decides (_circuitPackRule), as on no distro
+        if (cap.onDistro) {
+            return 'Its distro has no system picked, so a screen above 208 V packs to its breaker.';
+        }
+        return 'A screen on no distro above 208 V packs to its breaker.';
     }
 
     // The packing % one distro holds its circuits to: 80% on a US system,
@@ -475,14 +480,15 @@ class _Power {
             // the voltage said so)
             const us = list.some(e => e.region === 'us' || (e.region === null && byVoltage));
             // a distro of a known system decided it; an old record whose
-            // system is unknown leaves it to the voltage
-            return { pct, us, byDistro: list.some(e => e.region !== null) };
+            // system is unknown leaves it to the voltage (onDistro says the
+            // screen is on a distro all the same, for circuitPctReason)
+            return { pct, us, byDistro: list.some(e => e.region !== null), onDistro: true };
         };
         // Every entry agreeing with the voltage's %: a stale one cannot
         // change it, so nothing needs counting (the common case).
         if (entries.every(e => e.pct === fallback.pct)) {
             const d = decide(entries);
-            return { pct: fallback.pct, us: d.us, byDistro: d.byDistro };
+            return { pct: fallback.pct, us: d.us, byDistro: d.byDistro, onDistro: true };
         }
         const counts = new Map();
         const live = entries.filter(e => {
@@ -2299,7 +2305,7 @@ class _Power {
         if (!layer) return false;
         let ft = cable ? Number(cable.ft) : NaN;
         if (cable && typeof cable.ft === 'string') {
-            if (layer.locked) {
+            if (this._layerLocked(layer)) {
                 const read = this.parseTypedCableLength(cable.ft);
                 ft = read.n === null ? NaN : read.n;
             } else {
@@ -2318,7 +2324,7 @@ class _Power {
         // A locked screen stays unchanged (owner, 2026-10-16) - the setter
         // refuses and names it, whichever control called it - when the cable
         // would really change; setting the one it has says nothing.
-        if (layer.locked) {
+        if (this._layerLocked(layer)) {
             if (changed) this._showLockedError([layer]);
             return false;
         }
@@ -2656,7 +2662,7 @@ class _Power {
         // A locked screen stays unchanged (owner, 2026-10-16) - the setter
         // refuses and names it, whichever control called it - when the
         // length would really change.
-        if (layer.locked) {
+        if (this._layerLocked(layer)) {
             const cur = String((layer.powerSocaLengths || {})[socaIndex] || '').trim();
             if (cur !== stored) this._showLockedError([layer]);
             return false;
@@ -3100,9 +3106,9 @@ class _Power {
             // A locked screen keeps its breakout (the owner's ruling,
             // 2026-10-16), named when this would have changed it.
             const all = this._socaPanelTargets(layer);
-            this._showLockedError(all.filter(l => l.locked
+            this._showLockedError(all.filter(l => this._layerLocked(l)
                 && this.getPowerBreakout(l).id !== type.id));
-            const list = all.filter(l => !l.locked);
+            const list = all.filter(l => !this._layerLocked(l));
             const skipped = list.filter(l => !this._breakoutEligible(type, l.powerVoltage));
             const write = list.filter(l => !skipped.includes(l));
             if (skipped.length) {
@@ -3131,8 +3137,8 @@ class _Power {
             if (!want) return;
             const all = this._socaPanelTargets(layer)
                 .filter(l => this.breakoutHasPanelInputChoice(this.getPowerBreakout(l)));
-            this._showLockedError(all.filter(l => l.locked && this.panelInput(l).id !== want.id));
-            const write = all.filter(l => !l.locked && this.panelInput(l).id !== want.id);
+            this._showLockedError(all.filter(l => this._layerLocked(l) && this.panelInput(l).id !== want.id));
+            const write = all.filter(l => !this._layerLocked(l) && this.panelInput(l).id !== want.id);
             if (!write.length) {
                 inp.value = this.panelInput(layer).id;
                 return;
@@ -3147,9 +3153,9 @@ class _Power {
             if (!layer) return;
             const all = this._socaPanelTargets(layer);
             // A locked screen keeps its brackets setting, and is named.
-            this._showLockedError(all.filter(l => l.locked
+            this._showLockedError(all.filter(l => this._layerLocked(l)
                 && !!l.showSocaBrackets !== !!brk.checked));
-            const list = all.filter(l => !l.locked);
+            const list = all.filter(l => !this._layerLocked(l));
             if (!list.length) {
                 brk.checked = !!layer.showSocaBrackets;
                 return;
@@ -3187,7 +3193,7 @@ class _Power {
             walls.forEach(members => {
                 const wall = this.getPowerSplitters(members[0]);
                 const next = { enabled: wall.enabled, maxWays: wall.maxWays, ...patch };
-                const locked = members.filter(l => l.locked && changes(l, next));
+                const locked = members.filter(l => this._layerLocked(l) && changes(l, next));
                 if (locked.length) {
                     blocked.push(...locked);
                     return;
@@ -3702,8 +3708,8 @@ class _Power {
                 const own = this._ownPowerSplitters(m);
                 return !own.enabled || own.maxWays !== wallWays;
             }) : [];
-        if (tick.some(m => m.locked)) {
-            this._showLockedError(tick.filter(m => m.locked));
+        if (tick.some(m => this._layerLocked(m))) {
+            this._showLockedError(tick.filter(m => this._layerLocked(m)));
             return false;
         }
         // A deal that would REPACK a locked screen (one grouped with this
@@ -3948,14 +3954,14 @@ class _Power {
     _adoptWallCircuits(owner, refs) {
         const jobs = [];
         const locked = new Map();
-        if (owner.locked) locked.set(owner.id, owner);
+        if (this._layerLocked(owner)) locked.set(owner.id, owner);
         (refs || []).forEach(r => {
             if (r.layerId === owner.id) return;
             const m = (this.project.layers || []).find(l => l.id === r.layerId);
             const c = m && this.screenCircuits(m).find(x => x.num === r.num);
             if (!c) return;
             const runs = c.runIds || [c.num];
-            if (m.locked) locked.set(m.id, m);
+            if (this._layerLocked(m)) locked.set(m.id, m);
             runs.forEach(n => this._runLockedLayers(m, 'power', n)
                 .forEach(l => locked.set(l.id, l)));
             jobs.push({ m, num: c.num, runs });
@@ -4264,7 +4270,7 @@ class _Power {
             const owner = this.powerPathOwner(layer);
             const locked = new Map();
             [owner, ...this._runLockedLayers(layer, 'power', num)]
-                .forEach(l => { if (l && l.locked) locked.set(l.id, l); });
+                .forEach(l => { if (l && this._layerLocked(l)) locked.set(l.id, l); });
             if (locked.size) {
                 this._showLockedError([...locked.values()]);
                 return false;
@@ -4289,7 +4295,7 @@ class _Power {
         }
         const owner = layer;
         const locked = this._runLockedLayers(owner, 'power', num);
-        if (owner.locked && !locked.includes(owner)) locked.unshift(owner);
+        if (this._layerLocked(owner) && !locked.includes(owner)) locked.unshift(owner);
         if (locked.length) {
             this._showLockedError(locked);
             return false;

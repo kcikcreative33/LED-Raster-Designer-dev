@@ -680,11 +680,13 @@ def test_clear_run_on_a_peer_lets_go_of_the_members_emptied_override(page, kind)
 
 @pytest.mark.parametrize('kind', ['power', 'data'])
 def test_clear_run_leaves_a_locked_peers_run_alone_and_says_so(page, kind):
-    """B is locked: Clear on A clears A's own run but B's run 1 is skipped
-    whole - A's cabinets and B's own stay - B is not written, and one toast
-    says it was left alone."""
+    """B is locked: B's run 1 is skipped whole - A's cabinets and B's own
+    stay - B is not written, and one toast says it was left alone. Round 6:
+    A and B are a half-locked group (an old file's), locked as a whole until
+    the user picks Lock or Unlock, so A keeps its own run too."""
     k = _RUN_KEYS[kind]
     ids = _grouped_pair_with_peer_run(page, kind, peer_locked=True)
+    a_before = page.evaluate("([id, paths]) => window.__gi.layer(id)[paths]", [ids[0], k['paths']])
     _clear_toasts(page)
     page.evaluate("(id) => document.getElementById(id).click()", k['clear_one'])
     page.wait_for_timeout(1200)
@@ -694,7 +696,7 @@ def test_clear_run_leaves_a_locked_peers_run_alone_and_says_so(page, kind):
       return { a: window.__gi.layer(ids[0])[paths], b: window.__gi.layer(ids[1])[paths],
                sb: srv.layers.find(l => l.id === ids[1])[paths] };
     }""", [ids, k['paths']])
-    assert '1' not in out['a'], out
+    assert out['a'] == a_before, out
     assert out['b'].get('1') == [{'row': 0, 'col': 0, 'layerId': ids[0]},
                                  {'row': 0, 'col': 1, 'layerId': ids[0]},
                                  {'row': 0, 'col': 0}], out
@@ -705,10 +707,13 @@ def test_clear_run_leaves_a_locked_peers_run_alone_and_says_so(page, kind):
 
 @pytest.mark.parametrize('kind', ['power', 'data'])
 def test_clear_all_leaves_a_locked_member_alone_and_says_so(page, kind):
-    """Clear All on A with B locked: A goes back to automatic, B keeps its
-    runs, index and overrides on the client and the server, one toast."""
+    """Clear All on A with B locked: B keeps its runs, index and overrides
+    on the client and the server, one toast. Round 6: A and B are a
+    half-locked group (an old file's), locked as a whole until the user
+    picks Lock or Unlock, so A keeps its runs too and nothing is recorded."""
     k = _RUN_KEYS[kind]
     ids = _grouped_pair_with_peer_run(page, kind, peer_locked=True)
+    a_before = page.evaluate("([id, paths]) => window.__gi.layer(id)[paths] || {}", [ids[0], k['paths']])
     page.evaluate("([id, ovr, index]) => { const b = window.__gi.layer(id); b[ovr] = [2]; b[index] = 2; }",
                   [ids[1], k['overrides'], k['index']])
     _clear_toasts(page)
@@ -723,13 +728,13 @@ def test_clear_all_leaves_a_locked_member_alone_and_says_so(page, kind):
                sb: pick(srv.layers.find(l => l.id === ids[1])),
                steps: window.app.history.length };
     }""", [ids, k['paths'], k['index'], k['overrides']])
-    assert out['a']['paths'] == {} and out['a']['index'] == 1, out
+    assert out['a']['paths'] == a_before, out
     expected_b = {'1': [{'row': 0, 'col': 0, 'layerId': ids[0]}, {'row': 0, 'col': 1, 'layerId': ids[0]},
                         {'row': 0, 'col': 0}],
                   '2': [{'row': 1, 'col': 1}]}
     assert out['b'] == {'paths': expected_b, 'index': 2, 'overrides': [2]}, out
     assert out['sb']['paths'] == expected_b, out
-    assert out['steps'] - n0 == 1, out
+    assert out['steps'] - n0 == 0, out
     peer = page.evaluate("(id) => window.__gi.layer(id).name", ids[1])
     assert toasts == ['%s is locked. Unlock it to change it.' % peer], toasts
 
