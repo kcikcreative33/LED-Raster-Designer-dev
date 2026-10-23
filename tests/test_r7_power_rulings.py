@@ -8,7 +8,8 @@ owner's rulings, 2026-10-23).
    as a locked member, as a group locked as one does: skipped, the locked
    screen named, and the other screens still clear. Both orders.
 4. Half-locked groups ALLOW hide and show (visibility is not a change,
-   same as fully locked screens): the screen eye and the group eye.
+   same as fully locked screens): the screen eye and the group eye. Round
+   8: unless the hide would re-plan a locked screen (test_r8_power_rulings).
 5. The balancer leaves a hidden screen's multis out of the multis it
    searched: it never moves them, so they are held where they sit and
    said as such.
@@ -40,11 +41,14 @@ from test_r5_power_rulings import wall, pinned  # noqa: E402
 from test_lock_repack_rulings import state  # noqa: E402
 
 
-def three(page, a_locked=False, b_locked=True):
+def three(page, a_locked=False, b_locked=True, b_watts=None):
     """A and B one group (A unlocked and B locked: an old file's half-locked
-    group, unless told), C in no group; each screen's one multi on SR."""
+    group, unless told), C in no group; each screen's one multi on SR.
+    A and B walk the wall's circuits as one, unless `b_watts` gives B's
+    cabinets other watts: then each walks its own."""
+    b_props = dict(pinned(2), panelWatts=b_watts) if b_watts else pinned(2)
     a, b, c = make(page, [{'name': 'A', 'columns': 2, 'props': pinned(2)},
-                          {'name': 'B', 'columns': 2, 'x': 800, 'props': pinned(2)},
+                          {'name': 'B', 'columns': 2, 'x': 800, 'props': b_props},
                           {'name': 'C', 'columns': 2, 'x': 1600, 'props': pinned(2)}])
     page.evaluate("""([a, b, c, al, bl]) => { const app = window.app, L = (id) => window.__nf.layer(id);
         app.project.groups = [{ id: 'gH', name: 'WALL', layer_ids: [a, b] }];
@@ -129,7 +133,10 @@ VISIBLE_JS = "(ids) => ids.map(id => window.__nf.layer(id).visible !== false)"
 
 
 def test_a_half_locked_group_hides_and_shows(page):
-    a, b, c = three(page)
+    # A and B walk their own circuits, so hiding one changes nothing on the
+    # other (round 8: a hide that would re-plan a locked screen is
+    # refused, test_r8_power_rulings.py)
+    a, b, c = three(page, b_watts=100)
     page.evaluate("([a]) => window.app.toggleLayerVisibility(a)", [a])
     landed(page)
     assert page.evaluate(VISIBLE_JS, [a, b]) == [False, True]

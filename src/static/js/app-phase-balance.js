@@ -626,8 +626,12 @@ class _PhaseBalance {
             // Partly-filled multis on hidden screens: held where they are
             // (a hidden screen keeps its slots and loads no leg), so they
             // are not among the multis searched (round 7).
+            // `layers` are the hidden screens, once each: a shared box only
+            // hidden screens fill says "WALL A and WALL B are hidden".
             hidden: solved.flatMap(r => r.hidden || []).map(t => ({
                 name: t.name, layerName: t.layerName || t.layer.name,
+                layers: [...new Set((t.members ? t.members.map(m => m.layer) : [t.layer])
+                    .map(l => l.name))],
             })),
             moves,
         };
@@ -682,7 +686,7 @@ class _PhaseBalance {
         const lockedLines = (r.locked || []).map(l =>
             `${esc(l.name)} (${esc(l.layerName)}) stays where it is. ${esc(listOf(l.layers))} ${plural(l.layers.length, 'is', 'are')} locked.`)
             .concat((r.hidden || []).map(h =>
-                `${esc(h.name)} (${esc(h.layerName)}) stays where it is. ${esc(h.layerName)} is hidden.`));
+                `${esc(h.name)} (${esc(h.layerName)}) stays where it is. ${esc(listOf(h.layers || [h.layerName]))} ${plural((h.layers || [h.layerName]).length, 'is', 'are')} hidden.`));
         const lockedHtml = lockedLines.length
             ? lockedLines.map(l => `<div style="color:#a6b0bb; margin:6px 0 0; padding-left:10px;">· ${l}</div>`).join('')
             : '';
@@ -695,7 +699,7 @@ class _PhaseBalance {
             if (b.full.length) lines.push(
                 `${b.full.map(f => esc(f.name)).join(', ')} ${b.full.length === 1 ? 'is' : 'are'} full. With every circuit taken the legs are already as even as they get, so there is nothing to choose.`);
             b.crowded.forEach(c => lines.push(
-                `${esc(c.name)} (${esc(c.layers)}) has ${c.legs} circuits on ${c.conn ? `${/^(?:[aeiou]|L\d)/i.test(c.conn) ? 'an' : 'a'} ${esc(c.conn)}, which carries ` : 'a connector that carries '}${c.size === 1 ? 'one circuit' : `${c.size} circuits`}. Move it to a multi output.`));
+                `${esc(c.name)} (${esc(c.layers)}) has ${c.legs} circuits on ${c.conn ? `${this._aAn(c.conn)} ${esc(c.conn)}, which carries ` : 'a connector that carries '}${c.size === 1 ? 'one circuit' : `${c.size} circuits`}. Move it to a multi output.`));
             b.clashed.forEach(c => lines.push(
                 `${esc(c.name)} (${esc(c.layers)}) is shared ${c.overflow
                     ? (Number.isFinite(c.size) ? `with more circuits than the ${c.size} it holds` : 'with more circuits than it holds')

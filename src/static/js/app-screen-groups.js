@@ -782,8 +782,12 @@ class _ScreenGroups {
         const members = this.getGroupMembers(group);
         if (members.length === 0) return false;
         // Visibility is not a change: the eye works on a locked group and
-        // on a half-locked one alike (the owner's ruling, round 7).
+        // on a half-locked one alike (the owner's ruling, round 7), unless
+        // it would re-plan a locked screen outside the group
+        // (_visibilityRepacksLocked, round 8).
         const anyVisible = members.some(m => m.visible !== false);
+        if (typeof this._visibilityRepacksLocked === 'function'
+            && this._visibilityRepacksLocked(members, !anyVisible)) return false;
         members.forEach(m => { m.visible = !anyVisible; });
         if (anyVisible) {
             // Same reasoning as toggleLayerVisibility: a hidden layer must
