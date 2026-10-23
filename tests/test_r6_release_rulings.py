@@ -61,7 +61,8 @@ def test_the_refusal_lists_only_what_the_app_refuses():
 def test_the_feeder_example_is_the_fed_from_line():
     top = _top_entry()
     feeders = _flat(top[top.index('\nFEEDERS\n'):top.index('\nTHE PANEL ON EACH SCREEN\n')])
-    assert "like Fed from: HOUSE · 200 A cam set 100'+50'." in feeders
+    # round 7: the service prints with its size, as the binder prints it
+    assert "like Fed from: HOUSE · 600 A · 120/208V 3φ · 200 A cam set 100'+50'." in feeders
     assert "It only reads Feeder: when there's no service or distro to name." in feeders
     assert "Feeder: 50'" not in feeders
 
@@ -99,10 +100,10 @@ def test_opening_an_older_show_lists_the_round_6_changes():
             'library, which now lists 9.0 kg, so their panel rows print by size and their half '
             'tiles weigh 65% of a full tile.') in flat
     assert 'Pick the panel from the library again to get the new figures.' in flat
-    # (b) a half-locked group is locked
+    # (b) a half-locked group is locked (round 7: hide and show still work)
     assert ('- CHANGE (IMPORTANT): A group saved half locked in an older show now counts as '
-            'locked. Edits to any of its screens are refused until you pick Lock or Unlock for '
-            'the group.') in flat
+            'locked.') in flat
+    assert 'Edits to any of its screens are refused' not in flat
 
 
 def test_the_graphite_figures_match_the_library():
