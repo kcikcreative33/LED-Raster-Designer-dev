@@ -340,7 +340,13 @@ class _CrossLayerPaths {
     // screen, naming each one: "Upper is locked. Unlock it to change it."
     // An error toast (the app's error style), up a little longer than the
     // default so a list of names can be read.
-    _showLockedError(layers) {
+    //
+    // `why` 'repack' (the owner's ruling, 2026-10-23): the user acted on
+    // another screen, a distro or a group, and the change would repack the
+    // locked screens' circuits, so the error says why: "B is locked, and
+    // this would repack its circuits. Unlock it to change it." An action
+    // on the locked screen itself keeps the plain wording.
+    _showLockedError(layers, why = null) {
         if (!layers || layers.length === 0 || typeof this._toast !== 'function') return;
         const seen = new Set();
         const names = [];
@@ -353,9 +359,12 @@ class _CrossLayerPaths {
         const one = names.length === 1;
         const list = one ? names[0]
             : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+        const repack = why === 'repack';
         const msg = one
-            ? `${list} is locked. Unlock it to change it.`
-            : `${list} are locked. Unlock them to change them.`;
+            ? (repack ? `${list} is locked, and this would repack its circuits. Unlock it to change it.`
+                : `${list} is locked. Unlock it to change it.`)
+            : (repack ? `${list} are locked, and this would repack their circuits. Unlock them to change them.`
+                : `${list} are locked. Unlock them to change them.`);
         // One gesture, one error: a verb guarded at its entry and again in
         // the setter it calls would otherwise say the same thing twice in
         // the same turn. An action that runs on across awaits (a chain of
@@ -401,11 +410,11 @@ class _CrossLayerPaths {
     // True when any of `layers` (one layer or a list) is locked; the locked
     // ones are named in the one error. For a change that must happen whole
     // or not at all.
-    _lockedRefused(layers) {
+    _lockedRefused(layers, why = null) {
         const list = (Array.isArray(layers) ? layers : [layers]).filter(Boolean);
         const locked = list.filter(l => l.locked);
         if (locked.length === 0) return false;
-        this._showLockedError(locked);
+        this._showLockedError(locked, why);
         return true;
     }
 
@@ -467,6 +476,33 @@ class _CrossLayerPaths {
         };
     }
 
+    // A hold on EVERY field of `layers`, locked or not (the leading-
+    // underscore render caches aside): the returned release() puts each
+    // field back exactly as it was, an added one taken away. For a change
+    // tried on the live screens and taken back whole (the locked-repack
+    // check of the edit funnel and of grouping).
+    _holdLayerFields(layers) {
+        const held = [...new Set((layers || []).filter(Boolean))].map(layer => {
+            const fields = new Map();
+            Object.keys(layer).forEach(k => {
+                if (k.charAt(0) === '_') return;
+                fields.set(k, JSON.stringify(layer[k] === undefined ? null : layer[k]));
+            });
+            return { layer, fields };
+        });
+        return () => {
+            held.forEach(({ layer, fields }) => {
+                Object.keys(layer).forEach(k => {
+                    if (k.charAt(0) !== '_' && !fields.has(k)) delete layer[k];
+                });
+                fields.forEach((json, k) => {
+                    if (JSON.stringify(layer[k] === undefined ? null : layer[k]) === json) return;
+                    layer[k] = JSON.parse(json);
+                });
+            });
+        };
+    }
+
     // The screens a Delete may remove, out of `ids`: never a locked one, and
     // never the last unlocked member of a group a locked screen would be
     // left alone in - a group of one is dissolved, which would change the
@@ -518,7 +554,9 @@ class _CrossLayerPaths {
     // The attempt is read from the event being handled (window.event): an
     // `input` or a pointer move is live; anything else - a change, a key, a
     // release, or no event at all (a programmatic call) - is a commit.
-    _reportLockedEdit(layers) {
+    // `why` is _showLockedError's ('repack': the edit would repack a
+    // locked screen it never touched).
+    _reportLockedEdit(layers, why = null) {
         const list = (layers || []).filter(Boolean);
         const ev = (typeof window !== 'undefined' && window.event) || null;
         const live = !!(ev && LIVE_EDIT_EVENTS.has(ev.type));
@@ -535,7 +573,7 @@ class _CrossLayerPaths {
                 && last.el === target && now - last.at < 1500);
             const sameAttempt = !!(last && last.ids === ids && (last.open || colourStream
                 || (ev && (last.ev === ev || last.closedBy === ev))));
-            if (!sameAttempt) this._showLockedError(list);
+            if (!sameAttempt) this._showLockedError(list, why);
             this._lastLockedEditReport = {
                 ids, ev, open: live, el: target, at: now,
                 pointer: !!(ev && POINTER_MOVE_EVENTS.has(ev.type)),

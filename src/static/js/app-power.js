@@ -365,7 +365,8 @@ class _Power {
     // share and Nfer amps rule. It is the same % the distro's own breaker
     // check holds a circuit to (distroChecks), so a fully packed circuit
     // never trips that warning.
-    //   { voltage, breakerA, pct, amps, watts, us, rated100 }
+    //   { voltage, breakerA, pct, amps, watts, us, rated100, byDistro }
+    // `byDistro`: a distro decided the %, not the voltage.
     circuitCapacity(layer) {
         const voltage = parseFloat(layer && layer.powerVoltage) || 0;
         const breakerA = parseFloat(layer && layer.powerAmperage) || 0;
@@ -373,7 +374,7 @@ class _Power {
         const pct = rule.pct;
         const amps = breakerA * pct;
         return { voltage, breakerA, pct, amps, watts: voltage * amps,
-                 us: rule.us, rated100: rule.us && pct >= 1 };
+                 us: rule.us, rated100: rule.us && pct >= 1, byDistro: !!rule.byDistro };
     }
 
     // The watts one circuit of `layer` carries (circuitCapacity).
@@ -407,9 +408,10 @@ class _Power {
             return 'A US circuit carries a continuous load to 80% of its breaker. '
                 + 'A US distro marked "100% rated breakers" packs to the breaker.';
         }
-        return cap.us
-            ? 'Its distro has 100% rated breakers, so it packs to the breaker.'
-            : 'A UK/EU circuit packs to its breaker.';
+        if (cap.us) return 'Its distro has 100% rated breakers, so it packs to the breaker.';
+        // on no distro the voltage decides (_circuitPackRule)
+        return cap.byDistro ? 'A UK/EU circuit packs to its breaker.'
+            : 'A screen on no distro above 208 V packs to its breaker.';
     }
 
     // The packing % one distro holds its circuits to: 80% on a US system,
@@ -472,12 +474,15 @@ class _Power {
             // US when any distro deciding is a US one (or, on old records,
             // the voltage said so)
             const us = list.some(e => e.region === 'us' || (e.region === null && byVoltage));
-            return { pct, us };
+            // a distro of a known system decided it; an old record whose
+            // system is unknown leaves it to the voltage
+            return { pct, us, byDistro: list.some(e => e.region !== null) };
         };
         // Every entry agreeing with the voltage's %: a stale one cannot
         // change it, so nothing needs counting (the common case).
         if (entries.every(e => e.pct === fallback.pct)) {
-            return { pct: fallback.pct, us: decide(entries).us };
+            const d = decide(entries);
+            return { pct: fallback.pct, us: d.us, byDistro: d.byDistro };
         }
         const counts = new Map();
         const live = entries.filter(e => {
@@ -2437,7 +2442,7 @@ class _Power {
         return svg;
     }
 
-    // Rollup per distro across every screen, plus an 'unassigned' bucket so
+    // Rollup per distro across every shown screen, plus an 'unassigned' bucket so
     // no load is silently dropped. A distro with legs (three-phase, or
     // split-phase) also gets per-leg loads so you can see whether the
     // service is loaded evenly.
@@ -2471,6 +2476,11 @@ class _Power {
         const boxRows = new Map();      // share key -> the one feeds row
         for (const layer of this.project.layers || []) {
             if ((layer.type || 'screen') !== 'screen') continue;
+            // A hidden screen is left out of every distro and service load
+            // (the owner's ruling, 2026-10-23), the way the pull sheet
+            // leaves it out (_pullScreens): a distro whose screens are all
+            // hidden reads empty.
+            if (layer.visible === false) continue;
             const plan = this.getSocaPlan(layer);
             if (!plan.length) continue;
             const assign = layer.powerSocaDistro || {};
@@ -2610,6 +2620,8 @@ class _Power {
             pairWatts: {},
         };
         if (!distro) return { X: 0, Y: 0, Z: 0 };
+        // a hidden screen loads nothing (getDistroLoads)
+        members = (members || []).filter(m => !(m && m.layer && m.layer.visible === false));
         const legacy = this._legacyBoxFeedLegAmps(distro, members);
         if (legacy) return legacy;
         for (const m of (members || [])) {
@@ -3425,14 +3437,20 @@ class _Power {
         const runIds = this._shareRunSegments(layer, circuitNums).flat();
         if (runIds.length < 2) return false;
         if (this.shareRefusal(layer, [runIds])) return false;
-        this._writeSplitterManual(layer, (manual) => {
+        const write = (manual) => {
             const inNew = new Set(runIds);
             manual.merge = manual.merge
                 .map(g => (Array.isArray(g) ? g.filter(n => !inNew.has(n)) : []))
                 .filter(g => g.length >= 2);
             manual.split = manual.split.filter(n => !inNew.has(n));
             manual.merge.push([...runIds].sort((a, b) => a - b));
-        });
+        };
+        // A share that would REPACK a locked screen - one grouped with this
+        // screen, whose packing % the group shares - is refused whole, the
+        // screen named (owner, 2026-10-23): tried and put back first.
+        if (this._repackRefused(() => this._writeSplitterManual(
+            layer, write, null, { silent: true }), [layer])) return false;
+        this._writeSplitterManual(layer, write);
         return true;
     }
 
@@ -3452,7 +3470,7 @@ class _Power {
         const runIds = this._shareRunSegments(layer, circuitNums).flat();
         if (!runIds.length) return;
         const custom = this.usesCustomCircuits(layer);
-        this._writeSplitterManual(layer, (manual) => {
+        const write = (manual) => {
             const hit = new Set(runIds);
             manual.merge = manual.merge
                 .map(g => (Array.isArray(g) ? g.filter(n => !hit.has(n)) : []))
@@ -3461,7 +3479,12 @@ class _Power {
                 manual.split = [...new Set([...manual.split, ...runIds])]
                     .sort((a, b) => a - b);
             }
-        }, action, opts);
+        };
+        // Nor one that would repack a locked group member (owner,
+        // 2026-10-23). A silent call's caller owns the check with its commit.
+        if (!(opts && opts.silent) && this._repackRefused(() => this._writeSplitterManual(
+            layer, write, null, { silent: true }), [layer])) return;
+        this._writeSplitterManual(layer, write, action, opts);
     }
 
     // ---- the batch verb: "3fer them" ---------------------------------------
@@ -3683,6 +3706,11 @@ class _Power {
             this._showLockedError(tick.filter(m => m.locked));
             return false;
         }
+        // A deal that would REPACK a locked screen (one grouped with this
+        // screen) is refused whole, the screen named (owner, 2026-10-23):
+        // everything below is written, checked, and put back before the
+        // commit when it moves a locked screen's packing %.
+        const repacked = this._repackTrial([layer]);
         // An automatic screen with sharing off (the owner's ruling,
         // 2026-10-22): its runs are the ones sharing gives, so sharing goes
         // on first and the whole screen is dealt on those. A deal that
@@ -3757,6 +3785,7 @@ class _Power {
                                  manual: (m.powerSplitters || {}).manual || own.manual };
             written.set(m.id, m);
         });
+        if (repacked()) return false;
         this._commitWallShare([...written.values()], action);
         return true;
     }
@@ -4044,6 +4073,9 @@ class _Power {
             .filter(x => picked.has(`${x.layer.id}:${x.c.num}`)))) return false;
         const tokens = this._wallRunSegments(owner, refs).flat();
         if (tokens.length < 2) return false;
+        // A share that would repack a locked group member is refused whole
+        // (owner, 2026-10-23): written, checked, put back before the commit.
+        const repacked = this._repackTrial([owner]);
         const adopted = this._adoptWallCircuits(owner, refs);
         if (!adopted) return false;
         const runIds = tokens.map(id => (typeof id === 'string'
@@ -4056,6 +4088,7 @@ class _Power {
             manual.split = manual.split.filter(n => !inNew.has(n));
             manual.merge.push([...runIds].sort((a, b) => a - b));
         }, null, { silent: true });
+        if (repacked()) return false;
         this._commitWallShare(adopted.touched, 'Edit Splitter Groups');
         return true;
     }
@@ -4236,6 +4269,9 @@ class _Power {
                 this._showLockedError([...locked.values()]);
                 return false;
             }
+            // An Nfer that would repack a locked group member is refused
+            // whole (owner, 2026-10-23): written, checked, put back first.
+            const repacked = this._repackTrial([owner, layer]);
             let at = num;
             let touched = [owner];
             if (owner !== layer) {
@@ -4246,6 +4282,7 @@ class _Power {
             }
             const legs = this._pathLegs(owner, owner.powerCustomPaths[at]).legs;
             this._splitCustomRun(owner, at, legs);
+            if (repacked()) return false;
             this._sweepSelection = null;
             this._commitWallShare(touched, action);
             return true;
@@ -4257,6 +4294,7 @@ class _Power {
             this._showLockedError(locked);
             return false;
         }
+        const repacked = this._repackTrial([owner]);
         this.ensureCustomPowerState(owner);
         owner.powerCustomPaths[num] = plan.legs.flatMap((leg, k) => leg.map((e, i) => {
             const entry = { ...e };
@@ -4269,6 +4307,7 @@ class _Power {
             if (!nums.includes(num)) nums.push(num);
             owner.powerCustomOverrides = nums.sort((a, b) => a - b);
         }
+        if (repacked()) return false;
         this._sweepSelection = null;
         this._circuitTailCache = null;
         this.saveState(action);

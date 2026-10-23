@@ -1065,11 +1065,13 @@ class _DistroSystems {
 
     // Every circuit on a distro, resolved: [{ layer, s, leg, box, info,
     // amps, label }]. `box` is the face box (null off the face or on an
-    // old distro).
+    // old distro). A hidden screen's are left out, as from the distro's
+    // load (getDistroLoads): its checks match the pull sheet.
     _distroCircuitsOn(d) {
         const out = [];
         for (const layer of (this.project && this.project.layers) || []) {
             if ((layer.type || 'screen') !== 'screen') continue;
+            if (layer.visible === false) continue;
             const assign = layer.powerSocaDistro || {};
             for (const s of this.getSocaPlan(layer)) {
                 if (assign[s.soca] !== d.id) continue;
@@ -1209,6 +1211,8 @@ class _DistroSystems {
         const by = new Map();
         for (const layer of (this.project && this.project.layers) || []) {
             if ((layer.type || 'screen') !== 'screen') continue;
+            // a hidden screen is not on the distro's paper or its load
+            if (layer.visible === false) continue;
             const assign = layer.powerSocaDistro || {};
             const pins = layer.powerSocaNumber || {};
             for (const s of this.getSocaPlan(layer)) {

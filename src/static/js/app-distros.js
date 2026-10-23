@@ -297,8 +297,34 @@ class _Distros {
     // change that touches only their multis; left out, every locked
     // screen is checked (a distro's own change reaches any of them).
     // True when the change must not happen.
+    //
+    // The error says why (_showLockedError's 'repack'): the user acted on
+    // another screen, a distro or a group, never on the locked screen,
+    // which every caller has refused with the plain error already.
     _repackRefused(apply, near) {
         if (typeof this.circuitCapacity !== 'function' || typeof apply !== 'function') return false;
+        const locked = this._repackLockedScreens(near);
+        if (!locked.length) return false;
+        const pctOf = () => new Map(locked.map(l => [l, this.circuitCapacity(l).pct]));
+        this._circuitTailCache = null;
+        const before = pctOf();
+        const release = this._holdPowerRecords();
+        let after;
+        try {
+            apply();
+            this._circuitTailCache = null;
+            after = pctOf();
+        } finally {
+            release();
+        }
+        const repacked = locked.filter(l => before.get(l) !== after.get(l));
+        return repacked.length ? this._lockedRefused(repacked, 'repack') : false;
+    }
+
+    // The locked screens a change near `near` (a layer or a list) can
+    // repack: themselves and every member of their groups. Left out, every
+    // locked screen.
+    _repackLockedScreens(near) {
         const layers = (this.project && this.project.layers) || [];
         let locked = layers.filter(l => l && l.locked && (l.type || 'screen') === 'screen');
         if (locked.length && near) {
@@ -311,27 +337,74 @@ class _Distros {
             });
             locked = locked.filter(l => reach.has(l));
         }
-        if (!locked.length) return false;
+        return locked;
+    }
+
+    // The edit funnel's repack check (applyToSelectedLayers): called before
+    // the edit, with the selection; returns check(), which after the edit
+    // answers the locked screens it repacked - [] when none, else every
+    // screen the edit could reach (the selection and their groups) is put
+    // back field by field (_holdLayerFields). Null when no locked screen
+    // packs with the selection.
+    _repackEditTrial(layers) {
+        if (typeof this.circuitCapacity !== 'function') return null;
+        const screens = (layers || []).filter(l => l && (l.type || 'screen') === 'screen');
+        if (!screens.length) return null;
+        const locked = this._repackLockedScreens(screens);
+        if (!locked.length) return null;
+        const reach = new Set(screens);
+        screens.forEach(l => {
+            if (l.group_id && typeof this.groupMembersOf === 'function') {
+                this.groupMembersOf(l).forEach(m => reach.add(m));
+            }
+        });
         const pctOf = () => new Map(locked.map(l => [l, this.circuitCapacity(l).pct]));
+        this._circuitTailCache = null;
+        const before = pctOf();
+        const release = this._holdLayerFields([...reach]);
+        return () => {
+            this._circuitTailCache = null;
+            const after = pctOf();
+            const repacked = locked.filter(l => before.get(l) !== after.get(l));
+            if (!repacked.length) return [];
+            release();
+            this._circuitTailCache = null;
+            return repacked;
+        };
+    }
+
+    // _repackRefused for a gesture that writes its change in place before
+    // it commits (a circuit share, an Nfer): called BEFORE the first write,
+    // it returns refused(), to call after the writes and before the commit.
+    // refused() is true when the change moved a locked screen's packing %:
+    // then every record the change can reach is already put back
+    // (_holdPowerRecords), the screens are named, and the caller returns
+    // without its commit or its history entry. False keeps the change.
+    _repackTrial(near) {
+        if (typeof this.circuitCapacity !== 'function') return () => false;
+        const locked = this._repackLockedScreens(near);
+        if (!locked.length) return () => false;
+        const pctOf = () => new Map(locked.map(l => [l, this.circuitCapacity(l).pct]));
+        this._circuitTailCache = null;
         const before = pctOf();
         const release = this._holdPowerRecords();
-        let after;
-        try {
-            apply();
+        return () => {
             this._circuitTailCache = null;
-            after = pctOf();
-        } finally {
+            const after = pctOf();
+            const repacked = locked.filter(l => before.get(l) !== after.get(l));
+            if (!repacked.length) return false;
             release();
-        }
-        const repacked = locked.filter(l => before.get(l) !== after.get(l));
-        return repacked.length ? this._lockedRefused(repacked) : false;
+            this._showLockedError(repacked, 'repack');
+            return true;
+        };
     }
 
     // A hold on everything a trial distro or multi change can write: the
     // distro list and each distro record (held multi numbers, system,
     // breakers), every screen's power fields (assignments, numbers, cuts,
-    // tails, names, lengths, cables, label overrides, splitters) and the
-    // held-number baseline. The returned release() puts back whatever
+    // tails, names, lengths, cables, label overrides, splitters, drawn
+    // paths), the held-number baseline and the pull sheet's edits. The
+    // returned release() puts back whatever
     // changed, in place, and drops the naming cache that read the trial.
     _holdPowerRecords() {
         const project = this.project || {};
@@ -350,7 +423,16 @@ class _Distros {
         const baseline = this._multiBaseline;
         const baselineCopy = baseline instanceof Map ? new Map(baseline) : null;
         const dirty = this._multiHoldsDirty;
+        // the pull sheet's edits too: a gesture that moves circuits drops
+        // the edits on rows it takes away (_dropPullEditsGoneWith)
+        const hadPull = Object.prototype.hasOwnProperty.call(project, 'pullSheetEdits');
+        const pullJson = hadPull ? JSON.stringify(project.pullSheetEdits) : null;
         return () => {
+            if (hadPull && JSON.stringify(project.pullSheetEdits) !== pullJson) {
+                project.pullSheetEdits = pullJson === undefined ? undefined : JSON.parse(pullJson);
+            } else if (!hadPull && Object.prototype.hasOwnProperty.call(project, 'pullSheetEdits')) {
+                delete project.pullSheetEdits;
+            }
             if (list) {
                 if (list.length !== distros.length || list.some((d, i) => d !== distros[i])) {
                     list.length = 0;
@@ -709,10 +791,14 @@ class _Distros {
             if (list.length < 2 || !list.some(b => b.hand)) continue;
             if (new Set(list.map(b => b.distroId)).size < 2) continue;
             list.sort((a, b) => (order.get(a.distroId) - order.get(b.distroId)) || (a.number - b.number));
-            out.push({ name, boxes: list.map(b => ({
-                distroId: b.distroId, number: b.number,
-                label: `${this.distroLabel(distros[order.get(b.distroId)])} ${b.number}`,
-            })) });
+            // each box named the way it prints ("SR1", "SR-1-2"), never
+            // "SR 1" (_deriveMultiName, as distroBoxLabels names it)
+            out.push({ name, boxes: list.map(b => {
+                const base = this.distroLabel(distros[order.get(b.distroId)]);
+                return { distroId: b.distroId, number: b.number,
+                         label: typeof this._deriveMultiName === 'function'
+                             ? this._deriveMultiName(base, b.number, null) : `${base}${b.number}` };
+            }) });
         }
         this._dupNamesFor = this._circuitTailCache;
         this._dupNames = out;
@@ -720,13 +806,14 @@ class _Distros {
     }
 
     // The warning one duplicate reads, in the strip and on the box's name:
-    // "MAIN is typed on 2 boxes, SR 1 and SL 3. Rename one so each box
-    // reads its own name."
+    // "MAIN is used on 2 boxes, SR1 and SL3. Rename one so each box reads
+    // its own name." Used, not typed: one of the boxes can wear the name
+    // as its own automatic one (a box typed SR1 beside distro SR's box 1).
     _typedMultiNameText(dup) {
         const labels = dup.boxes.map(b => b.label);
         const list = labels.length > 1
             ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}` : labels[0];
-        return `${dup.name} is typed on ${labels.length} boxes, ${list}. `
+        return `${dup.name} is used on ${labels.length} boxes, ${list}. `
             + 'Rename one so each box reads its own name.';
     }
 

@@ -707,7 +707,7 @@ class _Services {
             value: s.name,
             placeholder: 'service',
             key: `service-name-${s.id}`,
-            title: 'Name this service - House, Generator A.',
+            title: 'Name this service, like House or Generator A.',
             onCommit: (val) => {
                 this.updateService(s.id, { name: val }, 'Rename Service');
                 this.renderHardwareDock();
@@ -721,7 +721,7 @@ class _Services {
         const gear = document.createElement('button');
         gear.className = 'hw-dock-gear';
         gear.textContent = '⚙';
-        gear.title = 'Configure this service - rating, system, 100% rated, the distros on it, remove.';
+        gear.title = 'Configure this service: rating, system, 100% rated, the distros on it, remove.';
         gear.dataset.hwpop = `service-${s.id}`;
         gear.dataset.lrdField = `hwgear-service-${s.id}`;
         gear.addEventListener('click', (e) => {
@@ -752,8 +752,8 @@ class _Services {
         const limit = load.limitA > 0 ? load.limitA : load.ratingA;
         const note = this.distroMainLimitNote(rule);
         const title = `Busiest leg ${load.amps.toFixed(1)} A of a ${+limit.toFixed(1)} A limit`
-            + (note ? ` - ${note}: a show load is continuous. Tick 100% rated behind the ⚙ if `
-                + 'the service is.' : (rule.main100 ? ' - the service is 100% rated.' : ' - the rating.'));
+            + (note ? `, ${note}: a show load is continuous. Tick 100% rated behind the ⚙ if `
+                + 'the service is.' : (rule.main100 ? '. The service is 100% rated.' : ', the rating.'));
         const use = document.createElement('span');
         use.className = 'hw-dock-unit-use' + (load.over ? ' hw-dock-unit-use-over' : '');
         use.textContent = `${load.amps.toFixed(1)}/${+limit.toFixed(1)} A`;

@@ -36,8 +36,13 @@ from test_nfer_custom_rulings import (  # noqa: E402,F401 - fixtures
 
 
 def two(page, a_locked=False, b_locked=False, grouped=False, extra=None):
+    # B's cabinets draw other watts, so the walls never walk their circuits
+    # as one: a grouping that re-walked a locked screen's circuits would be
+    # refused (round 5, test_r5_power_rulings.py), and these tests are
+    # about the lock question itself.
     specs = [{'name': 'A', 'columns': 3, 'props': {'locked': a_locked}},
-             {'name': 'B', 'columns': 3, 'x': 800, 'props': {'locked': b_locked}}]
+             {'name': 'B', 'columns': 3, 'x': 800,
+              'props': {'locked': b_locked, 'panelWatts': 140}}]
     if extra:
         specs.append(extra)
     ids = make(page, specs, group=grouped)

@@ -35,7 +35,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 pytest.importorskip("playwright.sync_api", reason="playwright not installed")
 
-SIZES_DIFFER = 'Cabinet sizes differ - runs stay per screen. Use Custom to run across.'
+SIZES_DIFFER = 'Cabinet sizes differ, so runs stay per screen. Use Custom to run across.'
 
 
 @pytest.fixture(scope="module", autouse=True)

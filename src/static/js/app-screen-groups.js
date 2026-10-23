@@ -40,7 +40,7 @@ import { stripScreenFeeds } from './app-clipboard.js';
 // What the greyed "Route <group> as one screen" switch says when the
 // members' cabinet sizes differ (updateGroupRouteControl).
 const ROUTE_SIZES_DIFFER_TEXT =
-    'Cabinet sizes differ - runs stay per screen. Use Custom to run across.';
+    'Cabinet sizes differ, so runs stay per screen. Use Custom to run across.';
 
 class _ScreenGroups {
 
@@ -583,6 +583,9 @@ class _ScreenGroups {
         const chosen = keep.length ? this._lockedGroupSettings(screens, keep)
             : await this._resolveGroupSettings(screens, 'create');
         if (!chosen) return null;  // Cancel groups nothing and changes nothing
+        // A grouping that would REPACK a locked screen is refused whole
+        // (_groupRepacksLocked).
+        if (this._groupRepacksLocked(screens, keep, chosen, null, screens)) return null;
         if (lock.locked !== null) screens.forEach(l => { l.locked = lock.locked; });
         this._applyGroupSettings(screens.filter(l => !keep.includes(l)), chosen);
         screens.forEach(layer => this._detachLayerFromGroups(layer));
@@ -620,6 +623,7 @@ class _ScreenGroups {
         const chosen = keep.length ? this._lockedGroupSettings(all, keep)
             : await this._resolveGroupSettings(all, 'add');
         if (!chosen) return false;
+        if (this._groupRepacksLocked(all, keep, chosen, group, incoming)) return false;
         if (lock.locked !== null) all.forEach(l => { l.locked = lock.locked; });
         this._applyGroupSettings(all.filter(l => !keep.includes(l)), chosen);
         if (!Array.isArray(group.layer_ids)) group.layer_ids = [];
@@ -631,6 +635,83 @@ class _ScreenGroups {
         this._shareGroupSplitters(group, keep);
         this._reflowGroupBlocks();
         await this._commitGroupChange('Add to Group');
+        return true;
+    }
+
+    // A LOCKED SCREEN IS NEVER REPACKED BY GROUPING (the owner's ruling,
+    // 2026-10-23): a wall packs as one (_circuitPackRule) and, of matching
+    // cabinets, walks its circuits as one (getAutoRoutePlan), so grouping
+    // a locked screen under "Lock the whole group" can move its packing %
+    // or re-walk its circuits into the wall. The grouping is tried first
+    // on the live records - the settings the unlocked screens take, the
+    // membership, the shared splitter knobs - and put back; when any
+    // locked screen of `keep` would pack at another % or read other
+    // circuits, it is refused whole and named, and nothing changes: no
+    // write, no history entry. `group` is the group joined (Add to group)
+    // or null for a new one; `incoming` the screens joining it.
+    _groupRepacksLocked(all, keep, chosen, group, incoming) {
+        if (!keep || !keep.length || typeof this.circuitCapacity !== 'function') return false;
+        const project = this.project || {};
+        const sig = (l) => {
+            const pct = this.circuitCapacity(l).pct;
+            const circuits = (typeof this.screenCircuits === 'function' ? this.screenCircuits(l) : [])
+                .map(c => [c.num, (c.panels || []).map((p, i) => {
+                    const on = c.layers && c.layers[i] ? c.layers[i].id : l.id;
+                    return `${on}:${p.row}:${p.col}`;
+                })]);
+            return JSON.stringify([pct, circuits]);
+        };
+        this._circuitTailCache = null;
+        const before = new Map(keep.map(l => [l, sig(l)]));
+        // everything the trial writes: the screens' fields, and the group
+        // list with each group's members
+        const reach = new Set(all);
+        (project.groups || []).forEach(g => (g && Array.isArray(g.layer_ids) ? g.layer_ids : [])
+            .forEach(id => {
+                if (!all.some(l => l.id === id)) return;
+                (this.getGroupMembers(g) || []).forEach(m => reach.add(m));
+            }));
+        const releaseFields = this._holdLayerFields([...reach]);
+        const hadGroups = Object.prototype.hasOwnProperty.call(project, 'groups');
+        const groupsRef = project.groups;
+        const groupsList = Array.isArray(groupsRef) ? groupsRef.slice() : null;
+        const memberIds = groupsList ? groupsList.map(g => (g && Array.isArray(g.layer_ids)
+            ? g.layer_ids.slice() : (g ? g.layer_ids : undefined))) : null;
+        let after;
+        try {
+            this._writeGroupSettings(all.filter(l => !keep.includes(l)), chosen);
+            let target = group;
+            if (target) {
+                if (!Array.isArray(target.layer_ids)) target.layer_ids = [];
+                (incoming || []).forEach(layer => {
+                    this._detachLayerFromGroups(layer);
+                    target.layer_ids.push(layer.id);
+                    layer.group_id = target.id;
+                });
+            } else {
+                all.forEach(layer => this._detachLayerFromGroups(layer));
+                target = { id: '__group_repack_trial__', name: '', layer_ids: all.map(l => l.id) };
+                if (!Array.isArray(project.groups)) project.groups = [];
+                project.groups.push(target);
+                all.forEach(layer => { layer.group_id = target.id; });
+            }
+            this._shareGroupSplitters(target, keep);
+            this._circuitTailCache = null;
+            after = new Map(keep.map(l => [l, sig(l)]));
+        } finally {
+            releaseFields();
+            if (!hadGroups) delete project.groups;
+            else project.groups = groupsRef;
+            if (groupsList) {
+                groupsRef.length = 0;
+                groupsList.forEach(g => groupsRef.push(g));
+                groupsList.forEach((g, i) => { if (g) g.layer_ids = memberIds[i]; });
+            }
+            this._circuitTailCache = null;
+        }
+        const repacked = keep.filter(l => before.get(l) !== after.get(l));
+        if (!repacked.length) return false;
+        this._showLockedError(repacked, 'repack');
         return true;
     }
 
@@ -829,7 +910,7 @@ class _ScreenGroups {
         row.title = canRoute
             ? 'Off: each screen cables on its own'
             : (sizesDiffer ? ROUTE_SIZES_DIFFER_TEXT
-                : 'These screens never route as one - the cabinets differ, or a member is hand-wired');
+                : 'These screens never route as one: the cabinets differ, or a member is hand-wired');
         if (note) {
             note.textContent = sizesDiffer ? ROUTE_SIZES_DIFFER_TEXT : '';
             note.style.display = sizesDiffer ? '' : 'none';
@@ -1268,6 +1349,20 @@ class _ScreenGroups {
 
     _applyGroupSettings(layers, chosen) {
         if (!chosen) return;
+        this._writeGroupSettings(layers, chosen);
+        // The processor owns which bit depths and frame rates exist, so the
+        // two Screen Info selects have to be rebuilt against what was just
+        // written - the same call the single-screen processor handler makes.
+        // Without it the sidebar keeps offering the OLD processor's rates.
+        if (typeof this.updateBitDepthOptions === 'function') this.updateBitDepthOptions();
+        if (typeof this.updateFrameRateOptions === 'function') this.updateFrameRateOptions();
+        if (typeof this.updateLowLatencyUI === 'function') this.updateLowLatencyUI();
+    }
+
+    // The chosen settings written onto `layers`, and nothing else (the
+    // grouping's repack trial writes them too, _groupRepacksLocked).
+    _writeGroupSettings(layers, chosen) {
+        if (!chosen) return;
         Object.keys(chosen).forEach(field => {
             (layers || []).forEach(layer => {
                 if (!layer) return;
@@ -1282,13 +1377,6 @@ class _ScreenGroups {
                 layer[field] = chosen[field];
             });
         });
-        // The processor owns which bit depths and frame rates exist, so the
-        // two Screen Info selects have to be rebuilt against what was just
-        // written - the same call the single-screen processor handler makes.
-        // Without it the sidebar keeps offering the OLD processor's rates.
-        if (typeof this.updateBitDepthOptions === 'function') this.updateBitDepthOptions();
-        if (typeof this.updateFrameRateOptions === 'function') this.updateFrameRateOptions();
-        if (typeof this.updateLowLatencyUI === 'function') this.updateLowLatencyUI();
     }
 
     // Resolves to the values to write ({} when nothing had to be chosen), or
