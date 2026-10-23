@@ -2805,10 +2805,10 @@ class _HardwareDock {
             const chip = this._plugChip(t);
             chip.title = `${t.name} from ${name}. Drag onto a screen: the `
                 + `next free multi on ${name} lands on the screen's next `
-                + `unassigned circuits as a ${t.name}. The circuits it `
+                + `unassigned circuits as ${this._aAn(t.name)} ${t.name}. The circuits it `
                 + `would feed light up under the cursor, and the ${t.name} `
                 + 'that lands wears its type chip. Refused, with the reason, when '
-                + `the screen\'s breakout does not take a ${t.name}.`;
+                + `the screen\'s breakout does not take ${this._aAn(t.name)} ${t.name}.`;
             this._dockWireDraggable(chip, {
                 type: 'plug', distroId: d.id, output: t.id,
                 title: `${name} · ${t.name}`,
@@ -3040,7 +3040,7 @@ class _HardwareDock {
             + (feedLegA > 0
                 ? `. L21-30 feed, ${feedLimitText} per leg` : '')
             + (overflow ? `. OVERFLOW: more circuits than the `
-                + `${boxSize === 1 ? 'one' : boxSize === 3 ? 'three' : 'six'} a ${boxType.name} holds` : '')
+                + `${boxSize === 1 ? 'one' : boxSize === 3 ? 'three' : 'six'} ${this._aAn(boxType.name)} ${boxType.name} holds` : '')
             + (typeInfo.faceBox && typeInfo.faceBox.paired
                 ? `. Paired with ${this._faceRowSummary(d, typeInfo.faceBox.primaryRowId)}, `
                     + 'the same circuits; patch a circuit to one connector or the other' : '')
@@ -3224,9 +3224,9 @@ class _HardwareDock {
         if (editable) {
             const offered = this.distroOutputs(d);
             const list = offered.length ? offered : this.getDistroOutputTypes();
-            el.title = `${boxName} is a ${t.name}. Click to cycle: `
+            el.title = `${boxName} is ${this._aAn(t.name)} ${t.name}. Click to cycle: `
                 + `${list.map(x => x.name).join(' → ')}. Drag it onto `
-                + `a circuit and it lands as a ${t.name}; refused, with the `
+                + `a circuit and it lands as ${this._aAn(t.name)} ${t.name}; refused, with the `
                 + 'reason, when the screen\'s breakout does not take one.';
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -3240,7 +3240,7 @@ class _HardwareDock {
                 ? `${boxName} is typed ${t.name} but holds `
                     + `${info.implied.name} circuits. The strip offers the `
                     + 'fix.'
-                : `${boxName} is a ${t.name}. The type follows what `
+                : `${boxName} is ${this._aAn(t.name)} ${t.name}. The type follows what `
                     + 'is on it. Clear its circuits to change it.';
         }
         return el;

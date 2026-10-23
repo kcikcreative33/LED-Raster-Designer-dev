@@ -1275,7 +1275,10 @@ class _ScreenInfo {
         if (!layer) return;
         // Visibility is not a change: a locked screen shows and hides, and
         // so does any member of a half-locked group (the owner's ruling,
-        // round 7). No lock guard here.
+        // round 7). No lock guard on the screen itself; but a hide or show
+        // that would re-plan ANOTHER locked screen is refused, naming it
+        // (_visibilityRepacksLocked, round 8).
+        if (this._visibilityRepacksLocked([layer], !layer.visible)) return;
         layer.visible = !layer.visible;
         // Undo audit: the eye toggle recorded history but never told the
         // server, so any server-sourced adoption (a canvas edit's response,
@@ -1340,6 +1343,58 @@ class _ScreenInfo {
         // v0.10.5: record the show/hide. Without an entry of its own it rode
         // along on whatever the user did next, so one Undo reverted both.
         this.saveState(layer.visible ? 'Show Layer' : 'Hide Layer');
+    }
+
+    // HIDING NEVER RE-PLANS A LOCKED SCREEN (the owner's ruling, round 8):
+    // a hidden screen leaves its group's wall walk and packing, so hiding
+    // or showing one member can re-plan the others (a locked member that
+    // rode the wall's circuits gets its own multi). When the show or hide
+    // of `toggled` (set to `visible`) would change any OTHER locked
+    // screen's circuits (their number, cabinets or multi) or its packing
+    // %, the toggle is refused whole, the locked screens named, and
+    // nothing changes: no write, no history entry. A hide that changes
+    // nothing locked still works, on a locked or half-locked group too.
+    //
+    // Tried on the live records: the flags are set, every locked screen
+    // read, and the flags put back before this returns. The toggled
+    // screens themselves are not compared: a hidden screen prints nowhere,
+    // and showing it brings back what it had. True when refused.
+    _visibilityRepacksLocked(toggled, visible) {
+        const list = (toggled || []).filter(Boolean);
+        if (!list.some(l => (l.type || 'screen') === 'screen')) return false;
+        if (typeof this.circuitCapacity !== 'function' || typeof this.screenCircuits !== 'function') return false;
+        const skip = new Set(list);
+        const locked = ((this.project && this.project.layers) || []).filter(l => l
+            && !skip.has(l) && (l.type || 'screen') === 'screen' && this._layerLocked(l));
+        if (!locked.length) return false;
+        const sig = (l) => {
+            const circuits = this.screenCircuits(l).map(c => [c.num, (c.panels || []).map((p, i) => {
+                const on = c.layers && c.layers[i] ? c.layers[i].id : l.id;
+                return `${on}:${p.row}:${p.col}`;
+            })]);
+            const multis = (typeof this.getSocaPlan === 'function' ? this.getSocaPlan(l) : [])
+                .map(s => [s.soca, s.number, s.name, (s.legs || []).map(g => `${g.leg}:${g.label}`)]);
+            return JSON.stringify([this.circuitCapacity(l).pct, circuits, multis]);
+        };
+        this._circuitTailCache = null;
+        const before = new Map(locked.map(l => [l, sig(l)]));
+        const held = list.map(l => [l, Object.prototype.hasOwnProperty.call(l, 'visible'), l.visible]);
+        let after;
+        try {
+            list.forEach(l => { l.visible = visible; });
+            this._circuitTailCache = null;
+            after = new Map(locked.map(l => [l, sig(l)]));
+        } finally {
+            held.forEach(([l, had, v]) => {
+                if (had) l.visible = v;
+                else delete l.visible;
+            });
+            this._circuitTailCache = null;
+        }
+        const repacked = locked.filter(l => before.get(l) !== after.get(l));
+        if (!repacked.length) return false;
+        this._showLockedError(repacked, 'repack');
+        return true;
     }
 
     // A lock is the whole group's (app-screen-groups.js, "one lock per

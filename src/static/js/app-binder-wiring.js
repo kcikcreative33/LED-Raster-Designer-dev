@@ -393,10 +393,13 @@ class _BinderWiring {
             // one cable: its length is the output's home run, and the
             // caption says it is crowded.
             const crowd = box.crowded || 0;
+            // an overfull multi box, as the pull sheet notes it
+            const ovf = box.overfull && typeof this._fanWord === 'function' ? box.overfull : null;
             const caption = [box.name,
                              this._bBoxTypeText(box),
                              box.homeRun ? this.pullLengthText(box.homeRun, this.pullHomeRunKind(box)) : 'no length',
-                             ...(crowd ? [`${crowd} circuits on a one-circuit output`] : [])]
+                             ...(crowd ? [`${crowd} circuits on a one-circuit output`] : []),
+                             ...(ovf ? [`${ovf.circuits} circuits on a ${this._fanWord(ovf.size)}-circuit output`] : [])]
                 .join(' · ');
             const d = { key: box.key, title: caption, n: slots, sockets: new Map(), notes: new Map() };
             if (box.distroId) {

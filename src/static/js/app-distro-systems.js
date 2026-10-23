@@ -760,7 +760,7 @@ class _DistroSystems {
             const bt = this.getPowerBreakout(layer);
             if (!type.breakouts.includes(bt.id)) {
                 return { ok: false, why: `${layer.name} is set to `
-                    + `${this._breakoutShortName(bt)}, and a ${type.name} breaks out to `
+                    + `${this._breakoutShortName(bt)}, and ${this._aAn(type.name)} ${type.name} breaks out to `
                     + `${box.conn.id === 'l2130' ? 'an L21-30 box' : 'a six-circuit multi'}; `
                     + 'change its breakout first' };
             }
@@ -1123,6 +1123,7 @@ class _DistroSystems {
                 }
             }
             const physical = new Map();     // key -> [{c, label}]
+            const crowded = this._faceCrowding(d);
             // The region's packing % (app-power _distroPackPct), the one
             // the screens on this distro are packed to, so a fully packed
             // circuit never trips this check.
@@ -1143,10 +1144,20 @@ class _DistroSystems {
                 // (the dock's "more circuits than the three ...").
                 if (c.box.kind === 'direct' && c.s.legs.length > c.box.size) {
                     const conn = c.box.conn.short;
-                    const an = /^(?:[aeiou]|L\d)/i.test(conn) ? 'an' : 'a';
+                    const cr = crowded.find(r => r.number === c.box.number);
+                    const where = (cr && cr.where) || c.s.name || `${name} ${c.box.number}`;
+                    // Other multis on the same output (a hidden screen's
+                    // among them, which keeps its slot): the line says the
+                    // output's whole count, as the pull sheet and the
+                    // distro sheet do, and names the hidden holder (round
+                    // 8). An over-capacity line below names it already.
+                    const all = cr && cr.circuits > c.s.legs.length
+                        ? `, and ${where} carries ${cr.circuits} circuits in all` : '';
+                    const held = cr && !this._crowdCapacityText(d, cr)
+                        ? this._hiddenHolderClause(cr.members) : '';
                     say(`dir:${c.layer.id}:${c.s.soca}`, `${c.layer.name}'s ${c.s.legs.length} `
-                        + `circuits are on ${c.s.name || `${name} ${c.box.number}`}, ${an} ${conn} `
-                        + 'that takes one circuit only. Move it to a multi output.');
+                        + `circuits are on ${where}, ${this._aAn(conn)} ${conn} `
+                        + `that takes one circuit only${all}. Move it to a multi output.${held}`);
                 }
                 const elig = this.faceBoxEligible(d, c.box, c.layer);
                 if (!elig.ok && !/breakout/.test(elig.why)) say(`fv:${c.layer.id}:${c.box.number}`, elig.why);
@@ -1175,7 +1186,7 @@ class _DistroSystems {
                     const rating = this.faceConnectorRatingA(d, c.box);
                     if (rating != null && amps > rating + 1e-9 && c.box.kind === 'direct') {
                         say(`conn:${key}:${c.box.number}`, `${label} draws ${amps.toFixed(1)} A, and `
-                            + `a ${c.box.conn.short} is rated ${rating} A here`);
+                            + `${this._aAn(c.box.conn.short)} ${c.box.conn.short} is rated ${rating} A here`);
                     }
                 }
             }
@@ -1195,7 +1206,7 @@ class _DistroSystems {
             // circuits are not on this distro's list - so the crowd line is
             // said whenever no visible member's own line was, a hidden
             // member past the output included.
-            for (const cr of this._faceCrowding(d)) {
+            for (const cr of crowded) {
                 const held = this._hiddenHolderClause(cr.members);
                 const text = this._crowdCapacityText(d, cr);
                 if (text) {
@@ -1227,6 +1238,13 @@ class _DistroSystems {
         return ` ${list} ${hidden.length === 1 ? 'is hidden and still holds' : 'are hidden and still hold'} it.`;
     }
 
+    // "a" or "an" before a connector or box name, as it is said: "an
+    // L21-30", "an Edison", "a TRUE1", "a Socapex 208V". The one rule
+    // every crowding and overflow line reads.
+    _aAn(word) {
+        return /^(?:[aeiou]|L\d)/i.test(String(word || '').trim()) ? 'an' : 'a';
+    }
+
     // ---- overfull multi outputs (round 7) ----------------------------------
     //
     // A multi output (a Socapex, an L21-30, a box on an old distro) has as
@@ -1246,6 +1264,7 @@ class _DistroSystems {
         if (!d || typeof this._distroMultiNumbers !== 'function') return [];
         const layers = (this.project && this.project.layers) || [];
         const out = [];
+        let labels;
         for (const [n, list] of this._distroMultiNumbers(d.id)) {
             const info = this.distroBoxType(d, n, list);
             if (info.faceBox && info.faceBox.kind === 'direct') continue;
@@ -1257,11 +1276,18 @@ class _DistroSystems {
                 return layer ? { layer, soca: m.soca, legs: m.legs, hidden: layer.visible === false } : null;
             }).filter(Boolean);
             if (!members.some(m => !m.hidden)) continue;
-            const named = members.filter(m => !m.hidden).concat(members.filter(m => m.hidden))
+            if (labels === undefined) {
+                labels = typeof this.distroBoxLabels === 'function' ? this.distroBoxLabels() : null;
+            }
+            // `label` is the box's name on paper, the one the distro
+            // sheet's table and the pull sheet print (distroBoxLabels,
+            // round 8); the first named multi when the map has none.
+            const paper = labels ? labels.get(`${d.id}|${n}`) : null;
+            const named = paper ? null : members.filter(m => !m.hidden).concat(members.filter(m => m.hidden))
                 .map(m => this.getSocaPlan(m.layer).find(s => s.soca === m.soca))
                 .find(s => s && s.name);
             out.push({ number: n, where: `${this.distroLabel(d)} ${n}`,
-                       label: (named && named.name) || `${this.distroLabel(d)} ${n}`,
+                       label: paper || (named && named.name) || `${this.distroLabel(d)} ${n}`,
                        type: info.type, size, circuits, members });
         }
         return out.sort((a, b) => a.number - b.number);
@@ -1285,7 +1311,7 @@ class _DistroSystems {
     // a Socapex 208V holds. WALL A is hidden and still holds it."
     _boxOverflowText(ov) {
         return `${ov.where} has more circuits than the ${this._fanWord(ov.size)} `
-            + `a ${ov.type.name} holds.${this._hiddenHolderClause(ov.members)}`;
+            + `${this._aAn(ov.type.name)} ${ov.type.name} holds.${this._hiddenHolderClause(ov.members)}`;
     }
 
     // ---- crowded outputs (owner, 2026-10-18) -------------------------------
@@ -1338,16 +1364,21 @@ class _DistroSystems {
                 by.set(n, rec);
             }
         }
-        // `where` is the output as the labels name it ("PD4" - the name the
-        // multis on it wear, a visible one's first), else the distro and
-        // number.
-        return [...by.values()]
+        // `where` is the output as paper names it: the distro sheet's table
+        // and the pull sheet's label (distroBoxLabels, round 8), else the
+        // name the multis on it wear (a visible one's first), else the
+        // distro and number.
+        const crowded = [...by.values()]
             .filter(r => r.circuits > r.box.size
-                && (includeHidden || r.members.some(m => !m.hidden)))
+                && (includeHidden || r.members.some(m => !m.hidden)));
+        const labels = crowded.length && typeof this.distroBoxLabels === 'function'
+            ? this.distroBoxLabels() : null;
+        return crowded
             .map(r => {
+                const paper = labels ? labels.get(`${d.id}|${r.number}`) : null;
                 const named = r.members.find(m => !m.hidden && m.name)
                     || r.members.find(m => m.name);
-                return { ...r, where: (named && named.name) || `${this.distroLabel(d)} ${r.number}` };
+                return { ...r, where: paper || (named && named.name) || `${this.distroLabel(d)} ${r.number}` };
             })
             .sort((a, b) => a.number - b.number);
     }
@@ -1437,7 +1468,7 @@ class _DistroSystems {
             return `<p style="margin:0 0 8px;">${esc(this._crowdWho(cr.members))} `
                 + `${cr.members.length === 1 ? 'is' : 'are'} on ${esc(where)}.`
                 + `${esc(this._hiddenHolderClause(cr.members))} ${esc(where)} would become `
-                + `a ${esc(cr.box.conn.short)}, which carries ${this._circuitsWord(cr.box.size)}.</p>`
+                + `${this._aAn(cr.box.conn.short)} ${esc(cr.box.conn.short)}, which carries ${this._circuitsWord(cr.box.size)}.</p>`
                 + (cap ? `<p class="crowd-cap" style="margin:0 0 8px; color:#e05050;">${esc(cap)}</p>` : '');
         }).join('');
         const where = [...new Set(made.map(cr => cr.where))].join(', ');
@@ -1529,22 +1560,29 @@ class _DistroSystems {
         const s = this.getSocaPlan(layer).find(x => x.soca === Number(socaIndex));
         if (!s) return null;
         let others = 0;
+        const holders = [];
         for (const l of (this.project && this.project.layers) || []) {
             if ((l.type || 'screen') !== 'screen') continue;
             const assign = l.powerSocaDistro || {};
             const pins = l.powerSocaNumber || {};
             for (const o of this.getSocaPlan(l)) {
                 if (l === layer && o.soca === s.soca) continue;
-                if (assign[o.soca] === d.id && parseInt(pins[o.soca], 10) === n) others += o.legs.length;
+                if (assign[o.soca] === d.id && parseInt(pins[o.soca], 10) === n) {
+                    others += o.legs.length;
+                    holders.push({ layer: l, hidden: l.visible === false });
+                }
             }
         }
         if (s.legs.length + others <= box.size) return null;
         const where = `${this.distroLabel(d)} ${n}`;
+        const an = this._aAn(box.conn.short);
+        // The output already full because of a hidden screen's multi (it
+        // keeps its slot, round 6) names that screen, as the tray does.
         return s.legs.length > box.size
             ? `${layer.name}'s ${s.legs.length}-circuit multi cannot go on ${where}: `
-                + `a ${box.conn.short} carries ${this._circuitsWord(box.size)}. Use a multi output.`
+                + `${an} ${box.conn.short} carries ${this._circuitsWord(box.size)}. Use a multi output.`
             : `${where} already carries its ${this._circuitsWord(box.size)}, and `
-                + `a ${box.conn.short} takes no more.`;
+                + `${an} ${box.conn.short} takes no more.${this._hiddenHolderClause(holders)}`;
     }
 
     _sayCrowdRefusal(text) {
