@@ -1101,7 +1101,7 @@ def test_a_port_cleared_from_its_screen_keeps_its_snake(page):
 
 def test_the_canvas_tag_follows_the_switch_and_the_export(page):
     """Off (the default): the data pass paints no home-run text on screen
-    or in exportMode. Tick Show Cable Tags: one 'Toggle Data Cable Tags'
+    or in exportMode. Tick Show Cable Tags: one 'Toggle Data Tags'
     step, the flag lands on the server, and both passes paint FOH beside
     ports 1-6 (their sockets ride the snake). Undo un-ticks and un-paints."""
     pg, ids = page
@@ -1112,7 +1112,7 @@ def test_the_canvas_tag_follows_the_switch_and_the_export(page):
     box.click()
     _settle(pg)
     st = pg.evaluate(STATE_JS, ids)
-    assert st['flag'] is True and st['action'] == 'Toggle Data Cable Tags', st
+    assert st['flag'] is True and st['action'] == 'Toggle Data Tags', st
     assert st['index'] == index + 1, st
     frame = pg.evaluate(FRAME_TEXTS_JS)
     assert frame['interactive'] == ['FOH'] * 6, frame

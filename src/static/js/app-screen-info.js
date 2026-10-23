@@ -43,8 +43,10 @@ class _ScreenInfo {
     // the screen's own figure; a HALF TILE is the panel library's weight
     // for the model's matching half-size variant where the library has
     // one that matches perfectly (catalogHalfWeightKg: same manufacturer
-    // and series, exactly half on the halved axis, the same pitch), else
-    // 0.65 of the full cabinet's (_panelWeightFactor), as it always was.
+    // and series, exactly half on the halved axis, the same pitch; a
+    // weight typed over the saved model's scales it by the library's
+    // half/full ratio), else 0.65 of the full cabinet's
+    // (_panelWeightFactor), as it always was.
     // Power reads its own factor (getPanelLoadFactor).
     getPanelWeightKg(layer, panel) {
         const w = Number(layer && layer.panel_weight) || 20;

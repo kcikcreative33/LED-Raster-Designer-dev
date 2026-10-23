@@ -503,8 +503,11 @@ def test_screen_info_names_the_panel_and_a_hand_edit_of_its_size_forgets_it(pick
     types = pg.evaluate("(id) => window.app.pullPanelTypes(window.app.project.layers.find(l => l.id === id))", air)
     assert types == {'none': 'Curve wall tile', 'height': 'Curve wall tile half (500 × 500 mm)',
                      'width': 'Curve wall tile half (250 × 1000 mm)'}, types
-    assert pg.evaluate("(id) => window.app.catalogHalfWeightKg("
-                       "window.app.project.layers.find(l => l.id === id), 'height')", air) == 7.5
+    # the half follows the 12 kg typed over the library's 11 kg (owner,
+    # 2026-10-23): the library's 7.5 / 11 of it
+    half = pg.evaluate("(id) => window.app.catalogHalfWeightKg("
+                       "window.app.project.layers.find(l => l.id === id), 'height')", air)
+    assert abs(half - 7.5 / 11 * 12) < 1e-9, half
     assert pg.evaluate(SERVER_MODEL_JS, air)['name'] == 'Curve wall tile'
     # a hand change of the cabinet's mm forgets it all; the field then
     # shows the size the pull sheet falls back to as its placeholder

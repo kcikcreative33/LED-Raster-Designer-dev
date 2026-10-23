@@ -1824,7 +1824,7 @@ class _Wiring {
                     layer.showDataCableTags = showDataCableTagsEl.checked;
                 });
                 this.saveClientSideProperties();
-                this.updateLayers(this.getSelectedLayers(), true, 'Toggle Data Cable Tags');
+                this.updateLayers(this.getSelectedLayers(), true, 'Toggle Data Tags');
                 window.canvasRenderer.render();
             });
         }

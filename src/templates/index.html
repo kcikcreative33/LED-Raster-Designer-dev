@@ -793,12 +793,12 @@
                                          .mapping-mode-btn.active in theme.css); no inline background/color. -->
                                     <button type="button" id="mapping-organized" class="mapping-mode-btn active"
                                         style="flex: 1; padding: 5px 8px; font-size: 11px; border: 1px solid #555; border-radius: 4px; cursor: pointer; transition: all 0.15s;"
-                                        title="Ports fill complete rows or columns only - clean rectangular port regions">
+                                        title="Ports fill complete rows or columns only: clean rectangular port regions">
                                         Organized
                                     </button>
                                     <button type="button" id="mapping-max-capacity" class="mapping-mode-btn"
                                         style="flex: 1; padding: 5px 8px; font-size: 11px; border: 1px solid #555; border-radius: 4px; cursor: pointer; transition: all 0.15s;"
-                                        title="Ports fill to maximum pixel capacity - may split mid-row/column">
+                                        title="Ports fill to maximum pixel capacity, and may split mid-row/column">
                                         Max Capacity
                                     </button>
                                 </div>
@@ -2172,7 +2172,7 @@
                     <div style="display: flex; gap: 14px; align-items: center; font-size: 12px; color: #aaa;">
                         <span style="flex: none; width: 92px;">Palette</span>
                         <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;"><input type="radio" name="export-binder-palette" id="export-binder-colour" value="colour" checked> Color</label>
-                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;" data-tooltip="Black and white: grey cabinets, black runs told apart by a dash pattern per circuit, white label discs."><input type="radio" name="export-binder-palette" id="export-binder-printer" value="printer"> Printer</label>
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;" data-tooltip="Black and white: gray cabinets, black runs told apart by a dash pattern per circuit, white label discs."><input type="radio" name="export-binder-palette" id="export-binder-printer" value="printer"> Printer</label>
                     </div>
                     <div style="display: flex; gap: 14px; align-items: center; font-size: 12px; color: #aaa;">
                         <span style="flex: none; width: 92px;">Maps</span>
@@ -2208,7 +2208,7 @@
                         <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; flex: none; white-space: nowrap; line-height: 20px;" data-tooltip="Sheet 1.1: the show map with the positions, the show totals and the contents."><input type="checkbox" id="export-binder-cover" checked> Overview</label>
                         <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; flex: none; white-space: nowrap; line-height: 20px;" data-tooltip="A pull sheet per position with tick boxes (3.x), and the show-wide pull list at the back."><input type="checkbox" id="export-binder-pull" checked> Pull sheets</label>
                         <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; flex: none; white-space: nowrap; line-height: 20px;" data-tooltip="One sheet per distro and per processor at the back (4.x)."><input type="checkbox" id="export-binder-hardware" checked> Hardware</label>
-                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; flex: none; white-space: nowrap; line-height: 20px;" data-tooltip="A wiring sheet behind each map (2.x): Power Wiring right after a screen's Power sheet, every circuit wired to its breakout; Data Wiring right after its Data sheet, every port wired to its socket. Each follows its own map - Maps on Power gives no Data Wiring sheet, and the other way round."><input type="checkbox" id="export-binder-wiring" checked> Wiring</label>
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; flex: none; white-space: nowrap; line-height: 20px;" data-tooltip="A wiring sheet behind each map (2.x): Power Wiring right after a screen's Power sheet, every circuit wired to its breakout; Data Wiring right after its Data sheet, every port wired to its socket. Each follows its own map: Maps on Power gives no Data Wiring sheet, and the other way round."><input type="checkbox" id="export-binder-wiring" checked> Wiring</label>
                         </div>
                     </div>
                     <!-- The border, the title block column and the rev line, or
@@ -2301,7 +2301,7 @@
                     <option value="screens">One layer per screen</option>
                     <option value="elements">Elements per screen (checkerboard, borders, cabinet ids, arrows, circuits, labels as separate layers)</option>
                 </select>
-                <div style="margin-top: 4px; font-size: 11px; color: #777;">Elements puts each screen in a group of layers - Panels, Borders, Test pattern, Cabinet IDs, Data, Power, Screen name - and the images, text and canvas outline in a Canvas group. Layers with nothing on them are left out. Renders once per element, so it takes longer.</div>
+                <div style="margin-top: 4px; font-size: 11px; color: #777;">Elements puts each screen in a group of layers: Panels, Borders, Test pattern, Cabinet IDs, Data, Power and Screen name. The images, text and canvas outline go in a Canvas group. Layers with nothing on them are left out. Renders once per element, so it takes longer.</div>
             </div>
 
             <!-- File naming preview -->
@@ -2655,7 +2655,7 @@
                             <div class="prefs-row">
                                 <input type="number" id="pref-distro-rating" placeholder="400" min="1">
                                 <span>A</span>
-                                <select id="pref-distro-system" class="pm-fit" title="The power system a new distro starts on - the same list its gear offers."></select>
+                                <select id="pref-distro-system" class="pm-fit" title="The power system a new distro starts on: the same list its gear offers."></select>
                             </div>
                         </div>
                         <div class="pm-row">
@@ -3334,7 +3334,7 @@
                 <div style="color: #888; font-size: 12px; margin-bottom: 8px;">Created by Matt Knotts</div>
                 <a href="https://github.com/kman1898/LED-Raster-Designer" target="_blank" rel="noopener"
                    style="color: var(--ps-accent, #4A90E2); font-size: 12px; text-decoration: none;">github.com/kman1898/LED-Raster-Designer</a>
-                <div id="about-license" style="color: #888; font-size: 12px; margin-top: 10px; line-height: 1.5;">Free to use, including on paid shows. LED Raster Designer License — Help → License.</div>
+                <div id="about-license" style="color: #888; font-size: 12px; margin-top: 10px; line-height: 1.5;">Free to use, including on paid shows. LED Raster Designer License: see Help > License.</div>
             </div>
 
             <button id="about-close" class="btn" style="background: #3a3a3a; padding: 8px 24px; margin-top: 4px;">Close</button>

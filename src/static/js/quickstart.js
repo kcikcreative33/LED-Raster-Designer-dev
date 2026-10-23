@@ -3408,8 +3408,8 @@
         },
         panelWatts: {
             target: '#power-panel-watts', place: 'right', title: 'Power view and the math',
-            avoid: ['[data-mode="power"]', '#power-panel-watts'],
-            body: 'Power plans the electrical. Voltage, amperage and watts per cabinet set the cabinets a circuit carries and the circuits required.',
+            avoid: ['[data-mode="power"]', '#power-panel-watts', '#power-amperage-usable'],
+            body: 'Voltage, amperage and watts per cabinet set the cabinets a circuit carries and the circuits required. Beside Amperage you see the amps you can use, 16 A of a 20 A breaker on US power.',
             act: function (t) {
                 return t.click('[data-mode="power"]').then(function () {
                     return t.type('#power-panel-watts', '150', { enter: true });
@@ -3421,7 +3421,9 @@
                 var w = wall();
                 if (!w || Number(w.panelWatts) !== 150) return null;
                 var req = $('#power-circuits-required') ? $('#power-circuits-required').textContent.trim() : '?';
-                return '150 W per cabinet at 208 V, 20 A. Circuits required: ' + req + '.';
+                var usable = $('#power-amperage-usable') ? $('#power-amperage-usable').textContent.trim() : '';
+                if (!usable) return null;
+                return '150 W per cabinet at 208 V, ' + usable + '. Circuits required: ' + req + '.';
             }
         },
         // The panel input (1.5.4, app-power.js panelInput): a TRUE1 or
@@ -4005,8 +4007,10 @@
                 if (!w || A().isCustomPower(w) || !shared.length) return null;
                 if (shared.some(function (s) { return s.over; })) return null;
                 var load = A().shareLoad(w, shared[0].runIds);
+                var cap = A().circuitCapacity(w);
                 return shared.length + ' circuits, each a ' + shared[0].ways + 'fer of ' + shared[0].ways + ' column runs: '
-                    + load.amps.toFixed(1) + ' A on a ' + (+load.cap.toFixed(1)) + ' A circuit.';
+                    + load.amps.toFixed(1) + ' A against ' + (+load.cap.toFixed(1)) + ' A usable on a '
+                    + (+cap.breakerA.toFixed(1)) + ' A breaker.';
             }
         },
         // A take-over in automatic mode (canvas.js Alt+click): the shared

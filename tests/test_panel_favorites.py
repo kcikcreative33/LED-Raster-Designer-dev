@@ -12,6 +12,9 @@ figures, kept in localStorage when it was hearted. Picking it:
     saves NO model id and no halves, so the screen never names a library
     model that isn't there.
 
+The favorites list and the picker's summary show the same: the library's
+name and figures today, so the list matches what a pick makes.
+
 Each case starts from a favorite as 1.5.3 saved it.
 
 Run locally:
@@ -146,3 +149,48 @@ def test_the_rename_map_only_names_models_the_library_has(page):
         return { name: lib && lib.name, mfr: lib && lib._mfr, stillThere };
     }""")
     assert got == {'name': 'Graphite GP2.6 (4 in 1) Full Tile', 'mfr': 'ROE', 'stillThere': False}, got
+
+
+# The favorites list and the picker's summary show what a pick makes: the
+# library's name and figures today, not the snapshot's (owner, round 5).
+ROWS_JS = """async () => {
+    const app = window.app;
+    app.openPresetPicker();
+    const rows = () => [...document.querySelectorAll('#preset-picker-list .preset-picker-row[data-kind="favorite"]')];
+    for (let i = 0; i < 100 && !(app._panelCatalog && rows().length === 3 && !app._pickerFavsFromSnapshot); i++) {
+        await new Promise(r => setTimeout(r, 50));
+    }
+    await new Promise(r => setTimeout(r, 200));
+    const read = (r) => {
+        const divs = r.firstElementChild.children;
+        return { key: r.dataset.key, label: divs[0].textContent, sub: divs[1].textContent };
+    };
+    const out = { rows: rows().map(read), summaries: {} };
+    for (const r of rows()) {
+        r.click();
+        out.summaries[r.dataset.key] = document.getElementById('preset-picker-summary').textContent;
+    }
+    app.closePresetPicker();
+    return out;
+}"""
+
+
+def test_the_favorites_list_and_summary_show_the_librarys_panel(page):
+    pg, errors = page
+    got = pg.evaluate(ROWS_JS)
+    rows = {r['key']: r for r in got['rows']}
+    s = got['summaries']
+    # renamed: ROE's name today, its 125 W and 5.1 kg
+    old = 'ROE|Graphite 2.6 (4 in 1) Half Tile'
+    assert rows[old]['label'] == 'ROE Graphite GP2.6 (4 in 1) Half Tile', rows[old]
+    assert '125W/panel' in rows[old]['sub'] and '160W' not in rows[old]['sub'], rows[old]
+    assert s[old] == 'Panel: ROE Graphite GP2.6 (4 in 1) Half Tile, 500×500mm · 192×192px · 5.1kg · 125W', s
+    # corrected: 9.0 kg in the library, 8.5 kg in the snapshot
+    gp39 = 'ROE|Graphite GP3.9 Full Tile'
+    assert rows[gp39]['label'] == 'ROE Graphite GP3.9 Full Tile', rows[gp39]
+    assert s[gp39] == 'Panel: ROE Graphite GP3.9 Full Tile, 500×1000mm · 128×256px · 9kg · 320W', s
+    # gone from the library: the snapshot, as a pick makes it
+    gone = 'ROE|Retired Test Tile'
+    assert rows[gone]['label'] == 'ROE Retired Test Tile', rows[gone]
+    assert s[gone] == 'Panel: ROE Retired Test Tile, 600×337.5mm · 240×135px · 7.25kg · 180W', s
+    assert not errors, errors

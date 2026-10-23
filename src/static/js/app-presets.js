@@ -160,18 +160,28 @@ class _Presets {
                 sublabel: this.formatPresetSublabel(entry),
                 pickerKey: entry.name
             }));
-            const favRows = this.getAddLayerFavorites().map(p => ({
-                id: `panel:${this._favoriteKey(p._mfr, p.name)}`,
-                kind: 'favorite',
-                panel: p,
-                label: `${(p._mfr || '').replace(/_/g,' ')} ${p.name || ''}`.trim(),
-                sublabel: this.formatPresetSublabel({
-                    cabinet_width: p.pixels_w, cabinet_height: p.pixels_h,
-                    panel_width_mm: p.width_mm, panel_height_mm: p.height_mm,
-                    panelWatts: p.watts_max
-                }),
-                pickerKey: this._favoriteKey(p._mfr, p.name)
-            }));
+            // A favorite row shows what a pick of it makes: the library's
+            // model as it is now (_shownFavoritePanel), its new name and
+            // figures where the library renamed or corrected it. The row
+            // keeps the snapshot's key, so its order and its heart still
+            // find it.
+            const favs = this.getAddLayerFavorites();
+            this._pickerFavsFromSnapshot = favs.length > 0 && !this._panelCatalog;
+            const favRows = favs.map(p => {
+                const shown = this._shownFavoritePanel(p);
+                return {
+                    id: `panel:${this._favoriteKey(p._mfr, p.name)}`,
+                    kind: 'favorite',
+                    panel: p,
+                    label: this._catalogModelLabel(shown._mfr, shown),
+                    sublabel: this.formatPresetSublabel({
+                        cabinet_width: shown.pixels_w, cabinet_height: shown.pixels_h,
+                        panel_width_mm: shown.width_mm, panel_height_mm: shown.height_mm,
+                        panelWatts: shown.watts_max
+                    }),
+                    pickerKey: this._favoriteKey(p._mfr, p.name)
+                };
+            });
             // Sort by saved order; unknowns appended.
             const order = this.getAddLayerOrder();
             const orderIdx = id => {
@@ -424,8 +434,9 @@ class _Presets {
     }
 
     // A screen's half tile's weight in kg from the library, or null (the
-    // caller's 0.65 of the full cabinet). The screen does not store which
-    // model it was made from, so its model is FOUND: every library model
+    // caller's 0.65 of the full cabinet). A screen with a saved library
+    // model reads that model's half, scaled to a weight typed over the
+    // library's (see below). One saved before has no model, so it is FOUND: every library model
     // whose size (mm and pixels) and weight are this screen's own cabinet's
     // - the figures a library pick writes onto it - and every one of them
     // must have a perfect half (_catalogHalfOf) of one weight; a cabinet
@@ -439,12 +450,22 @@ class _Presets {
             if (typeof this._ensurePanelCatalogData === 'function') this._ensurePanelCatalogData();
             return null;
         }
-        // The screen's SAVED panel first (owner, 2026-10-22): its own
-        // half, whatever other models share its figures.
-        const saved = this._catalogSavedPanel(layer);
-        if (saved !== undefined) return saved ? this._catalogHalfOf(saved.mfr, saved.F, axis) : null;
         const w = Number(layer.panel_weight) || 20;
         const kg = (layer.weight_unit || 'kg') === 'lb' ? w / 2.20462 : w;
+        // The screen's SAVED panel first (owner, 2026-10-22): its own
+        // half, whatever other models share its figures. A weight typed
+        // over the library's carries to the half (owner, 2026-10-23:
+        // "Follow the typed weight"): the library's half/full ratio times
+        // the screen's full weight. At the library's own weight (a pick,
+        // lb to the hundredth) the half is the library's figure.
+        const saved = this._catalogSavedPanel(layer);
+        if (saved !== undefined) {
+            if (!saved) return null;
+            const half = this._catalogHalfOf(saved.mfr, saved.F, axis);
+            const full = Number(saved.F.weight_kg);
+            if (!(half > 0) || !(full > 0)) return null;
+            return Math.abs(full - kg) <= 0.006 ? half : half / full * kg;
+        }
         const key = [layer.panel_width_mm, layer.panel_height_mm, layer.cabinet_width, layer.cabinet_height,
                      kg.toFixed(4), axis].join('|');
         if (!this._halfWeightCache) this._halfWeightCache = new Map();
@@ -717,6 +738,11 @@ class _Presets {
             }
             this._renderPanelCatalogList();
             this._renderCatalogSourceTag();
+            // Favorites drawn before the library landed showed their
+            // snapshots: draw them again through the library, and the
+            // summary of a picked one with them.
+            if (this._pickerFavsFromSnapshot) this._renderPresetPickerLeftColumn();
+            this._updatePickerSummary();
         };
         if (this._panelCatalog) { finish(); return; }
         // Prefer the cached refreshed catalog if present, else the bundled file.
@@ -1028,13 +1054,15 @@ class _Presets {
         if (!summary) return;
         const sel = this._pickerSelection || {};
         if (sel.type === 'panel' && sel.panel) {
-            const p = sel.panel;
+            // The panel a pick makes (a favorite's snapshot read through
+            // the library), named and measured as the screen will be.
+            const p = this._shownFavoritePanel(sel.panel);
             const parts = [];
             if (p.width_mm != null) parts.push(`${p.width_mm}×${p.height_mm}mm`);
             if (p.pixels_w != null) parts.push(`${p.pixels_w}×${p.pixels_h}px`);
             if (p.weight_kg != null) parts.push(`${p.weight_kg}kg`);
             if (p.watts_max != null) parts.push(`${p.watts_max}W`);
-            summary.textContent = `Panel: ${sel.label}, ${parts.join(' · ')}`;
+            summary.textContent = `Panel: ${this._catalogModelLabel(p._mfr, p)}, ${parts.join(' · ')}`;
         } else if (sel.type === 'preset' && sel.key && sel.key !== '__default__') {
             summary.textContent = `Preset: ${sel.label || sel.key}`;
         } else {
@@ -1053,7 +1081,7 @@ class _Presets {
         if (brief && brief._addModeHtml === undefined) brief._addModeHtml = brief.innerHTML;
         if (replaceTitle !== null) {
             if (title) title.textContent = replaceTitle;
-            if (brief) brief.textContent = 'Only the cabinet changes: pixels, millimetres, weight, watts. Columns, rows, position, ports and circuits stay.';
+            if (brief) brief.textContent = 'Only the cabinet changes: pixels, millimeters, weight, watts. Columns, rows, position, ports and circuits stay.';
             if (confirmBtn) confirmBtn.textContent = 'Change';
         } else {
             if (title) title.textContent = 'Add Screen';
@@ -1235,6 +1263,15 @@ class _Presets {
         if (!renamed) return null;
         const cut = renamed.indexOf('|');
         return find(renamed.slice(0, cut), renamed.slice(cut + 1));
+    }
+
+    // A panel as the picker shows it: the library's model today where it
+    // has one (_libraryPanelFor, renames included), else the panel as
+    // given, so a favorite's row and the summary show what a pick makes.
+    _shownFavoritePanel(panel) {
+        const lib = this._libraryPanelFor(panel);
+        if (lib) return lib;
+        return { ...(panel || {}), _mfr: String((panel && (panel._mfr || panel.manufacturer)) || '') };
     }
 
     // What a panel pick hands addLayer / changeCabinetForLayers: the
