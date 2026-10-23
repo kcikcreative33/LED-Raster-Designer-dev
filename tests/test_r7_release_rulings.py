@@ -7,7 +7,8 @@
     than it takes is a FIX.
   * A half-locked group still lets you hide and show its screens.
   * Neither new FIX changes a count, so Opening an older show keeps its
-    19 lines.
+    19 lines. (Round 8 adds a 20th, the overfull multi box note, and
+    rewords these lines; tests/test_r8_release_rulings.py pins them.)
 
 Run locally:
     ~/.venvs/led-raster-designer/bin/python -m pytest tests/test_r7_release_rulings.py -v
@@ -57,29 +58,28 @@ def test_the_crowded_power_sheet_fix():
     fixes = _section('\nFIXES\n', None)
     assert ("- FIX: When a Power sheet has too many multis for their labels to fit beside the "
             "wall, the brackets get short tags and a key on the sheet lists each tag's full name "
-            "and length. Before, the labels were cut to D… or ran into each other. Other Power "
-            "sheets print as they did.") in fixes
+            "and length.") in fixes
+    assert "Before, the labels were cut to D… or ran into each other." in fixes
 
 
 def test_the_crowded_output_warning_fix():
     fixes = _section('\nFIXES\n', None)
     assert ("- FIX: The tray and the distro checks now warn you when an output carries more "
             "circuits than it takes, like two visible screens on a one-circuit output or a multi "
-            "with more circuits than its output has. The pull sheet and the distro sheet already "
-            "showed these.") in fixes
+            "with more circuits than its output has.") in fixes
 
 
 def test_a_half_locked_group_still_hides_and_shows():
     older = _section('OPENING AN OLDER SHOW', '\nFIXES\n')
     assert ("- CHANGE (IMPORTANT): A group saved half locked in an older show now counts as "
-            "locked. You can still hide and show its screens, since that doesn't change them, "
-            "but any other edit waits until you pick Lock or Unlock for the group.") in older
+            "locked. You can still hide and show its screens") in older
+    assert "any other edit waits until you pick Lock or Unlock for the group." in older
 
 
 def test_the_new_lines_change_no_counts():
     top = _top_entry()
     older = top[top.index('OPENING AN OLDER SHOW'):top.index('\nFIXES\n')]
-    assert len(re.findall(r'^- ', older, re.M)) == 19
+    assert len(re.findall(r'^- ', older, re.M)) == 20   # round 8: the overfull box note
     assert 'short tags' not in older and 'more circuits than it takes' not in older
 
 
