@@ -83,16 +83,26 @@ class _Presets {
         try { localStorage.setItem('addLayer.order', JSON.stringify(arr || [])); } catch {}
     }
     _favoriteKey(mfr, name) { return `${mfr}|${name}`; }
-    _isCatalogFavorited(mfr, name) {
+    // A favorite's key under the library's name today: a favorite saved
+    // under a model's old name (PANEL_CATALOG_RENAMES) is the same
+    // favorite as the renamed library row, so the row shows hearted and
+    // hearting it never adds a second copy.
+    _currentFavoriteKey(mfr, name) {
         const key = this._favoriteKey(mfr, name);
-        return this.getAddLayerFavorites().some(p => this._favoriteKey(p._mfr, p.name) === key);
+        return PANEL_CATALOG_RENAMES[key] || key;
+    }
+    _isCatalogFavorited(mfr, name) {
+        const key = this._currentFavoriteKey(mfr, name);
+        return this.getAddLayerFavorites().some(p => this._currentFavoriteKey(p._mfr, p.name) === key);
     }
     _toggleCatalogFavorite(panel) {
-        const key = this._favoriteKey(panel._mfr, panel.name);
+        const key = this._currentFavoriteKey(panel._mfr, panel.name);
         const favs = this.getAddLayerFavorites();
-        const idx = favs.findIndex(p => this._favoriteKey(p._mfr, p.name) === key);
-        if (idx >= 0) {
-            favs.splice(idx, 1);
+        const kept = favs.filter(p => this._currentFavoriteKey(p._mfr, p.name) !== key);
+        if (kept.length < favs.length) {
+            // every copy goes: one saved under the old name and one under
+            // the new are the same favorite
+            favs.splice(0, favs.length, ...kept);
         } else {
             // Snapshot only the fields we need so we don't bloat localStorage.
             favs.push({

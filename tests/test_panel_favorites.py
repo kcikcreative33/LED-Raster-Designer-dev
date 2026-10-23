@@ -15,6 +15,10 @@ figures, kept in localStorage when it was hearted. Picking it:
 The favorites list and the picker's summary show the same: the library's
 name and figures today, so the list matches what a pick makes.
 
+A favorite saved under a renamed model's old name is the same favorite as
+the renamed library row: the row shows hearted, and its heart removes the
+favorite rather than adding a second copy (owner, round 6).
+
 Each case starts from a favorite as 1.5.3 saved it.
 
 Run locally:
@@ -194,3 +198,101 @@ def test_the_favorites_list_and_summary_show_the_librarys_panel(page):
     assert rows[gone]['label'] == 'ROE Retired Test Tile', rows[gone]
     assert s[gone] == 'Panel: ROE Retired Test Tile, 600×337.5mm · 240×135px · 7.25kg · 180W', s
     assert not errors, errors
+
+
+# A renamed favorite's library row is hearted (owner, round 6): the
+# favorite 1.5.3 saved as "Graphite 2.6 (4 in 1) Full Tile" shows as ROE
+# Graphite GP2.6 (4 in 1) Full Tile, and the library row of that name is
+# the same favorite. Its heart removes it, never adds a duplicate.
+OLD_GRAPHITE_FULL_RAW = (
+    '[{"_mfr":"ROE","name":"Graphite 2.6 (4 in 1) Full Tile","width_mm":500,'
+    '"height_mm":1000,"pixels_w":192,"pixels_h":384,"weight_kg":8.6,'
+    '"watts_max":250,"source":"ledwallcentral"}]')
+
+HEART_JS = """async (raw) => {
+    const app = window.app;
+    const saved = localStorage.getItem('addLayer.favorites');
+    localStorage.setItem('addLayer.favorites', raw);
+    const NEW = 'Graphite GP2.6 (4 in 1) Full Tile';
+    const out = { steps: [] };
+    try {
+        out.favorited = app._isCatalogFavorited('ROE', NEW);
+        out.oldFavorited = app._isCatalogFavorited('ROE', 'Graphite 2.6 (4 in 1) Full Tile');
+        out.otherFavorited = app._isCatalogFavorited('ROE', 'Graphite GP2.6 Full Tile');
+        app.openPresetPicker();
+        for (let i = 0; i < 100 && !app._panelCatalogFlat; i++) await new Promise(r => setTimeout(r, 50));
+        const search = document.getElementById('panel-catalog-search');
+        search.value = 'GP2.6 (4 in 1) Full';
+        app._renderPanelCatalogList();
+        const libRow = () => [...document.querySelectorAll('#panel-catalog-list .panel-catalog-row')]
+            .find(r => r.dataset.mfr === 'ROE' && r.dataset.name === NEW) || null;
+        const favRows = () => [...document.querySelectorAll('#preset-picker-list .preset-picker-row[data-kind="favorite"]')];
+        for (let i = 0; i < 100 && favRows().length !== app.getAddLayerFavorites().length; i++) {
+            await new Promise(r => setTimeout(r, 50));
+        }
+        const read = async () => {
+            // the favorites column redraws after a fetch: wait for it
+            await new Promise(r => setTimeout(r, 200));
+            for (let i = 0; i < 60 && favRows().length !== app.getAddLayerFavorites().length; i++) {
+                await new Promise(r => setTimeout(r, 50));
+            }
+            const row = libRow();
+            return { heart: row ? row.querySelector('button').textContent : null,
+                     favs: app.getAddLayerFavorites().map(p => p.name),
+                     rows: favRows().map(r => r.firstElementChild.firstElementChild.textContent) };
+        };
+        out.steps.push(await read());
+        for (let i = 0; i < 3; i++) {
+            libRow().querySelector('button').click();
+            out.steps.push(await read());
+        }
+    } finally {
+        app.closePresetPicker();
+        const search = document.getElementById('panel-catalog-search');
+        if (search) search.value = '';
+        if (saved === null) localStorage.removeItem('addLayer.favorites');
+        else localStorage.setItem('addLayer.favorites', saved);
+    }
+    return out;
+}"""
+
+
+def test_a_renamed_favorite_hearts_its_library_row(page):
+    pg, errors = page
+    got = pg.evaluate(HEART_JS, OLD_GRAPHITE_FULL_RAW)
+    assert got['favorited'] is True and got['oldFavorited'] is True, got
+    assert got['otherFavorited'] is False, got
+    first, removed, added, removed_again = got['steps']
+    # as 1.5.3 saved it: one favorite row under ROE's name today, and the
+    # library row of that name is hearted
+    assert first == {'heart': '\u2665', 'favs': ['Graphite 2.6 (4 in 1) Full Tile'],
+                     'rows': ['ROE Graphite GP2.6 (4 in 1) Full Tile']}, first
+    # its heart removes the favorite; no second copy is added
+    assert removed == {'heart': '\u2661', 'favs': [], 'rows': []}, removed
+    # hearted again, it is saved under the new name, once
+    assert added == {'heart': '\u2665', 'favs': ['Graphite GP2.6 (4 in 1) Full Tile'],
+                     'rows': ['ROE Graphite GP2.6 (4 in 1) Full Tile']}, added
+    assert removed_again == {'heart': '\u2661', 'favs': [], 'rows': []}, removed_again
+    assert not errors, errors
+
+
+def test_unhearting_removes_old_and_new_copies_together(page):
+    """A favorites list that already holds the model under both names (a
+    duplicate the old heart could add) loses both copies on one click."""
+    pg, _ = page
+    got = pg.evaluate("""() => {
+        const app = window.app;
+        const saved = localStorage.getItem('addLayer.favorites');
+        try {
+            app.setAddLayerFavorites([
+                { _mfr: 'ROE', name: 'Graphite 2.6 (4 in 1) Full Tile' },
+                { _mfr: 'ROE', name: 'Graphite GP3.9 Full Tile' },
+                { _mfr: 'ROE', name: 'Graphite GP2.6 (4 in 1) Full Tile' }]);
+            app._toggleCatalogFavorite({ _mfr: 'ROE', name: 'Graphite GP2.6 (4 in 1) Full Tile' });
+            return app.getAddLayerFavorites().map(p => p.name);
+        } finally {
+            if (saved === null) localStorage.removeItem('addLayer.favorites');
+            else localStorage.setItem('addLayer.favorites', saved);
+        }
+    }""")
+    assert got == ['Graphite GP3.9 Full Tile'], got

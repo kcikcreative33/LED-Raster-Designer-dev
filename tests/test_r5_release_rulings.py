@@ -52,7 +52,8 @@ def test_the_notes_say_what_154_does():
     assert ('A change that would repack a locked screen is refused, and the message names '
             'the screen: turning 100% rated on or off, changing a distro\'s system, removing a '
             'distro, plugging in, moving or unplugging a multi, grouping, sharing circuits '
-            'through a 2fer or 3fer, 3fer it, or pasting power settings.') in flat
+            'through a 2fer or 3fer or removing one, 2fer it or 3fer it, or typing a power '
+            'setting on a screen grouped with it.') in flat
     # lengths convert in every field but a jumper's
     assert 'converts wherever you type a home run, cable, feeder, snake or fiber length' in flat
     assert 'converts wherever you type a cable length' not in flat
@@ -76,11 +77,12 @@ def test_count_changes_are_listed_under_opening_an_older_show():
     flat = _flat(older)
     for line in ('- CHANGE (IMPORTANT): The pull sheet has a row for each panel type on each screen and a '
                  'feeder row for each distro',
-                 '- CHANGE (IMPORTANT): Hidden screens are left out of distro and service loads everywhere',
+                 '- CHANGE (IMPORTANT): Hidden screens keep their multi numbers and outputs reserved',
                  '- CHANGE (IMPORTANT): The Overview\'s totals in the binder leave out hidden screens.',
-                 '- CHANGE (IMPORTANT): A distro with nothing on it is left off the binder.'):
+                 '- CHANGE (IMPORTANT): A distro with nothing on it, or only hidden screens, is left '
+                 'off the binder, and a service with nothing printing on it gets no Service sheet.'):
         assert line in flat, line
-    assert 'the last four change what\'s listed' in flat
+    assert 'the last six change what\'s listed or what you can do' in flat
 
 
 def test_whats_new_80_item_covers_a_screen_on_no_distro():
