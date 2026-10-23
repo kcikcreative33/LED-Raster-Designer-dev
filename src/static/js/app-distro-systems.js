@@ -1188,23 +1188,104 @@ class _DistroSystems {
             // hidden screen's among them, which keeps its output: round
             // 6), said the way the pull sheet and the distro sheet say it.
             // A single multi past it already has its own line above.
+            //
+            // Round 7 (crowding is flagged on every surface, and they
+            // agree): a single multi past the output has its own line
+            // above only when its screen is SHOWING - a hidden screen's
+            // circuits are not on this distro's list - so the crowd line is
+            // said whenever no visible member's own line was, a hidden
+            // member past the output included.
             for (const cr of this._faceCrowding(d)) {
-                const hidden = [...new Set(cr.members.filter(m => m.hidden).map(m => m.layer.name))];
-                const held = !hidden.length ? ''
-                    : ` ${hidden.length === 1 ? hidden[0]
-                        : `${hidden.slice(0, -1).join(', ')} and ${hidden[hidden.length - 1]}`} `
-                        + `${hidden.length === 1 ? 'is hidden and still holds' : 'are hidden and still hold'} it.`;
+                const held = this._hiddenHolderClause(cr.members);
                 const text = this._crowdCapacityText(d, cr);
                 if (text) {
                     say(`cap:${cr.number}`, held ? `${text}.${held}` : text);
-                } else if (cr.members.every(m => m.legs <= cr.box.size)) {
+                } else if (!cr.members.some(m => !m.hidden && m.legs > cr.box.size)) {
                     say(`cap:${cr.number}`, `${cr.where} ${cr.box.conn.short} carries ${cr.circuits} `
                         + `circuits, and it takes ${this._circuitsWord(cr.box.size)} only. `
                         + `Move one to a multi output.${held}`);
                 }
             }
         }
+        // A multi output holding more circuits than its fan (round 7): two
+        // multis pinned onto one box, a hidden screen's among them, deal
+        // past the box's last socket. The tray's box strip says it in the
+        // same words (the strip shows it once), naming the hidden holder.
+        for (const ov of this._boxOverflows(d)) {
+            say(`ovf:${ov.number}`, this._boxOverflowText(ov));
+        }
         return out;
+    }
+
+    // " WALL A is hidden and still holds it." for the hidden members of a
+    // crowded or overfull output, '' when none is hidden.
+    _hiddenHolderClause(members) {
+        const hidden = [...new Set((members || []).filter(m => m.hidden).map(m => m.layer.name))];
+        if (!hidden.length) return '';
+        const list = hidden.length === 1 ? hidden[0]
+            : `${hidden.slice(0, -1).join(', ')} and ${hidden[hidden.length - 1]}`;
+        return ` ${list} ${hidden.length === 1 ? 'is hidden and still holds' : 'are hidden and still hold'} it.`;
+    }
+
+    // ---- overfull multi outputs (round 7) ----------------------------------
+    //
+    // A multi output (a Socapex, an L21-30, a box on an old distro) has as
+    // many sockets as its type's fan. Multis pinned onto one box share its
+    // sockets (_resolveSharedSocas); asked for more, the extra circuits run
+    // off the fan (PD4-7, PD4-8 on a six-way) and the box is OVERFULL. A
+    // hidden screen keeps its slots (round 6), so its multi still fills the
+    // box. Every surface says it, from this one reading: the tray strip,
+    // the distro checks, the pull sheet and the distro sheet. A box only
+    // hidden screens fill is on no paper and is left out, as a crowded
+    // direct output is (_faceCrowding). Direct outputs are _faceCrowding's.
+    //
+    // [{ number, where, label, type, size, circuits, members: [{ layer,
+    // soca, legs, hidden }] }] - `where` is the tray's name for the box
+    // ("PD 4"), `label` the name the multis wear on paper ("PD4").
+    _boxOverflows(d) {
+        if (!d || typeof this._distroMultiNumbers !== 'function') return [];
+        const layers = (this.project && this.project.layers) || [];
+        const out = [];
+        for (const [n, list] of this._distroMultiNumbers(d.id)) {
+            const info = this.distroBoxType(d, n, list);
+            if (info.faceBox && info.faceBox.kind === 'direct') continue;
+            const size = Number(info.type && info.type.boxSize) || 6;
+            const circuits = list.reduce((t, m) => t + (m.legs || 0), 0);
+            if (!(circuits > size)) continue;
+            const members = list.map(m => {
+                const layer = layers.find(l => l.id === m.layerId);
+                return layer ? { layer, soca: m.soca, legs: m.legs, hidden: layer.visible === false } : null;
+            }).filter(Boolean);
+            if (!members.some(m => !m.hidden)) continue;
+            const named = members.filter(m => !m.hidden).concat(members.filter(m => m.hidden))
+                .map(m => this.getSocaPlan(m.layer).find(s => s.soca === m.soca))
+                .find(s => s && s.name);
+            out.push({ number: n, where: `${this.distroLabel(d)} ${n}`,
+                       label: (named && named.name) || `${this.distroLabel(d)} ${n}`,
+                       type: info.type, size, circuits, members });
+        }
+        return out.sort((a, b) => a.number - b.number);
+    }
+
+    // Every distro's overfull boxes, keyed "distroId|number" (the pull
+    // sheet's box key).
+    _boxOverflowMap() {
+        const out = new Map();
+        for (const d of this.getDistros()) {
+            for (const ov of this._boxOverflows(d)) out.set(`${d.id}|${ov.number}`, ov);
+        }
+        return out;
+    }
+
+    _fanWord(n) {
+        return ({ 1: 'one', 3: 'three', 6: 'six' })[n] || String(n);
+    }
+
+    // The tray's and the checks' line: "PD 4 has more circuits than the six
+    // a Socapex 208V holds. WALL A is hidden and still holds it."
+    _boxOverflowText(ov) {
+        return `${ov.where} has more circuits than the ${this._fanWord(ov.size)} `
+            + `a ${ov.type.name} holds.${this._hiddenHolderClause(ov.members)}`;
     }
 
     // ---- crowded outputs (owner, 2026-10-18) -------------------------------
@@ -1348,19 +1429,35 @@ class _DistroSystems {
         const name = this.distroLabel(d);
         const members = made.flatMap(cr => cr.members.map(m => ({ ...m, cr })));
         const locked = [...new Set(members.filter(m => this._layerLocked(m.layer)).map(m => m.layer))];
+        // A hidden screen's multi is asked about too (round 6), and the
+        // dialog says it is hidden, as the tray line does (round 7).
         const lines = made.map(cr => {
             const where = cr.where;
             const cap = this._crowdCapacityText(d, cr);
             return `<p style="margin:0 0 8px;">${esc(this._crowdWho(cr.members))} `
-                + `${cr.members.length === 1 ? 'is' : 'are'} on ${esc(where)}. ${esc(where)} would become `
+                + `${cr.members.length === 1 ? 'is' : 'are'} on ${esc(where)}.`
+                + `${esc(this._hiddenHolderClause(cr.members))} ${esc(where)} would become `
                 + `a ${esc(cr.box.conn.short)}, which carries ${this._circuitsWord(cr.box.size)}.</p>`
                 + (cap ? `<p class="crowd-cap" style="margin:0 0 8px; color:#e05050;">${esc(cap)}</p>` : '');
         }).join('');
         const where = [...new Set(made.map(cr => cr.where))].join(', ');
         const who = this._crowdWho(members);
+        // The lock note names the LOCKED screens (round 7): an unlocked
+        // member of a half-locked group is held by its group's locked
+        // members, and those are the screens named (_lockedErrorNames,
+        // the locked error's own reading). The multis that cannot come off
+        // are named by their own screens when that is not the locked one.
+        const lockNames = typeof this._lockedErrorNames === 'function'
+            ? this._lockedErrorNames(locked) : locked.map(l => l.name);
+        const listOf = (xs) => (xs.length < 2 ? xs.join('')
+            : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+        const ownLocks = locked.every(l => l.locked);
+        const whose = ownLocks
+            ? (locked.length === 1 ? 'its multi' : 'their multis')
+            : `${listOf(locked.map(l => `${l.name}'s`))} ${locked.length === 1 ? 'multi' : 'multis'}`;
         const lockNote = locked.length
-            ? `<p class="crowd-locked" style="margin:8px 0 0; color:#dcb968;">${esc(locked.map(l => l.name).join(', '))} `
-                + `${locked.length === 1 ? 'is' : 'are'} locked, so ${locked.length === 1 ? 'its multi' : 'their multis'} `
+            ? `<p class="crowd-locked" style="margin:8px 0 0; color:#dcb968;">${esc(listOf(lockNames))} `
+                + `${lockNames.length === 1 ? 'is' : 'are'} locked, so ${esc(whose)} `
                 + 'cannot come off. Unlock to take it off, or cancel the change.</p>'
             : '';
         const el = document.createElement('div');

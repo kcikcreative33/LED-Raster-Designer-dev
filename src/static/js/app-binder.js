@@ -6841,6 +6841,15 @@ class _Binder {
                     + ' · a multi on a one-circuit output, move it to a multi output']);
             }
         }
+        // A multi box holding more circuits than its fan (round 7): two
+        // multis pinned onto one box, a hidden screen's among them - the
+        // tray, the checks and the pull sheet say it too (_boxOverflows).
+        if (typeof this._boxOverflows === 'function') {
+            for (const ov of this._boxOverflows(d)) {
+                pairs.push(['Crowded', `${ov.label} ${ov.type.name} carries ${ov.circuits} circuits`
+                    + ` · more than the ${this._fanWord(ov.size)} it holds, move a multi to another output`]);
+            }
+        }
         pairs.push(['Circuits', boxes.length ? `${allCircuits} on ${counts}` : 'none']);
         // "DISTRO", not "SERVICE" (owner, 2026-10-21): a SERVICE is the
         // house power now, with a sheet of its own.

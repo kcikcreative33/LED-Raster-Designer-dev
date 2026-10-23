@@ -22,7 +22,7 @@
 // Info panel (#layer-beach, 'Set Beach'), the distro's gear (distro-beach-<id>,
 // 'Set Distro Beach') and the box's gear (processor-cvt-beach-<id>, 'Set Box
 // Beach'). It is a <select> of the project's beaches in order, a blank
-// "- no beach -" entry, and a last "+ New beach..." entry that prompts for a
+// "No beach" entry, and a last "+ New beach..." entry that prompts for a
 // name, creates the beach and selects it - one history entry for the whole
 // gesture, under the picker's own action name.
 //

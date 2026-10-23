@@ -1273,16 +1273,9 @@ class _ScreenInfo {
     toggleLayerVisibility(layerId) {
         const layer = this.project.layers.find(l => l.id === layerId);
         if (!layer) return;
-        // A member of a half-locked group (an old file's) is locked until
-        // the user picks Lock or Unlock for the group (_layerLocked), and
-        // its eye is refused with the rest: hiding one member can repack
-        // the wall's circuits.
-        const holders = typeof this._halfLockedGroupHolders === 'function'
-            ? this._halfLockedGroupHolders(layer) : [];
-        if (holders.length) {
-            this._showLockedError(holders);
-            return;
-        }
+        // Visibility is not a change: a locked screen shows and hides, and
+        // so does any member of a half-locked group (the owner's ruling,
+        // round 7). No lock guard here.
         layer.visible = !layer.visible;
         // Undo audit: the eye toggle recorded history but never told the
         // server, so any server-sourced adoption (a canvas edit's response,

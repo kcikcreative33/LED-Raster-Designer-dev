@@ -78,7 +78,9 @@ def test_a_visible_copy_pinned_with_a_hidden_screen_never_takes_its_positions(se
     assert a['pos'] == [1, 2, 3, 4, 5, 6], a
     assert not set(a['pos']) & set(b['pos']), (a, b)
     strip = ev(pg, "app.renderHardwareDock(); return (app._dockPowerWarnings || []).map(w => w.text);")
-    assert 'PD 4 has more circuits than the six a Socapex 208V holds.' in strip, strip
+    # round 7: the line names the hidden screen that still holds the box
+    said = 'PD 4 has more circuits than the six a Socapex 208V holds. WALL A is hidden and still holds it.'
+    assert strip.count(said) == 1, strip
     assert not errors, errors
 
 
@@ -178,8 +180,9 @@ def test_a_row_edit_that_would_crowd_a_hidden_screen_still_asks(seeded):
     assert ev(pg, RAISE_TRUE1) is None, 'nothing applied while it asks'
     modal = pg.evaluate(MODAL_JS)
     assert modal, 'the dialog did not open for the hidden screen'
-    assert ("WALL A's 6-circuit multi is on PD4. PD4 would become a TRUE1, "
-            "which carries one circuit.") in modal['text'], modal['text']
+    # round 7: the dialog says the screen is hidden, as the tray line does
+    assert ("WALL A's 6-circuit multi is on PD4. WALL A is hidden and still holds it. "
+            "PD4 would become a TRUE1, which carries one circuit.") in modal['text'], modal['text']
     assert _state(pg) == before, 'nothing changes while it asks'
     pg.locator('#crowd-modal .crowd-cancel').click()
     pg.wait_for_timeout(300)
