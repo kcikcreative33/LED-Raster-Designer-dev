@@ -458,10 +458,11 @@ class _Naming {
     // distro sheets and FACTS, the map. Its boxes and circuits derive from
     // it (_multiNameFor), so SR-1's boxes are SR-1-1, SR-1-2 and their
     // circuits SR-1-1-1 ..., and a box can never read the same as another
-    // distro's circuit. A unique name is unchanged. A distro whose screens
-    // are all hidden is not counted - it neither takes a suffix nor gives
-    // one - unless it still prints (its feeder is set, or another distro
-    // is fed thru it), and then it counts like any other.
+    // distro's circuit. A unique name is unchanged. Only a distro that
+    // prints is counted (_distroShownIds): one with nothing plugged in, or
+    // only hidden screens, neither takes a suffix nor gives one unless it
+    // still prints (its feeder is set, or another distro is fed thru it),
+    // and then it counts like any other.
     //
     // A suffix never reads as a name another distro already has (owner,
     // 2026-10-22). With distros named SR, SR and SR-1, the two SRs skip
@@ -523,10 +524,14 @@ class _Naming {
         return v === false;
     }
 
-    // The distros counted when names are compared: every distro, but one
-    // whose multis are all on hidden screens and that does not print
-    // anyway. A distro prints with its feeder set, or when another distro
-    // is fed thru it - the pull sheet lists it, so its name is compared.
+    // The distros counted when names are compared: only the ones that
+    // PRINT (the owner's ruling, 2026-10-23: "Only distros that print"). A
+    // distro prints when a shown screen is plugged into it, with its
+    // feeder set, or when another distro is fed thru it - the pull sheet
+    // lists it, so its name is compared. One with nothing plugged in, no
+    // feeder and nothing fed thru it, or only hidden screens on it, is not
+    // counted: an unused duplicate never forces SR-1 / SR-2 on the one
+    // that prints.
     _distroShownIds() {
         const distros = typeof this.getDistros === 'function' ? this.getDistros() : [];
         const prints = new Set();
@@ -548,7 +553,7 @@ class _Naming {
                 fed.set(id, (fed.get(id) || false) || !hidden);
             }
         }
-        return new Set(distros.filter(d => !fed.has(d.id) || fed.get(d.id) || prints.has(d.id))
+        return new Set(distros.filter(d => fed.get(d.id) || prints.has(d.id))
             .map(d => d.id));
     }
 

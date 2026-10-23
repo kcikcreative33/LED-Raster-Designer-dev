@@ -172,7 +172,9 @@ def test_lock_the_whole_group_keeps_the_locked_screens_splitter_setting(page):
     a, b = make(page, [
         {'name': 'A', 'columns': 3},
         {'name': 'B', 'columns': 3, 'x': 800, 'props': {
-            'locked': True,
+            # other watts: the walls do not walk as one, which would
+            # re-walk the locked screen's circuits and be refused (round 5)
+            'locked': True, 'panelWatts': 140,
             'powerSplitters': {'enabled': False, 'maxWays': 2,
                                'manual': {'merge': [], 'split': []}}}}])
     raw = "(id) => JSON.parse(JSON.stringify(window.__nf.layer(id).powerSplitters))"

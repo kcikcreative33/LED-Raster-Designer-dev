@@ -234,6 +234,9 @@ class _PhaseBalance {
     // getDistroLoads books with (distroCircuitLegs, _bookCircuitOnLegs), so
     // the search scores exactly what the dock will print.
     _balanceCircuitPhasor(d, c, tail) {
+        // A hidden screen loads no leg (getDistroLoads leaves it out), so
+        // the balancer weighs it as the LEGS line reads it: nothing.
+        if (c && c.layer && c.layer.visible === false) return [0, 0, 0, 0, 0, 0];
         const store = {
             legWatts: { X: 0, Y: 0, Z: 0 },
             legPhasor: { X: { re: 0, im: 0 }, Y: { re: 0, im: 0 }, Z: { re: 0, im: 0 } },

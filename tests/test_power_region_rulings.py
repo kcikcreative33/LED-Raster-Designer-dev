@@ -278,7 +278,7 @@ def test_two_boxes_typed_main_on_two_distros_warn_and_ask_to_rename(page):
         window.__nf.layer(b).powerSocaNames = { 1: 'MAIN' };
     }""", [a, b])
     out = page.evaluate(DOCK_JS)
-    want = 'MAIN is typed on 2 boxes, SR 1 and SL 1. Rename one so each box reads its own name.'
+    want = 'MAIN is used on 2 boxes, SR1 and SL1. Rename one so each box reads its own name.'
     assert [want, True] in out['warn'], out
     assert len(out['flagged']) == 2 and all(f[0] == 'MAIN' and f[1].startswith(want)
                                             for f in out['flagged']), out
@@ -291,7 +291,7 @@ def test_two_boxes_typed_main_on_two_distros_warn_and_ask_to_rename(page):
     # renamed, the warning goes
     page.evaluate("(b) => { window.__nf.layer(b).powerSocaNames = { 1: 'SIDE' }; }", b)
     out = page.evaluate(DOCK_JS)
-    assert not [w for w in out['warn'] if 'is typed on' in w[0]] and not out['flagged'], out
+    assert not [w for w in out['warn'] if 'is used on' in w[0]] and not out['flagged'], out
 
 
 # ── 5. the distro display label ──────────────────────────────────────────
@@ -305,9 +305,12 @@ LABELS_JS = """() => {
 
 def test_a_suffix_never_reads_as_another_distros_name(page):
     """SR, SR and a distro typed SR-1: the two SRs skip SR-1 (SR-2, SR-3),
-    and the typed SR-1 keeps its name, so every label is one distro's."""
+    and the typed SR-1 keeps its name, so every label is one distro's. The
+    two SRs print (their feeders are set): only a distro that prints is
+    counted (round 5)."""
     make(page, [{'name': 'Wall', 'columns': 2}])
-    set_distros(page, [_distro('d1', 'SR'), _distro('d2', 'SR'), _distro('d3', 'SR-1')])
+    set_distros(page, [_distro('d1', 'SR', feeder={'ft': 50}), _distro('d2', 'SR', feeder={'ft': 50}),
+                       _distro('d3', 'SR-1')])
     assert page.evaluate(LABELS_JS) == ['SR-2', 'SR-3', 'SR-1']
 
 

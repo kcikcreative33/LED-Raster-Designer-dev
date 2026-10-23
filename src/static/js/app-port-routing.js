@@ -115,7 +115,7 @@ class _PortRouting {
             const procName = procOpt ? procOpt.textContent.trim() : processorType;
             this._toast(
                 `${procName} has no published figure at ${currentFrameRate} Hz. `
-                + `This screen is now ${chosen} Hz - check its port count.`,
+                + `This screen is now ${chosen} Hz, so check its port count.`,
                 false, 7000);
         }
         if (typeof sendClientLog === 'function') {

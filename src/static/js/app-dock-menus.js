@@ -709,6 +709,10 @@ class _DockMenus {
                             this._showLockedError(locked);
                             return;
                         }
+                        // Refused whole when it would repack a locked
+                        // member (owner, 2026-10-23): written, checked,
+                        // put back before the commit.
+                        const repacked = this._repackTrial([layer]);
                         const written = [];
                         by.forEach((ns, id) => {
                             const m = (this.project.layers || []).find(l => l.id === id);
@@ -716,6 +720,7 @@ class _DockMenus {
                             this.splitSplitterCircuits(m, ns, null, { silent: true });
                             written.push(m);
                         });
+                        if (repacked()) return;
                         if (written.length) this._commitWallShare(written, action);
                     } else {
                         this.splitSplitterCircuits(layer, nums, action);

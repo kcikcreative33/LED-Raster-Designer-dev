@@ -183,7 +183,7 @@ class _DockCableSheets {
                     && connectors.some(c => c.id === stored.connector)
                     ? stored.connector : '';
                 sel.title = `The plug on this cable. Follows the ${typeName} `
-                    + 'unless changed - only the odd one needs picking.';
+                    + 'unless changed, so only the odd one needs picking.';
                 td4.appendChild(sel);
                 tr.appendChild(td4);
 
@@ -608,7 +608,7 @@ class _DockCableSheets {
                     m => this._cableTickedMember(m));
                 td0.appendChild(tick(
                     `data-snake-tick-${owner.id}-s-${snake.id}`, all,
-                    'Tick the whole snake, wherever its sockets sit - for '
+                    'Tick the whole snake, wherever its sockets sit, for '
                     + 'Unsnake above.',
                     (on) => members.forEach(
                         m => this._setCableTickMember(m, on))));
@@ -628,7 +628,7 @@ class _DockCableSheets {
                 // "if we pass a threshold then grow like option B").
                 name.size = Math.max(6, (snake.name || '').length + 1);
                 name.dataset.lrdField = `data-snake-name-${owner.id}-${snake.id}`;
-                name.title = 'The snake’s name - what the packet and '
+                name.title = 'The snake’s name: what the packet and '
                     + 'the tag on the map print. Typed names win over the '
                     + 'SNAKE A default.';
                 name.addEventListener('change', () => {
@@ -761,7 +761,7 @@ class _DockCableSheets {
         // are the gesture, and the button they are pressed on is only
         // where the hand happened to be.
         ticked.appendChild(button('Snake', `data-cable-snake-${owner.id}`,
-            `Form one snake of every ticked port - on this ${this.unitWordForCard(owner.cardId)} or box or `
+            `Form one snake of every ticked port, on this ${this.unitWordForCard(owner.cardId)} or box or `
             + 'any other. One name, one home run. One undo step.',
             () => {
                 const members = this._allTickedMembers();
@@ -781,7 +781,7 @@ class _DockCableSheets {
                 });
             }));
         ticked.appendChild(button('Unsnake', `data-cable-loosen-${owner.id}`,
-            `Take every ticked port out of its snake - on this ${this.unitWordForCard(owner.cardId)} or box `
+            `Take every ticked port out of its snake, on this ${this.unitWordForCard(owner.cardId)} or box `
             + 'or any other. One undo step.',
             () => {
                 const members = this._allTickedMembers().filter(m => {
@@ -801,7 +801,7 @@ class _DockCableSheets {
         // 2026-09-24): each ticked row gets what its own field would
         // take - a loose port its home run, a snaked one its extension.
         this._cableQuickAny(ticked, `data-cable-ticked-fill-${owner.id}`, 'Fill',
-            `Every ticked port on this ${this.unitWordForCard(owner.cardId)} or box gets the typed length - `
+            `Every ticked port on this ${this.unitWordForCard(owner.cardId)} or box gets the typed length: `
             + 'a loose port as its home run, a snaked port as its extension. '
             + 'One undo step.',
             (ft) => this.fillTickedPortCables(owner, ft, ports).then(after));
@@ -1010,7 +1010,7 @@ class _DockCableSheets {
         f.value = ft !== null ? String(ft) : '';
         const max = this.copperLinkMax(l.copper.copper);
         f.title = `The ${l.copper.copper} run's length in ${this.cableUnitWord()}`
-            + (max ? ` - ${this.copperLinkMaxWords(max)} is its 10G maximum.` : '.');
+            + (max ? `. ${this.copperLinkMaxWords(max)} is its 10G maximum.` : '.');
         f.addEventListener('change', () => {
             // read the way every typed length is (readTypedLength): the
             // other unit converted and said, text that is no length refused
@@ -1132,7 +1132,7 @@ class _DockCableSheets {
         chip.type = 'button';
         chip.className = 'hw-dock-fiber-strand';
         chip.dataset.lrdField = `fiber-strand-${box.id}-${l.key}-${i}`;
-        chip.title = `Strand ${strand} of ${cable.name} - click to change it.`;
+        chip.title = `Strand ${strand} of ${cable.name}. Click to change it.`;
         chip.appendChild(this._fiberSwatch(strand, cable));
         chip.appendChild(document.createTextNode(this.fiberStrandName(strand, cable)));
         chip.addEventListener('click', (e) => {
@@ -1284,7 +1284,7 @@ class _DockCableSheets {
                 create();
             });
             f.setAttribute('list', `hw-fiber-connectors-${box.id}`);
-            button('Create', `${base}-create`, 'Make the TAC on this link - ends as typed, '
+            button('Create', `${base}-create`, 'Make the TAC on this link, ends as typed, '
                 + 'or none.', () => { wz.connector = f.value.trim(); create(); });
         }
         button('Cancel', `${base}-cancel`, 'Make nothing.', () => {
@@ -1379,7 +1379,7 @@ class _DockCableSheets {
             const f = input('text', `fiber-strand-name-${cable.id}-${n}`,
                 (cable.strandNames || {})[String(n)] || '');
             f.placeholder = fiberStrandName(n, plain);
-            f.title = `Strand ${n}'s name - blank reads ${f.placeholder}.`;
+            f.title = `Strand ${n}'s name. Blank reads ${f.placeholder}.`;
             f.addEventListener('change', () => put(
                 { strandName: { strand: n, name: f.value } }, 'Rename Strand'));
             cell.appendChild(f);
