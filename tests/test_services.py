@@ -191,6 +191,9 @@ def setup(pg, **o):
     pg.evaluate("() => { const h = document.getElementById('app-toast-host'); if (h) h.innerHTML = '';"
                 " window.app._hwPopoverClose && window.app._hwPopoverClose(); }")
     n = pg.evaluate(SETUP_JS, o)
+    # and this setup's own echo has landed before the test edits locally (a
+    # fixed wait was too short on a busy CI runner)
+    pg.evaluate("async () => { await window.app._layerSavesSettled(); }")
     pg.wait_for_timeout(300)
     return n
 
