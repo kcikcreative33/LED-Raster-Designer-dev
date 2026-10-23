@@ -288,25 +288,48 @@ def connector_spelling(text):
 # "Rewrite to TRUE1 / etherCON"), and so does the copy: the new word counts
 # as a connector in use and the old one never prints.
 # (an old word glued to a plural "s" or a "-" is still the old word:
-# "Tru-1s", "Ether-con-50" - 2026-10-23)
-_FREE_WORD_END = r'(?:(?![\w-])|(?=s(?![\w-]))|(?=-))'
-_OLD_FREE_TRUE1 = re.compile(r'(?<![\w-])(?:Tru-1|TRU-1|tru-1|True1|true1)' + _FREE_WORD_END)
-_OLD_FREE_ETHERCON = re.compile(r'(?<![\w-])(?:Ether-con|ether-con|Ether-Con|ETHER-CON)' + _FREE_WORD_END)
-_OLD_FREE_TAIL = re.compile(r'(?<![\w-])(tail|Tail|TAIL)(?![\w-])')
+# "Tru-1s", "Ether-con-50" - 2026-10-23; a capital plural "TRU-1S", a
+# plural then a "-" "Tru-1s-50", and a word after a "-" "Tru-1-to-Ether-
+# con" too - 2026-10-23, round 6)
+# Compiled with re.ASCII and JS's own whitespace so a word reads exactly as
+# the app's _pullFreeRowWords reads it: \w in JS is ASCII-only, so
+# "éTru-1" is rewritten on both (as "éTRUE1").
+_JS_SPACE = '\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff'
+_S = '[' + _JS_SPACE + ']'
+_NS = '[^' + _JS_SPACE + ']'
+# a plural "s" is the connector's own and always lower case, whatever the
+# row typed: "TRU-1S" reads "TRUE1s", as the maker spells the plural
+_FREE_WORD_END = r'(?:([sS])(?!\w)|(?![\w-])|(?=-))'
+_OLD_FREE_TRUE1 = re.compile(r'(?<!\w)(?:Tru-1|TRU-1|tru-1|True1|true1)' + _FREE_WORD_END, re.ASCII)
+_OLD_FREE_ETHERCON = re.compile(r'(?<!\w)(?:Ether-con|ether-con|Ether-Con|ETHER-CON)' + _FREE_WORD_END,
+                                re.ASCII)
+# a "tail" and its plural ("Edison tails" reads "Edison cables")
+_TAIL = r'(tail|Tail|TAIL)([sS]?)(?![\w-])'
+_OLD_FREE_TAIL = re.compile(r'(?<![\w-])' + _TAIL, re.ASCII)
 # "tail" is "cable" only on an ADAPTER (owner, 2026-10-22): a type with
 # "→" in it, or "Edison tail" / "L6-20 tail". "Tail rope" stays as typed.
 _OLD_FREE_ADAPTER = re.compile(r'→|->')
 _OLD_FREE_PLUG_TAIL = re.compile(
-    r'(?<![\w-])((?:Edison|EDISON|edison|L6-20|l6-20)\s+)(tail|Tail|TAIL)(?![\w-])')
+    r'(?<![\w-])((?:Edison|EDISON|edison|L6-20|l6-20)' + _S + '+)' + _TAIL, re.ASCII)
 # In NOTES, an arrow says nothing about the rest of the sentence: only the
 # "tail" right after "→ <word>" is the adapter's (2026-10-23: "Tail rope
-# for the Edison → TRUE1 tail" keeps its "Tail rope").
-_OLD_FREE_ARROW_TAIL = re.compile(r'((?:→|->)\s*\S+\s+)(tail|Tail|TAIL)(?![\w-])')
+# for the Edison → TRUE1 tail" keeps its "Tail rope"), or right after the
+# arrow itself ("Edison → tail", round 6).
+_OLD_FREE_ARROW_TAIL = re.compile(
+    r'((?:→|->)' + _S + '*(?:' + _NS + '+' + _S + '+)?)' + _TAIL, re.ASCII)
 _FREE_NOTES_SPLIT = re.compile(r'( · |; |, )')
 
 
-def _cable_word(tail):
-    return {'TAIL': 'CABLE', 'Tail': 'Cable'}.get(tail, 'cable')
+def _cable_word(tail, plural=''):
+    word = {'TAIL': 'CABLE', 'Tail': 'Cable'}.get(tail, 'cable')
+    return word + ('S' if plural == 'S' else 's' if plural else '')
+
+
+def _connector_words(text):
+    """The old TRUE1 and etherCON words in `text` rewritten, a plural "s"
+    kept (lower case)."""
+    text = _OLD_FREE_TRUE1.sub(lambda m: 'TRUE1' + ('s' if m.group(1) else ''), text)
+    return _OLD_FREE_ETHERCON.sub(lambda m: 'etherCON' + ('s' if m.group(1) else ''), text)
 
 
 def free_row_spelling(text):
@@ -315,19 +338,19 @@ def free_row_spelling(text):
     tail" reads "Edison → TRUE1 cable"; "Tail rope" stays."""
     if not isinstance(text, str):
         return text
-    text = _OLD_FREE_ETHERCON.sub('etherCON', _OLD_FREE_TRUE1.sub('TRUE1', text))
+    text = _connector_words(text)
     if _OLD_FREE_ADAPTER.search(text):
-        return _OLD_FREE_TAIL.sub(lambda m: _cable_word(m.group(1)), text)
-    return _OLD_FREE_PLUG_TAIL.sub(lambda m: m.group(1) + _cable_word(m.group(2)), text)
+        return _OLD_FREE_TAIL.sub(lambda m: _cable_word(m.group(1), m.group(2)), text)
+    return _OLD_FREE_PLUG_TAIL.sub(lambda m: m.group(1) + _cable_word(m.group(2), m.group(3)), text)
 
 
 def _free_note_piece(text):
     """One thing a free row's notes say, in the app's spelling: the old
-    connector words, and "tail" only right after "→ <word>" or after
-    Edison / L6-20."""
-    text = _OLD_FREE_ETHERCON.sub('etherCON', _OLD_FREE_TRUE1.sub('TRUE1', text))
-    text = _OLD_FREE_ARROW_TAIL.sub(lambda m: m.group(1) + _cable_word(m.group(2)), text)
-    return _OLD_FREE_PLUG_TAIL.sub(lambda m: m.group(1) + _cable_word(m.group(2)), text)
+    connector words, and "tail" (or "tails") only right after "→ <word>",
+    right after the arrow itself, or after Edison / L6-20."""
+    text = _connector_words(text)
+    text = _OLD_FREE_ARROW_TAIL.sub(lambda m: m.group(1) + _cable_word(m.group(2), m.group(3)), text)
+    return _OLD_FREE_PLUG_TAIL.sub(lambda m: m.group(1) + _cable_word(m.group(2), m.group(3)), text)
 
 
 def free_row_notes_spelling(text):
@@ -376,7 +399,10 @@ def _drop_unused_connectors(ws, used):
 # The template's own words use " - " as a dash (TOTALS' title, three READ
 # ME lines). The app writes no dash that way (owner, 2026-10-23), so the
 # copy it hands out reads them rewritten; the shipped template is left as
-# it is. Exact texts only: anything else in a cell is the user's.
+# it is. Only these exact phrases are rewritten, wherever one appears in a
+# READ ME or TOTALS cell (a READ ME line ends with one, so the match is a
+# substring, not the whole cell); any other " - " in a cell is the user's
+# and stays.
 TEMPLATE_DASH_TEXTS = {
     'TOTALS  -  SHOP PULL': 'TOTALS · SHOP PULL',
     'LED CABLE PULL SHEET  -  how it works': 'LED CABLE PULL SHEET: how it works',
@@ -387,8 +413,8 @@ TOTALS = 'TOTALS'
 
 
 def dash_spelling(text):
-    """`text` with the template's own " - " dashes rewritten
-    (TEMPLATE_DASH_TEXTS)."""
+    """`text` with each TEMPLATE_DASH_TEXTS phrase in it rewritten,
+    wherever it appears in the text; any other " - " is left alone."""
     if not isinstance(text, str) or ' - ' not in text:
         return text
     for old, new in TEMPLATE_DASH_TEXTS.items():

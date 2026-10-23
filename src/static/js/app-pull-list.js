@@ -2172,25 +2172,34 @@ class _PullList {
 
     // The old words in a free row's text: TRUE1 and etherCON - an old
     // word glued to a plural "s" or a "-" too ("Tru-1s", "Ether-con-50",
-    // 2026-10-23) - and "tail" as "cable" where it names an adapter. In a
+    // 2026-10-23; "TRU-1S", "Tru-1s-50" and "Tru-1-to-Ether-con", round 6)
+    // - and "tail" (or "tails") as "cable" where it names an adapter. In a
     // TYPE an arrow makes the whole row an adapter; in NOTES (`notes`) an
     // arrow says nothing about the rest of the sentence, so only the
-    // "tail" right after "→ <word>" is the adapter's ("Tail rope for the
-    // Edison → TRUE1 tail" keeps its "Tail rope").
+    // "tail" right after "→ <word>", or right after the arrow itself, is
+    // the adapter's ("Tail rope for the Edison → TRUE1 tail" keeps its
+    // "Tail rope"). pull_sheet.free_row_spelling reads a row the same way.
     _pullFreeRowWords(type, notes) {
         if (type == null) return type;
+        // a plural "s" is the connector's own, always lower case: "TRU-1S"
+        // reads "TRUE1s"
+        const end = '(?:([sS])(?!\\w)|(?![\\w-])|(?=-))';
         const t = String(type)
-            .replace(/(^|[^\w-])(?:Tru-1|TRU-1|tru-1|True1|true1)(?:(?![\w-])|(?=s(?![\w-]))|(?=-))/g, '$1TRUE1')
-            .replace(/(^|[^\w-])(?:Ether-con|ether-con|Ether-Con|ETHER-CON)(?:(?![\w-])|(?=s(?![\w-]))|(?=-))/g,
-                '$1etherCON');
-        const cable = (w) => (w === 'TAIL' ? 'CABLE' : w === 'Tail' ? 'Cable' : 'cable');
-        const plug = (text) => text.replace(/(^|[^\w-])((?:Edison|EDISON|edison|L6-20|l6-20)\s+)(tail|Tail|TAIL)(?![\w-])/g,
-            (m, lead, p, w) => lead + p + cable(w));
+            .replace(new RegExp('(^|\\W)(?:Tru-1|TRU-1|tru-1|True1|true1)' + end, 'g'),
+                (m, lead, s) => `${lead}TRUE1${s ? 's' : ''}`)
+            .replace(new RegExp('(^|\\W)(?:Ether-con|ether-con|Ether-Con|ETHER-CON)' + end, 'g'),
+                (m, lead, s) => `${lead}etherCON${s ? 's' : ''}`);
+        const cable = (w, s) => (w === 'TAIL' ? 'CABLE' : w === 'Tail' ? 'Cable' : 'cable')
+            + (s === 'S' ? 'S' : s ? 's' : '');
+        const plug = (text) => text.replace(
+            /(^|[^\w-])((?:Edison|EDISON|edison|L6-20|l6-20)\s+)(tail|Tail|TAIL)([sS]?)(?![\w-])/g,
+            (m, lead, p, w, s) => lead + p + cable(w, s));
         if (notes) {
-            return plug(t.replace(/((?:→|->)\s*\S+\s+)(tail|Tail|TAIL)(?![\w-])/g, (m, lead, w) => lead + cable(w)));
+            return plug(t.replace(/((?:→|->)\s*(?:\S+\s+)?)(tail|Tail|TAIL)([sS]?)(?![\w-])/g,
+                (m, lead, w, s) => lead + cable(w, s)));
         }
         if (/→|->/.test(t)) {
-            return t.replace(/(^|[^\w-])(tail|Tail|TAIL)(?![\w-])/g, (m, lead, w) => lead + cable(w));
+            return t.replace(/(^|[^\w-])(tail|Tail|TAIL)([sS]?)(?![\w-])/g, (m, lead, w, s) => lead + cable(w, s));
         }
         return plug(t);
     }

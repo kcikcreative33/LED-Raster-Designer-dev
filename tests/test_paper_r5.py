@@ -44,7 +44,8 @@ def test_free_row_notes_rewrite_only_the_arrows_own_tail():
     assert n('Tail rope for the Edison → TRUE1 tail') == 'Tail rope for the Edison → TRUE1 cable'
     assert n('Tail rope for the Edison -> True1 tail') == 'Tail rope for the Edison -> TRUE1 cable'
     assert n('safety tail, Edison tail · L6-20 TAIL') == 'safety tail, Edison cable · L6-20 CABLE'
-    assert n('tail end → tail') == 'tail end → tail'
+    # round 6: the "tail" right after the arrow is the adapter's too
+    assert n('tail end → tail') == 'tail end → cable'
     # the type keeps its rule: an arrow makes the row an adapter
     assert pull_sheet.free_row_spelling('Edison → True1 tail') == 'Edison → TRUE1 cable'
 
@@ -377,9 +378,12 @@ def test_bracket_labels_never_reach_the_next_bracket(page):
                     mid = (b['y1'] + b['y2']) / 2
                     assert abs((b['labelY1'] + b['labelY2']) / 2 - mid) < 1, (sheet, b)
             for b in br:
-                # the name whole, and the length said
+                # the name whole, and the length said where it fits at the
+                # binder's 14 floor (round 6: else the name alone, legible,
+                # rather than both at 10)
                 assert b['lines'][0].startswith(b['name']), (sheet, b)
-                assert 'no length' in ' '.join(b['lines']), (sheet, b)
+                assert 'no length' in ' '.join(b['lines']) or b['lines'] == [b['name']], (sheet, b)
+                assert b['size'] >= 14, (sheet, b)
                 assert not [t for t in b['lines'] if t.endswith('…')], (sheet, b)
     finally:
         _reset(pg)
@@ -502,7 +506,7 @@ def test_free_rows_in_the_app_read_the_round_5_rules(page):
                 '2 Tru-1s; Ether-con-50'].map(t => app.pullFreeRowNotes(t)),
         types: ['Tru-1s', 'Ether-con-50', 'Edison → True1 tail', 'Trust', 'True1st', 'Tail rope']
             .map(t => app.pullFreeRowType(t)) };""")
-    assert out['notes'] == ['Tail rope for the Edison → TRUE1 cable', 'tail end → tail',
+    assert out['notes'] == ['Tail rope for the Edison → TRUE1 cable', 'tail end → cable',
                             'Edison cable · Tail rope', '2 TRUE1s; etherCON-50'], out
     assert out['types'] == ['TRUE1s', 'etherCON-50', 'Edison → TRUE1 cable', 'Trust', 'True1st',
                             'Tail rope'], out
