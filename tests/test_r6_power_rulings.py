@@ -5,7 +5,10 @@
    refused with the locked-screen error naming the locked member, until
    the user picks Lock or Unlock for the group (the first lock toggle
    still asks): typed power settings, columns, breakout, shares, Remove
-   2fer, delete, hide and show, adding a screen to the group, multi moves.
+   2fer, delete, adding a screen to the group, multi moves.
+   Round 7 (the owner's ruling): hide and show are ALLOWED on a
+   half-locked group, as on a locked screen: visibility is not a change
+   (test_r7_power_rulings.py).
 4. The duplicate-distro suffix counts only distros that print, even with
    stale multi entries: an entry for a multi the screen no longer has
    plugs nothing in.
@@ -110,11 +113,6 @@ EDITS = {
     'unplug multi': lambda pg, a, b: pg.evaluate(
         "([a]) => window.app._clearMultis([{ layerId: a, soca: 1 }], 'Unplug Multi')", [a]),
     'delete': lambda pg, a, b: pg.evaluate("([a]) => window.app.deleteLayer(a)", [a]),
-    'hide': lambda pg, a, b: pg.evaluate("([a]) => window.app.toggleLayerVisibility(a)", [a]),
-    'hide the locked member': lambda pg, a, b: pg.evaluate(
-        "([b]) => window.app.toggleLayerVisibility(b)", [b]),
-    'the group eye': lambda pg, a, b: pg.evaluate(
-        "() => window.app.toggleGroupVisibility(window.app.project.groups[0].id)"),
     'remove from group': lambda pg, a, b: pg.evaluate(
         "() => window.app.removeSelectedFromGroup()"),
     'a cosmetic field': lambda pg, a, b: field(pg, 'number-size', '41'),
@@ -149,7 +147,7 @@ def test_the_locked_error_names_the_locked_member(page):
     landed(page)
     assert page.evaluate("() => window.__r6") == ['B is locked. Unlock it to change it.']
     page.evaluate("() => { window.__r6.length = 0; }")
-    page.evaluate("([a]) => window.app.toggleLayerVisibility(a)", [a])
+    page.evaluate("([a]) => window.app.deleteLayer(a)", [a])
     landed(page)
     assert page.evaluate("() => window.__r6") == ['B is locked. Unlock it to change it.']
 

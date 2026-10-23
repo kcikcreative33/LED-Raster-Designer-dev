@@ -1206,6 +1206,10 @@ class _PullList {
         // that follows an edit in the same tick must not read stale names.
         this._circuitTailCache = null;
         const boxLabels = this.distroBoxLabels();
+        // Multi boxes holding more circuits than their fan (round 7), read
+        // once for the whole list (_boxOverflows, the tray's own reading).
+        const boxOverflows = typeof this._boxOverflowMap === 'function'
+            ? this._boxOverflowMap() : new Map();
 
         // The positions, keyed. The screens' own come first, in layer
         // order; a device location that matches none of them opens its
@@ -1263,7 +1267,7 @@ class _PullList {
             for (const layer of base.layers) {
                 const scr = this._pullScreenList(layer, {
                     settings, distroById, boxesSeen, directSeen, breakoutsSeen, snakesSeen, fiberSeen, hw, saidOnce,
-                    distroFirstLayer, boxFirstLayer, procFirstLayer, rid, boxLabels,
+                    distroFirstLayer, boxFirstLayer, procFirstLayer, rid, boxLabels, boxOverflows,
                 });
                 byScreen[layer.id] = scr;
                 // Every row goes where the device that produced it sits;
@@ -1678,6 +1682,12 @@ class _PullList {
                     circuits: [],
                     shared: false,
                 };
+                // An overfull multi box (round 7): its circuits, every
+                // screen's on it (a hidden one's included: it keeps its
+                // slots), against the fan - flagged like a crowded direct
+                // output, and said in the home run's notes.
+                const ovf = s.distroId && ctx.boxOverflows ? ctx.boxOverflows.get(key) : null;
+                if (ovf) box.overfull = { circuits: ovf.circuits, size: ovf.size };
                 boxes.set(key, box);
             } else if (!box.homeRun && s.distroId && this.parseCableLength(s.length) !== null) {
                 box.homeRun = this.parseCableLength(s.length);
@@ -1789,8 +1799,12 @@ class _PullList {
                 continue;
             }
             const homeType = isL2130 ? 'L21-30' : (isHarting ? 'Harting 16E' : 'Multi');
+            const homeNotes = [box.homeRun ? '' : 'no length',
+                               box.overfull ? `${box.overfull.circuits} circuits on a `
+                                   + `${this._fanWord(box.overfull.size)}-circuit output` : '']
+                .filter(Boolean).join(' · ');
             const r = row(homeType, this.pullCableLength(box.homeRun, this.pullHomeRunKind(box)), 1, boxLabel,
-                          box.homeRun ? '' : 'no length', at);
+                          homeNotes, at);
             breakoutsSeen.add(`${seenKey}|${breakoutType}`);
             const b = row(breakoutType, 'EA', 1, boxLabel, '', at);
             const hrec = hw('distro', box.distroId, distroName);

@@ -33,6 +33,7 @@ Run locally:
     ~/.venvs/led-raster-designer/bin/python -m pytest tests/test_r5_power_rulings.py -v --browser chromium
 """
 
+import json
 import os
 import sys
 
@@ -330,9 +331,13 @@ def test_panel_watts_on_an_unlocked_member_refuse_a_locked_screen_it_repacks(pag
     assert capacity(page, b)['pct'] == 1
 
 
-def test_a_mixed_tray_clear_touching_a_locked_group_member_is_refused_whole(page):
-    """Unplug multi on A's multi 2 (SR) and C's multi (no group): B would
-    repack, so nothing clears, C's included."""
+def test_a_mixed_tray_clear_touching_a_half_locked_group_member_skips_it(page):
+    """Unplug multi on A's multi 2 (SR) and C's multi (no group). Round 5
+    refused it whole (B would repack). Since round 6 A, the unlocked member
+    of a half-locked group, is locked itself, and round 7 has it behave
+    exactly as a locked member: A is skipped and B named, nothing of A or B
+    changes, and C, in no group, still clears (test_r7_power_rulings.py
+    has both orders and the truly locked member)."""
     a, b = wall(page, dict(SHARING_OFF, panelWatts=600))
     (c,) = page.evaluate("""async () => {
         const made = await window.__nf.j('POST', '/api/layer/add', { name: 'C', columns: 2,
@@ -359,7 +364,14 @@ def test_a_mixed_tray_clear_touching_a_locked_group_member_is_refused_whole(page
     before, h0 = state(page, [a, b, c]), len(history(page))
     page.evaluate("""([a, c]) => window.app._clearMultis(
         [{ layerId: a, soca: 2 }, { layerId: c, soca: 1 }], 'Unplug Multi')""", [a, c])
-    assert_refused(page, [a, b, c], before, h0)
+    landed(page)
+    assert errors(page)['locked'] == [['B']], errors(page)
+    was, now = json.loads(before)['layers'], json.loads(state(page, [a, b, c]))['layers']
+    assert now[0] == was[0] and now[1] == was[1], 'A or B changed'
+    assert (now[2].get('powerSocaDistro') or {}).get('1') is None, now[2]
+    assert (was[2].get('powerSocaDistro') or {}).get('1') == 'sr', was[2]
+    assert len(history(page)) == h0 + 1, history(page)
+    assert capacity(page, b)['pct'] == 0.8
 
 
 # ── 3. the wording of the refusal ────────────────────────────────────────

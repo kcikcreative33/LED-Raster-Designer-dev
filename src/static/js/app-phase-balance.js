@@ -97,6 +97,7 @@ class _PhaseBalance {
                         layer, soca: s.soca, name: s.name, distroId: d.id,
                         legs: total, members, boxSize,
                         locked: members.some(m => !!this._layerLocked(m.layer)),
+                        hidden: members.every(m => m.layer.visible === false),
                         layerName: members.map(m => m.layer.name).join(' + '),
                         positions: members.flatMap(m => m.tails)
                             .sort((a, b) => a - b),
@@ -117,6 +118,7 @@ class _PhaseBalance {
                     legs: s.legs.length,
                     boxSize: ownSize,
                     locked: !!this._layerLocked(layer),
+                    hidden: layer.visible === false,
                     positions,
                     fromFlat: positions.slice(),
                     circuits: s.legs.map((leg, li) => ({ layer, s, li, leg })),
@@ -321,9 +323,13 @@ class _PhaseBalance {
         const d = this.getDistros().find(x => x.id === distroId) || null;
         const names = d ? this.distroLegNames(d) : [];
         const all = this._balanceTargets(distroId);
-        const free = all.filter(t => !t.locked);
+        // A multi on a hidden screen loads no leg and keeps its sockets
+        // (round 6), so it is held where it sits like a locked one - never
+        // searched, never counted among the multis searched (round 7).
+        const free = all.filter(t => !t.locked && !t.hidden);
         const res = {
             distroId, targets: free, locked: all.filter(t => t.locked),
+            hidden: all.filter(t => !t.locked && t.hidden),
             options: [], choice: free.map(() => 0),
             before: this._balanceRealFigures(distroId), model: null,
             searched: 0, total: 0, exhaustive: true, blockedByBusiest: false,
@@ -607,11 +613,21 @@ class _PhaseBalance {
             blockedByBusiest: solved.some(r => r.blockedByBusiest && !kept.has(r.distroId)),
             targets: targets.map(t => `${t.name} (${t.layerName || t.layer.name}, ${t.legs} circuits)`),
             // Partly-filled multis held where they are because a screen
-            // they sit on is locked - the dialog names them.
+            // they sit on is locked - the dialog names them. `layers` are
+            // the LOCKED screens (round 7): an unlocked member of a
+            // half-locked group is held by its group's locked members, and
+            // those are named, as the locked error names them
+            // (_lockedErrorNames).
             locked: solved.flatMap(r => r.locked).map(t => ({
                 name: t.name, layerName: t.layerName || t.layer.name,
-                layers: [...new Set((t.members ? t.members.map(m => m.layer) : [t.layer])
-                    .filter(l => this._layerLocked(l)).map(l => l.name))],
+                layers: this._lockedErrorNames((t.members ? t.members.map(m => m.layer) : [t.layer])
+                    .filter(l => this._layerLocked(l))),
+            })),
+            // Partly-filled multis on hidden screens: held where they are
+            // (a hidden screen keeps its slots and loads no leg), so they
+            // are not among the multis searched (round 7).
+            hidden: solved.flatMap(r => r.hidden || []).map(t => ({
+                name: t.name, layerName: t.layerName || t.layer.name,
             })),
             moves,
         };
@@ -661,8 +677,12 @@ class _PhaseBalance {
         const distro = distroId
             ? this.getDistros().find(d => d.id === distroId) : null;
         const plural = (n, one, many) => (n === 1 ? one : many);
+        const listOf = (xs) => (xs.length < 2 ? xs.join('')
+            : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
         const lockedLines = (r.locked || []).map(l =>
-            `${esc(l.name)} (${esc(l.layerName)}) stays where it is. ${esc(l.layers.join(', '))} ${plural(l.layers.length, 'is', 'are')} locked.`);
+            `${esc(l.name)} (${esc(l.layerName)}) stays where it is. ${esc(listOf(l.layers))} ${plural(l.layers.length, 'is', 'are')} locked.`)
+            .concat((r.hidden || []).map(h =>
+                `${esc(h.name)} (${esc(h.layerName)}) stays where it is. ${esc(h.layerName)} is hidden.`));
         const lockedHtml = lockedLines.length
             ? lockedLines.map(l => `<div style="color:#a6b0bb; margin:6px 0 0; padding-left:10px;">· ${l}</div>`).join('')
             : '';

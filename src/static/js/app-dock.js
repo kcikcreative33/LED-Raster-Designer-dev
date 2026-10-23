@@ -2958,11 +2958,20 @@ class _HardwareDock {
         // The box's problems are strip questions too - the same states the
         // chips wear, said where a glance lands first.
         const boxName = `${this.distroLabel(d)} ${n}`;
+        // Said in the distro checks' words (_boxOverflowText), naming a
+        // hidden screen that still holds the box (round 7), and once: the
+        // distro's checks, read first, already say it for a box a showing
+        // screen is on. A box only hidden screens fill is on no paper, so
+        // the strip leaves it out too (the chip still reddens).
         if (overflow) {
-            this._dockPowerWarnings.push({
-                text: `${boxName} has more circuits than the `
-                    + `${boxSize === 1 ? 'one' : boxSize === 3 ? 'three' : 'six'} a ${boxType.name} holds.`,
-            });
+            const recs = memberRecs.map(r => ({ layer: r.layer, legs: r.m.legs,
+                                                hidden: r.layer.visible === false }));
+            const text = this._boxOverflowText({ where: boxName, size: boxSize,
+                                                 type: boxType, members: recs });
+            if (recs.some(r => !r.hidden)
+                    && !this._dockPowerWarnings.some(w => w.text === text)) {
+                this._dockPowerWarnings.push({ text });
+            }
         }
         // A stored type that contradicts what is on the box - the screen's
         // breakout changed under a typed box, or the numbers shifted - is
@@ -3853,6 +3862,11 @@ class _HardwareDock {
         // be reading.
         // A locked screen keeps its multis (the owner's ruling, 2026-10-16):
         // it is skipped and named, and the unlocked members still clear.
+        // An unlocked member of a half-locked group is LOCKED (round 6,
+        // _layerLocked) and behaves exactly as a locked member does, as in
+        // a group locked as one (round 7): skipped, its group's locked
+        // members named, and the other screens still clear. A clear that
+        // would REPACK a locked screen is still refused whole below.
         const jobs = [];
         const lockedMet = [];
         members.forEach(m => {
@@ -3868,11 +3882,6 @@ class _HardwareDock {
         });
         this._showLockedError(lockedMet);
         if (!jobs.length) return;
-        // A clear touching a member of a half-locked group (an old file's,
-        // locked until the user picks Lock or Unlock: _layerLocked) is
-        // refused whole, as a clear that would repack a locked group
-        // member is (round 5): nothing clears, the other screens' included.
-        if (lockedMet.some(l => !l.locked)) return;
         const strip = () => {
             jobs.forEach(j =>
                 this._wipeSocaProgramming(j.layer, j.soca, j.targets));

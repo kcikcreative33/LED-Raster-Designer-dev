@@ -781,13 +781,8 @@ class _ScreenGroups {
         if (!group) return false;
         const members = this.getGroupMembers(group);
         if (members.length === 0) return false;
-        // A half-locked group (an old file's) is locked as a whole until
-        // the user picks Lock or Unlock for it: its eye is refused too.
-        const holders = members.length ? this._halfLockedGroupHolders(members[0]) : [];
-        if (holders.length) {
-            this._showLockedError(holders);
-            return false;
-        }
+        // Visibility is not a change: the eye works on a locked group and
+        // on a half-locked one alike (the owner's ruling, round 7).
         const anyVisible = members.some(m => m.visible !== false);
         members.forEach(m => { m.visible = !anyVisible; });
         if (anyVisible) {
