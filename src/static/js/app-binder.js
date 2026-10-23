@@ -179,6 +179,21 @@ const MAP_GUTTER = { left: 200, right: 180, top: 74, bottom: 16 };
 // The sheet the column ruler needs above the map's own lettering:
 // its tick, and its numbers over that.
 const COL_RULER_H = 34;
+// The brackets beside a power map (_bBoxBrackets): the tick back toward
+// the wall, the label's first glyph out from the bracket's line, the first
+// bracket's distance from the wall each side (the left leaves the row
+// ruler its room), the step between distances where the sheet has room,
+// the label's floor, how many turns a crowded distance may take, and the
+// clear space kept at the map area's edge.
+const BR_TICK = 14;
+const BR_OFF = 15;
+const BR_BASE = { L: 74, R: 44 };
+const BR_STEP = 78;
+const BR_FLOOR = 14;
+const BR_LANES = 6;
+const BR_MARGIN = 6;
+// the tick and the label's offset where a deep stack must sit tight
+const BR_TIGHT = { tick: 6, off: 6 };
 const MAP_ZOOM_CAP = 3;               // a tiny wall never blows up past 3x
 // The fill: a sheet's drawing scales up to this to fill its area.
 const FILL_CAP = 2.4;
@@ -1345,10 +1360,11 @@ class _Binder {
     }
 
     // The screens a binder with these options prints that cannot fit a
-    // circuit (_bCannotFit): [{ layer, note, panel, name }], in layer
-    // order - what the export warns about. `name` is what the binder
-    // titles it: a group routed as one is its GROUP with its screens,
-    // "MAIN WALL (WALL A, WALL B)", not the member that owns the walk.
+    // circuit (_bCannotFit): [{ layer, note, panel, name, group, sheets }],
+    // in layer order - what the export warns about. `name` is what the
+    // binder titles it: a group routed as one is its GROUP with its
+    // screens, "MAIN WALL (WALL A, WALL B)", not the member that owns the
+    // walk (`group` true). `sheets` is how many power sheets print it.
     binderCannotFit(opts) {
         const o = opts || this.readBinderOptions();
         if (!o.sides || !o.sides.power) return [];
@@ -1357,6 +1373,7 @@ class _Binder {
             : ((this.project && this.project.layers) || []).filter(l => (l.type || 'screen') === 'screen');
         const shown = new Set(screens);
         const out = [];
+        let groupPlans = null;
         for (const l of screens) {
             const why = this._bCannotFitWhy(l);
             if (!why) continue;
@@ -1369,7 +1386,15 @@ class _Binder {
                 : null;
             const name = group
                 ? `${group.name || group.id} (${members.map(m => m.name).join(', ')})` : l.name;
-            out.push({ layer: l, note: why.note, panel: why.panel, name });
+            // how many power sheets print it: a group by SCREENS prints one
+            // per member (the scoped member's alone on a one-screen binder)
+            let sheets = 1;
+            if (group && !scoped) {
+                if (!groupPlans) groupPlans = this._bGroupPlans(o);
+                const gp = groupPlans.get(String(group.id));
+                if (gp && gp.mode && gp.mode.power === 'screens') sheets = members.length;
+            }
+            out.push({ layer: l, note: why.note, panel: why.panel, name, group: !!group, sheets });
         }
         return out;
     }
@@ -1388,8 +1413,12 @@ class _Binder {
             : panels.length === list.length
                 ? ` No pattern helps: one panel alone draws more than ${one ? 'a circuit carries' : 'their circuits carry'}.`
                 : ` No pattern helps ${panels.map(x => x.name).join(', ')}: one panel alone draws more than a circuit carries.`;
-        return `${one ? 'This screen' : 'These screens'} can't fit ${one ? 'its' : 'their'} circuits, `
-            + `so ${one ? 'its power sheet says' : 'their power sheets say'} so: `
+        // a group entry is a WALL, never "this screen"; its sheets are one
+        // or one per member
+        const who = !one ? 'These screens' : list[0].group ? 'This wall' : 'This screen';
+        const sheets = one && list[0].sheets === 1 ? 'power sheet says' : 'power sheets say';
+        return `${who} can't fit ${one ? 'its' : 'their'} circuits, `
+            + `so ${one ? 'its' : 'their'} ${sheets} so: `
             + list.map(x => `${x.name}: ${x.note.replace(/^Cannot fit a circuit: /, '')}`).join('; ')
             + `. ${fix}${none}`;
     }
@@ -2146,40 +2175,61 @@ class _Binder {
     // shrinking a little (to 20 px); a title too long for that (owner, 2026-10-22:
     // "… · POWER WIRING · FRONT …" lost its view) goes on two lines at a
     // " · ", the dot staying on the first, each line shrinking on its own
-    // (to 21 px) - then three lines at 21 px, then four at 17, broken at
-    // its " · " and its ", " (a combined sheet's list, "PROCESSORS · H9 A,
-    // H9 B, …", 2026-10-23: six processors on an ARCH C sheet cut at 14
-    // px) and, only inside a piece too long for a line, at its words - so
-    // the view name is never lost and a title is cut only when even four
-    // lines will not hold it. Logged as one text, the whole title.
+    // (to 21 px) - then three lines at 21 px, four at 17, then five at 14
+    // (the binder's floor), broken at its " · " and its ", " (a combined
+    // sheet's list, "PROCESSORS · H9 A, H9 B, …", 2026-10-23: six
+    // processors on an ARCH C sheet cut at 14 px; round 6: twelve lost
+    // their "PULL LIST") and, only inside a piece too long for a line, at
+    // its words. A WORD too long for any line (a 52-letter name with no
+    // spaces) breaks at its letters, the last resort, tried only once no
+    // size holds the title whole without it. The sheet's kind - the last
+    // " · " piece, "PULL LIST", the view - is never lost: a title too long
+    // even for five lines at 14 cuts its list ("…") and keeps the kind on
+    // the last line. Logged as one text, the whole title (a hard break
+    // joined back with no space).
     _bSheetTitle(book, text, cx, y, maxWidth) {
         const opts = { size: SZ.tbTitle, weight: 700, upper: true, align: 'center', maxWidth, shrink: true };
         const t = this._bCaps(String(text == null ? '' : text));
         const ctxM = book.measureCtx;
         const width = (str, size) => { ctxM.font = this._bFont(size, 700); return ctxM.measureText(str).width; };
+        if (width(t, 20) <= maxWidth) return this._bText(book, text, cx, y + 58, opts);
         const pieces = t.split(' · ');
         // the pieces a line may break after: " · " and ", " keep their
         // mark on the line before
-        const tokens = t.split(/(?<=(?: ·|,) )/);
-        if (width(t, 20) <= maxWidth || tokens.length < 2) return this._bText(book, text, cx, y + 58, opts);
-        // tokens packed greedily onto lines that fit at `size`; a token too
-        // long for a line of its own breaks at its words
-        const pack = (size) => {
+        const tokenize = (str) => str.split(/(?<=(?: ·|,) )/);
+        // `str` packed greedily onto lines that fit at `size`; a token too
+        // long for a line of its own breaks at its words and, with `hard`,
+        // a word too long for a line at its letters. [{ text, hard }] -
+        // `hard` where the line ends inside a word.
+        const pack = (str, size, hard) => {
             const out = [];
             let cur = '';
             const put = (piece) => {
                 if (!cur || width((cur + piece).trim(), size) <= maxWidth) { cur += piece; return; }
-                out.push(cur.trim());
+                out.push({ text: cur.trim(), hard: false });
                 cur = piece;
             };
-            for (const tok of tokens) {
+            const letters = (word) => {
+                // the word's letters onto the current line and the next ones
+                for (const ch of word) {
+                    if (cur && width((cur + ch).trim(), size) > maxWidth) {
+                        out.push({ text: cur.trim(), hard: !/\s$/.test(cur) });
+                        cur = '';
+                    }
+                    cur += ch;
+                }
+            };
+            for (const tok of tokenize(str)) {
                 if (width(tok.trim(), size) <= maxWidth) { put(tok); continue; }
-                for (const w of tok.split(/(?<= )/)) put(w);
+                for (const w of tok.split(/(?<= )/)) {
+                    if (hard && width(w.trim(), size) > maxWidth) letters(w);
+                    else put(w);
+                }
             }
-            if (cur.trim()) out.push(cur.trim());
+            if (cur.trim()) out.push({ text: cur.trim(), hard: false });
             return out;
         };
-        const fits = (lines, size) => lines.every(l => width(l, size) <= maxWidth);
+        const fits = (lines, size) => lines.every(l => width(l.text, size) <= maxWidth);
         let best = null;
         for (let k = 1; k < pieces.length; k++) {
             const a = `${pieces.slice(0, k).join(' · ')} ·`, b = pieces.slice(k).join(' · ');
@@ -2190,29 +2240,48 @@ class _Binder {
                 best = { a, b, score };
             }
         }
+        // the layouts in the order tried: [lines, size, top, step, size packed at]
+        const layouts = [[2, 26, 40, 34, 21], [3, 21, 30, 26, 21], [4, 17, 24, 20, 17], [5, 14, 18, 16, 14]];
         let lines = null, size = 26, top = 40, step = 34;
-        if (best && fits([best.a, best.b], 21)) lines = [best.a, best.b];
-        if (!lines) {
-            const two = pack(21);
-            if (two.length <= 2) lines = two;
+        if (best) {
+            const two = [{ text: best.a, hard: false }, { text: best.b, hard: false }];
+            if (fits(two, 21)) lines = two;
+        }
+        for (const hard of [false, true]) {
+            for (const [n, sz, tp, st, at] of layouts) {
+                if (lines) break;
+                const packed = pack(t, at, hard);
+                if (packed.length <= n && fits(packed, at)) { lines = packed; size = sz; top = tp; step = st; }
+            }
         }
         if (!lines) {
-            const three = pack(21);
-            if (three.length <= 3) { lines = three; size = 21; top = 30; step = 26; }
+            // too long even for five lines at 14: the list is cut, the kind
+            // keeps the last line
+            [size, top, step] = [14, 18, 16];
+            const kind = pieces.length > 1 ? pieces[pieces.length - 1] : '';
+            const head = kind ? `${pieces.slice(0, -1).join(' · ')} ·` : t;
+            const kindLines = kind ? pack(kind, 14, true) : [];
+            const room = Math.max(1, 5 - kindLines.length);
+            const body = pack(head, 14, true);
+            if (body.length > room) {
+                ctxM.font = this._bFont(14, 700);
+                const cut = body.slice(0, room);
+                const last = cut[room - 1];
+                cut[room - 1] = { text: this._bFit(ctxM, `${last.text}${last.hard ? '' : ' '}${body[room].text}`,
+                                                    maxWidth), hard: false };
+                lines = [...cut, ...kindLines].slice(0, 5);
+            } else {
+                lines = [...body, ...kindLines];
+            }
         }
-        if (!lines) {
-            const four = pack(17);
-            lines = four.length <= 4 ? four : [...four.slice(0, 3), four.slice(3).join(' ')];
-            size = 17; top = 24; step = 20;
-        }
-        const drawn = lines.map((line, k) => this._bText(book, line, cx, y + top + k * step,
+        const drawn = lines.map((line, k) => this._bText(book, line.text, cx, y + top + k * step,
             { ...opts, upper: false, size, log: false }));
+        const whole = drawn.map((d, k) => d + (k < drawn.length - 1 ? (lines[k].hard ? '' : ' ') : '')).join('');
         if (book.log && book.page && book.page.painting) {
-            const whole = drawn.join(' ');
             book.log.texts.push(whole);
             if (book.log.textInfo) book.log.textInfo.push({ text: whole, size, weight: 700 });
         }
-        return drawn.join(' ');
+        return whole;
     }
 
     // The logo fitted inside its box, centred, through the recorder's
@@ -4368,7 +4437,7 @@ class _Binder {
         const layer = subject.layers[0];
         // the gutters: the rulers' and the brackets' room by default; a
         // caller that draws neither (the wiring sheet) passes its own
-        const G = gutter || MAP_GUTTER;
+        let G = gutter || MAP_GUTTER;
         const S = (book.scale || 2) * ((book.fill && book.fill.s) || 1);
         const canvases = (this.project && Array.isArray(this.project.canvases)) ? this.project.canvases : [];
         const hadBy = !!this.project && Object.prototype.hasOwnProperty.call(this.project, 'groupNameDisplayByView');
@@ -4382,7 +4451,7 @@ class _Binder {
             layerVis: (this.project.layers || []).map(l => [l, l.visible]),
             nameBy: hadBy ? this.project.groupNameDisplayByView : undefined,
         };
-        const inner = {
+        let inner = {
             x: area.x + G.left, y: area.y + G.top,
             w: area.w - G.left - G.right,
             h: (Number.isFinite(area.h) ? area.h : Infinity) - G.top - G.bottom,
@@ -4426,6 +4495,22 @@ class _Binder {
                          h: Math.max(wall.y + wall.h, w.y + w.h) - y1 };
             }
             const ww = Math.max(1, wall.w), wh = Math.max(1, wall.h);
+            // A power map's brackets (_bBoxBrackets) get the room they
+            // need: where a deep stack or a crowded side will not fit the
+            // gutter even at its closest step, the gutter grows that side
+            // and the wall draws smaller (round 6: a 36 x 6 wall's single
+            // circuit multis ran off the sheet and over the title block).
+            // A map whose brackets fit draws exactly as before.
+            let bracketCompact = 0;
+            if (!gutter && view === 'power' && book.list) {
+                const fit = this._bBracketGutter(book, subject, layer, wall, local, area, G, ww, wh);
+                bracketCompact = fit.compact;
+                if (fit.G !== G) {
+                    G = fit.G;
+                    inner = { x: area.x + G.left, y: area.y + G.top, w: area.w - G.left - G.right,
+                              h: (Number.isFinite(area.h) ? area.h : Infinity) - G.top - G.bottom };
+                }
+            }
             // One zoom for both axes - the wall is never scaled
             // non-uniformly: it fits the area, and never past the cap.
             const zoom = Math.min(inner.w / ww, inner.h / wh, MAP_ZOOM_CAP);
@@ -4444,6 +4529,8 @@ class _Binder {
                     const p = toPage(l.x, l.y);
                     return { x: p.x, y: p.y, w: l.w * zoom, h: l.h * zoom };
                 },
+                // how tight the brackets sit (_bBracketGutter)
+                bracketCompact,
                 // what a box of ink (sheet units) has to clear to stay on the
                 // sheet: everything is kept but on a member's sheet, which
                 // keeps its own wall and gutters and none of another member's
@@ -4731,11 +4818,140 @@ class _Binder {
     // sheet's own (_bSubjectBoxes) and a bracket spans their cabinets on the
     // screens the map draws - every member's on a group sheet, the member's
     // own on a member's.
+    //
+    // The layout itself is _bBracketLayout's: the map (_bPaintMap) reads it
+    // first, to leave the brackets the room they need, and this draws it.
     _bBoxBrackets(book, layer, scr, geo, subject) {
         const ctx = book.ctx;
+        const spans = this._bBracketSpans(book, layer, scr, subject, geo.rect);
+        const wallCx = geo.wall.x + geo.wall.w / 2;
+        const area = geo.area || { y: geo.wall.y, h: geo.wall.h };
+        const L = this._bBracketLayout(book, spans.map(sp => ({ ...sp, side: (sp.x1 + sp.x2) / 2 >= wallCx ? 'R' : 'L' })),
+                                       { top: area.y, bottom: area.y + area.h }, geo.bracketCompact || 0);
+        // the room each side has, the wall to the map's own area edge: the
+        // depth step closes up to keep every bracket inside it (2026-10-23,
+        // round 6: a deep stack ran off the sheet and over the title block)
+        const ax = geo.area ? geo.area.x : -Infinity;
+        const aw = geo.area ? geo.area.w : Infinity;
+        const avail = { R: ax + aw - (geo.wall.x + geo.wall.w), L: geo.wall.x - ax };
+        const step = { L: this._bBracketStep(L, 'L', avail.L), R: this._bBracketStep(L, 'R', avail.R) };
+        for (const side of ['L', 'R']) {
+            for (const b of L.placed[side]) {
+                const { box, y1, y2, depth, ya, yb, room, lines } = b;
+                const dir = side === 'R' ? 1 : -1;
+                const x = side === 'R'
+                    ? geo.wall.x + geo.wall.w + BR_BASE.R + depth * step.R
+                    : geo.wall.x - BR_BASE.L - depth * step.L;
+                ctx.strokeStyle = INK;
+                ctx.lineWidth = 3;
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.moveTo(x - dir * L.tick, ya);
+                ctx.lineTo(x, ya);
+                ctx.lineTo(x, yb);
+                ctx.lineTo(x - dir * L.tick, yb);
+                ctx.stroke();
+                const drawn = [];
+                ctx.save();
+                // the baseline 9 in from the anchor: the first glyph L.off
+                // out from the bracket's line
+                ctx.translate(x + dir * (L.off + 9), (ya + yb) / 2);
+                ctx.rotate(dir > 0 ? Math.PI / 2 : -Math.PI / 2);
+                // the last line (the length, where it prints) nearest the
+                // bracket, the name's lines further out, b.gap apart
+                lines.forEach((ln, i) => {
+                    const out = this._bText(book, ln.text, 0, 9 - (lines.length - 1 - i) * b.gap,
+                        { size: ln.size, weight: 700, align: 'center', maxWidth: room });
+                    drawn.push({ text: out, w: this._bTextWidth(book, out, { size: ln.size, weight: 700 }), size: ln.size });
+                });
+                ctx.restore();
+                if (book.log && book.page && book.page.painting) {
+                    const [lx, ly1] = this._bLogXY(book, x, y1);
+                    const k = book.fill ? book.fill.s : 1;
+                    const cy = this._bLogXY(book, x, (ya + yb) / 2)[1];
+                    // never past the label's own room
+                    const half = Math.min(Math.max(...drawn.map(d => d.w)), room) * k / 2;
+                    // the label's ink across: from the first glyph's foot to
+                    // the outermost line's caps
+                    const near = x + dir * (L.off - 3), far = x + dir * (L.off + b.thick);
+                    (book.log.brackets || (book.log.brackets = []))
+                        .push({ name: box.name, side, depth, x: lx, y1: ly1, y2: this._bLogXY(book, x, y2)[1],
+                                lines: drawn.map(d => d.text), sizes: drawn.map(d => d.size),
+                                size: Math.min(...drawn.map(d => d.size)), step: step[side],
+                                inkX1: this._bLogXY(book, Math.min(near, far, x - dir * L.tick), 0)[0],
+                                inkX2: this._bLogXY(book, Math.max(near, far, x - dir * L.tick), 0)[0],
+                                compact: L.compact,
+                                room: room * k, labelY1: cy - half, labelY2: cy + half });
+                }
+            }
+        }
+    }
+
+    // The gutter a power map leaves its brackets (_bPaintMap), and how
+    // tight they sit: { G, compact }. `G` as it is where the brackets fit
+    // it (the room beside a narrow wall counted) at their closest step,
+    // smaller labels tried before a smaller wall (_bBracketLayout's
+    // `compact`); else wider on the side that needs it - laid out again at
+    // the smaller wall that makes, a few times over, so the rows it
+    // shrinks are counted too. Never more than three quarters of the area
+    // across, the wall keeping the rest.
+    _bBracketGutter(book, subject, layer, wall, local, area, G, ww, wh) {
+        const scr = book.list && book.list.byScreen ? book.list.byScreen[layer.id] : null;
+        const spans = this._bBracketSpans(book, layer, scr, subject, (px, py, pw, ph, on) => {
+            const l = local(px, py, pw, ph, on || layer);
+            return { x: l.x - wall.x, y: l.y - wall.y, w: l.w, h: l.h };
+        });
+        if (!spans.length) return { G, compact: 0 };
+        // the layout at gutter `g`, and how far each side is short of room
+        const at = (g, compact) => {
+            const innerW = area.w - g.left - g.right;
+            const innerH = (Number.isFinite(area.h) ? area.h : Infinity) - g.top - g.bottom;
+            const z = Math.min(innerW / ww, innerH / wh, MAP_ZOOM_CAP);
+            const slack = Math.max(0, (innerW - wall.w * z) / 2);
+            const oy = area.y + g.top;
+            const items = spans.map(sp => ({ box: sp.box, side: (sp.x1 + sp.x2) / 2 >= wall.w / 2 ? 'R' : 'L',
+                                             y1: oy + sp.y1 * z, y2: oy + sp.y2 * z }));
+            const lay = this._bBracketLayout(book, items, { top: area.y, bottom: oy + wall.h * z + g.bottom }, compact);
+            return { L: this._bBracketNeed(lay, 'L'), R: this._bBracketNeed(lay, 'R'), slack };
+        };
+        // closer steps and smaller labels first, the wall as it is ...
+        for (let compact = 0; compact <= 4; compact++) {
+            const n = at(G, compact);
+            if (n.L <= G.left + n.slack + 0.5 && n.R <= G.right + n.slack + 0.5) return { G, compact };
+        }
+        // ... then the wall smaller: the largest labels whose gutters
+        // leave the wall three fifths of the area across, else the
+        // tightest, the gutters never past three quarters of it
+        const grown = (compact, cap) => {
+            const g = { ...G };
+            for (let i = 0; i < 6; i++) {
+                const n = at(g, compact);
+                let more = false;
+                for (const [side, key, other] of [['L', 'left', 'right'], ['R', 'right', 'left']]) {
+                    const need = Math.min(n[side], cap - g[other]);
+                    if (need > g[key] + n.slack + 0.5) { g[key] = need; more = true; }
+                }
+                if (!more) return { g, fits: true };
+            }
+            return { g, fits: false };
+        };
+        for (let compact = 0; compact < 4; compact++) {
+            const t = grown(compact, area.w * 0.4);
+            if (t.fits && t.g.left + t.g.right <= area.w * 0.4 + 1) {
+                const n = at(t.g, compact);
+                if (n.L <= t.g.left + n.slack + 0.5 && n.R <= t.g.right + n.slack + 0.5) return { G: t.g, compact };
+            }
+        }
+        return { G: grown(4, area.w * 0.75).g, compact: 4 };
+    }
+
+    // Each multi's bracket span through `rect` (a processor-coord rect ->
+    // sheet rect, as geo.rect): [{ box, x1, x2, y1, y2 }], the cabinets
+    // of its circuits this map draws. Empty multis are left out.
+    _bBracketSpans(book, layer, scr, subject, rect) {
         const s = subject && subject.kind !== 'layer' ? subject : null;
         const units = s ? this._bSubjectBoxes(book, s)
-            : (scr.boxes || []).map(box => ({ carrier: layer, box }));
+            : ((scr && scr.boxes) || []).map(box => ({ carrier: layer, box }));
         const circuitsOf = new Map();
         const byNumOf = (carrier) => {
             if (!circuitsOf.has(carrier)) {
@@ -4754,8 +4970,7 @@ class _Binder {
             });
             return out;
         };
-        const wallCx = geo.wall.x + geo.wall.w / 2;
-        const placed = { L: [], R: [] };
+        const out = [];
         for (const { carrier, box } of units) {
             let x1 = Infinity, x2 = -Infinity, y1 = Infinity, y2 = -Infinity;
             const byNum = byNumOf(carrier);
@@ -4763,99 +4978,178 @@ class _Binder {
                 const circuit = byNum.get(c.num);
                 if (!circuit) continue;
                 for (const [p, on] of drawn(circuit, carrier)) {
-                    const rc = geo.rect(p.x, p.y, p.width, p.height, s ? on : undefined);
+                    const rc = rect(p.x, p.y, p.width, p.height, s ? on : undefined);
                     x1 = Math.min(x1, rc.x); x2 = Math.max(x2, rc.x + rc.w);
                     y1 = Math.min(y1, rc.y); y2 = Math.max(y2, rc.y + rc.h);
                 }
             }
             if (!Number.isFinite(x1) || !Number.isFinite(y1)) continue;
-            const side = (x1 + x2) / 2 >= wallCx ? 'R' : 'L';
-            const stack = placed[side];
-            // A real overlap is more than a shared edge: the spans must
-            // cross by more than a hairline.
-            const crosses = (a, b) => Math.min(y2, b) - Math.max(y1, a) > 4;
-            let depth = 0;
-            while (stack.some(s => s.depth === depth && crosses(s.y1, s.y2))) depth++;
-            stack.push({ y1, y2, depth, box });
+            out.push({ box, x1, x2, y1, y2 });
         }
-        // A LABEL NEVER REACHES ITS NEIGHBOUR'S (2026-10-23: on a dense map
-        // "SR-1-1 · no length" ran into the next bracket's): it is centred
-        // on its own bracket and may use the bracket's height and half the
-        // gap to the next bracket on its side at its distance, either way -
-        // the neighbour takes the other half. Where the label will not fit
-        // that on one line it goes on two, the name then the length; each
-        // line shrinks to the room, and only a name too long even then is
-        // cut.
-        const minLabel = 10;
+        return out;
+    }
+
+    // WHERE EACH BRACKET GOES AND WHAT ITS LABEL SAYS. `items` are
+    // [{ box, side, y1, y2 }] in sheet units, `bounds` { top, bottom } the
+    // map's own area. { placed: { L, R }, thick: { L, R }, depth: { L, R } }
+    // - each placed bracket { box, side, y1, y2, ya, yb, depth, room,
+    // lines: [{ text, size }], gap, thick }.
+    //
+    // A LABEL NEVER REACHES ITS NEIGHBOUR'S (2026-10-23: on a dense map
+    // "SR-1-1 · no length" ran into the next bracket's): it is centred on
+    // its own bracket and may use the bracket's height and half the gap to
+    // the next bracket on its side at its distance, either way - the
+    // neighbour takes the other half. With no neighbour one way it may run
+    // to the map's edge that way (round 6: a 58-letter name had a floor of
+    // 80 and was cut). The label, in the order tried:
+    //   * "SR1 · 125'" on one line, where it fits at full size;
+    //   * the name, then the length on a line nearer the bracket, each
+    //     shrinking to the room, never under BR_FLOOR (the binder's 14);
+    //   * a name with spaces on up to three lines at its words, then the
+    //     length;
+    //   * the name alone (round 6: rather than "S…");
+    //   * the name alone on up to three lines at its words.
+    // Where a label will not fit even so, its bracket and every other one
+    // at its distance step out by turns - one in two, one in three, up to
+    // BR_LANES - so each has the room of the brackets between it and its
+    // next neighbour (round 6: a 10 x 60 wall with a multi per circuit
+    // printed sixty overlapping "S…"). Only a label no layout fits is cut,
+    // inside its room, never over another.
+    // `compact` (_bBracketGutter, for a stack too deep for its gutter): 1
+    // keeps every label on one line, 2 caps it at 20, 3 at the floor, 4
+    // also draws the ticks and the labels closer to their brackets
+    // (BR_TIGHT), so the depth step closes up further.
+    _bBracketLayout(book, items, bounds, compact = 0) {
+        const geom = compact >= 4 ? BR_TIGHT : { tick: BR_TICK, off: BR_OFF };
+        const cap = compact >= 3 ? BR_FLOOR : compact >= 2 ? 20 : SZ.bracket;
+        const top = Number.isFinite(bounds && bounds.top) ? bounds.top : -Infinity;
+        const bottom = Number.isFinite(bounds && bounds.bottom) ? bounds.bottom : Infinity;
+        const widths = new Map();
+        const w28 = (t) => {
+            if (!widths.has(t)) widths.set(t, this._bTextWidth(book, t, { size: SZ.bracket, weight: 700 }));
+            return widths.get(t);
+        };
+        // the size `t` takes in `room`: full size, or shrunk to it, never
+        // under the floor (null where it will not fit at the floor)
+        const sizeFor = (t, room) => {
+            const w = w28(t) * cap / SZ.bracket;
+            if (w <= room) return cap;
+            let s = Math.floor(cap * room / w * 2) / 2;
+            while (s >= BR_FLOOR && this._bTextWidth(book, t, { size: s, weight: 700 }) > room) s -= 0.5;
+            return s >= BR_FLOOR ? s : null;
+        };
+        // the name on up to three lines at its words, each sized to the room
+        const wrap = (name, room) => {
+            const words = name.split(' ');
+            if (words.length < 2) return null;
+            const out = [];
+            let cur = '';
+            for (const w of words) {
+                const next = cur ? `${cur} ${w}` : w;
+                if (!cur || w28(next) * BR_FLOOR / SZ.bracket <= room) { cur = next; continue; }
+                out.push(cur);
+                cur = w;
+            }
+            out.push(cur);
+            if (out.length > 3) return null;
+            const lines = out.map(t => ({ text: t, size: sizeFor(t, room) }));
+            return lines.every(l => l.size) ? lines : null;
+        };
+        const labelOf = (box, room) => {
+            const name = String(box.name == null ? '' : box.name);
+            // a multi with no length says so, the way its band does
+            const len = box.homeRun ? this.pullLengthText(box.homeRun, this.pullHomeRunKind(box)) : 'no length';
+            const full = `${name} · ${len}`;
+            if (w28(full) * cap / SZ.bracket <= room) return { lines: [{ text: full, size: cap }], ok: true };
+            if (compact) {
+                // one line only: the whole label shrunk, else the name
+                const sFull = sizeFor(full, room), sOnly = sizeFor(name, room);
+                if (sFull) return { lines: [{ text: full, size: sFull }], ok: true };
+                if (sOnly) return { lines: [{ text: name, size: sOnly }], ok: true };
+                return { lines: [{ text: name, size: BR_FLOOR }], ok: false };
+            }
+            const sName = sizeFor(name, room), sLen = sizeFor(len, room);
+            if (sName && sLen) return { lines: [{ text: name, size: sName }, { text: len, size: sLen }], ok: true };
+            const wrapped = sName ? null : wrap(name, room);
+            if (wrapped && sLen) return { lines: [...wrapped, { text: len, size: sLen }], ok: true };
+            if (sName) return { lines: [{ text: name, size: sName }], ok: true };
+            if (wrapped) return { lines: wrapped, ok: true };
+            return { lines: [{ text: name, size: BR_FLOOR }], ok: false };
+        };
+        // a bracket's room among the others at its own distance
+        const roomOf = (b, peers) => {
+            let up = b.y1 - top - 2, down = bottom - b.y2 - 2, alone = true;
+            for (const o of peers) {
+                if (o === b) continue;
+                if (o.y2 <= b.y1 + 4) { up = Math.min(up, (b.y1 - o.y2) / 2 - 5); alone = false; }
+                else if (o.y1 >= b.y2 - 4) { down = Math.min(down, (o.y1 - b.y2) / 2 - 5); alone = false; }
+            }
+            const room = (b.y2 - b.y1) + 2 * Math.min(up, down);
+            return Math.max(alone ? b.y2 - b.y1 - 6 : 0, room);
+        };
+        const placed = { L: [], R: [] }, thick = { L: 0, R: 0 }, depth = { L: 0, R: 0 };
         for (const side of ['L', 'R']) {
-            for (const b of placed[side]) {
-                const ya = b.y1 + 3, yb = b.y2 - 3;
-                let up = Infinity, down = Infinity;
-                for (const o of placed[side]) {
-                    if (o === b || o.depth !== b.depth) continue;
-                    if (o.y2 <= b.y1 + 4) up = Math.min(up, (b.y1 - o.y2 + 6) / 2);
-                    else if (o.y1 >= b.y2 - 4) down = Math.min(down, (o.y1 - b.y2 + 6) / 2);
+            // the levels by overlap, in the multis' order
+            const levels = [];
+            for (const it of items) {
+                if (it.side !== side) continue;
+                const crosses = (o) => Math.min(it.y2, o.y2) - Math.max(it.y1, o.y1) > 4;
+                let lv = 0;
+                while ((levels[lv] || []).some(crosses)) lv++;
+                (levels[lv] || (levels[lv] = [])).push({ ...it, ya: it.y1 + 3, yb: it.y2 - 3 });
+            }
+            let at = 0;
+            for (const level of levels) {
+                const seq = level.slice().sort((a, b) => a.y1 - b.y1);
+                // the fewest turns that let every label fit; else the most
+                // labels fitting
+                let best = null;
+                for (let k = 1; k <= BR_LANES && k <= seq.length; k++) {
+                    const lanes = Array.from({ length: k }, (_, j) => seq.filter((_, i) => i % k === j));
+                    const tried = seq.map((b, i) => {
+                        const room = roomOf(b, lanes[i % k]);
+                        return { b, room, lane: i % k, ...labelOf(b.box, room) };
+                    });
+                    const ok = tried.filter(t => t.ok).length;
+                    if (!best || ok > best.ok) best = { k, tried, ok };
+                    if (ok === seq.length) break;
                 }
-                const spare = Math.max(0, Math.min(up, down));
-                // no neighbour on either side: the old floor of 80; with
-                // one, a little clear space between the two labels
-                const room = Number.isFinite(spare) ? Math.max(8, (yb - ya) + 2 * spare - 10) : Math.max(80, yb - ya);
-                b.ya = ya; b.yb = yb; b.room = room;
+                for (const t of best.tried) {
+                    const gap = Math.max(...t.lines.map(l => l.size));
+                    const th = (t.lines.length - 1) * gap + 0.72 * gap;
+                    const b = { ...t.b, depth: at + t.lane, room: t.room, lines: t.lines, gap, thick: th };
+                    placed[side].push(b);
+                    thick[side] = Math.max(thick[side], th);
+                    depth[side] = Math.max(depth[side], b.depth);
+                }
+                at += best.k;
             }
         }
-        for (const side of ['L', 'R']) {
-            for (const { box, y1, y2, depth, ya, yb, room } of placed[side]) {
-                const dir = side === 'R' ? 1 : -1;
-                const x = side === 'R'
-                    ? geo.wall.x + geo.wall.w + 44 + depth * 78
-                    : geo.wall.x - 74 - depth * 78;
-                ctx.strokeStyle = INK;
-                ctx.lineWidth = 3;
-                ctx.setLineDash([]);
-                ctx.beginPath();
-                ctx.moveTo(x - dir * 14, ya);
-                ctx.lineTo(x, ya);
-                ctx.lineTo(x, yb);
-                ctx.lineTo(x - dir * 14, yb);
-                ctx.stroke();
-                // a multi with no length says so, the way its band does
-                const parts = [box.name, box.homeRun
-                    ? this.pullLengthText(box.homeRun, this.pullHomeRunKind(box)) : 'no length'];
-                const label = parts.join(' · ');
-                // the size a text shrinks to in the room, no smaller than
-                // `floor`; one line only where the whole label fits at its
-                // full size (2026-10-21: a longer one wraps)
-                const sizeFor = (t, floor) => {
-                    const w = this._bTextWidth(book, t, { size: SZ.bracket, weight: 700 });
-                    return w <= room ? SZ.bracket : Math.max(floor, Math.floor(SZ.bracket * room / w * 2) / 2);
-                };
-                const lines = parts.length < 2 || sizeFor(label, 1) >= SZ.bracket ? [label] : parts;
-                const drawn = [];
-                ctx.save();
-                ctx.translate(x + dir * 24, (ya + yb) / 2);
-                ctx.rotate(dir > 0 ? Math.PI / 2 : -Math.PI / 2);
-                // two lines: the name, then the length on a line nearer
-                // the bracket - a length in stock pieces ("50 m+20 m")
-                // never split. Both stay inside the 78 a stepped bracket
-                // takes.
-                lines.forEach((t, i) => {
-                    const size = sizeFor(t, minLabel);
-                    const out = this._bText(book, t, 0, 9 - (lines.length - 1 - i) * 28,
-                        { size: Math.min(SZ.bracket, size), weight: 700, align: 'center', maxWidth: room });
-                    drawn.push({ text: out, w: this._bTextWidth(book, out, { size: Math.min(SZ.bracket, size), weight: 700 }) });
-                });
-                ctx.restore();
-                if (book.log && book.page && book.page.painting) {
-                    const [lx, ly1] = this._bLogXY(book, x, y1);
-                    const k = book.fill ? book.fill.s : 1;
-                    const cy = this._bLogXY(book, x, (ya + yb) / 2)[1];
-                    const half = Math.max(...drawn.map(d => d.w)) * k / 2;
-                    (book.log.brackets || (book.log.brackets = []))
-                        .push({ name: box.name, side, depth, x: lx, y1: ly1, y2: this._bLogXY(book, x, y2)[1],
-                                lines: drawn.map(d => d.text), labelY1: cy - half, labelY2: cy + half });
-                }
-            }
-        }
+        return { placed, thick, depth, compact, tick: geom.tick, off: geom.off };
+    }
+
+    // The depth step on a side of this layout (_bBracketLayout) inside
+    // `avail` (the wall to the map area's edge): BR_STEP where that fits,
+    // else closed up as far as the labels allow - a label never reaching
+    // the next bracket's ticks.
+    _bBracketStep(layout, side, avail) {
+        const D = layout.depth[side];
+        const T = layout.thick[side];
+        const min = layout.tick + layout.off + T + 3;
+        const full = Math.max(BR_STEP, min);
+        if (!D || !Number.isFinite(avail)) return full;
+        const fit = (avail - BR_BASE[side] - layout.off - T - BR_MARGIN) / D;
+        // (short of even the closest step - the gutter could not grow that
+        // far - the sheet's edge wins over the ticks' clearance)
+        return fit >= min ? Math.min(full, fit) : Math.max(0, fit);
+    }
+
+    // The room a side's brackets need at the closest step they allow,
+    // from the wall out (_bPaintMap grows the gutter to it).
+    _bBracketNeed(layout, side) {
+        if (!layout.placed[side].length) return 0;
+        const T = layout.thick[side];
+        return BR_BASE[side] + layout.depth[side] * (layout.tick + layout.off + T + 3) + layout.off + T + BR_MARGIN;
     }
 
     // ---- the screen sheets --------------------------------------------------
@@ -6339,7 +6633,8 @@ class _Binder {
     // their ratings and their leg loads, the leg totals as the service's
     // last row, then the service's own block - its size, the ratings added
     // up against it, its load against its limit (OVER named per leg) and
-    // its imbalance. House power is not pulled, so no pull list.
+    // its imbalance. House power is not pulled, so no pull list. Null for
+    // a service none of whose distros prints.
     _bServiceGroup(book, s) {
         let load = this.getServiceLoads().find(x => x.id === s.id);
         if (!load) return null;
@@ -6353,6 +6648,11 @@ class _Binder {
         // not in the total, not in the count - it carries no load, so the
         // legs are unchanged.
         const printed = load.distros.filter(r => this._bDistroPrints(r.distro));
+        // A SERVICE WITH NO DISTRO THAT PRINTS is off the binder (owner,
+        // 2026-10-23: "empty services shouldn't print really"): no Service
+        // sheet, so no number, no CONTENTS line - the 4.n sheets after it
+        // close up.
+        if (!printed.length) return null;
         if (printed.length !== load.distros.length) {
             const ratingSum = printed.reduce((t, r) => t + (Number(r.distro.ratingA) || 0), 0);
             load = { ...load, distros: printed, ratingSum,
