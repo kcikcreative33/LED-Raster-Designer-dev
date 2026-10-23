@@ -493,7 +493,11 @@ def test_a_sidebar_funnel_edit_on_only_locked_screens_changes_nothing(page):
 
 
 def test_a_group_edit_leaves_a_locked_peer_alone_and_names_it(page):
+    # A half-locked group (an old file's) is locked as a whole until the
+    # user picks Lock or Unlock (round 6): the edit on its unlocked member
+    # is refused too, and the locked member is named.
     a, b, c = reset(page, locked=[1], group=[0, 1], selected=[0], current=0)
+    before_a = layer(page, a)
     before_b = layer(page, b)
     page.evaluate("""() => {
         const el = document.getElementById('number-size');
@@ -501,7 +505,7 @@ def test_a_group_edit_leaves_a_locked_peer_alone_and_names_it(page):
         el.dispatchEvent(new Event('change', { bubbles: true }));
     }""")
     saves_settled(page)
-    assert layer(page, a)['number_size'] == 41
+    assert layer(page, a)['number_size'] == before_a['number_size']
     assert layer(page, b) == before_b
     assert server_layer(page, b)['number_size'] == before_b['number_size']
     assert toasts(page) == [locked_msg('Lock B')]
@@ -543,12 +547,15 @@ def test_jumper_field_writes_the_unlocked_screen_only(page):
 
 
 def test_change_cabinet_and_route_as_one_refuse_locked_screens(page):
+    # A and B are a half-locked group (an old file's), locked as a whole
+    # until the user picks Lock or Unlock (round 6): neither changes.
     a, b, c = reset(page, locked=[0], group=[0, 1], selected=[0, 1], current=1)
     before = layer(page, a)
+    before_b = layer(page, b)
     page.evaluate("""(ids) => window.app.changeCabinetForLayers(ids,
         { cabinet_width: 64, cabinet_height: 64 })""", [a, b])
     saves_settled(page)
-    assert layer(page, b)['cabinet_width'] == 64
+    assert layer(page, b)['cabinet_width'] == before_b['cabinet_width']
     assert layer(page, a)['cabinet_width'] == before['cabinet_width']
     assert toasts(page) == [locked_msg('Lock A')]
     page.evaluate("() => { window.__toasts = []; }")

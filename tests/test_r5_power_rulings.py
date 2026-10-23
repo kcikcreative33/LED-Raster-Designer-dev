@@ -11,6 +11,12 @@
 3. That refusal says why: "B is locked, and this would repack its
    circuits. Unlock it to change it." An action on the locked screen itself
    keeps the plain wording.
+
+   Round 6 (the owner's ruling): a group with some members locked and some
+   not (an old file's) is treated as fully locked, so every action on its
+   unlocked member A is refused with the plain error naming B, whether it
+   would repack B or not (test_r6_power_rulings.py). The repack wording
+   stays for a grouping or a distro change that repacks a locked screen.
 4. A hidden screen is left out of every distro and service load: the tray's
    distro load, the distro checks, the service card and the phase balance.
 5. The duplicate-distro suffix counts only distros that print: an unused
@@ -243,20 +249,20 @@ def test_remove_2fer_refuses_a_locked_group_member_it_repacks(page):
     assert capacity(page, b)['pct'] == 1
 
 
-def test_a_share_that_keeps_the_locked_members_packing_takes(page):
+def test_a_share_that_keeps_the_locked_members_packing_is_refused_too(page):
     """A's two multis both on SL: sharing two runs drops multi 2, and B
-    still packs at 100%."""
+    would still pack at 100%. Round 6: A is a member of a half-locked
+    group, so it is locked as well, and the share is refused, B named."""
     a, b = wall(page, pinned(7))
     set_distros(page, [_distro('sl', 'SL', breakers100=True), _distro('sr', 'SR')],
                 {a: {1: 'sl', 2: 'sl'}})
     errors_on(page)
-    h0 = len(history(page))
+    page.evaluate("() => window.app.resetHistory('Initial State')")
+    before, h0 = state(page, [a, b]), len(history(page))
     out = page.evaluate("([a]) => window.app.mergeSplitterCircuits(window.__nf.layer(a), [1, 2])", [a])
-    landed(page)
-    assert out is True
-    assert errors(page)['locked'] == [], errors(page)
-    assert len(history(page)) == h0 + 1, history(page)
-    assert count(page, a) == 6
+    assert out is False
+    assert_refused(page, [a, b], before, h0)
+    assert count(page, a) == 7
 
 
 def test_nfer_it_refuses_a_locked_group_member_it_repacks(page):
@@ -359,12 +365,13 @@ def test_a_mixed_tray_clear_touching_a_locked_group_member_is_refused_whole(page
 # ── 3. the wording of the refusal ────────────────────────────────────────
 
 def test_the_repack_refusal_says_why_and_the_locked_screen_itself_does_not(page):
+    # Round 6: A is a member of a half-locked group, so it is locked too,
+    # and its own actions say the plain error naming B.
     a, b = wall(page, pinned(7))
     toasts_on(page)
     page.evaluate("([a]) => window.app.mergeSplitterCircuits(window.__nf.layer(a), [1, 2])", [a])
     landed(page)
-    assert toasts(page) == [
-        'B is locked, and this would repack its circuits. Unlock it to change it.'], toasts(page)
+    assert toasts(page) == ['B is locked. Unlock it to change it.'], toasts(page)
     page.evaluate("() => { window.__r5.length = 0; }")
     page.evaluate("([b]) => window.app.setSocaDistro(window.__nf.layer(b), 1, 'sr')", [b])
     landed(page)
@@ -372,8 +379,20 @@ def test_the_repack_refusal_says_why_and_the_locked_screen_itself_does_not(page)
     page.evaluate("() => { window.__r5.length = 0; }")
     page.evaluate("() => window.app.removeDistro('sr')")
     landed(page)
+    assert toasts(page) == ['B is locked. Unlock it to change it.'], toasts(page)
+    # A distro change that repacks a locked screen it feeds says why: LK
+    # (locked, in no group) on SR packs at 80%, and ticking SR's 100%
+    # rated breakers would pack it at the breaker.
+    (lk,) = make(page, [{'name': 'LK', 'columns': 4, 'props': dict(SHARING_OFF, locked=True)}])
+    set_distros(page, [_distro('sr', 'SR')], {lk: {1: 'sr'}})
+    toasts_on(page)
+    assert capacity(page, lk)['pct'] == 0.8
+    out = page.evaluate("() => window.app.updateDistro('sr', { breakers100: true })")
+    landed(page)
+    assert out is None
     assert toasts(page) == [
-        'B is locked, and this would repack its circuits. Unlock it to change it.'], toasts(page)
+        'LK is locked, and this would repack its circuits. Unlock it to change it.'], toasts(page)
+    assert capacity(page, lk)['pct'] == 0.8
 
 
 def test_two_repacked_screens_are_named_together(page):

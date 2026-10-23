@@ -68,8 +68,8 @@ class _PixelSelect {
         });
         const differ = scope.filter(l => isOn(l) !== !!enabled);
         return {
-            change: differ.filter(l => !l.locked),
-            locked: differ.filter(l => l.locked),
+            change: differ.filter(l => !this._layerLocked(l)),
+            locked: differ.filter(l => this._layerLocked(l)),
         };
     }
 
@@ -492,7 +492,7 @@ class _PixelSelect {
                 && panel.x <= x2 && (panel.x + panel.width) >= x1
                 && panel.y <= y2 && (panel.y + panel.height) >= y1);
             if (hit.length === 0) return;
-            if (member.locked) locked.push(member);
+            if (this._layerLocked(member)) locked.push(member);
             hit.forEach(panel => selection.add(this.getScopedPanelKey(member.id, panel)));
         });
         return locked;
@@ -647,7 +647,7 @@ class _PixelSelect {
             const hit = layer.panels.filter(panel => panel.x <= x2 && (panel.x + panel.width) >= x1
                 && panel.y <= y2 && (panel.y + panel.height) >= y1);
             if (hit.length === 0) return;
-            if (layer.locked) locked.push(layer);
+            if (this._layerLocked(layer)) locked.push(layer);
             hit.forEach(panel => keys.push(this.getScopedPanelKey(layer.id, panel)));
         });
         return { keys, locked };
@@ -754,7 +754,7 @@ class _PixelSelect {
             const mine = layer.panels.filter(p => want.has(p) && !placed.has(p));
             if (mine.length === 0) return;
             mine.forEach(p => placed.add(p));
-            if (layer.locked) { locked.push(layer); lockedGroups.push({ layer, panels: mine }); return; }
+            if (this._layerLocked(layer)) { locked.push(layer); lockedGroups.push({ layer, panels: mine }); return; }
             groups.push({ layer, panels: mine });
         });
         const strays = (panels || []).filter(p => p && !placed.has(p));
@@ -763,7 +763,7 @@ class _PixelSelect {
             const ids = new Set(strays.map(p => p.id));
             const mine = cur.panels.filter(p => ids.has(p.id));
             if (mine.length) {
-                if (cur.locked) {
+                if (this._layerLocked(cur)) {
                     const lg = lockedGroups.find(x => x.layer === cur);
                     if (lg) mine.forEach(p => { if (!lg.panels.includes(p)) lg.panels.push(p); });
                     else { locked.push(cur); lockedGroups.push({ layer: cur, panels: mine }); }

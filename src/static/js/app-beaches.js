@@ -131,7 +131,7 @@ class _Beaches {
             select.appendChild(o);
             return o;
         };
-        opt('', mixed ? '-' : '— no beach —');
+        opt('', mixed ? '-' : 'No beach');
         for (const b of this.getBeaches()) opt(b.id, b.name || b.id);
         // An action, not a value: picking it prompts for a name. Marked so
         // a sweep over the app's fields (tests/test_all_fields_sweep.py)

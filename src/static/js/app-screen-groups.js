@@ -326,7 +326,7 @@ class _ScreenGroups {
             if (changed.length === 0) return;
             this.getGroupMembers(group).forEach(peer => {
                 if (!peer || peer.id === layer.id || edited.has(peer.id)) return;
-                if (peer.locked) {
+                if (this._layerLocked(peer)) {
                     const differs = changed.some(field => JSON.stringify(
                         peer[field] === undefined ? null : peer[field])
                         !== JSON.stringify(layer[field] === undefined ? null : layer[field]));
@@ -747,11 +747,11 @@ class _ScreenGroups {
         // with one member is dissolved, which would take a locked member
         // out of it too - so either way nothing moves and the error names
         // the locked screens.
-        const lockedHit = layers.filter(l => l.locked);
+        const lockedHit = layers.filter(l => this._layerLocked(l));
         const going = new Set(layers.map(l => l.id));
         new Set(layers.map(l => l.group_id)).forEach(gid => {
             const left = (this.project.layers || []).filter(l => l && l.group_id === gid && !going.has(l.id));
-            if (left.length < 2) left.filter(l => l.locked).forEach(l => lockedHit.push(l));
+            if (left.length < 2) left.filter(l => this._layerLocked(l)).forEach(l => lockedHit.push(l));
         });
         if (this._lockedRefused(lockedHit)) return false;
         layers.forEach(layer => this._detachLayerFromGroups(
@@ -781,6 +781,13 @@ class _ScreenGroups {
         if (!group) return false;
         const members = this.getGroupMembers(group);
         if (members.length === 0) return false;
+        // A half-locked group (an old file's) is locked as a whole until
+        // the user picks Lock or Unlock for it: its eye is refused too.
+        const holders = members.length ? this._halfLockedGroupHolders(members[0]) : [];
+        if (holders.length) {
+            this._showLockedError(holders);
+            return false;
+        }
         const anyVisible = members.some(m => m.visible !== false);
         members.forEach(m => { m.visible = !anyVisible; });
         if (anyVisible) {
@@ -954,6 +961,14 @@ class _ScreenGroups {
     // is locked, nothing to settle; true / false - the lock every member
     // takes with the grouping.
     async _settleGroupLock(screens) {
+        // A member of a half-locked group (an old file's) is locked until
+        // the user picks Lock or Unlock for that group (_layerLocked): no
+        // grouping may take it out of its group or add to it.
+        const held = (screens || []).filter(l => l && this._halfLockedGroupHolders(l).length);
+        if (held.length) {
+            this._showLockedError(held);
+            return { ok: false, locked: null };
+        }
         const locked = (screens || []).filter(l => l && l.locked);
         if (!locked.length) return { ok: true, locked: null };
         if (locked.length === screens.length) {

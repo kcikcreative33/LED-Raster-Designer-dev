@@ -326,7 +326,7 @@ class _Distros {
     // locked screen.
     _repackLockedScreens(near) {
         const layers = (this.project && this.project.layers) || [];
-        let locked = layers.filter(l => l && l.locked && (l.type || 'screen') === 'screen');
+        let locked = layers.filter(l => l && this._layerLocked(l) && (l.type || 'screen') === 'screen');
         if (locked.length && near) {
             const reach = new Set();
             (Array.isArray(near) ? near : [near]).filter(Boolean).forEach(l => {
@@ -486,7 +486,7 @@ class _Distros {
         // Removing a distro unfeeds every multi on it, so a locked screen
         // fed from it keeps the distro in place (the owner's ruling,
         // 2026-10-16) - whole or not at all, and the error names it.
-        const fedLocked = (this.project.layers || []).filter(l => l && l.locked
+        const fedLocked = (this.project.layers || []).filter(l => l && this._layerLocked(l)
             && Object.values(l.powerSocaDistro || {}).includes(id));
         if (this._lockedRefused(fedLocked)) return false;
         // ...and so does a locked screen the removal would REPACK (owner,

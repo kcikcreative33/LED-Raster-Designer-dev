@@ -493,7 +493,7 @@ class _ContextMenu {
             const centeredX = Math.round((rasterW - fpW) / 2 - fp.dx);
             const centeredY = Math.round((rasterH - fpH) / 2 - fp.dy);
 
-            if (layer.locked) {
+            if (this._layerLocked(layer)) {
                 const curX = Number(useShow ? (layer.showOffsetX ?? layer.offset_x) : layer.offset_x) || 0;
                 const curY = Number(useShow ? (layer.showOffsetY ?? layer.offset_y) : layer.offset_y) || 0;
                 const wouldMove = ((axis === 'x' || axis === 'both') && curX !== centeredX)

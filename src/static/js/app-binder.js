@@ -6530,16 +6530,11 @@ class _Binder {
         // A multi left on a one-circuit output (a show already in that
         // state, 2026-10-18): the output's load against what it carries.
         if (typeof this._faceCrowding === 'function') {
-            // (what the screens that print put on it: a hidden screen's
-            // multi crowds no output on paper)
-            const crowding = this._faceCrowding(d).map(cr => {
-                const members = (cr.members || []).filter(m => this._bShownScreen(m.layer));
-                if (members.length === (cr.members || []).length) return cr;
-                return { ...cr, members, circuits: members.reduce((t, m) => t + m.legs, 0),
-                         amps: members.reduce((t, m) => t + m.amps, 0),
-                         where: (members[0] && members[0].name) || cr.where };
-            }).filter(cr => cr.circuits > cr.box.size);
-            for (const cr of crowding) {
+            // A hidden screen keeps its output (the owner's ruling, round
+            // 6), so a visible screen pinned onto it is crowded here as on
+            // the tray and the pull sheet; the load is what the visible
+            // screens draw (_faceCrowding).
+            for (const cr of this._faceCrowding(d)) {
                 const cap = this._crowdCapacityText(d, cr);
                 pairs.push([cap ? 'Over capacity' : 'Crowded',
                     `${cap || `${cr.where} ${cr.box.conn.short} carries ${cr.circuits} circuits`}`

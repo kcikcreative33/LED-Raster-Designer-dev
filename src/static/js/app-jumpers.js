@@ -385,8 +385,8 @@ class _Jumpers {
                 // A locked screen keeps its jumper (the owner's ruling,
                 // 2026-10-16): named when the figure would change it, and
                 // the fields show what the screens really hold.
-                const lockedMet = selected.filter(l => l.locked && l[field] !== val);
-                const writable = selected.filter(l => !l.locked);
+                const lockedMet = selected.filter(l => this._layerLocked(l) && l[field] !== val);
+                const writable = selected.filter(l => !this._layerLocked(l));
                 if (lockedMet.length) {
                     this._showLockedError(lockedMet);
                     this.syncJumperControls(selected);

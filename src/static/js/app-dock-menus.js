@@ -704,7 +704,7 @@ class _DockMenus {
                             (by.get(r.layerId) || []).concat([r.num])));
                         const locked = [...by.keys()]
                             .map(id => (this.project.layers || []).find(l => l.id === id))
-                            .filter(m => m && m.locked);
+                            .filter(m => m && this._layerLocked(m));
                         if (locked.length) {
                             this._showLockedError(locked);
                             return;

@@ -1098,7 +1098,7 @@ class _Presets {
         if (screens.length === 0) return;
         // Only locked screens: nothing could change, so the picker does not
         // open and the error says why.
-        if (screens.every(l => l.locked)) {
+        if (screens.every(l => this._layerLocked(l))) {
             this._showLockedError(screens);
             return;
         }
@@ -1221,8 +1221,8 @@ class _Presets {
             ? JSON.stringify(a ?? null) !== JSON.stringify(b ?? null)
             : String(a ?? '') !== String(b ?? ''));
         const changes = (l) => Object.keys(fields).some(k => differs(l[k], fields[k]));
-        this._showLockedError(targets.filter(l => l.locked && changes(l)));
-        targets = targets.filter(l => !l.locked);
+        this._showLockedError(targets.filter(l => this._layerLocked(l) && changes(l)));
+        targets = targets.filter(l => !this._layerLocked(l));
         if (targets.length === 0) return;
         targets.forEach(layer => {
             Object.keys(fields).forEach(k => { layer[k] = fields[k]; });

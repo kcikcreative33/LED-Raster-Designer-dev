@@ -430,8 +430,8 @@ class _CustomRuns {
         if (!source) return;
         // A locked screen stays unchanged (the owner's ruling, 2026-10-16):
         // neither its own runs nor its cabinets take a new step.
-        if (owner.locked || source.locked) {
-            this._showLockedError([owner, source].filter(l => l.locked));
+        if (this._layerLocked(owner) || this._layerLocked(source)) {
+            this._showLockedError([owner, source].filter(l => this._layerLocked(l)));
             return;
         }
         this.ensureCustomFlowState(owner);
@@ -488,8 +488,8 @@ class _CustomRuns {
         const source = this._resolvePathPanelLayer(owner, panel, panelLayer);
         if (!source) return;
         // Locked screens stay unchanged - see addPanelToCustomPath.
-        if (owner.locked || source.locked) {
-            this._showLockedError([owner, source].filter(l => l.locked));
+        if (this._layerLocked(owner) || this._layerLocked(source)) {
+            this._showLockedError([owner, source].filter(l => this._layerLocked(l)));
             return;
         }
         this.ensureCustomPowerState(owner);
@@ -927,8 +927,8 @@ class _CustomRuns {
         });
         const writable = scope.filter(l => !isCustom(l));
         return {
-            change: writable.filter(l => !l.locked),
-            locked: writable.filter(l => l.locked && (pattern === undefined || l[field] !== pattern)),
+            change: writable.filter(l => !this._layerLocked(l)),
+            locked: writable.filter(l => this._layerLocked(l) && (pattern === undefined || l[field] !== pattern)),
         };
     }
 
@@ -992,7 +992,7 @@ class _CustomRuns {
         if (isPower ? !this.isCustomPowerEditing(owner) : !this.isCustomFlowEditing(owner)) return false;
         const selection = isPower ? this.powerCustomSelection : this.customSelection;
         if (!selection || selection.size === 0) return false;
-        if (owner.locked) {
+        if (this._layerLocked(owner)) {
             this._showLockedError([owner]);
             return false;
         }
@@ -1017,7 +1017,7 @@ class _CustomRuns {
         // screen's cabinets (_customFillUnwiredScreens).
         const selectedOn = new Set(allPicks.map(p => p.layer.id));
         let picks = allPicks.filter(pick => {
-            if (!pick.layer.locked) return true;
+            if (!this._layerLocked(pick.layer)) return true;
             meet([pick.layer]);
             return false;
         });

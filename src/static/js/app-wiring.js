@@ -501,7 +501,7 @@ class _Wiring {
                 // the typed field is judged on its commit, by the Screen
                 // Info funnel (updateLayerFromInputs) - the slider names it
                 // as it moves.
-                if (this.currentLayer.locked) {
+                if (this._layerLocked(this.currentLayer)) {
                     const cur = Number(this.currentLayer.imageScale) || 1;
                     if (!typed && Math.abs(cur - pct / 100) > 1e-9) {
                         this._reportLockedEdit([this.currentLayer]);
@@ -515,7 +515,7 @@ class _Wiring {
                 if (!this.currentLayer || (this.currentLayer.type || 'screen') !== 'image') return;
                 // A locked image wrote nothing: the commit only ends the
                 // attempt and lets the field snap back.
-                if (this.currentLayer.locked) {
+                if (this._layerLocked(this.currentLayer)) {
                     this._lockedEditSettled();
                     return;
                 }
@@ -664,7 +664,7 @@ class _Wiring {
                     .filter(l => l && (l.type || 'screen') === 'screen');
                 screens.forEach(layer => {
                     const oldUnit = layer.weight_unit || 'kg';
-                    if (layer.locked || oldUnit === newUnit) return;
+                    if (this._layerLocked(layer) || oldUnit === newUnit) return;
                     // || 20: the figure Screen Info and the labels show
                     // for a screen with no weight stored
                     const value = Number(layer.panel_weight) || 20;
@@ -1377,7 +1377,7 @@ class _Wiring {
                 if (!this.currentLayer) return;
                 // The number already active is no change, so no error.
                 const typedPort = parseInt(customActivePortInput.value, 10);
-                if (this.currentLayer.locked
+                if (this._layerLocked(this.currentLayer)
                         && typedPort === (this.currentLayer.customPortIndex || 1)) return;
                 if (this._lockedStepRefused(this.currentLayer)) {
                     customActivePortInput.value = `${this.currentLayer.customPortIndex || 1}`;
@@ -2011,7 +2011,7 @@ class _Wiring {
                         && !this._isOverrideEditing(owner, 'power'))
                     ? this.customCircuitRun(owner, typed) : typed;
                 // The number already active is no change, so no error.
-                if (owner.locked
+                if (this._layerLocked(owner)
                         && typedCircuit === (owner.powerCustomIndex || 1)) return;
                 if (this._lockedStepRefused(owner)) {
                     powerCustomActive.value = shownNow();
