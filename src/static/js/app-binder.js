@@ -4340,14 +4340,22 @@ class _Binder {
     // is laid out again with the key's height reserved under the wall, a
     // few times over while the key's columns change with the room.
     _bMapSheets(book, spec, blocks) {
-        let L = this._bMapLayout(book, spec, blocks);
+        const L0 = this._bMapLayout(book, spec, blocks);
+        let L = L0;
+        const shortOf = (lay) => {
+            const g = this._bMeasureMap(book, spec, lay.mapArea);
+            return g && g.bracketFit ? g.bracketFit.keyShort : 0;
+        };
         for (let i = 0, keyH = 0; i < 3 && spec.kind === 'power'; i++) {
-            const g = this._bMeasureMap(book, spec, L.mapArea);
-            const short = g && g.bracketFit ? g.bracketFit.keyShort : 0;
+            const short = shortOf(L);
             if (!short) break;
             keyH = Math.max(keyH + 20, Math.ceil(short));
             L = this._bMapLayout(book, { ...spec, keyH }, blocks);
             L.mapArea = { ...L.mapArea, keyH };
+            // (round 8) the room reserved and the key still short - a stack
+            // too deep for the sheet's width, not its height: the layout
+            // as it was, the brackets' last resort (_bBracketGutter)
+            if (i === 2 && shortOf(L)) L = { ...L0, mapArea: { ...L0.mapArea, lastResort: true } };
         }
         const view = ++book.views;
         this._bPage(book, { ...spec, view, layout: L.kind, cols: L.cols, scale: L.scale, extent: L.extent,
@@ -5112,46 +5120,68 @@ class _Binder {
         }
         // tags plus a key: the key's type as large as costs the wall little
         // (within 8 per cent of the best), right of the brackets or under
-        // the wall, whichever leaves the larger wall
-        const tags = this._bBracketTags(spans);
-        const mode = { slide: true, tags: tags.map };
+        // the wall, whichever leaves the larger wall. The tags by the
+        // distros' codes first; where those fit nowhere (round 8: "SR-1-12"
+        // down a dense wall), the brackets counted down the sheet
+        // (_bBracketTags).
+        const sets = [this._bBracketTags(spans)];
+        if (sets[0].coded) sets.push(this._bBracketTags(spans, true));
+        let tags = sets[0], mode = { slide: true, tags: tags.map }, runs = this._bBracketKeyRuns(tags.entries);
+        const useSet = (t) => {
+            tags = t;
+            mode = { slide: true, tags: t.map };
+            runs = this._bBracketKeyRuns(t.entries);
+        };
         zKeep = Math.min(z0, (first.n || at(first.G, first.compact)).z);
         // (a key under the wall: the gutter's foot carries it)
         const baseOf = (key) => (key.place === 'B' ? { ...G, bottom: G.bottom + key.h } : G);
-        const search = (key) => {
+        // (`maxC`: no closer than that)
+        const search = (key, maxC = 4) => {
             const base = baseOf(key);
-            for (let compact = 0; compact <= 4; compact++) {
+            for (let compact = 0; compact <= maxC; compact++) {
                 const n = at(base, compact, mode, key);
-                if (fitsTo(n, base, key) && allWhole(n.lay)) return { G: base, compact, z: n.z };
+                if (fitsTo(n, base, key) && allWhole(n.lay)) return { G: base, compact, z: n.z, tag: minSize(n.lay) };
             }
             for (const cap of [0.4, 0.6, 0.75]) {
-                for (let compact = 0; compact <= 4; compact++) {
+                for (let compact = 0; compact <= maxC; compact++) {
                     const t = grown(compact, area.w * cap, mode, key, base);
                     if (t.fits && t.g.left + t.g.right <= area.w * cap + 1) {
                         const n = at(t.g, compact, mode, key);
-                        if (fitsTo(n, t.g, key) && allWhole(n.lay)) return { G: t.g, compact, z: n.z };
+                        if (fitsTo(n, t.g, key) && allWhole(n.lay)) return { G: t.g, compact, z: n.z, tag: minSize(n.lay) };
                     }
                 }
             }
             return null;
         };
         // every label whole at the floor (compact 3 or 4): the first layout
-        // where it is, else the gutter grown as far as three quarters
+        // where it is; else, of the first layout where every label fits
+        // whole as drawn and the gutter grown as far as three quarters, the
+        // one leaving the largest wall (round 8: a 12 x 6 wall on A4 had
+        // shrunk by a quarter, its labels no larger, where the first
+        // layout's closer step already held them)
         const floorWhole = () => {
             if (firstWhole) return { G: first.G, compact: first.compact };
+            let best = null;
+            const offer = (o) => { if (!best || o.z > best.z + 1e-9) best = o; };
+            if (!first.fits) {
+                const n = at(first.G, first.compact);
+                if (fitsTo(n, first.G, null) && allWhole(n.lay)) offer({ G: first.G, compact: first.compact, z: n.z });
+            }
             for (const cap of [0.4, 0.6, 0.75]) {
                 for (let compact = 3; compact <= 4; compact++) {
                     const t = grown(compact, area.w * cap, slide);
                     if (!t.fits || t.g.left + t.g.right > area.w * cap + 1) continue;
                     const n = at(t.g, compact, slide);
-                    if (fitsTo(n, t.g, null) && allWhole(n.lay)) return { G: t.g, compact, mode: slide };
+                    if (fitsTo(n, t.g, null) && allWhole(n.lay)) offer({ G: t.g, compact, mode: slide, z: n.z });
                 }
             }
-            return null;
+            if (!best) return null;
+            const { z, ...out } = best;
+            return out;
         };
         // a key of `entries` right of the brackets or under the wall, at each
         // type size: [{ G, compact, z, key, size }]
-        const optionsFor = (entries) => {
+        const optionsFor = (entries, maxC = 4) => {
             const out = [];
             for (const size of KEY_SIZES) {
                 const m = this._bBracketKeySize(book, entries, size);
@@ -5161,13 +5191,13 @@ class _Binder {
                 const c0 = Math.min(entries.length, Math.max(1, Math.ceil(entries.length / rowsMax)));
                 for (let c = c0; c <= Math.min(entries.length, c0 + 3); c++) {
                     const key = this._bBracketKeyAt(m, c, 'R');
-                    const r = search(key);
+                    const r = search(key, maxC);
                     if (r) { out.push({ ...r, key, size }); break; }
                 }
                 // under the wall: as many columns as the map's width holds
                 const keyB = this._bBracketKeyUnder(m, area.w);
                 if (keyB.w <= area.w - 40 + 0.5) {
-                    const r = search(keyB);
+                    const r = search(keyB, maxC);
                     if (r) out.push({ ...r, key: keyB, size });
                 }
             }
@@ -5176,23 +5206,91 @@ class _Binder {
         // every tag on its own line; else (round 7: a hundred and twenty
         // multis on a sheet) a run of tags whose labels count up with them
         // on one line: "1 to 36" for "SR1 to SR36 · 125'"
-        let options = optionsFor(tags.entries);
-        const runs = this._bBracketKeyRuns(tags.entries);
-        if (!options.length && runs.length < tags.entries.length) options = optionsFor(runs);
-        if (options.length) {
-            const top = Math.max(...options.map(o => o.z));
-            const pick = KEY_SIZES.map(size => options.filter(o => o.size === size && o.z >= top * 0.92))
-                .find(list => list.length);
-            const o = pick.reduce((a, b) => (b.z > a.z + 1e-9 ? b : a));
+        // - and a run on one line wherever that lets the key print larger
+        // (round 8: sixty tags down a 10 x 60 wall's key at 14, where "1 to
+        // 60" would read at 20)
+        // (`big`: of those within 8 per cent of the largest wall, tags at
+        // 20 or more first)
+        const choose = (all, big = false) => {
+            if (!all.length) return null;
+            const top = Math.max(...all.map(o => o.z));
+            const near = all.filter(o => o.z >= top * 0.92);
+            const options = big ? near.filter(o => o.compact <= 2) : near;
+            const pick = KEY_SIZES.map(size => options.filter(o => o.size === size)).find(list => list.length);
+            return pick ? pick.reduce((a, b) => (b.z > a.z + 1e-9 ? b : a)) : null;
+        };
+        let o = null, pool = [];
+        for (const t of sets) {
+            useSet(t);
+            pool = optionsFor(tags.entries);
+            o = choose(pool);
+            if (runs.length < tags.entries.length && (!o || o.size < KEY_SIZES[0])) {
+                // (never for tags set closer or smaller than they would be)
+                const more = optionsFor(runs, o ? o.compact : 4).filter(x => !o || x.tag >= o.tag);
+                const r = choose(more);
+                if (r && (!o || r.size > o.size)) o = r;
+                pool = pool.concat(more);
+            }
+            if (o) break;
+        }
+        if (o) {
             // a deep stack's tags sit as tight as its labels would: whole
             // labels at the floor read better than tags at the floor
             const floor = o.compact >= 3 ? floorWhole() : null;
             if (floor) return floor;
+            // and tags at 20 or more better than tags at the floor, on much
+            // the same wall (round 8: a key at 20 had set sixty tags at the
+            // floor where one at 17 left them at 18.5)
+            if (o.compact >= 3) o = choose(pool, true) || o;
             return { G: o.G, compact: o.compact, mode, key: o.key,
                      ...(o.key.place === 'B' ? { hCap } : {}) };
         }
         const floor = floorWhole();
         if (floor) return floor;
+        // The last resort (round 8: sixty one-circuit multis across a 60 x
+        // 6 wall, thirty deep a side, on Letter and A4 printed cut,
+        // overlapping labels): where a key under the wall gained nothing
+        // (_bMapSheets says so with area.lastResort), the tags at the
+        // floor - a tag is never cut - with the key under the wall, the
+        // gutters as wide as they need and the wall as large as that
+        // leaves; the larger key on a wall within 8 per cent of the largest.
+        // Here the depth step may close by 2 of its spare 3 (_bBracketStep
+        // closes it so): a tag still clears the next bracket's tick.
+        for (const t of area.lastResort ? sets : []) {
+            useSet(t);
+            const out = [], close = [];
+            const cap = area.w - 20;
+            const loose = (n, side) => (n[side] ? n[side] - 2 * n.lay.depth[side] : 0);
+            const holds = (n, g) => loose(n, 'L') <= g.left + n.slack + 0.5 && loose(n, 'R') <= g.right + n.slack + 0.5;
+            for (const list of runs.length < tags.entries.length ? [tags.entries, runs] : [tags.entries]) {
+                for (const size of KEY_SIZES) {
+                    const keyB = this._bBracketKeyUnder(this._bBracketKeySize(book, list, size), area.w);
+                    if (keyB.w > area.w - 40 + 0.5) continue;
+                    const base = baseOf(keyB);
+                    for (let compact = 3; compact <= 4; compact++) {
+                        const gw = grown(compact, cap, mode, keyB, base);
+                        const n0 = at(gw.g, compact, mode, keyB);
+                        if (gw.fits && gw.g.left + gw.g.right <= cap + 1 && fitsAt(n0, gw.g) && n0.z > 0 && allWhole(n0.lay)) {
+                            out.push({ G: gw.g, compact, z: n0.z, key: keyB, size });
+                            continue;
+                        }
+                        // each side grown to the room it needs at the closer step
+                        const g = { ...base };
+                        let n = at(g, compact, mode, keyB);
+                        for (let i = 0; i < 4 && !holds(n, g); i++) {
+                            g.left = Math.max(base.left, loose(n, 'L'));
+                            g.right = Math.max(base.right, loose(n, 'R'));
+                            n = at(g, compact, mode, keyB);
+                        }
+                        if (g.left + g.right > cap + 1) continue;
+                        if (holds(n, g) && n.z > 0 && allWhole(n.lay)) close.push({ G: g, compact, z: n.z, key: keyB, size });
+                    }
+                }
+            }
+            const r = choose(out.length ? out : close);
+            if (r) return { G: r.G, compact: r.compact, mode, key: r.key, hCap };
+        }
+        useSet(sets[0]);
         // Nothing fits: the smallest key under the wall says how much room
         // it wants (keyShort - _bMapSheets lays the sheet out again with
         // that much under the map); meanwhile, and where that never comes,
@@ -5202,12 +5300,16 @@ class _Binder {
     }
 
     // THE TAGS for a sheet's brackets (owner, 2026-10-23), the clearest
-    // that is unique on the sheet: the multi's own number ("12"); else the
-    // distro's letter in the show's order with it ("A12", "B12"), where two
-    // distros share a number; else the brackets counted down the sheet.
-    // { map: box -> tag, entries: [{ tag, text }] } - the key's lines, the
-    // full label ("SR12 · 125'", "SR12 · no length") with each tag.
-    _bBracketTags(spans) {
+    // that is unique on the sheet: the multi's own number ("12"); else,
+    // where two distros share a number, the distro's code with it
+    // (_bDistroTagCodes: "B12" for DISTRO B, "SL3" for SL; a code ending
+    // in a digit takes a dash, "SR-1-12"); else, or `counted` (the codes'
+    // tags too long for the sheet, _bBracketGutter), the brackets counted
+    // down the sheet.
+    // { coded, map: box -> tag, entries: [{ tag, text }] } - the key's
+    // lines, the full label ("SR12 · 125'", "SR12 · no length") with each
+    // tag; `coded` where the distros' codes made the tags.
+    _bBracketTags(spans, counted = false) {
         const boxes = [];
         for (const sp of spans) if (!boxes.includes(sp.box)) boxes.push(sp.box);
         const num = (b) => Number(b.number);
@@ -5215,25 +5317,76 @@ class _Binder {
         const unique = (f) => new Set(boxes.map(f)).size === boxes.length;
         const distros = (this.project && Array.isArray(this.project.distros)) ? this.project.distros : [];
         const order = (b) => { const i = distros.findIndex(d => d && d.id === b.distroId); return i < 0 ? distros.length : i; };
-        let list;
+        const codes = numbered && !unique(num) && !counted ? this._bDistroTagCodes() : null;
+        const tagOf = (code, n) => (code ? `${code}${/\d$/.test(code) ? '-' : ''}${n}` : `${n}`);
+        let list, coded = false;
         if (numbered && unique(num)) {
             list = boxes.slice().sort((a, b) => num(a) - num(b)).map(b => [b, '', num(b)]);
-        } else if (numbered && unique(b => `${b.distroId}|${num(b)}`)) {
-            const ids = [...new Set(boxes.slice().sort((a, b) => order(a) - order(b)).map(b => b.distroId))];
-            const code = (b) => {
-                const i = ids.indexOf(b.distroId);
-                return ids.length <= 26 ? String.fromCharCode(65 + i) : `${i + 1}-`;
-            };
+        } else if (codes && boxes.every(b => codes.get(b.distroId)) && unique(b => tagOf(codes.get(b.distroId), num(b)))) {
             list = boxes.slice().sort((a, b) => (order(a) - order(b)) || (num(a) - num(b)))
-                .map(b => [b, code(b), num(b)]);
+                .map(b => [b, codes.get(b.distroId), num(b)]);
+            coded = true;
         } else {
             list = boxes.map((b, i) => [b, '', i + 1]);
         }
-        return { map: new Map(list.map(([b, code, n]) => [b, `${code}${n}`])),
+        return { coded, map: new Map(list.map(([b, code, n]) => [b, tagOf(code, n)])),
                  entries: list.map(([b, code, n]) => {
                      const f = this._bBracketFull(b);
-                     return { tag: `${code}${n}`, text: f.full, name: f.name, len: f.len, num: n, code };
+                     return { tag: tagOf(code, n), text: f.full, name: f.name, len: f.len, num: n, code };
                  }) };
+    }
+
+    // EACH DISTRO'S TAG CODE (owner, 2026-10-23): from the distro's own
+    // name, never its place on the sheet, so the same distro reads the
+    // same on every sheet of the binder ("B12" is always DISTRO B's multi
+    // 12). In order: its last word where that is short ("B" for DISTRO
+    // B, "A" for UPSTAGE LEFT POWER DISTRO A) or a short one-word name
+    // whole ("SL", "SR-1"); then its initials, from the first two on
+    // ("SL" for STAGE LEFT, "VD" for VIDEO DISTRO; "UL" and "UR" for
+    // UPSTAGE LEFT and UPSTAGE RIGHT POWER DISTRO A) - each distro
+    // stepping on only while its code reads the same as another's, so a
+    // code is as short as tells it apart. A distro no code tells apart
+    // has none (the sheet then counts its brackets). Every distro that
+    // prints is counted (_distroShownIds), by its display label
+    // (distroLabel: two typed SRs read SR-1 and SR-2). distro id -> code.
+    _bDistroTagCodes() {
+        const all = typeof this.getDistros === 'function' ? this.getDistros() : ((this.project && this.project.distros) || []);
+        const shown = typeof this._distroShownIds === 'function' ? this._distroShownIds() : null;
+        const label = (d) => (typeof this.distroLabel === 'function' ? this.distroLabel(d)
+            : (String(d.name || '').trim() || String(d.id || '')));
+        const cands = new Map();
+        for (const d of all) {
+            if (!d || (shown && !shown.has(d.id))) continue;
+            const words = String(label(d)).trim().split(/\s+/).filter(Boolean);
+            const list = [];
+            if (words.length === 1) {
+                if (words[0].length <= 5) list.push(words[0]);
+            } else if (words.length > 1) {
+                const last = words[words.length - 1];
+                if (last.length <= 3) list.push(last);
+                const ini = words.map(w => (w.match(/[A-Za-z0-9]/) || [''])[0]).join('');
+                for (let k = 2; k <= ini.length; k++) list.push(ini.slice(0, k));
+            }
+            cands.set(d.id, [...new Set(list)]);
+        }
+        const level = new Map([...cands.keys()].map(id => [id, 0]));
+        const codeOf = (id) => cands.get(id)[level.get(id)] || null;
+        for (let pass = 0; pass < 64; pass++) {
+            const by = new Map();
+            for (const id of cands.keys()) {
+                const c = codeOf(id);
+                if (c) (by.get(c) || by.set(c, []).get(c)).push(id);
+            }
+            let moved = false;
+            for (const ids of by.values()) {
+                if (ids.length < 2) continue;
+                for (const id of ids) {
+                    if (level.get(id) + 1 < cands.get(id).length) { level.set(id, level.get(id) + 1); moved = true; }
+                }
+            }
+            if (!moved) break;
+        }
+        return new Map([...cands.keys()].map(id => [id, codeOf(id)]));
     }
 
     // A key's entries with each run of three or more tags whose labels

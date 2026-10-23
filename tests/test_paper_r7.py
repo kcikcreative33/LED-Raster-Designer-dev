@@ -4,7 +4,7 @@ bracket labels, tags plus a key.
   * Each multi's bracket says "<multi name> · <length>". Where every label
     fits whole the sheet prints as it always did. Where one will not fit
     legibly (14 or more) beside the wall, every bracket on the sheet takes
-    a short tag ("12", or "A12" where two distros share a number) and a
+    a short tag ("12", or "SL12" where two distros share a number) and a
     small KEY on the same sheet lists each tag's full label.
   * Layouts are ranked by how many labels fit whole: a 36 x 6 wall's three
     long-named multis grow the gutter a little and print whole, length and
@@ -21,6 +21,7 @@ Run locally:
 
 import math
 import os
+import re
 import sys
 
 import pytest
@@ -195,6 +196,11 @@ def whole(b):
     return ' '.join(ls[:-1]) == b['name'] or ''.join(ls[:-1]).replace(' ', '') == b['name'].replace(' ', '')
 
 
+def _num(tag):
+    """A tag's number: "12" of "12", "SL12", "SR-1-12"."""
+    return re.search(r'(\d+)$', tag).group(1)
+
+
 def key_map(key):
     """tag -> full label, a run's line ("1 to 36", "SR1 to SR36 · 125'")
     read back tag by tag."""
@@ -207,12 +213,12 @@ def key_map(key):
         assert e['tag'] == f"{e['tags'][0]} to {e['tags'][-1]}", e
         first, rest = e['text'].split(' to ', 1)
         length = rest.split(' · ', 1)[1]
-        n0 = e['tags'][0].lstrip('ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+        n0 = _num(e['tags'][0])
         assert first.endswith(n0), e
         stem = first[:len(first) - len(n0)]
         for t in e['tags']:
             assert t not in out, e
-            out[t] = f"{stem}{t.lstrip('ABCDEFGHIJKLMNOPQRSTUVWXYZ')} · {length}"
+            out[t] = f"{stem}{_num(t)} · {length}"
     return out
 
 
@@ -322,10 +328,11 @@ def test_two_distros_sharing_numbers_tag_by_distro(page):
     configure(pg, 'TALL', wall, [dist('STAGE LEFT', 1), dist('STAGE RIGHT', 2)])
     run_all(pg, 60)
     out = pg.evaluate(SHEET_JS, 'letter')
+    # (round 8) each distro's code from its own name: SL, SR
     tags = sorted(b['tag'] for b in out['brackets'])
-    assert tags == sorted([f'A{i}' for i in range(1, 31)] + [f'B{i}' for i in range(1, 31)]), tags
+    assert tags == sorted([f'SL{i}' for i in range(1, 31)] + [f'SR{i}' for i in range(1, 31)]), tags
     for b in out['brackets']:
-        assert b['name'].startswith('STAGE LEFT' if b['tag'][0] == 'A' else 'STAGE RIGHT'), b
+        assert b['name'].startswith('STAGE LEFT' if b['tag'].startswith('SL') else 'STAGE RIGHT'), b
     assert errors == [], errors
 
 
