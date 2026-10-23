@@ -52,8 +52,8 @@ def test_the_notes_say_what_154_does():
     assert ('A change that would repack a locked screen is refused, and the message names '
             'the screen: turning 100% rated on or off, changing a distro\'s system, removing a '
             'distro, plugging in, moving or unplugging a multi, grouping, sharing circuits '
-            'through a 2fer or 3fer or removing one, 2fer it or 3fer it, or typing a power '
-            'setting on a screen grouped with it.') in flat
+            'through a 2fer or 3fer or removing one, 2fer it or 3fer it, typing a power '
+            'setting on a screen grouped with it, or hiding or showing a screen.') in flat
     # lengths convert in every field but a jumper's
     assert 'converts wherever you type a home run, cable, feeder, snake or fiber length' in flat
     assert 'converts wherever you type a cable length' not in flat

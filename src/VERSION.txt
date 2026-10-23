@@ -114,8 +114,8 @@ pull sheet again and compare it with anything you've already ordered.
   and the message names the screen: turning 100% rated on or off,
   changing a distro's system, removing a distro, plugging in, moving or
   unplugging a multi, grouping, sharing circuits through a 2fer or 3fer
-  or removing one, 2fer it or 3fer it, or typing a power setting on a
-  screen grouped with it.
+  or removing one, 2fer it or 3fer it, typing a power setting on a screen
+  grouped with it, or hiding or showing a screen.
 - FIX (IMPORTANT): Automatic 2fers and 3fers saved in an older show that
   fit at 100% can be over the limit at 80%. They're kept as they were and
   flagged OVER, so share them again.
@@ -153,13 +153,17 @@ pull sheet again and compare it with anything you've already ordered.
   like TRUE1 and powerCON jumpers of the same length, a hidden row hides
   both, and a count you changed goes back to the show's count and is
   listed as stale for you to redo.
+- FIX (IMPORTANT): A multi box carrying more circuits than it holds gets
+  a note on the pull sheet, like 8 circuits on a six-circuit output, and
+  a Crowded line on the distro sheet.
 - CHANGE (IMPORTANT): The pull sheet has a row for each panel type on
   each screen and a feeder row for each distro, so an older show's pull
   sheet gets these new rows.
 - CHANGE (IMPORTANT): Hidden screens keep their multi numbers and outputs
   reserved, so no other screen takes them, but they're left out of distro
   and service loads everywhere, so the distro and Service sheets match
-  the pull sheet.
+  the pull sheet. Balance holds their multis in place and leaves them out
+  of what it searches.
 - CHANGE (IMPORTANT): The Overview's totals in the binder leave out
   hidden screens.
 - CHANGE (IMPORTANT): A distro with nothing on it, or only hidden
@@ -173,9 +177,9 @@ pull sheet again and compare it with anything you've already ordered.
   weigh 65% of a full tile. Pick the panel from the library again to get
   the new figures.
 - CHANGE (IMPORTANT): A group saved half locked in an older show now
-  counts as locked. You can still hide and show its screens, since that
-  doesn't change them, but any other edit waits until you pick Lock or
-  Unlock for the group.
+  counts as locked. You can still hide and show its screens when that
+  doesn't change their circuits, but any other edit waits until you pick
+  Lock or Unlock for the group.
 
 FIXES
 
@@ -234,12 +238,17 @@ FIXES
   paperwork.
 - FIX: When a Power sheet has too many multis for their labels to fit
   beside the wall, the brackets get short tags and a key on the sheet
-  lists each tag's full name and length. Before, the labels were cut to
-  D… or ran into each other. Other Power sheets print as they did.
+  lists each tag's full name and length. Tags come from the distro's own
+  name, so B1 is always DISTRO B's multi 1. Before, the labels were cut
+  to D… or ran into each other. Power sheets whose labels already fit
+  print as they did; deep stacks print their labels larger where there's
+  room.
 - FIX: The tray and the distro checks now warn you when an output carries
   more circuits than it takes, like two visible screens on a one-circuit
   output or a multi with more circuits than its output has. The pull
-  sheet and the distro sheet already showed these.
+  sheet and the distro sheet already showed a crowded direct output and
+  a multi on a one-circuit output, and now they flag a multi box carrying
+  more circuits than it holds too.
 
 v1.5.3 - October 21, 2026
 ----------------------------

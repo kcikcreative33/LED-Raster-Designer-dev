@@ -54,8 +54,10 @@ def test_the_date():
 def test_the_refusal_lists_only_what_the_app_refuses():
     flat = _flat(_top_entry())
     assert 'pasting power settings' not in flat and 'paste' not in flat.lower()
-    assert ('sharing circuits through a 2fer or 3fer or removing one, 2fer it or 3fer it, or '
-            'typing a power setting on a screen grouped with it.') in flat
+    # round 8: hiding or showing a screen joins the list
+    assert ('sharing circuits through a 2fer or 3fer or removing one, 2fer it or 3fer it, '
+            'typing a power setting on a screen grouped with it, or hiding or showing a '
+            'screen.') in flat
 
 
 def test_the_feeder_example_is_the_fed_from_line():
@@ -74,7 +76,8 @@ def test_opening_an_older_show_lists_the_round_6_changes():
     # the counts in the intro match the list
     assert 'The first four come from the new 80% fill' in intro
     assert "the last six change what's listed or what you can do" in intro
-    assert len(bullets) == 19, bullets
+    # round 8 adds the overfull multi box note, a FIX among the rest
+    assert len(bullets) == 20, bullets
     assert '80%' in bullets[3] and '16 A breaker · 12.8 A usable' in bullets[3], bullets[3]
     assert all(b.startswith('- CHANGE (IMPORTANT): ') for b in bullets[-6:]), bullets[-6:]
     assert not any(b.startswith('- CHANGE') for b in bullets[:3] + bullets[4:-6])
