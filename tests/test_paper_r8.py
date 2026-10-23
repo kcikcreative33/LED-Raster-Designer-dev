@@ -75,7 +75,15 @@ def page(e2e_server, pw_browser):
 
 
 def configure(pg, name, wall, distros):
-    return pg.evaluate(CONFIG_JS, {'name': name, 'wall': wall, 'distros': distros})
+    n = pg.evaluate(CONFIG_JS, {'name': name, 'wall': wall, 'distros': distros})
+    # the screens' saves answered before anything is read: an echo landing
+    # between two sheets' renders must not be what a sheet is checked on
+    settle(pg)
+    return n
+
+
+def settle(pg):
+    pg.evaluate("async () => { await window.app._layerSavesSettled(); }")
 
 
 def dealt(names, n=60, start=None):
@@ -172,9 +180,14 @@ def test_a_distro_reads_the_same_code_on_every_sheet(page):
         app.updateLayers(app.project.layers);
     }""", {**dealt(['DISTRO C', 'DISTRO D'], start={'d1': 31, 'd2': 31}),
            'powerSocaDistro': {str(i): ('d2' if i % 2 else 'd3') for i in range(1, 61)}})
+    settle(pg)
     for sheet in ('letter', 'a4'):
         pages = pg.evaluate(SHEETS_JS, sheet)
-        assert len(pages) == 2, (sheet, [p['title'] for p in pages])
+        assert len(pages) == 2, (sheet, [p['title'] for p in pages], pg.evaluate("""() => {
+            const app = window.app;
+            return app.project.layers.map(l => [l.name, l.visible, app.screenCircuits(l).length,
+                                                Object.keys(l.powerSocaDistro || {}).length]);
+        }"""))
         codes = {}
         for p in pages:
             assert all('tag' in b for b in p['brackets']), (sheet, p['title'])
