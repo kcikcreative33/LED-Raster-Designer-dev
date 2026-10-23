@@ -5,7 +5,8 @@
   * Opening an older show lists a half-locked group (now locked), the
     corrected Graphite figures and a 16 A Amperage box, and the hidden
     screens line says they keep their multi numbers and outputs.
-  * A distro with only hidden screens is left off the binder too.
+  * A distro with only hidden screens is left off the binder too, and a
+    service with no distro that prints gets no Service sheet.
   * The FEEDERS example is the binder's "Fed from: ..." line.
   * What's New keeps 8 items and has none of the old wording.
 
@@ -87,9 +88,11 @@ def test_opening_an_older_show_lists_the_round_6_changes():
     assert ('- CHANGE (IMPORTANT): Hidden screens keep their multi numbers and outputs reserved, '
             "so no other screen takes them, but they're left out of distro and service loads "
             'everywhere') in flat
-    # (f) only hidden screens counts as nothing on it
+    # (f) only hidden screens counts as nothing on it, and a service with
+    # no distro that prints gets no Service sheet
     assert ('- CHANGE (IMPORTANT): A distro with nothing on it, or only hidden screens, is left '
-            'off the binder.') in flat
+            'off the binder, and a service with nothing printing on it gets no Service '
+            'sheet.') in flat
     # (d) the corrected Graphite figures
     assert 'GP2.6 (4 in 1) half tiles now draw 50% of a full tile instead of 64%.' in flat
     assert ('GP2.6, GP3.1 and GP3.9 Full Tile screens saved at 8.5 kg no longer match the '

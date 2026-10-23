@@ -163,7 +163,8 @@ pull sheet again and compare it with anything you've already ordered.
 - CHANGE (IMPORTANT): The Overview's totals in the binder leave out
   hidden screens.
 - CHANGE (IMPORTANT): A distro with nothing on it, or only hidden
-  screens, is left off the binder.
+  screens, is left off the binder, and a service with nothing printing on
+  it gets no Service sheet.
 - CHANGE (IMPORTANT): The library's corrected Graphite figures change
   older shows with ROE Graphite screens. GP2.6 (4 in 1) half tiles now
   draw 50% of a full tile instead of 64%. GP2.6, GP3.1 and GP3.9 Full

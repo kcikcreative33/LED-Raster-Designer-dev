@@ -80,7 +80,7 @@ def test_count_changes_are_listed_under_opening_an_older_show():
                  '- CHANGE (IMPORTANT): Hidden screens keep their multi numbers and outputs reserved',
                  '- CHANGE (IMPORTANT): The Overview\'s totals in the binder leave out hidden screens.',
                  '- CHANGE (IMPORTANT): A distro with nothing on it, or only hidden screens, is left '
-                 'off the binder.'):
+                 'off the binder, and a service with nothing printing on it gets no Service sheet.'):
         assert line in flat, line
     assert 'the last six change what\'s listed or what you can do' in flat
 
