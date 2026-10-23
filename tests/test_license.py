@@ -47,7 +47,7 @@ TITLE = 'LED RASTER DESIGNER LICENSE'
 NOTICES_TITLE = 'THIRD-PARTY NOTICES'
 CONTACT = 'kman1898@gmail.com'
 ABOUT_LINE = ('Free to use, including on paid shows. '
-              'LED Raster Designer License — Help → License.')
+              'LED Raster Designer License: see Help > License.')
 SECTIONS = [
     'DEFINITIONS', 'FREE USE', 'YOUR OUTPUT', 'RESTRICTIONS',
     'SHARING AND DERIVATIVES', 'COMMERCIAL LICENSES', 'CONTRIBUTIONS',

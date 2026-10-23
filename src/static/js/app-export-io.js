@@ -982,7 +982,7 @@ class _ExportIo {
                 // The user said no. Stop - saving anyway ignores them.
                 sendClientLog('save_blob_native_dialog_cancelled', { filename });
                 if (typeof this._toast === 'function') {
-                    this._toast('Export cancelled - nothing was saved.', false, 4000);
+                    this._toast('Export canceled, nothing was saved.', false, 4000);
                 }
                 return;
             }
@@ -1077,7 +1077,7 @@ class _ExportIo {
                 // fallback, it is ignoring them.
                 sendClientLog('save_multiple_files_cancelled_by_user', { count: files.length });
                 if (typeof this._toast === 'function') {
-                    this._toast('Export cancelled - nothing was saved.', false, 4000);
+                    this._toast('Export canceled, nothing was saved.', false, 4000);
                 }
                 return;
             }
