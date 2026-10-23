@@ -314,9 +314,10 @@ _OLD_FREE_PLUG_TAIL = re.compile(
 # In NOTES, an arrow says nothing about the rest of the sentence: only the
 # "tail" right after "→ <word>" is the adapter's (2026-10-23: "Tail rope
 # for the Edison → TRUE1 tail" keeps its "Tail rope"), or right after the
-# arrow itself ("Edison → tail", round 6).
+# arrow itself ("Edison → tail", round 6) - tried first, so "-> Tail
+# TAILS" reads "-> Cable TAILS", the word after the arrow its own (round 7).
 _OLD_FREE_ARROW_TAIL = re.compile(
-    r'((?:→|->)' + _S + '*(?:' + _NS + '+' + _S + '+)?)' + _TAIL, re.ASCII)
+    r'((?:→|->)' + _S + '*(?:' + _NS + '+' + _S + '+)??)' + _TAIL, re.ASCII)
 _FREE_NOTES_SPLIT = re.compile(r'( · |; |, )')
 
 

@@ -194,6 +194,19 @@ const BR_LANES = 6;
 const BR_MARGIN = 6;
 // the tick and the label's offset where a deep stack must sit tight
 const BR_TIGHT = { tick: 6, off: 6 };
+// TAGS PLUS A KEY (owner, 2026-10-23): where a bracket's "SR1 · 125'"
+// will not fit beside the wall, every bracket on the sheet takes a short
+// tag ("12", or "A12" where two distros share a number) and a small KEY
+// on the map lists each tag's full label. Tags step out by turns up to
+// BR_TAG_LANES; the key's type sizes, tried largest first; its line
+// height, the gap between its columns and between a tag and its label,
+// and its distance from the brackets (or the wall's foot).
+const BR_TAG_LANES = 12;
+const KEY_SIZES = [20, 17, 14];
+const KEY_LINE = 1.4;
+const KEY_COL_GAP = 30;
+const KEY_TAG_GAP = 12;
+const KEY_GAP = 24;
 const MAP_ZOOM_CAP = 3;               // a tiny wall never blows up past 3x
 // The fill: a sheet's drawing scales up to this to fill its area.
 const FILL_CAP = 2.4;
@@ -1165,6 +1178,7 @@ class _Binder {
         return { canvas: book.canvas, record: book.records[0] || null,
                  texts: log.texts, textInfo: log.textInfo, mapTexts: log.mapTexts,
                  dashes: log.dashes, map: log.map || null, brackets: log.brackets || [],
+                 bracketKey: log.bracketKey || null,
                  bubble: log.bubble || null, titleBlock: log.titleBlock || null,
                  logo: log.logo || null, wiring: log.wiring || null,
                  page: plan[index] || null, pages: plan.length, sheet: book.sheet };
@@ -3985,7 +3999,10 @@ class _Binder {
         const da = book.geo.da;
         const colW = Math.max(COL_W, ...blocks.map(b => (b && b.minW) || 0));
         const across = Math.max(1, Math.floor((da.w + COL_GAP) / (colW + COL_GAP)));
-        const gutW = MAP_GUTTER.left + MAP_GUTTER.right, gutH = MAP_GUTTER.top + MAP_GUTTER.bottom;
+        // (spec.keyH: the height a bracket key under the wall needs where
+        // the map's own room could not hold it - _bMapSheets)
+        const gutW = MAP_GUTTER.left + MAP_GUTTER.right;
+        const gutH = MAP_GUTTER.top + MAP_GUTTER.bottom + (spec.keyH || 0);
         const tallest = (pack) => pack.cols.reduce((m, c) => Math.max(m, c.h), 0);
         const clamp = (v) => Math.max(1, Math.min(FILL_CAP, Math.floor(v * 1000) / 1000));
         const minW = Math.round(da.w * MAP_MIN_FRAC), minH = Math.round(da.h * MAP_MIN_FRAC);
@@ -4060,7 +4077,10 @@ class _Binder {
             const roomW = da.w - (tablesW + COL_GAP) * s, roomH = da.h - BUBBLE_H * s;
             const m = fit(roomW, roomH);
             side = { kind: 'side', cols: k, colW, top: da.y, pack, scale: s,
-                     mapArea: { x: da.x, y: da.y, w: roomW, h: roomH },
+                     // (hMax: the height the map may take, a bracket key
+                     // under the wall included - beside the tables, down
+                     // to the bubble's room; over them, the map's own)
+                     mapArea: { x: da.x, y: da.y, w: roomW, h: roomH, hMax: roomH },
                      extent: { w: da.w, h: Math.max(m.h + BUBBLE_H * s, tablesH * s) },
                      coverage: (m.w * m.h + tablesW * tablesH * s * s) / area,
                      map: { zoom: m.zoom, w: m.w, h: m.h },
@@ -4082,7 +4102,7 @@ class _Binder {
             const m = fit(da.w, mapH);
             const wide = (da.w / s - (k - 1) * COL_GAP) / k;
             stack = { kind: 'stack', cols: k, colW: wide, top: da.y + m.h / s + BUBBLE_H + COL_GAP, pack: spread, scale: s,
-                      mapArea: { x: da.x, y: da.y, w: da.w, h: mapH },
+                      mapArea: { x: da.x, y: da.y, w: da.w, h: mapH, hMax: m.h },
                       extent: { w: Math.max(m.w, da.w), h: m.h + (BUBBLE_H + COL_GAP + tablesH) * s },
                       coverage: (m.w * m.h + rowW * tablesH * s * s) / area,
                       map: { zoom: m.zoom, w: m.w, h: m.h },
@@ -4151,7 +4171,7 @@ class _Binder {
             const inked = pack.cols.reduce((sum, c, i) => sum + c.h * (i < kB ? wideB : wideU), 0) * v * v;
             const lowest = pack.cols.reduce((mx, c, i) => Math.max(mx, (i < kB ? 0 : besideH + COL_GAP) + c.h), 0);
             wrap = { kind: 'wrap', cols: pack.cols.length, colW: wideU, top: da.y, pack, scale: v,
-                     mapArea: { x: da.x, y: da.y, w: m.w, h: m.h },
+                     mapArea: { x: da.x, y: da.y, w: m.w, h: m.h, hMax: m.h },
                      extent: { w: da.w, h: Math.max(besideH, lowest) * v },
                      coverage: (m.w * m.h + inked) / area,
                      map: { zoom: m.zoom, w: m.w, h: m.h },
@@ -4190,7 +4210,7 @@ class _Binder {
         const mapH = da.h - BUBBLE_H - COL_GAP - tablesH;
         const m = fit(da.w, mapH);
         return { kind: 'stack', cols: across, colW: wide, top: da.y + m.h + BUBBLE_H + COL_GAP, pack, scale: 1,
-                 mapArea: { x: da.x, y: da.y, w: da.w, h: mapH },
+                 mapArea: { x: da.x, y: da.y, w: da.w, h: mapH, hMax: m.h },
                  extent: { w: da.w, h: m.h + BUBBLE_H + COL_GAP + tablesH },
                  coverage: (m.w * m.h + da.w * tablesH) / area,
                  map: { zoom: m.zoom, w: m.w, h: m.h },
@@ -4314,8 +4334,21 @@ class _Binder {
     // (_bMapLayout), the rest continuing on table-only sheets at 1.
     // `spec.draw(area)` paints the map into the area and returns the rect
     // it used; `spec.measure(area)` gives its geometry without painting.
+    //
+    // A power map whose brackets need a key the map's room cannot hold
+    // (_bBracketGutter's keyShort: a wide, short wall over its tables)
+    // is laid out again with the key's height reserved under the wall, a
+    // few times over while the key's columns change with the room.
     _bMapSheets(book, spec, blocks) {
-        const L = this._bMapLayout(book, spec, blocks);
+        let L = this._bMapLayout(book, spec, blocks);
+        for (let i = 0, keyH = 0; i < 3 && spec.kind === 'power'; i++) {
+            const g = this._bMeasureMap(book, spec, L.mapArea);
+            const short = g && g.bracketFit ? g.bracketFit.keyShort : 0;
+            if (!short) break;
+            keyH = Math.max(keyH + 20, Math.ceil(short));
+            L = this._bMapLayout(book, { ...spec, keyH }, blocks);
+            L.mapArea = { ...L.mapArea, keyH };
+        }
         const view = ++book.views;
         this._bPage(book, { ...spec, view, layout: L.kind, cols: L.cols, scale: L.scale, extent: L.extent,
                             coverage: L.coverage }, (page, scaled) => {
@@ -4500,15 +4533,24 @@ class _Binder {
             // gutter even at its closest step, the gutter grows that side
             // and the wall draws smaller (round 6: a 36 x 6 wall's single
             // circuit multis ran off the sheet and over the title block).
-            // A map whose brackets fit draws exactly as before.
+            // Where every label fits whole at the gutter's own size the
+            // wall keeps its size; a lone bracket's label may still use
+            // the free space beside it, so it can print larger than it
+            // once did. Where labels will not fit whole, the brackets
+            // take short tags and a key (_bBracketGutter): a key under
+            // the wall takes its height from the gutter's foot, never
+            // past the height the sheet's layout gave the map (hCap).
             let bracketCompact = 0;
+            let bracketFit = null;
             if (!gutter && view === 'power' && book.list) {
                 const fit = this._bBracketGutter(book, subject, layer, wall, local, area, G, ww, wh);
                 bracketCompact = fit.compact;
-                if (fit.G !== G) {
+                bracketFit = fit;
+                if (fit.G !== G || fit.hCap) {
                     G = fit.G;
                     inner = { x: area.x + G.left, y: area.y + G.top, w: area.w - G.left - G.right,
                               h: (Number.isFinite(area.h) ? area.h : Infinity) - G.top - G.bottom };
+                    if (fit.hCap) inner.h = Math.min(inner.h, fit.hCap - G.top - G.bottom);
                 }
             }
             // One zoom for both axes - the wall is never scaled
@@ -4529,8 +4571,10 @@ class _Binder {
                     const p = toPage(l.x, l.y);
                     return { x: p.x, y: p.y, w: l.w * zoom, h: l.h * zoom };
                 },
-                // how tight the brackets sit (_bBracketGutter)
+                // how tight the brackets sit, their tags and key
+                // (_bBracketGutter)
                 bracketCompact,
+                bracketFit,
                 // what a box of ink (sheet units) has to clear to stay on the
                 // sheet: everything is kept but on a member's sheet, which
                 // keeps its own wall and gutters and none of another member's
@@ -4826,18 +4870,29 @@ class _Binder {
         const spans = this._bBracketSpans(book, layer, scr, subject, geo.rect);
         const wallCx = geo.wall.x + geo.wall.w / 2;
         const area = geo.area || { y: geo.wall.y, h: geo.wall.h };
+        const fit = geo.bracketFit || null;
+        // the key, where the labels gave way to tags: under the wall (its
+        // height off the labels' room) or right of the brackets (its width
+        // off the right side's)
+        const key = fit && fit.key ? fit.key : null;
+        const keyB = key && key.place === 'B' ? key.h : 0;
+        const keyR = key && key.place === 'R' ? key.w + KEY_GAP : 0;
         const L = this._bBracketLayout(book, spans.map(sp => ({ ...sp, side: (sp.x1 + sp.x2) / 2 >= wallCx ? 'R' : 'L' })),
-                                       { top: area.y, bottom: area.y + area.h }, geo.bracketCompact || 0);
+                                       { top: area.y, bottom: area.y + area.h - keyB }, geo.bracketCompact || 0,
+                                       fit ? fit.mode : null);
         // the room each side has, the wall to the map's own area edge: the
         // depth step closes up to keep every bracket inside it (2026-10-23,
         // round 6: a deep stack ran off the sheet and over the title block)
         const ax = geo.area ? geo.area.x : -Infinity;
         const aw = geo.area ? geo.area.w : Infinity;
-        const avail = { R: ax + aw - (geo.wall.x + geo.wall.w), L: geo.wall.x - ax };
+        const avail = { R: ax + aw - (geo.wall.x + geo.wall.w) - keyR, L: geo.wall.x - ax };
         const step = { L: this._bBracketStep(L, 'L', avail.L), R: this._bBracketStep(L, 'R', avail.R) };
         for (const side of ['L', 'R']) {
             for (const b of L.placed[side]) {
                 const { box, y1, y2, depth, ya, yb, room, lines } = b;
+                // the label's middle: its bracket's, or slid inward along it
+                // (an edge bracket's, _bBracketLayout)
+                const mid = (ya + yb) / 2 + (b.shift || 0);
                 const dir = side === 'R' ? 1 : -1;
                 const x = side === 'R'
                     ? geo.wall.x + geo.wall.w + BR_BASE.R + depth * step.R
@@ -4855,7 +4910,7 @@ class _Binder {
                 ctx.save();
                 // the baseline 9 in from the anchor: the first glyph L.off
                 // out from the bracket's line
-                ctx.translate(x + dir * (L.off + 9), (ya + yb) / 2);
+                ctx.translate(x + dir * (L.off + 9), mid);
                 ctx.rotate(dir > 0 ? Math.PI / 2 : -Math.PI / 2);
                 // the last line (the length, where it prints) nearest the
                 // bracket, the name's lines further out, b.gap apart
@@ -4868,9 +4923,10 @@ class _Binder {
                 if (book.log && book.page && book.page.painting) {
                     const [lx, ly1] = this._bLogXY(book, x, y1);
                     const k = book.fill ? book.fill.s : 1;
-                    const cy = this._bLogXY(book, x, (ya + yb) / 2)[1];
-                    // never past the label's own room
-                    const half = Math.min(Math.max(...drawn.map(d => d.w)), room) * k / 2;
+                    const cy = this._bLogXY(book, x, mid)[1];
+                    // the ink as drawn: the widest line, cut or not (a cut
+                    // "D…" is wider than a room of one unit)
+                    const half = Math.max(...drawn.map(d => d.w)) * k / 2;
                     // the label's ink across: from the first glyph's foot to
                     // the outermost line's caps
                     const near = x + dir * (L.off - 3), far = x + dir * (L.off + b.thick);
@@ -4881,9 +4937,47 @@ class _Binder {
                                 inkX1: this._bLogXY(book, Math.min(near, far, x - dir * L.tick), 0)[0],
                                 inkX2: this._bLogXY(book, Math.max(near, far, x - dir * L.tick), 0)[0],
                                 compact: L.compact,
-                                room: room * k, labelY1: cy - half, labelY2: cy + half });
+                                room: room * k, labelY1: cy - half, labelY2: cy + half,
+                                ...(b.tag ? { tag: b.tag, full: b.full } : {}),
+                                ...(b.shift ? { shift: b.shift * k } : {}) });
                 }
             }
+        }
+        if (key) {
+            // right of the right side's outermost label, or under the wall
+            // at the map's left, the bubble's edge
+            let kx, ky;
+            if (key.place === 'R') {
+                const R = L.placed.R.length
+                    ? BR_BASE.R + L.depth.R * step.R + L.off + L.thick.R : 0;
+                kx = geo.wall.x + geo.wall.w + R + KEY_GAP;
+                ky = geo.wall.y;
+            } else {
+                kx = (geo.area ? geo.area.x : geo.wall.x) + 20;
+                ky = area.y + area.h - keyB + KEY_GAP;
+            }
+            this._bBracketKey(book, key, kx, ky);
+        }
+    }
+
+    // THE KEY to a sheet's bracket tags: "KEY" over the tags in bold, each
+    // with its full label ("SR12 · 125'", "SR12 · no length") beside it,
+    // down `key.cols` columns. `key` is _bBracketKeySize's, placed.
+    _bBracketKey(book, key, x, y) {
+        const s = key.size;
+        this._bText(book, 'KEY', x, y + Math.round(s * 1.1), { size: s + 2, weight: 700 });
+        const head = Math.round((s + 2) * KEY_LINE);
+        key.entries.forEach((e, i) => {
+            const col = Math.floor(i / key.rows), row = i % key.rows;
+            const cx = x + col * (key.colW + KEY_COL_GAP);
+            const cy = y + head + row * key.lineH + s;
+            this._bText(book, e.tag, cx, cy, { size: s, weight: 700 });
+            this._bText(book, e.text, cx + key.tagW + KEY_TAG_GAP, cy, { size: s, maxWidth: key.textW + 1 });
+        });
+        if (book.log && book.page && book.page.painting) {
+            book.log.bracketKey = { ...this._bLogRect(book, { x, y, w: key.w, h: key.h - (key.place === 'B' ? KEY_GAP : 0) }),
+                                    place: key.place, size: s, cols: key.cols,
+                                    entries: key.entries.map(e => ({ tag: e.tag, text: e.text, ...(e.tags ? { tags: e.tags } : {}) })) };
         }
     }
 
@@ -4895,6 +4989,27 @@ class _Binder {
     // the smaller wall that makes, a few times over, so the rows it
     // shrinks are counted too. Never more than three quarters of the area
     // across, the wall keeping the rest.
+    //
+    // That layout stands where it prints every label WHOLE - the name and
+    // its length - at 20 or more (compact 2 at most): every map that
+    // printed so before prints exactly as it did. Otherwise (owner,
+    // 2026-10-23), in this order:
+    //   * labels at 20 or more, every one whole, an edge label free to
+    //     slide inward along its own bracket: the gutter at its own size or
+    //     grown a little (round 7: a 36 x 6 wall's three "UPSTAGE LEFT
+    //     POWER DISTRO A1 · 125'" had dropped their length to fit a closer
+    //     step) - the largest labels on a wall within 15 per cent of the
+    //     largest;
+    //   * every bracket a short TAG and the map a KEY (_bBracketTags,
+    //     _bBracketKey) - a dense map, a deep stack of long names, a label
+    //     no room holds - where the tags can stand at 20 or more;
+    //   * every label whole at the floor (a deep stack of short names:
+    //     its tags would sit no larger than its labels), the gutter grown
+    //     as far as three quarters of the area;
+    //   * the tags at the floor;
+    //   * the first layout, with `keyShort`: the height a key under the
+    //     wall wants, for _bMapSheets to lay the sheet out again.
+    // { G, compact, mode: { slide, tags }, key, hCap, keyShort }.
     _bBracketGutter(book, subject, layer, wall, local, area, G, ww, wh) {
         const scr = book.list && book.list.byScreen ? book.list.byScreen[layer.id] : null;
         const spans = this._bBracketSpans(book, layer, scr, subject, (px, py, pw, ph, on) => {
@@ -4902,47 +5017,289 @@ class _Binder {
             return { x: l.x - wall.x, y: l.y - wall.y, w: l.w, h: l.h };
         });
         if (!spans.length) return { G, compact: 0 };
+        const areaH = Number.isFinite(area.h) ? area.h : Infinity;
+        // the wall's size and the map's height as the sheet's layout
+        // planned them (_bMapLayout's fit; the key's height off the wall's
+        // room where the sheet was laid out to hold one): a key under the
+        // wall never pushes the bubble and the tables further down
+        const z0 = Math.max(0, Math.min((area.w - G.left - G.right) / ww,
+                                        (areaH - G.top - G.bottom - (area.keyH || 0)) / wh, MAP_ZOOM_CAP));
+        const hCap = Number.isFinite(area.hMax) ? Math.min(area.hMax, areaH)
+            : Number.isFinite(areaH) ? Math.round(wh * z0 + G.top + G.bottom) : Infinity;
         // the layout at gutter `g`, and how far each side is short of room
-        const at = (g, compact) => {
+        // (`mode` and `key` past the first pass only)
+        const at = (g, compact, mode = null, key = null) => {
+            const kB = key && key.place === 'B' ? key.h : 0;
             const innerW = area.w - g.left - g.right;
-            const innerH = (Number.isFinite(area.h) ? area.h : Infinity) - g.top - g.bottom;
+            let innerH = areaH - g.top - g.bottom;
+            if (kB) innerH = Math.min(innerH, hCap - g.top - g.bottom);
             const z = Math.min(innerW / ww, innerH / wh, MAP_ZOOM_CAP);
             const slack = Math.max(0, (innerW - wall.w * z) / 2);
             const oy = area.y + g.top;
             const items = spans.map(sp => ({ box: sp.box, side: (sp.x1 + sp.x2) / 2 >= wall.w / 2 ? 'R' : 'L',
                                              y1: oy + sp.y1 * z, y2: oy + sp.y2 * z }));
-            const lay = this._bBracketLayout(book, items, { top: area.y, bottom: oy + wall.h * z + g.bottom }, compact);
-            return { L: this._bBracketNeed(lay, 'L'), R: this._bBracketNeed(lay, 'R'), slack };
+            const lay = mode
+                ? this._bBracketLayout(book, items, { top: area.y, bottom: oy + wall.h * z + g.bottom - kB }, compact, mode)
+                : this._bBracketLayout(book, items, { top: area.y, bottom: oy + wall.h * z + g.bottom }, compact);
+            let R = this._bBracketNeed(lay, 'R');
+            if (key && key.place === 'R') R = (R ? R - BR_MARGIN : 0) + KEY_GAP + key.w + BR_MARGIN;
+            return { L: this._bBracketNeed(lay, 'L'), R, slack, z, lay, drawH: wall.h * z };
         };
-        // closer steps and smaller labels first, the wall as it is ...
-        for (let compact = 0; compact <= 4; compact++) {
-            const n = at(G, compact);
-            if (n.L <= G.left + n.slack + 0.5 && n.R <= G.right + n.slack + 0.5) return { G, compact };
-        }
-        // ... then the wall smaller: the largest labels whose gutters
-        // leave the wall three fifths of the area across, else the
-        // tightest, the gutters never past three quarters of it
-        const grown = (compact, cap) => {
-            const g = { ...G };
+        const fitsAt = (n, g) => n.L <= g.left + n.slack + 0.5 && n.R <= g.right + n.slack + 0.5;
+        // past the first pass: a real wall - a key never takes more than
+        // half the size the brackets leave it (zKeep, below) - and a key
+        // right of the brackets no taller than the wall and its foot
+        let zKeep = 0;
+        const fitsTo = (n, g, key) => fitsAt(n, g) && n.z > 0 && (!key || n.z >= zKeep * 0.5)
+            && (!key || key.place !== 'R' || key.h <= n.drawH + g.bottom + 0.5);
+        // the gutter grown, side by side, to the room the layout needs
+        const grown = (compact, cap, mode = null, key = null, base = G) => {
+            const g = { ...base };
             for (let i = 0; i < 6; i++) {
-                const n = at(g, compact);
+                const n = at(g, compact, mode, key);
                 let more = false;
-                for (const [side, key, other] of [['L', 'left', 'right'], ['R', 'right', 'left']]) {
+                for (const [side, k, other] of [['L', 'left', 'right'], ['R', 'right', 'left']]) {
                     const need = Math.min(n[side], cap - g[other]);
-                    if (need > g[key] + n.slack + 0.5) { g[key] = need; more = true; }
+                    if (need > g[k] + n.slack + 0.5) { g[k] = need; more = true; }
                 }
                 if (!more) return { g, fits: true };
             }
             return { g, fits: false };
         };
-        for (let compact = 0; compact < 4; compact++) {
-            const t = grown(compact, area.w * 0.4);
-            if (t.fits && t.g.left + t.g.right <= area.w * 0.4 + 1) {
-                const n = at(t.g, compact);
-                if (n.L <= t.g.left + n.slack + 0.5 && n.R <= t.g.right + n.slack + 0.5) return { G: t.g, compact };
+        // the first pass, as it always was: closer steps and smaller labels
+        // first, the wall as it is; then the wall smaller - the largest
+        // labels whose gutters leave the wall three fifths of the area
+        // across, else the tightest, the gutters never past three quarters
+        const first = (() => {
+            for (let compact = 0; compact <= 4; compact++) {
+                const n = at(G, compact);
+                if (fitsAt(n, G)) return { G, compact, n, fits: true };
+            }
+            for (let compact = 0; compact < 4; compact++) {
+                const t = grown(compact, area.w * 0.4);
+                if (t.fits && t.g.left + t.g.right <= area.w * 0.4 + 1) {
+                    const n = at(t.g, compact);
+                    if (fitsAt(n, t.g)) return { G: t.g, compact, n, fits: true };
+                }
+            }
+            const g = grown(4, area.w * 0.75).g;
+            return { G: g, compact: 4, n: null, fits: false };
+        })();
+        const allWhole = (lay) => ['L', 'R'].every(side => lay.placed[side].every(b => b.whole));
+        const firstWhole = first.fits && allWhole(first.n.lay);
+        if (firstWhole && first.compact <= 2) return { G: first.G, compact: first.compact };
+        // ranked: every label whole; then the largest labels on a wall
+        // within 15 per cent of the largest, the larger wall on a tie
+        const slide = { slide: true };
+        const minSize = (lay) => Math.min(...['L', 'R'].flatMap(side =>
+            lay.placed[side].flatMap(b => b.lines.map(l => l.size))));
+        const ranked = [];
+        const consider = (g, compact) => {
+            const n = at(g, compact, slide);
+            if (!fitsTo(n, g, null) || !allWhole(n.lay)) return;
+            ranked.push({ G: g, compact, z: n.z, size: minSize(n.lay) });
+        };
+        for (let compact = 0; compact <= 2; compact++) consider(G, compact);
+        for (let compact = 0; compact <= 2; compact++) {
+            const t = grown(compact, area.w * 0.4, slide);
+            if (t.fits && t.g.left + t.g.right <= area.w * 0.4 + 1) consider(t.g, compact);
+        }
+        if (ranked.length) {
+            const zBest = Math.max(...ranked.map(r => r.z));
+            const best = ranked.filter(r => r.z >= zBest * 0.85)
+                .reduce((a, b) => (b.size > a.size || (b.size === a.size && b.z > a.z + 1e-9) ? b : a));
+            return { G: best.G, compact: best.compact, mode: slide };
+        }
+        // tags plus a key: the key's type as large as costs the wall little
+        // (within 8 per cent of the best), right of the brackets or under
+        // the wall, whichever leaves the larger wall
+        const tags = this._bBracketTags(spans);
+        const mode = { slide: true, tags: tags.map };
+        zKeep = Math.min(z0, (first.n || at(first.G, first.compact)).z);
+        // (a key under the wall: the gutter's foot carries it)
+        const baseOf = (key) => (key.place === 'B' ? { ...G, bottom: G.bottom + key.h } : G);
+        const search = (key) => {
+            const base = baseOf(key);
+            for (let compact = 0; compact <= 4; compact++) {
+                const n = at(base, compact, mode, key);
+                if (fitsTo(n, base, key) && allWhole(n.lay)) return { G: base, compact, z: n.z };
+            }
+            for (const cap of [0.4, 0.6, 0.75]) {
+                for (let compact = 0; compact <= 4; compact++) {
+                    const t = grown(compact, area.w * cap, mode, key, base);
+                    if (t.fits && t.g.left + t.g.right <= area.w * cap + 1) {
+                        const n = at(t.g, compact, mode, key);
+                        if (fitsTo(n, t.g, key) && allWhole(n.lay)) return { G: t.g, compact, z: n.z };
+                    }
+                }
+            }
+            return null;
+        };
+        // every label whole at the floor (compact 3 or 4): the first layout
+        // where it is, else the gutter grown as far as three quarters
+        const floorWhole = () => {
+            if (firstWhole) return { G: first.G, compact: first.compact };
+            for (const cap of [0.4, 0.6, 0.75]) {
+                for (let compact = 3; compact <= 4; compact++) {
+                    const t = grown(compact, area.w * cap, slide);
+                    if (!t.fits || t.g.left + t.g.right > area.w * cap + 1) continue;
+                    const n = at(t.g, compact, slide);
+                    if (fitsTo(n, t.g, null) && allWhole(n.lay)) return { G: t.g, compact, mode: slide };
+                }
+            }
+            return null;
+        };
+        // a key of `entries` right of the brackets or under the wall, at each
+        // type size: [{ G, compact, z, key, size }]
+        const optionsFor = (entries) => {
+            const out = [];
+            for (const size of KEY_SIZES) {
+                const m = this._bBracketKeySize(book, entries, size);
+                // right of the brackets: the fewest columns the map's
+                // height holds, a few more where the wall comes out short
+                const rowsMax = Math.max(1, Math.floor((areaH - G.top - m.head) / m.lineH));
+                const c0 = Math.min(entries.length, Math.max(1, Math.ceil(entries.length / rowsMax)));
+                for (let c = c0; c <= Math.min(entries.length, c0 + 3); c++) {
+                    const key = this._bBracketKeyAt(m, c, 'R');
+                    const r = search(key);
+                    if (r) { out.push({ ...r, key, size }); break; }
+                }
+                // under the wall: as many columns as the map's width holds
+                const keyB = this._bBracketKeyUnder(m, area.w);
+                if (keyB.w <= area.w - 40 + 0.5) {
+                    const r = search(keyB);
+                    if (r) out.push({ ...r, key: keyB, size });
+                }
+            }
+            return out;
+        };
+        // every tag on its own line; else (round 7: a hundred and twenty
+        // multis on a sheet) a run of tags whose labels count up with them
+        // on one line: "1 to 36" for "SR1 to SR36 · 125'"
+        let options = optionsFor(tags.entries);
+        const runs = this._bBracketKeyRuns(tags.entries);
+        if (!options.length && runs.length < tags.entries.length) options = optionsFor(runs);
+        if (options.length) {
+            const top = Math.max(...options.map(o => o.z));
+            const pick = KEY_SIZES.map(size => options.filter(o => o.size === size && o.z >= top * 0.92))
+                .find(list => list.length);
+            const o = pick.reduce((a, b) => (b.z > a.z + 1e-9 ? b : a));
+            // a deep stack's tags sit as tight as its labels would: whole
+            // labels at the floor read better than tags at the floor
+            const floor = o.compact >= 3 ? floorWhole() : null;
+            if (floor) return floor;
+            return { G: o.G, compact: o.compact, mode, key: o.key,
+                     ...(o.key.place === 'B' ? { hCap } : {}) };
+        }
+        const floor = floorWhole();
+        if (floor) return floor;
+        // Nothing fits: the smallest key under the wall says how much room
+        // it wants (keyShort - _bMapSheets lays the sheet out again with
+        // that much under the map); meanwhile, and where that never comes,
+        // the first layout.
+        const m = this._bBracketKeySize(book, runs, KEY_SIZES[KEY_SIZES.length - 1]);
+        return { G: first.G, compact: first.compact, keyShort: this._bBracketKeyUnder(m, area.w).h };
+    }
+
+    // THE TAGS for a sheet's brackets (owner, 2026-10-23), the clearest
+    // that is unique on the sheet: the multi's own number ("12"); else the
+    // distro's letter in the show's order with it ("A12", "B12"), where two
+    // distros share a number; else the brackets counted down the sheet.
+    // { map: box -> tag, entries: [{ tag, text }] } - the key's lines, the
+    // full label ("SR12 · 125'", "SR12 · no length") with each tag.
+    _bBracketTags(spans) {
+        const boxes = [];
+        for (const sp of spans) if (!boxes.includes(sp.box)) boxes.push(sp.box);
+        const num = (b) => Number(b.number);
+        const numbered = boxes.every(b => Number.isFinite(num(b)) && num(b) > 0);
+        const unique = (f) => new Set(boxes.map(f)).size === boxes.length;
+        const distros = (this.project && Array.isArray(this.project.distros)) ? this.project.distros : [];
+        const order = (b) => { const i = distros.findIndex(d => d && d.id === b.distroId); return i < 0 ? distros.length : i; };
+        let list;
+        if (numbered && unique(num)) {
+            list = boxes.slice().sort((a, b) => num(a) - num(b)).map(b => [b, '', num(b)]);
+        } else if (numbered && unique(b => `${b.distroId}|${num(b)}`)) {
+            const ids = [...new Set(boxes.slice().sort((a, b) => order(a) - order(b)).map(b => b.distroId))];
+            const code = (b) => {
+                const i = ids.indexOf(b.distroId);
+                return ids.length <= 26 ? String.fromCharCode(65 + i) : `${i + 1}-`;
+            };
+            list = boxes.slice().sort((a, b) => (order(a) - order(b)) || (num(a) - num(b)))
+                .map(b => [b, code(b), num(b)]);
+        } else {
+            list = boxes.map((b, i) => [b, '', i + 1]);
+        }
+        return { map: new Map(list.map(([b, code, n]) => [b, `${code}${n}`])),
+                 entries: list.map(([b, code, n]) => {
+                     const f = this._bBracketFull(b);
+                     return { tag: `${code}${n}`, text: f.full, name: f.name, len: f.len, num: n, code };
+                 }) };
+    }
+
+    // A key's entries with each run of three or more tags whose labels
+    // count up with them - the same code, numbers one apart, the same
+    // name ending in the number, the same length - on one line: "1 to
+    // 36", "UPSTAGE LEFT POWER DISTRO A1 to A36 · 125'" (`tags` lists the
+    // run's own).
+    _bBracketKeyRuns(entries) {
+        const stem = (e) => (Number.isFinite(e.num) && String(e.name).endsWith(String(e.num))
+            ? String(e.name).slice(0, -String(e.num).length) : null);
+        const out = [];
+        for (let i = 0; i < entries.length;) {
+            let j = i;
+            const p = stem(entries[i]);
+            while (p !== null && j + 1 < entries.length) {
+                const a = entries[j], b = entries[j + 1];
+                if (b.code !== a.code || b.num !== a.num + 1 || b.len !== a.len || stem(b) !== p) break;
+                j++;
+            }
+            if (j - i >= 2) {
+                const a = entries[i], b = entries[j];
+                const last = String(b.name).split(' ').pop();
+                out.push({ tag: `${a.tag} to ${b.tag}`, text: `${a.name} to ${last} · ${a.len}`,
+                           tags: entries.slice(i, j + 1).map(e => e.tag) });
+                i = j + 1;
+            } else {
+                out.push(entries[i]);
+                i++;
             }
         }
-        return { G: grown(4, area.w * 0.75).g, compact: 4 };
+        return out;
+    }
+
+    // A bracket's whole label: "SR1 · 125'", or "SR1 · no length" where
+    // the multi has none, the way its band says it.
+    _bBracketFull(box) {
+        const name = String(box.name == null ? '' : box.name);
+        const len = box.homeRun ? this.pullLengthText(box.homeRun, this.pullHomeRunKind(box)) : 'no length';
+        return { name, len, full: `${name} · ${len}` };
+    }
+
+    // The key's measures at type `size`: the widest tag (bold), the widest
+    // label, a column, a line and the "KEY" heading.
+    _bBracketKeySize(book, entries, size) {
+        const tagW = Math.max(0, ...entries.map(e => this._bTextWidth(book, e.tag, { size, weight: 700 })));
+        const textW = Math.max(0, ...entries.map(e => this._bTextWidth(book, e.text, { size })));
+        return { entries, size, tagW, textW, colW: Math.ceil(tagW + KEY_TAG_GAP + textW),
+                 lineH: Math.round(size * KEY_LINE), head: Math.round((size + 2) * KEY_LINE) };
+    }
+
+    // The key under the wall, as many columns as `w` holds (the map's
+    // left 20 off), its rows as even as they go.
+    _bBracketKeyUnder(m, w) {
+        const n = m.entries.length;
+        const across = Math.max(1, Math.floor((w - 40 + KEY_COL_GAP) / (m.colW + KEY_COL_GAP)));
+        const rows = Math.ceil(n / Math.min(across, n));
+        return this._bBracketKeyAt(m, Math.ceil(n / rows), 'B');
+    }
+
+    // The key down `cols` columns, right of the brackets ('R') or under the
+    // wall ('B', its height counting the gap above it).
+    _bBracketKeyAt(m, cols, place) {
+        const rows = Math.ceil(m.entries.length / cols);
+        const h = m.head + rows * m.lineH;
+        return { ...m, cols, rows, place, w: cols * m.colW + (cols - 1) * KEY_COL_GAP,
+                 h: place === 'B' ? h + KEY_GAP : h };
     }
 
     // Each multi's bracket span through `rect` (a processor-coord rect ->
@@ -5019,7 +5376,19 @@ class _Binder {
     // keeps every label on one line, 2 caps it at 20, 3 at the floor, 4
     // also draws the ticks and the labels closer to their brackets
     // (BR_TIGHT), so the depth step closes up further.
-    _bBracketLayout(book, items, bounds, compact = 0) {
+    // Each placed label says whether it is WHOLE: the name and its length,
+    // never cut (_bBracketGutter ranks layouts by it).
+    // `mode` (_bBracketGutter, where the first layout leaves a label short
+    // of whole; none draws exactly as above):
+    //   * slide - a label whole nowhere else may slide inward along its
+    //     own bracket, its middle never off the bracket: an edge
+    //     bracket's has the map's edge one way and its neighbour the other
+    //     (round 7: the last of thirty multis printed "DIST…" while every
+    //     other label fitted). The placed bracket's `shift` says how far;
+    //   * tags - box -> tag (_bBracketTags): the label is the tag alone,
+    //     stepping out by turns up to BR_TAG_LANES; `tag` and `full` (the
+    //     whole label, for the key) on the placed bracket.
+    _bBracketLayout(book, items, bounds, compact = 0, mode = null) {
         const geom = compact >= 4 ? BR_TIGHT : { tick: BR_TICK, off: BR_OFF };
         const cap = compact >= 3 ? BR_FLOOR : compact >= 2 ? 20 : SZ.bracket;
         const top = Number.isFinite(bounds && bounds.top) ? bounds.top : -Infinity;
@@ -5055,26 +5424,31 @@ class _Binder {
             const lines = out.map(t => ({ text: t, size: sizeFor(t, room) }));
             return lines.every(l => l.size) ? lines : null;
         };
+        const tags = mode && mode.tags ? mode.tags : null;
         const labelOf = (box, room) => {
-            const name = String(box.name == null ? '' : box.name);
+            if (tags) {
+                const tag = String(tags.has(box) ? tags.get(box) : '');
+                const s = sizeFor(tag, room);
+                return s ? { lines: [{ text: tag, size: s }], ok: true, whole: true, tag }
+                         : { lines: [{ text: tag, size: BR_FLOOR }], ok: false, whole: false, tag };
+            }
             // a multi with no length says so, the way its band does
-            const len = box.homeRun ? this.pullLengthText(box.homeRun, this.pullHomeRunKind(box)) : 'no length';
-            const full = `${name} · ${len}`;
-            if (w28(full) * cap / SZ.bracket <= room) return { lines: [{ text: full, size: cap }], ok: true };
+            const { name, len, full } = this._bBracketFull(box);
+            if (w28(full) * cap / SZ.bracket <= room) return { lines: [{ text: full, size: cap }], ok: true, whole: true };
             if (compact) {
                 // one line only: the whole label shrunk, else the name
                 const sFull = sizeFor(full, room), sOnly = sizeFor(name, room);
-                if (sFull) return { lines: [{ text: full, size: sFull }], ok: true };
-                if (sOnly) return { lines: [{ text: name, size: sOnly }], ok: true };
-                return { lines: [{ text: name, size: BR_FLOOR }], ok: false };
+                if (sFull) return { lines: [{ text: full, size: sFull }], ok: true, whole: true };
+                if (sOnly) return { lines: [{ text: name, size: sOnly }], ok: true, whole: false };
+                return { lines: [{ text: name, size: BR_FLOOR }], ok: false, whole: false };
             }
             const sName = sizeFor(name, room), sLen = sizeFor(len, room);
-            if (sName && sLen) return { lines: [{ text: name, size: sName }, { text: len, size: sLen }], ok: true };
+            if (sName && sLen) return { lines: [{ text: name, size: sName }, { text: len, size: sLen }], ok: true, whole: true };
             const wrapped = sName ? null : wrap(name, room);
-            if (wrapped && sLen) return { lines: [...wrapped, { text: len, size: sLen }], ok: true };
-            if (sName) return { lines: [{ text: name, size: sName }], ok: true };
-            if (wrapped) return { lines: wrapped, ok: true };
-            return { lines: [{ text: name, size: BR_FLOOR }], ok: false };
+            if (wrapped && sLen) return { lines: [...wrapped, { text: len, size: sLen }], ok: true, whole: true };
+            if (sName) return { lines: [{ text: name, size: sName }], ok: true, whole: false };
+            if (wrapped) return { lines: wrapped, ok: true, whole: false };
+            return { lines: [{ text: name, size: BR_FLOOR }], ok: false, whole: false };
         };
         // a bracket's room among the others at its own distance
         const roomOf = (b, peers) => {
@@ -5087,6 +5461,27 @@ class _Binder {
             const room = (b.y2 - b.y1) + 2 * Math.min(up, down);
             return Math.max(alone ? b.y2 - b.y1 - 6 : 0, room);
         };
+        // the same room with the label free to slide along its own bracket
+        // (mode.slide): from `lo` to `hi`, its middle never off the bracket
+        const slideOf = (b, peers) => {
+            let up = b.y1 - top - 2, down = bottom - b.y2 - 2;
+            for (const o of peers) {
+                if (o === b) continue;
+                if (o.y2 <= b.y1 + 4) up = Math.min(up, (b.y1 - o.y2) / 2 - 5);
+                else if (o.y1 >= b.y2 - 4) down = Math.min(down, (o.y1 - b.y2) / 2 - 5);
+            }
+            const lo = b.y1 - up, hi = b.y2 + down, mid = (b.ya + b.yb) / 2;
+            const reach = Math.max(0, (b.yb - b.ya) / 2);
+            const c = Math.min(Math.max((lo + hi) / 2, mid - reach), mid + reach);
+            return { lo, hi, mid, room: Math.max(0, 2 * Math.min(c - lo, hi - c)) };
+        };
+        const slide = !!(mode && mode.slide);
+        // past the first layout, whole labels count first
+        const rank = (tried) => {
+            const ok = tried.filter(t => t.ok).length;
+            return mode ? tried.filter(t => t.whole).length * (tried.length + 1) + ok : ok;
+        };
+        const lanesMax = tags ? BR_TAG_LANES : BR_LANES;
         const placed = { L: [], R: [] }, thick = { L: 0, R: 0 }, depth = { L: 0, R: 0 };
         for (const side of ['L', 'R']) {
             // the levels by overlap, in the multis' order
@@ -5104,25 +5499,52 @@ class _Binder {
                 // the fewest turns that let every label fit; else the most
                 // labels fitting
                 let best = null;
-                for (let k = 1; k <= BR_LANES && k <= seq.length; k++) {
+                for (let k = 1; k <= lanesMax && k <= seq.length; k++) {
                     const lanes = Array.from({ length: k }, (_, j) => seq.filter((_, i) => i % k === j));
                     const tried = seq.map((b, i) => {
                         const room = roomOf(b, lanes[i % k]);
-                        return { b, room, lane: i % k, ...labelOf(b.box, room) };
+                        const t = { b, room, lane: i % k, ...labelOf(b.box, room) };
+                        if (!slide || t.whole) return t;
+                        const sl = slideOf(b, lanes[i % k]);
+                        if (sl.room <= room + 0.5) return t;
+                        const u = labelOf(b.box, sl.room);
+                        if (!(u.whole || (u.ok && !t.ok))) return t;
+                        const w = Math.max(...u.lines.map(l => this._bTextWidth(book, l.text, { size: l.size, weight: 700 })));
+                        const c = Math.min(Math.max(sl.mid, sl.lo + w / 2), sl.hi - w / 2);
+                        return { b, room: sl.room, lane: i % k, ...u, shift: c - sl.mid };
                     });
-                    const ok = tried.filter(t => t.ok).length;
+                    const ok = rank(tried);
                     if (!best || ok > best.ok) best = { k, tried, ok };
-                    if (ok === seq.length) break;
+                    if (mode ? tried.every(t => t.whole) : ok === seq.length) break;
                 }
                 for (const t of best.tried) {
                     const gap = Math.max(...t.lines.map(l => l.size));
                     const th = (t.lines.length - 1) * gap + 0.72 * gap;
-                    const b = { ...t.b, depth: at + t.lane, room: t.room, lines: t.lines, gap, thick: th };
+                    const b = { ...t.b, depth: at + t.lane, room: t.room, lines: t.lines, gap, thick: th,
+                                whole: !!t.whole,
+                                ...(t.shift ? { shift: t.shift } : {}),
+                                ...(tags ? { tag: t.tag, full: this._bBracketFull(t.b.box).full } : {}) };
                     placed[side].push(b);
                     thick[side] = Math.max(thick[side], th);
                     depth[side] = Math.max(depth[side], b.depth);
                 }
                 at += best.k;
+            }
+        }
+        // the tags all one size on the sheet, the smallest any of them took
+        // (an edge tag with the map's edge for room read larger than the
+        // rest)
+        if (tags) {
+            const all = [...placed.L, ...placed.R];
+            const size = Math.min(...all.flatMap(b => b.lines.map(l => l.size)));
+            for (const side of ['L', 'R']) {
+                thick[side] = 0;
+                for (const b of placed[side]) {
+                    b.lines = b.lines.map(l => ({ ...l, size }));
+                    b.gap = size;
+                    b.thick = 0.72 * size;
+                    thick[side] = Math.max(thick[side], b.thick);
+                }
             }
         }
         return { placed, thick, depth, compact, tick: geom.tick, off: geom.off };

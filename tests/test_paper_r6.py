@@ -1,8 +1,9 @@
 """Binder and pull-sheet paperwork, round 6 (owner rulings, 2026-10-23).
 
   * Dense bracket maps stay legible: never under the binder's 14 floor,
-    never overlapping, never cut to "S…". A label that will not fit drops
-    its length, then its bracket steps out by turns; a deep stack closes
+    never overlapping, never cut to "S…". A label that will not fit steps
+    out by turns; one that will not fit whole even so takes a tag, the
+    sheet a key (round 7, tests/test_paper_r7.py); a deep stack closes
     its depth step (and, only where it must, the wall draws smaller) so
     every bracket stays inside the drawing area. A lone bracket's label
     may use the free space beside it.
@@ -329,14 +330,20 @@ def _check_brackets(sheet, out, n):
     br, da = out['brackets'], out['da']
     assert len(br) == n, (sheet, len(br))
     for b in br:
-        # legible and whole: the floor, the name never cut
+        # legible and whole: the floor, the name never cut - or, where a
+        # label will not fit whole (round 7), its tag, the key saying the
+        # rest (tests/test_paper_r7.py)
         assert b['size'] >= 14, (sheet, b)
-        assert b['lines'][0].startswith(b['name'][:3]), (sheet, b)
-        assert ''.join(b['lines']).replace(' ', '').startswith(b['name'].replace(' ', '')), (sheet, b)
+        if 'tag' in b:
+            assert b['lines'] == [b['tag']] and b['full'].startswith(b['name'] + ' · '), (sheet, b)
+        else:
+            assert b['lines'][0].startswith(b['name'][:3]), (sheet, b)
+            assert ''.join(b['lines']).replace(' ', '').startswith(b['name'].replace(' ', '')), (sheet, b)
         assert not [t for t in b['lines'] if t.endswith('…')], (sheet, b)
-        # inside its room, centred on its bracket
+        # inside its room, centred on its bracket (an edge label slid
+        # inward along it, round 7, says how far)
         assert b['labelY2'] - b['labelY1'] <= b['room'] + 0.5, (sheet, b)
-        mid = (b['y1'] + b['y2']) / 2
+        mid = (b['y1'] + b['y2']) / 2 + b.get('shift', 0)
         assert abs((b['labelY1'] + b['labelY2']) / 2 - mid) < 1, (sheet, b)
         # inside the drawing area
         assert da['x'] <= b['inkX1'] and b['inkX2'] <= da['x'] + da['w'], (sheet, b, da)
@@ -362,7 +369,9 @@ def _check_brackets(sheet, out, n):
 @pytest.mark.parametrize('splits,n', [(list(range(1, 60)), 60), (list(range(2, 60, 2)), 30)])
 def test_a_dense_bracket_map_stays_legible(page, splits, n):
     """A 10 x 60 wall, a circuit per row, a multi per circuit (or per two):
-    every label at 14 or more, whole, never overlapping, on every sheet."""
+    every label at 14 or more, whole, never overlapping, on every sheet -
+    where they will not all fit whole, every bracket a tag and the sheet a
+    key (round 7)."""
     pg, errors = page
     _reset(pg)
     setup(pg, distros=[], walls={})
@@ -371,9 +380,14 @@ def test_a_dense_bracket_map_stays_legible(page, splits, n):
         for sheet in SHEETS:
             out = pg.evaluate(BRACKETS_JS, sheet)
             _check_brackets(sheet, out, n)
-            # the name alone, or with its length, never "S…"
+            # the whole label (its length nearer the bracket where it takes
+            # two lines), else tags on every bracket - never "S…", never the
+            # name with its length dropped
+            tagged = [b for b in out['brackets'] if 'tag' in b]
+            assert len(tagged) in (0, n), (sheet, out['brackets'])
             for b in out['brackets']:
-                assert b['lines'][0] in (b['name'], f"{b['name']} · no length"), (sheet, b)
+                assert b['lines'] == [b['tag']] if tagged else (
+                    b['lines'] in ([f"{b['name']} · no length"], [b['name'], 'no length'])), (sheet, b)
     finally:
         _reset(pg)
     assert errors == [], errors
@@ -381,7 +395,8 @@ def test_a_dense_bracket_map_stays_legible(page, splits, n):
 
 def test_the_owners_two_distro_case_is_kept(page):
     """Two SR distros, 10 x 60, six-row multis: the wall the same size as a
-    map without brackets would draw it, every label legible."""
+    map without brackets would draw it, every label legible - and whole,
+    its length with it (round 7), a crowded label stepping out a turn."""
     pg, errors = page
     _reset(pg)
     setup(pg, distros=[SR, dict(SR, id='d2')], walls={})
@@ -392,11 +407,11 @@ def test_the_owners_two_distro_case_is_kept(page):
         for sheet in SHEETS:
             out = pg.evaluate(BRACKETS_JS, sheet)
             _check_brackets(sheet, out, 10)
-            # one distance, the brackets' room left as it was
-            assert {b['depth'] for b in out['brackets']} == {0}, (sheet, out['brackets'])
+            # at most one turn out, the brackets' room left as it was
+            assert {b['depth'] for b in out['brackets']} <= {0, 1}, (sheet, out['brackets'])
             assert {b['compact'] for b in out['brackets']} == {0}, (sheet, out['brackets'])
             for b in out['brackets']:
-                assert b['lines'][0].startswith(b['name']), (sheet, b)
+                assert b['lines'] in ([f"{b['name']} · no length"], [b['name'], 'no length']), (sheet, b)
             if sheet in ('archc', 'archd'):
                 assert all(b['lines'] == [f"{b['name']} · no length"] for b in out['brackets']), out['brackets']
     finally:

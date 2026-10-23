@@ -2209,7 +2209,9 @@ class _PullList {
             /(^|[^\w-])((?:Edison|EDISON|edison|L6-20|l6-20)\s+)(tail|Tail|TAIL)([sS]?)(?![\w-])/g,
             (m, lead, p, w, s) => lead + p + cable(w, s));
         if (notes) {
-            return plug(t.replace(/((?:→|->)\s*(?:\S+\s+)?)(tail|Tail|TAIL)([sS]?)(?![\w-])/g,
+            // (the tail right after the arrow tried first: "-> Tail TAILS"
+            // reads "-> Cable TAILS", round 7)
+            return plug(t.replace(/((?:→|->)\s*(?:\S+\s+)??)(tail|Tail|TAIL)([sS]?)(?![\w-])/g,
                 (m, lead, w, s) => lead + cable(w, s)));
         }
         if (/→|->/.test(t)) {
