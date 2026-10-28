@@ -1,4 +1,22 @@
-# LED Raster Designer v1.5.4
+<h1 align="center"><img src="src/icon.png" width="112" alt=""><br>LED Raster Designer v1.5.4</h1>
+
+<p align="center"><strong>Plan LED video walls, from pixel map to binder.</strong></p>
+
+<p align="center">
+  <a href="https://github.com/kman1898/LED-Raster-Designer/releases/latest"><img alt="Download for Mac" src="https://img.shields.io/badge/Download-Mac-2f81f7?style=for-the-badge&logo=apple&logoColor=white"></a>
+  <a href="https://github.com/kman1898/LED-Raster-Designer/releases/latest"><img alt="Download for Windows" src="https://img.shields.io/badge/Download-Windows-2f81f7?style=for-the-badge&logo=windows&logoColor=white"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/kman1898/LED-Raster-Designer/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/kman1898/LED-Raster-Designer?label=release&color=2f81f7"></a>
+  <a href="https://github.com/kman1898/LED-Raster-Designer/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/kman1898/LED-Raster-Designer/total?color=2f81f7"></a>
+  <a href="https://github.com/kman1898/LED-Raster-Designer/actions/workflows/ci.yml?query=branch%3Amain"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/kman1898/LED-Raster-Designer/ci.yml?branch=main&label=CI"></a>
+  <a href="LICENSE"><img alt="License: free to use" src="https://img.shields.io/badge/license-free%20to%20use-2f81f7"></a>
+</p>
+
+<p align="center">
+  <img src=".github/media/demo.gif" width="900" alt="A demo show in LED Raster Designer, moving through the Pixel Map, Show Look, Data and Power views">
+</p>
 
 LED Raster Designer is a free app for planning LED video walls for live
 events, concerts, broadcast and installs. You lay out the cabinets, wire
@@ -70,6 +88,20 @@ when you're done.
 ## What it does
 
 ### Five views
+
+<table>
+  <tr>
+    <td colspan="2"><img src=".github/media/pixel-map.png" alt="Pixel Map view of a demo show"><br><sub><b>Pixel Map</b>: the layout your processor expects</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src=".github/media/cabinet-id.png" alt="Cabinet ID view"><br><sub><b>Cabinet ID</b>: every cabinet numbered</sub></td>
+    <td width="50%"><img src=".github/media/show-look.png" alt="Show Look view"><br><sub><b>Show Look</b>: the screens as they sit on stage</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src=".github/media/data.png" alt="Data view with ports wired across the wall"><br><sub><b>Data</b>: ports run across the wall to the processor</sub></td>
+    <td width="50%"><img src=".github/media/power.png" alt="Power view with circuits and amps per leg"><br><sub><b>Power</b>: circuits, multis and the amps on every leg</sub></td>
+  </tr>
+</table>
 
 | Tab | What it does |
 |-----|-------------|
