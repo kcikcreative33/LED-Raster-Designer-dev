@@ -4059,7 +4059,7 @@
         },
         riggingSizes: {
             target: '#rigging-size-picker', place: 'right', title: 'Pick the bar sizes',
-            body: 'Pick Header or Footer, then light the sizes you have. Single and double show first; the + opens 3 to 6. Say the truck only holds doubles and 5-way bars: switch the single off, open the + and light the 5.',
+            body: 'Pick Header or Footer, then light the bar sizes you have; single and double show first, and the + opens 3 to 6. Say the truck holds only doubles and 5s: switch the single off, open the + and light the 5.',
             before: function () {
                 switchView('rigging');
                 var w = wall();
@@ -4077,12 +4077,12 @@
             check: function () {
                 var w = wall();
                 var s = w && w.riggingSizes;
-                return s && s.join(',') === '2,5' ? 'Lit: double and 5-way. Auto will use only these.' : null;
+                return s && s.join(',') === '2,5' ? 'Lit: the double and the 5. Auto will use only these.' : null;
             }
         },
         riggingAuto: {
             target: '#rigging-auto-btn', place: 'right', title: 'Auto',
-            body: 'Auto fits the fewest header bars of the lit sizes across the screen. It makes a mirror image when it can, and never asks for extra singles to do it. Select All Screens above it lines up every screen so one Auto does the lot.',
+            body: 'Auto fits the fewest bars of the lit sizes across the screen, mirrored when it can be, with no extra singles. Select All Screens above it lines up every screen so one Auto does the lot.',
             before: function () { switchView('rigging'); },
             act: function (t) {
                 return t.click('#rigging-auto-btn').then(function () {
@@ -4100,7 +4100,7 @@
         riggingDrag: {
             target: '#main-canvas', place: 'top', title: 'Drag a header bar',
             avoid: [function () { return barPoint(0); }, function () { return barPoint(1); }],
-            body: 'Press on a header bar and drag it left or right. It swaps places with its neighbour once its edge crosses the neighbour&rsquo;s middle, and lets go to save. The bars only change places, so the wall stays covered, and undo steps it back.',
+            body: 'Press on a header bar and drag it left or right; it swaps with its neighbour once its edge crosses the neighbour&rsquo;s middle. The wall stays covered, and undo steps it back.',
             before: function () { switchView('rigging'); },
             act: function (t) {
                 var from = barPoint(0);
@@ -4136,7 +4136,7 @@
         },
         riggingTotals: {
             target: '#rigging-total-count', place: 'right', title: 'Total header bars',
-            body: 'The box at the foot of the panel counts every header bar in the show by size: single, double, triple, then 4-way and up. The same counts go to the pull sheet.',
+            body: 'The box at the foot of the panel counts every header bar in the show by size: single, double, triple, then 4 and up. The same counts go to the pull sheet.',
             before: function () { switchView('rigging'); },
             act: function (t) {
                 var box = $('#rigging-total-count');
@@ -4593,7 +4593,7 @@
         riggingSheet: {
             exportStep: true,
             target: '#export-binder-rigging', place: 'left', title: 'The header/footer sheets',
-            body: 'The Header/Footer tick adds a sheet for each screen that has header or footer bars: the wall with its bars above and below it, and a table of what to pull. A screen with none prints no sheet. PNG, SVG, PSD and PDF exports have a Header/Footer view too.',
+            body: 'The Header/Footer tick adds a sheet for each screen with header or footer bars: the wall with its bars, and a table of what to pull. The PNG, SVG, PSD and PDF exports have a Header/Footer view too.',
             before: openExport,
             act: function (t) {
                 var box = $('#export-binder-rigging');
