@@ -2051,12 +2051,13 @@ def test_the_redundancy_pill_reads_the_state_and_opens_the_processor_gear(
         assert out['back'] is None, out
         out = pills({'modes': ['manual', 'halves']})
         assert out['mainCards'] == ['R manual', 'R OPT split'], out
+        # cards that disagree read Mixed (2026-10-29), each card its own
         out = pills({'modes': ['1to1', 'halves']})
-        assert out['main'] == 'R per card', out
+        assert out['main'] == 'R mixed', out
         assert out['mainCards'] == ['R 1:1, no partner', 'R OPT split'], out
         # the backup processor rides the main's header beside it
         out = pills({'backupUnit': {}})
-        assert out['bu'] == 'Backup: SR BU' and out['main'] == 'R per card', out
+        assert out['bu'] == 'Backup: SR BU' and out['main'] == 'R mixed', out
         out = pills({'backupUnit': None})
         assert out['bu'] is None, out
 

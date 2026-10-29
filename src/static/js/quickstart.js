@@ -102,6 +102,10 @@
         return ls.find(function (l) { return l.name === 'DEMO WALL 2'; }) || null;
     }
     function proc() { return ((A() && A()._processorsResolved) || [])[0] || null; }
+    // The H9 the Mixed redundancy step puts beside the guide's own unit.
+    function chassis() {
+        return ((A() && A()._processorsResolved) || []).find(function (p) { return p.deviceId === 'novastar-h9'; }) || null;
+    }
     function card() {
         var p = proc();
         var s = ((p && p.slots) || []).find(function (x) { return x && x.card; });
@@ -3106,6 +3110,84 @@
             },
             after: function () { closePopover(); }
         },
+        // Mixed (owner, 2026-10-29: "on say H series i have 3 16 port
+        // cards. and i want card 1 and 2 to be primary and backup but then
+        // card 3 i want port level backup"). The guide's own processor is a
+        // one-box unit, which has nothing to mix, so an H9 with three
+        // 16-port cards goes in the tray beside it (the Add button pressed,
+        // the chassis and its cards put in for you, the way the second
+        // screen is), then the bar's Mixed, card 1's partner and card 3's
+        // split are each pressed for real.
+        mixedRedundancy: {
+            since: '1.5.4',
+            target: function () { var h = chassis(); return h ? '[data-hwpop="proc-' + h.id + '"]' : '#hw-dock-data-controls'; },
+            place: 'top', title: 'Mixed redundancy on a chassis',
+            avoid: ['#processor-add-btn'],
+            body: 'On a chassis like an H9 the bar adds Mixed, and each card picks its own. Here card 1 is backed up 1:1 by card 2, and card 3 splits its own ports.',
+            before: function () { switchView('data-flow'); closePopover(); },
+            act: function (t) {
+                var a = A(), pid = null;
+                var bar = function () { return '[data-lrd-field="processor-redundancy-' + pid + '"]'; };
+                var cards = function () { var h = chassis(); return h ? h.slots.filter(function (s) { return s.card; }).map(function (s) { return s.card; }) : []; };
+                return t.hover('#processor-add-btn').then(function (p) {
+                    press(true); ripple(p.x, p.y);
+                    return t.pause(200);
+                }).then(function () {
+                    press(false);
+                    return j('POST', '/api/processors', { deviceId: 'novastar-h9' });
+                }).then(function (st) {
+                    pid = st.resolved[st.resolved.length - 1].id;
+                    return [0, 1, 2].reduce(function (chain, i) {
+                        return chain.then(function () {
+                            return j('PUT', '/api/processors/' + pid + '/slots/' + i, { deviceId: 'novastar-card-h-16xrj45-2xfiber' });
+                        });
+                    }, Promise.resolve());
+                }).then(function () {
+                    return a.refreshProcessors();
+                }).then(function () {
+                    a.saveState('Add Processor');
+                    return t.wait(function () { return $('[data-hwpop="proc-' + pid + '"]'); });
+                }).then(function (gear) {
+                    if (!gear) throw new Error('the H9 did not land in the tray');
+                    return t.click('[data-hwpop="proc-' + pid + '"]');
+                }).then(function () {
+                    return t.wait(function () { var pop = $('#hw-gear-popover'); return pop && pop.style.display === 'block' && $(bar() + ' [data-level="mixed"]'); });
+                }).then(function (seg) {
+                    if (!seg) throw new Error('no Mixed on the H9 bar');
+                    return t.click(bar() + ' [data-level="mixed"]', { hover: 400, rest: 600 });
+                }).then(function () {
+                    return t.wait(function () { var h = chassis(); return h && h.redundancyMixed && $('[data-lrd-field="processor-card-backup-' + cards()[0].id + '"]'); });
+                }).then(function (pick) {
+                    if (!pick) throw new Error('the Mixed rows did not come up');
+                    var cs = cards();
+                    t.mem.cards = cs.map(function (c) { return c.id; });
+                    return t.select('[data-lrd-field="processor-card-backup-' + cs[0].id + '"]', cs[1].id);
+                }).then(function () {
+                    return t.wait(function () { var cs = cards(); return cs[1] && cs[1].backupFor ? cs : null; });
+                }).then(function (cs) {
+                    if (!cs) throw new Error('card 2 did not take card 1');
+                    // The chip the card's face calls OPT Split.
+                    var split = $$('[data-lrd-field="processor-card-shape-' + cs[2].id + '"] [data-mode]')
+                        .filter(function (c) { return /Split$/.test(c.textContent); })[0];
+                    if (!split) throw new Error('no Split chip on card 3');
+                    t.mem.split = split.dataset.mode;
+                    return t.click(split, { hover: 400, rest: 1200 });
+                }).then(function () {
+                    return t.wait(function () { var cs = cards(); return cs[2] && cs[2].redundancyShape && cs[2].redundancyShape.mode === t.mem.split; });
+                });
+            },
+            check: function () {
+                var h = chassis();
+                if (!h || !h.redundancyMixed) return null;
+                var cs = h.slots.filter(function (s) { return s.card; }).map(function (s) { return s.card; });
+                // card 3 at the split: a port shape that is neither of the others
+                var mode = cs[2] && cs[2].redundancyShape ? cs[2].redundancyShape.mode : null;
+                if (cs.length < 3 || cs[0].backupCardId !== cs[1].id || !cs[1].backupFor
+                        || !mode || ['1to1', 'sequential', 'manual'].indexOf(mode) >= 0) return null;
+                return (h.name || h.deviceName) + ' runs Mixed: card 2 backs up card 1 port for port, and card 3 brings its own returns back on ports 9 to 16.';
+            },
+            after: function () { closePopover(); }
+        },
         overrideRun: {
             target: '#main-canvas', place: 'top', title: 'Take over one run',
             body: 'Hold Alt and the run under the cursor lights up. Alt+click takes over just that port: click cabinets to redraw it, Esc when done.',
@@ -4870,7 +4952,7 @@
             seed: { name: 'New Show', layer: { panelWatts: 100, powerBreakoutType: 'soca-powercon' } },
             steps: ['introAdvanced', 'projectName', 'cabinetSize', 'panelName', 'gridSize', 'fit', 'blankCabinet',
                     'cabinetIdStyle', 'showLook', 'processing', 'flowPattern', 'addProcessor',
-                    'nameProcessor', 'redundancy', 'backupProcessor', 'dropProcessor', 'releasePort', 'attachmentFlag', 'pinPort',
+                    'nameProcessor', 'redundancy', 'backupProcessor', 'mixedRedundancy', 'dropProcessor', 'releasePort', 'attachmentFlag', 'pinPort',
                     'clearPortByMenu', 'clearCard', 'dropProcessorAgain',
                     'snakePorts', 'cableSheet', 'snakeHomeRun', 'loosePortLength', 'dataJumpers', 'dataCableTags',
                     'overrideRun', 'addBreakoutBox', 'boxFiber', 'fiberStrands', 'panelWatts', 'panelInput', 'breakoutType',

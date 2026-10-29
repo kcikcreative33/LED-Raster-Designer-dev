@@ -236,7 +236,7 @@ const BINDER_TYPE_WORDS = {};
 // what the tray reads: "Per card", "Backed up → MX20 B", "Off".
 const REDUNDANCY_WORDS = {
     off: 'Off', port: 'Per port', card: 'Per card', unit: 'Backed up',
-    fixed: 'On', backup: 'Backed up',
+    fixed: 'On', backup: 'Backed up', mixed: 'Mixed',
 };
 
 // The title block's fields, as project.binder stores them - and the
@@ -7690,10 +7690,21 @@ class _Binder {
             if (!cardId) return '—';
             return this.dataUnitTitleForCard(cardId).title || cardId;
         };
+        // Read per card, never per processor: under Mixed one chassis holds
+        // a 1:1 pair and a card in a port shape side by side. A stored
+        // partner is read only while the card is at 1:1 - the server keeps
+        // a partner pick inert under a port shape, and a card switched to
+        // a split must not still print its old partner - and a card that
+        // is another's 1:1 backup says whose.
         const backupOf = (card) => {
             const shape = card.redundancyShape && card.redundancyShape.mode;
-            return card.backupCardId ? nameOf(card.backupCardId)
-                : (shape && shape !== 'off' ? shape : '—');
+            if (card.backupFor && card.backupFor.cardId) {
+                return `backs up ${nameOf(card.backupFor.cardId)}`;
+            }
+            if (shape === '1to1') {
+                return card.backupCardId ? nameOf(card.backupCardId) : '—';
+            }
+            return shape && shape !== 'off' ? shape : '—';
         };
         const taken = (card) => `${used(card.id)} / ${this._bCardPortCount(card) != null ? this._bCardPortCount(card) : '?'}`;
         const blocks = [];

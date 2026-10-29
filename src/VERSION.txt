@@ -95,6 +95,16 @@ get lists for L21-30 and Harting home runs, direct-output cables and
 feeders, as well as multis, data and power. Older shows and presets read
 the new lists from the ones those cables used before.
 
+MIXED REDUNDANCY ON ONE PROCESSOR
+
+On a chassis like an H series, the redundancy bar behind the processor's
+⚙ now reads Off, Per card, Per port and Mixed. Pick Mixed and each card
+gets a row of its own: back up card 1 with card 2, 1:1, and let card 3
+pair its own ports with Sequential, OPT Split or Manual. A card that
+backs up another says which one, and the tray, the binder and the pull
+sheet read each card the way you set it. A show whose cards were already
+set different ways opens on Mixed, just as you left it.
+
 OPENING AN OLDER SHOW
 
 Some counts will change when you open a show from an earlier version.
@@ -249,6 +259,10 @@ FIXES
   sheet and the distro sheet already showed a crowded direct output and
   a multi on a one-circuit output, and now they flag a multi box carrying
   more circuits than it holds too.
+- FIX: The binder's Cards table lists a card's 1:1 partner only while
+  the card is backed up 1:1, never an old partner from before you
+  switched it to Sequential, OPT Split or Manual, and a card that backs
+  up another says which one, like backs up SR.
 
 v1.5.3 - October 21, 2026
 ----------------------------

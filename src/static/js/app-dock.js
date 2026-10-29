@@ -3633,7 +3633,8 @@ class _HardwareDock {
     // "a read-only state pill on each header that opens the ⚙ to the
     // redundancy section, so the tray reports the state without growing
     // a second editing surface." It states the shape in force - on a
-    // processor `R → H9 BACKUP` (whole unit), `R per card`, `R per port`;
+    // processor `R → H9 BACKUP` (whole unit), `R per card`, `R per port`,
+    // `R mixed` (each card its own, read on the card rows);
     // on a card `R 1:1 → SL in H9 BACKUP`, `R seq`, `R halves`, `R
     // manual`, `R 1:1 — no partner` - and a click opens the PROCESSOR's
     // gear, where the bar that sets it lives (a card's pill too: the
@@ -3706,6 +3707,10 @@ class _HardwareDock {
                 // The card row states the loops (above); the header
                 // carries only the backup processor's pill.
                 return null;
+            } else if (level === 'mixed') {
+                // Each card says its own on its row (above); the header
+                // says only that they differ.
+                text = 'R mixed';
             } else {
                 text = `R per ${level}`;
             }

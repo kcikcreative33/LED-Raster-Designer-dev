@@ -558,6 +558,35 @@ def across_partner(card, proc):
     return None
 
 
+def mixed_redundancy_refusal(proc):
+    """Why `proc` cannot hold the bar's MIXED level, or None where it can.
+
+    The owner (2026-10-29): "sometimes on say H series i have 3 16 port
+    cards. and i want card 1 and 2 to be primary and backup but then card 3
+    i want port level backup." Mixed lets each card of ONE chassis pick its
+    own kind - 1:1 onto a partner card, or a port shape of its own - so it
+    is offered only where there is more than one slot to mix. A standalone
+    unit is its one card, and a unit whose vendor fixes the pairing (an
+    SQ200's loops, Brompton's adjacent pairs) has no kind to pick at all.
+    """
+    device = get_device((proc or {}).get('deviceId')) or {}
+    name = device.get('name', 'This processor')
+    if not is_chassis(device) or len((proc or {}).get('slots') or []) < 2:
+        return (f'{name} is one unit - Mixed is for a chassis with more '
+                f'than one slot.')
+    if ((device.get('redundancy') or {}).get('pairing')) == 'adjacent':
+        return (f'{name} pairs its outputs itself - there is nothing to '
+                f'mix.')
+    for slot in (proc or {}).get('slots') or []:
+        card = (slot or {}).get('card')
+        cdev = get_device((card or {}).get('deviceId')) or {}
+        if ((cdev.get('redundancy') or {}).get('pairing')) == 'adjacent':
+            return (f'Slot {(slot.get("index") or 0) + 1}: '
+                    f'{cdev.get("name", "this card")} pairs its outputs '
+                    f'itself - there is nothing to mix.')
+    return None
+
+
 def across_pairing(proc, device, cards):
     """The SQ200's loop statement, from how many QD-S are fitted (`cards`,
     resolved, in slot order), or None with redundancy off or on a device
@@ -2846,6 +2875,29 @@ def reslot_chassis_units(project):
     return out
 
 
+def settle_redundancy_mixed(project):
+    """Hold each processor's `redundancyMixed` to its one shape.
+
+    The flag is the bar's Mixed segment, remembered where the cards happen
+    to agree (owner, 2026-10-29: "i want to leave the bar. so i think
+    adding mixed makes the most sense"). It is stored only as `True`, only
+    with redundancy on, and only on a unit that can mix
+    (mixed_redundancy_refusal); anything else - a hand-edited file, a
+    payload from a build that never had it - is dropped, so a file with no
+    Mixed pick carries no key. Runs where a whole project ENTERS server
+    state (file load, undo/redo, every project POST), never on a read.
+    Idempotent. Cards are never touched: a chassis whose cards disagree
+    reads as Mixed whatever this flag says.
+    """
+    for proc in (project or {}).get('processors') or []:
+        if not isinstance(proc, dict) or 'redundancyMixed' not in proc:
+            continue
+        if proc.get('redundancyMixed') is not True \
+                or not proc.get('redundancy') \
+                or mixed_redundancy_refusal(proc):
+            proc.pop('redundancyMixed', None)
+
+
 def adopt_fixed_card_names(project):
     """Move a name typed on a one-box unit's fixed card up to the unit.
 
@@ -3882,6 +3934,11 @@ def resolve_processor(proc):
         'redundancyPairs': proc_redundancy_pairs(proc, device)
         if proc.get('redundancy') else [],
         'redundancyPairMarks': trunk_pair_marks(device),
+        # The bar's Mixed segment, remembered (settle_redundancy_mixed):
+        # each card picks its own kind. Read only with redundancy on; the
+        # bar ALSO reads Mixed wherever the cards disagree, flag or not.
+        'redundancyMixed': bool(proc.get('redundancy')
+                                and proc.get('redundancyMixed') is True),
         # The BACKUP PROCESSOR (2026-09-25): an option ON this unit - "when
         # we add backup processor it's just an option on the primary and
         # then we are capable of naming but everything else is automatic".

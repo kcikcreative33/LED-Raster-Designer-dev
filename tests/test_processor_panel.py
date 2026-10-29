@@ -4067,8 +4067,8 @@ def test_the_gear_wires_the_modes_the_house_way():
     for a vendor-fixed pairing, every new edit takes a named history
     snapshot, and a refusal's reason is surfaced instead of swallowed."""
     source = js_source('app-processors.js')
-    for builder in ('_buildCardShapeChips(proc, card) {',
-                    '_buildCardBackupPick(proc, card) {'):
+    for builder in ('_buildCardShapeChips(proc, card, opts = {}) {',
+                    '_buildCardBackupPick(proc, card, extra = null) {'):
         body = source[source.index(builder):]
         body = body[:body.index('\n    }')]
         assert 'if (!shape || shape.forced) return null;' in body, (
@@ -4077,6 +4077,7 @@ def test_the_gear_wires_the_modes_the_house_way():
                    "'Set Redundancy Per Port'",
                    "`Set Redundancy Per ${this.unitWordTitle(this.unitWordFor(proc))}`",
                    "'Set Redundancy Backed Up'", "'Toggle Redundancy'",
+                   "'Set Redundancy Mixed'",
                    "'Set Redundancy Loops'", "'Add Backup Processor'",
                    "'Remove Backup Processor'", "'Rename Backup Processor'"):
         assert action in source, f'{action} takes no history snapshot'
@@ -4358,7 +4359,7 @@ def test_the_bar_says_it_is_for_redundancy_on_every_device(panel_page):
         return h2.id;
     }""")
     quiet(page)
-    for key, levels in (('h2Id', ['off', 'card', 'port']),
+    for key, levels in (('h2Id', ['off', 'card', 'port', 'mixed']),
                         ('mxId', ['off', 'unit', 'port']),
                         ('sxId', ['A', 'C'])):
         assert page.evaluate(OPEN_GEAR_JS, f"proc-{ids[key]}"), (
@@ -4562,9 +4563,9 @@ BACKUP_JS = """(pid) => {
 def test_a_chassis_chooses_its_level_and_switches_its_backup_processor_on(
         panel_page):
     """The user's rulings (2026-09-04, 2026-09-25) in the DOM: behind the
-    processor's gear an H9 with two cards gets the three-segment bar - Off
-    · Per card · Per port, "Whole unit" gone - lit Per card with one
-    partner row per slot. Under it, the BACKUP PROCESSOR switch, Off · On:
+    processor's gear an H9 with two cards gets the bar - Off · Per card ·
+    Per port, "Whole unit" gone, and Mixed since 2026-10-29 - lit Per card
+    with one partner row per slot. Under it, the BACKUP PROCESSOR switch, Off · On:
     On is ONE request and ONE history entry, adds no processor to the tray,
     shows the name field ("SR BU" until one is typed - Enter ends the
     edit) and the gold "Backup: SR BU" pill on the main's header; Off takes
@@ -4578,8 +4579,8 @@ def test_a_chassis_chooses_its_level_and_switches_its_backup_processor_on(
         'the chassis gear did not open')
     bar = page.evaluate(BAR_JS, ids['mainId'])
     assert bar, 'no bar in the chassis gear'
-    assert bar['levels'] == ['off', 'card', 'port'], bar
-    assert bar['texts'] == ['Off', 'Per card', 'Per port'], bar
+    assert bar['levels'] == ['off', 'card', 'port', 'mixed'], bar
+    assert bar['texts'] == ['Off', 'Per card', 'Per port', 'Mixed'], bar
     assert bar['lit'] == 'card' and bar['litCount'] == 1, bar
     assert bar['rows'] == ['Slot 1 · H_16xRJ45+2xfiber',
                            'Slot 2 · H_16xRJ45+2xfiber'], bar
@@ -4636,8 +4637,9 @@ def test_a_chassis_chooses_its_level_and_switches_its_backup_processor_on(
 def test_the_bar_lights_the_derived_segment_for_each_state(panel_page):
     """The lit segment is DERIVED from what is stored, never from what was
     clicked: Off with redundancy off, Per port when every card is in a
-    port shape, Per card otherwise - every card paired onto another unit
-    and a half-and-half chassis included. The backup processor's switch
+    port shape, Mixed where the cards disagree - a half-and-half chassis
+    (2026-10-29: the bar's Mixed segment) - and Per card otherwise, every
+    card paired onto another unit included. The backup processor's switch
     beside it moves none of that."""
     pytest.importorskip("playwright.sync_api",
                         reason="playwright is not installed")
@@ -4662,7 +4664,7 @@ def test_the_bar_lights_the_derived_segment_for_each_state(panel_page):
     assert lit == 'card' and len(rows) == 2, (lit, rows)
     lit, rows = lit_after({'partner': '', 'modes': ['sequential', 'halves']})
     assert lit == 'port' and len(rows) == 2, (lit, rows)
-    assert lit_after({'modes': ['1to1', 'halves']})[0] == 'card'
+    assert lit_after({'modes': ['1to1', 'halves']})[0] == 'mixed'
     assert lit_after({'modes': ['manual', 'manual']})[0] == 'port'
     assert lit_after({'backupUnit': {}})[0] == 'port'
     assert lit_after({'backupUnit': None, 'redundancy': False}) == ('off', [])
