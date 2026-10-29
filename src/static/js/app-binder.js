@@ -6246,6 +6246,11 @@ class _Binder {
     // "IMAG SR", not "IMAG SR IMAG SR"); `named` is false where nobody
     // typed a name and the model is standing in for one, so a band knows
     // not to print the model a second time beside it.
+    // `cardTitle` is the part a wiring sheet's box names between the box
+    // and its trunk (owner, 2026-10-29): on a card-based processor the
+    // card, by name or its slot; on a one-box unit the model and the
+    // name typed on it, "SX40 S3" - and nothing at all where nobody named
+    // it, never "slot 1" or the bare model.
     _bPortHome(cardId, socket) {
         const found = (typeof this._dockFindCard === 'function') ? this._dockFindCard(cardId) : null;
         if (!found) return null;
@@ -6253,7 +6258,16 @@ class _Binder {
         const procTitle = proc.name || proc.deviceName || proc.id;
         const slot = (proc.slots || []).find(s => s.card && s.card.id === card.id);
         const typed = (typeof this.cardTypedName === 'function') ? this.cardTypedName(proc, card) : card.name;
-        const cardTitle = typed || (slot ? `slot ${(slot.index || 0) + 1}` : card.deviceName);
+        const model = String(proc.deviceName || '').trim();
+        let cardTitle;
+        if (this.procIsCardBased(proc)) {
+            cardTitle = typed || (slot ? `slot ${(slot.index || 0) + 1}` : card.deviceName);
+        } else if (this.cardIsUnitFace(proc, card)) {
+            cardTitle = !typed ? ''
+                : (!model || typed.toLowerCase().startsWith(model.toLowerCase()) ? typed : `${model} ${typed}`);
+        } else {
+            cardTitle = typed;
+        }
         const unit = (typeof this.dataUnitTitle === 'function')
             ? this.dataUnitTitle(proc, card) : { title: `${procTitle} ${cardTitle}`, named: true };
         const n = parseInt(socket, 10);

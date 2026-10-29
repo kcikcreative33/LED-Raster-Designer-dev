@@ -263,6 +263,9 @@ FIXES
   the card is backed up 1:1, never an old partner from before you
   switched it to Sequential, OPT Split or Manual, and a card that backs
   up another says which one, like backs up SR.
+- FIX: On the binder's data wiring sheets, a breakout box on an SX40 or
+  another processor without cards no longer says slot 1. A named one
+  reads XD B · SX40 S3 · trunk B, and an unnamed one reads XD B · trunk B.
 
 v1.5.3 - October 21, 2026
 ----------------------------
