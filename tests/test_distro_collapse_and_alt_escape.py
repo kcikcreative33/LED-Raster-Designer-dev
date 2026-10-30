@@ -70,6 +70,9 @@ SETUP_JS = """(distros) => {
                        powerMaximize: false, powerCustomPaths: {},
                        powerCustomOverrides: [], powerCustomIndex: 1 });
     app.normalizePowerBreakout(L);
+    // no field left focused by the previous test
+    if (document.activeElement && document.activeElement !== document.body
+            && document.activeElement.blur) document.activeElement.blur();
     app.currentLayer = L;
     app.selectedLayerIds = new Set([L.id]);
     app._overrideEditing = null;
@@ -239,4 +242,165 @@ def test_a_guide_reaching_a_plug_chip_unfolds_the_card(page):
     }""")
     assert res == {'chip': True, 'gear': False, 'legs': False, 'openAfter': True}, res
     assert pg.evaluate(CARD_JS)['outputsShown']
+    assert not errors, errors
+
+
+# ── Escape ends an Alt+click redraw and drops an Alt-sweep ────────────────
+#
+# The owner's report: Escape did nothing after an Alt+click. Escape always
+# ended the redraw from the canvas, but an Alt+press keeps the browser from
+# moving focus (it calls preventDefault), so a select or text box in the
+# rail that still had focus took the Escape as its own. The Alt+press now
+# lets go of the field the way any press on the canvas does.
+
+POINT_JS = """([row, col]) => {
+    const app = window.app, r = window.canvasRenderer;
+    const layer = app.project.layers.find(l => l.name === 'WALL A');
+    const p = layer.panels.find(q => q.row === row && q.col === col);
+    const {dx, dy} = r.getLayerRenderOffset(layer);
+    const off = r._layerCanvasOffset(layer);
+    const rect = r.canvas.getBoundingClientRect();
+    return {x: rect.left + (p.x + p.width / 2 + dx + off.wx) * r.zoom + r.panX,
+            y: rect.top + (p.y + p.height / 2 + dy + off.wy) * r.zoom + r.panY};
+}"""
+
+# The circuits as the screen carries them, the take-over state, what is
+# lit, the history and where the focus is.
+POWER_JS = """() => {
+    const app = window.app, r = window.canvasRenderer;
+    const L = app.project.layers.find(l => l.name === 'WALL A');
+    const res = app.calculatePowerAssignments(L) || { circuits: [] };
+    const nums = res.nums || res.circuits.map((_, i) => i + 1);
+    const circuits = res.circuits.map((c, i) => [nums[i], c.map(p => p.id)]);
+    const lit = [];
+    for (const [num] of circuits) if (r._runUnderlayLit(L, num)) lit.push(num);
+    const ae = document.activeElement;
+    return {
+        circuits,
+        overrides: app.getOverrideNums(L, 'power'),
+        paths: JSON.parse(JSON.stringify(L.powerCustomPaths || {})),
+        editing: app._overrideEditing || null,
+        sweep: app._sweepSelection ? app._sweepSelection.nums : null,
+        lit,
+        history: app.history.map(h => h.action),
+        historyIndex: app.historyIndex,
+        focus: ae && ae !== document.body ? (ae.id || ae.tagName) : null,
+    };
+}"""
+
+FIELDS = [None, '#power-amperage-select', '#power-panel-watts']
+
+
+def focus_field(pg, sel):
+    if sel:
+        pg.evaluate("(s) => { const el = document.querySelector(s);"
+                    " el.scrollIntoView({block: 'center'}); el.focus(); }", sel)
+        assert pg.evaluate("() => document.activeElement.id") == sel[1:]
+
+
+def alt_click(pg, row, col):
+    pt = pg.evaluate(POINT_JS, [row, col])
+    pg.mouse.move(pt['x'], pt['y'])
+    pg.keyboard.down('Alt')
+    pg.wait_for_timeout(100)
+    pg.mouse.click(pt['x'], pt['y'])
+    pg.keyboard.up('Alt')
+    pg.wait_for_timeout(300)
+
+
+@pytest.mark.parametrize('field', FIELDS)
+def test_escape_ends_an_alt_click_redraw(page, field):
+    """Alt+click a circuit, then Escape: nothing is open or lit any more,
+    and the Escape itself changes no circuit and adds no history step. The
+    take-over the Alt+click made keeps its own one step, as before."""
+    pg, errors = page
+    setup(pg, VX)
+    base = pg.evaluate(POWER_JS)
+    assert base['editing'] is None and base['lit'] == [], base
+    focus_field(pg, field)
+    alt_click(pg, 2, 3)
+    taken = pg.evaluate(POWER_JS)
+    assert taken['editing'] and taken['editing']['kind'] == 'power', taken
+    num = taken['editing']['num']
+    assert taken['lit'] == [num], taken
+    assert taken['overrides'] == [num], taken
+    assert taken['history'][-1] == 'Override Circuit', taken
+    # the take-over seeds the run with the cabinets it had: nothing moved
+    assert taken['circuits'] == base['circuits']
+    # the Alt+press let go of the field, as a plain press would
+    if field:
+        assert taken['focus'] != field[1:], taken
+
+    pg.keyboard.press('Escape')
+    pg.wait_for_timeout(250)
+    done = pg.evaluate(POWER_JS)
+    assert done['editing'] is None, done
+    assert done['lit'] == [], done
+    assert done['sweep'] is None, done
+    # Escape changed nothing on the screen's circuits and recorded nothing
+    assert done['circuits'] == taken['circuits'] == base['circuits']
+    assert done['overrides'] == taken['overrides']
+    assert done['paths'] == taken['paths']
+    assert done['history'] == taken['history'], done['history']
+    assert done['historyIndex'] == taken['historyIndex']
+    assert not errors, errors
+
+
+@pytest.mark.parametrize('field', FIELDS)
+def test_escape_drops_an_alt_sweep(page, field):
+    """Alt-sweep across circuits, then Escape: the selection goes, and
+    nothing on the screen or in the history changed."""
+    pg, errors = page
+    setup(pg, VX)
+    base = pg.evaluate(POWER_JS)
+    focus_field(pg, field)
+    a = pg.evaluate(POINT_JS, [1, 3])
+    b = pg.evaluate(POINT_JS, [4, 3])
+    pg.mouse.move(a['x'], a['y'])
+    pg.keyboard.down('Alt')
+    pg.mouse.down()
+    pg.mouse.move(b['x'], b['y'], steps=8)
+    pg.mouse.up()
+    pg.keyboard.up('Alt')
+    pg.wait_for_timeout(200)
+    swept = pg.evaluate(POWER_JS)
+    assert swept['sweep'] and len(swept['sweep']) == 4, swept
+    assert swept['lit'] == swept['sweep'], swept
+    assert swept['editing'] is None, swept
+
+    pg.keyboard.press('Escape')
+    pg.wait_for_timeout(200)
+    done = pg.evaluate(POWER_JS)
+    assert done['sweep'] is None and done['lit'] == [], done
+    assert done['circuits'] == base['circuits']
+    assert done['overrides'] == base['overrides'] == []
+    assert done['history'] == base['history'] == ['Card Seed'], done['history']
+    assert not errors, errors
+
+
+def test_escape_without_an_alt_selection_is_unchanged(page):
+    """With no redraw open and no sweep, Escape still does what it did in
+    the Power view: it closes the tray's open gear popover. And a field
+    the person is typing in keeps its own Escape: a press there leaves the
+    field focused and changes nothing."""
+    pg, errors = page
+    setup(pg, VX)
+    base = pg.evaluate(POWER_JS)
+    pg.evaluate("(s) => document.querySelector(s).scrollIntoView({block: 'center'})",
+                '[data-hwpop="distro-d1"]')
+    pg.locator('[data-hwpop="distro-d1"]').first.click()
+    pg.wait_for_timeout(250)
+    assert pg.evaluate("() => document.getElementById('hw-gear-popover').style.display") == 'block'
+    pg.keyboard.press('Escape')
+    pg.wait_for_timeout(200)
+    assert pg.evaluate("() => document.getElementById('hw-gear-popover').style.display") != 'block'
+
+    focus_field(pg, '#power-panel-watts')
+    pg.keyboard.press('Escape')
+    pg.wait_for_timeout(200)
+    after = pg.evaluate(POWER_JS)
+    assert after['focus'] == 'power-panel-watts', after
+    assert after['circuits'] == base['circuits']
+    assert after['history'] == base['history'], after['history']
+    pg.evaluate("() => document.activeElement && document.activeElement.blur()")
     assert not errors, errors
