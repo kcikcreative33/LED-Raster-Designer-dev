@@ -61,7 +61,7 @@ HAIR = 1.0
 
 # Every kind the registry records. 'wallEdge' is a line (zero extent on
 # the axis it runs along), the rest are boxes of ink.
-INK = ('disc', 'tag', 'gang', 'band', 'rulerTick', 'rulerLabel')
+INK = ('disc', 'tag', 'gang', 'band', 'rulerTick', 'rulerLabel', 'load')
 PILLS = ('band', 'gang', 'tag')
 # What is held clear of the wall's own edge lines: every pill, and the
 # ruler's L labels.
