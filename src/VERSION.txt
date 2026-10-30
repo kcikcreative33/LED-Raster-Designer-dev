@@ -325,6 +325,11 @@ FIXES
 - FIX: Esc ends an Alt+click redraw or drops an Alt sweep of circuits in
   Power, even when a box in the left panel still had the cursor. Before,
   that box took the Esc and the circuit stayed selected.
+- FIX: A screen's cable lengths and 2fer or 3fer tags all sit on the same
+  side of their circuit labels on the Power and Data views and in the
+  binder. Before, a circuit with a length and a 3fer could sit under its
+  label while the circuits next to it sat above theirs. Only a label with
+  no room on that side puts its tags somewhere else.
 
 v1.5.3 - October 21, 2026
 ----------------------------

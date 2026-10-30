@@ -383,21 +383,26 @@ Object.assign(CanvasRenderer.prototype, {
                 paint(j.text, at, 'jump');
             }
             pendingJumps.length = 0;
+            // One side for the screen's tags (placeTagHeads, owner
+            // 2026-10-30, the power map's rule): the run's side when every
+            // tag fits there, else the other side, else the side most of
+            // them fit. A data tag has no stacked second pill.
+            const heads = pendingTags.map(t => ({
+                text: t.text, nfer: null,
+                own: discsU[labelDiscs.indexOf(t.disc)],
+                prefer: this._tagRunSide(t.step, F),
+            }));
+            const placed = this.placeTagHeads(heads, labelSize, bounds, discsU, taken,
+                                              this._tagSideKey('data', layer));
             // the rect each disc's tag took, for the load badge beside it
             const tagOf = new Map();
-            for (const t of pendingTags) {
-                const own = discsU[labelDiscs.indexOf(t.disc)];
-                // no stacked second pill on a data tag, so no `stack`
-                const at = this.placeCableTag(t.text, own.x, own.y, own.r, labelSize,
-                                              bounds, discsU, own, taken,
-                                              { prefer: this._tagRunSide(t.step, F) });
-                taken.push(at.rect);
-                tagOf.set(t.disc, at.rect);
-                paint(t.text, at, undefined);
-            }
+            heads.forEach((h, i) => {
+                tagOf.set(pendingTags[i].disc, placed[i].tag.rect);
+                paint(h.text, placed[i].tag, undefined);
+            });
             pendingTags.length = 0;
-            // The load badges last (1.5.4): every tag keeps the side the
-            // run gave it and each badge takes a spot clear of all of them
+            // The load badges last (1.5.4): every tag keeps the side
+            // placeTagHeads gave it and each badge takes a spot clear of all of them
             // (placePortLoadBadge) - the % under its marker, or over it
             // where the marker's own tag hangs under.
             for (const b of pendingLoads) {

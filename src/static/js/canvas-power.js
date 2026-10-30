@@ -379,33 +379,29 @@ Object.assign(CanvasRenderer.prototype, {
                 paint(j.text, at, undefined, 'jump');
             }
             pendingJumps.length = 0;
-            for (const t of pendingTags) {
-                const own = ownU(t.disc);
-                // the side the owner ruled for a head (_tagRunSide)
-                const prefer = this._tagRunSide(t.step, F);
-                const nfer = t.gang ? this._nferTagText(layer, t.gang) : null;
-                let base = null;
-                if (t.text) {
-                    // A pill that will stack under this one is placed with
-                    // it: the column is judged whole, and hung ABOVE the
-                    // disc the tag stands a pill higher so the 3fer lands
-                    // between it and the disc.
-                    const stack = nfer ? this._stackReserve(nfer, labelSize) : null;
-                    const at = this.placeCableTag(t.text, own.x, own.y, own.r, labelSize,
-                                                  bounds, discsU, own, taken, { prefer, stack });
-                    taken.push(at.rect);
-                    paint(t.text, at, undefined, undefined);
-                    base = at.rect;
-                }
-                if (!nfer) continue;
-                const colors = this._nferTagColors(t.gang);
-                const at = base
-                    ? this.placeStackedTag(nfer, base, labelSize, bounds, discsU, own, taken)
-                    : this.placeCableTag(nfer, own.x, own.y, own.r, labelSize,
-                                         bounds, discsU, own, taken, { prefer });
-                taken.push(at.rect);
-                paint(nfer, at, colors, 'gang');
-            }
+            // Every head's stack - its cable pill, the 2fer / 3fer pill
+            // centred under it - on ONE side of the discs for the whole
+            // screen (placeTagHeads, owner 2026-10-30): the side the owner
+            // ruled for the run (_tagRunSide) when every head fits there,
+            // else the other side when they all fit there, else the side
+            // most of them fit, the rest falling back. Hung ABOVE the disc
+            // the cable pill stands a pill higher, so the 3fer lands
+            // between it and the disc; a 3fer with no cable pill takes the
+            // cable pill's slot.
+            const heads = pendingTags.map(t => ({
+                text: t.text,
+                nfer: t.gang ? this._nferTagText(layer, t.gang) : null,
+                own: ownU(t.disc),
+                prefer: this._tagRunSide(t.step, F),
+                gang: t.gang,
+            })).filter(h => h.text || h.nfer);
+            const placed = this.placeTagHeads(heads, labelSize, bounds, discsU, taken,
+                                              this._tagSideKey('power', layer));
+            heads.forEach((h, i) => {
+                const { tag, pill } = placed[i];
+                if (tag) paint(h.text, tag, undefined, undefined);
+                if (pill) paint(h.nfer, pill, this._nferTagColors(h.gang), 'gang');
+            });
             pendingTags.length = 0;
         };
         const drawLabelBubble = (layout, px, py, circuitNum, step) => {
@@ -1319,6 +1315,8 @@ Object.assign(CanvasRenderer.prototype, {
     // day), then beside it (right-or-left, the other), with the same
     // clear-first / least-bad scoring. Called with no `place` the order is
     // the old one (beside first) - no map calls it that way any more.
+    // Both maps call it through placeTagHeads, which picks the side for
+    // the whole screen first (2026-10-30) and hands it in as `prefer`.
     // `place.stack` ({ w, h, gap }, _stackReserve)
     // is a pill that will stack under this one (a head's 2fer / 3fer): the
     // column is judged whole, and hung ABOVE the disc the tag stands that
@@ -1328,7 +1326,19 @@ Object.assign(CanvasRenderer.prototype, {
     // edge has slid back onto its OWN disc counts as covering it - a head
     // on the wall's top row whose tag cannot stand over it moves on rather
     // than print across its own label.
+    // The result carries `clear`: true when the pill landed where it
+    // covers nothing (the first clear candidate), false when every side
+    // was blocked and the least bad one was taken. placeTagHeads counts
+    // a head as fitting its screen's side by it.
     placeCableTag(text, cx, cy, radius, labelSize, bounds, discs, own, taken, place) {
+        return this._placeCableTag(text, cx, cy, radius, labelSize, bounds, discs, own, taken, place);
+    },
+
+    // placeCableTag's body. placeTagHeads tries a whole screen's tags on
+    // each side through this one, as a dry run, and then places the side
+    // it picked through placeCableTag: only the placements that are drawn
+    // go through the public name.
+    _placeCableTag(text, cx, cy, radius, labelSize, bounds, discs, own, taken, place) {
         const w = this.cableTagWidth(text, labelSize);
         const rightFits = cx + radius + w <= bounds.right;
         const leftFits = cx - radius - w >= bounds.left;
@@ -1367,15 +1377,120 @@ Object.assign(CanvasRenderer.prototype, {
         };
         const eps = 1e-6;
         const cost = this._tagCover(bounds, discs, own, taken, !!place);
-        const strip = (c) => ({ x: c.x, y: c.y, opts: c.opts, rect: c.rect });
+        const strip = (c, clear) => ({ x: c.x, y: c.y, opts: c.opts, rect: c.rect, clear });
         let best = null, bestCost = Infinity;
         for (const side of order) {
             const c = candidate(side);
             const k = cost(c.cover);
-            if (k <= eps) return strip(c);
+            if (k <= eps) return strip(c, true);
             if (k < bestCost) { bestCost = k; best = c; }
         }
-        return strip(best || candidate('below'));
+        return strip(best || candidate('below'), false);
+    },
+
+    // ONE SIDE PER SCREEN (owner, 2026-10-30). The run's side above is a
+    // head's own preference; placed head by head, the heads of one wall
+    // landed on different sides of their discs - on a wall run down from
+    // its top row, the heads whose tag and 3fer stack was too tall for the
+    // room over the disc went under it while the heads with one pill (a
+    // 3fer with no length typed, a lone "25' True1") stayed over it: "all
+    // the cable lengths should realistically be on the same side so that
+    // they match - only in extenuating circumstances should they be
+    // different". So the side is picked ONCE for the screen's heads and
+    // every head hangs there; only a head that cannot fit there deviates,
+    // falling back the way placeCableTag always has (the other side of
+    // its disc, then beside it, least bad when nothing is clear).
+    //
+    // `heads`, in drawing order: { text (the cable pill, or null), nfer
+    // (the splitter pill stacked with it, or null), own (the disc), prefer
+    // ('above' / 'below', _tagRunSide) }. Heads that prefer the same side
+    // (their runs leave the same way) decide together: each such class
+    // hangs on its preferred side or on the other, and the plan whose
+    // heads fit most - a head fits when its first pill lands clear on its
+    // class's side (a splitter pill with no cable pill is placed in the
+    // cable pill's slot, judged alike) - is the one drawn; a tie keeps
+    // the ruled side. A wall whose runs all leave one way is one class,
+    // so all its heads go one way. Each plan is tried as a dry run through
+    // _placeCableTag, the pills placed in order against the discs, the
+    // screen's edges, the pills already down (`taken`) and the plan's
+    // earlier pills; the winner is then placed for real through
+    // placeCableTag, which lands every pill exactly where the dry run did.
+    // `memoKey` (_tagSideKey) names a grouped wall: its heads are drawn in
+    // more than one pass (each member's own, the cross-member overlay),
+    // and a pass after the first leans to the side the first one took
+    // where its own heads fit there as well as anywhere else.
+    // Returns [{ tag, pill }] per head - each a placement for
+    // drawCableTag, or null - and pushes every pill onto `taken`.
+    placeTagHeads(heads, labelSize, bounds, discs, taken, memoKey) {
+        if (!heads || !heads.length) return [];
+        const other = (s) => (s === 'below' ? 'above' : 'below');
+        const classes = [...new Set(heads.map(h => h.prefer))];
+        const memo = (memoKey && this._tagSideMemo) ? this._tagSideMemo.get(memoKey) : null;
+        const plans = [];
+        for (let m = 0; m < (1 << classes.length); m++) {
+            const side = {};
+            let flips = 0;
+            classes.forEach((c, i) => {
+                const flip = !!((m >> i) & 1);
+                side[c] = flip ? other(c) : c;
+                if (flip) flips++;
+            });
+            const agree = memo ? classes.filter(c => memo[c] === side[c]).length : 0;
+            plans.push({ side, flips, agree });
+        }
+        // the memo's plan first, then the ruled side before a flipped one
+        plans.sort((a, b) => (b.agree - a.agree) || (a.flips - b.flips));
+        const layOut = (plan, place, placed) => {
+            let fits = 0;
+            const out = heads.map(h => {
+                const side = plan.side[h.prefer];
+                let tag = null, pill = null, clear = false;
+                if (h.text) {
+                    // the column is judged whole: a pill that will stack
+                    // under this one is reserved with it (_stackReserve)
+                    const stack = h.nfer ? this._stackReserve(h.nfer, labelSize) : null;
+                    tag = place.call(this, h.text, h.own.x, h.own.y, h.own.r, labelSize,
+                                     bounds, discs, h.own, placed, { prefer: side, stack });
+                    placed.push(tag.rect);
+                    clear = !!tag.clear && tag.opts.side === side;
+                }
+                if (h.nfer) {
+                    pill = tag
+                        ? this.placeStackedTag(h.nfer, tag.rect, labelSize, bounds, discs, h.own, placed)
+                        : place.call(this, h.nfer, h.own.x, h.own.y, h.own.r, labelSize,
+                                     bounds, discs, h.own, placed, { prefer: side });
+                    placed.push(pill.rect);
+                    if (!tag) clear = !!pill.clear && pill.opts.side === side;
+                }
+                if (clear) fits++;
+                return { tag, pill };
+            });
+            return { out, fits };
+        };
+        let best = plans[0], bestFits = -1;
+        for (const plan of plans) {
+            const fits = layOut(plan, this._placeCableTag, taken.slice()).fits;
+            if (fits > bestFits) { best = plan; bestFits = fits; }
+            if (fits === heads.length) break;
+        }
+        if (memoKey && this._tagSideMemo) {
+            const kept = Object.assign({}, best.side, memo || {});
+            this._tagSideMemo.set(memoKey, kept);
+        }
+        return layOut(best, this.placeCableTag, taken).out;
+    },
+
+    // The key a grouped wall's tag side is remembered under for the frame
+    // (placeTagHeads): the map, the group and the canvas its members share
+    // (a member on another canvas is another drawing, getPathScopeLayers).
+    // Null for a screen on its own - its heads are all in one pass.
+    _tagSideKey(kind, layer) {
+        const app = window.app;
+        if (!layer || !layer.group_id || !app || typeof app.getGroupOfLayer !== 'function'
+                || !app.getGroupOfLayer(layer)) return null;
+        const cid = typeof this._effectiveLayerCanvasId === 'function'
+            ? this._effectiveLayerCanvasId(layer) : null;
+        return `${kind}|${layer.group_id}|${cid == null ? '' : cid}`;
     },
 
     // The room a head's second pill (its 2fer / 3fer) takes under the

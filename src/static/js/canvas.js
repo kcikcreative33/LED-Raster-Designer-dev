@@ -2167,6 +2167,10 @@ class CanvasRenderer {
         // part way through cannot carry an owner into the next one.
         this._crossMemberOwners = [];
         this._crossMemberPass = false;
+        // The side a grouped wall's cable tags took this frame
+        // (canvas-power.js placeTagHeads): a group's heads are drawn in
+        // more than one pass, and later passes lean to the first one's.
+        this._tagSideMemo = new Map();
         // Group members' name plates in the wiring views are drawn AFTER the
         // cross-member overlay pass, not in the member's own pass (see
         // _memberLabelsDeferred). Cleared here for the same reason as above.

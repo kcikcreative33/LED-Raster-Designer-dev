@@ -95,6 +95,36 @@ BUILD_JS = """async ([walls, pattern, rot]) => {
                   // a port down each column, top to bottom (flow 'custom')
                   customPortPaths: Object.fromEntries([1, 2, 3, 4, 5].map(n =>
                       [n, [0, 1, 2, 3, 4].map(row => ({ row, col: n - 1 }))])) },
+        // ONE SIDE PER SCREEN (2026-10-30). MIXED: seven columns run down
+        // from the top row on cabinets 108 tall - circuit 1 a 3fer with a
+        // length (tag and pill, too tall for the room over its disc),
+        // circuit 2 a 3fer with no length (the pill alone fits over it),
+        // circuit 3 one column with a length (the tag alone fits over it).
+        MIXED: { id: 7, name: 'MIXED', columns: 7, rows: 5, offset_x: 0, offset_y: 0,
+                 cabinet_height: 108, powerCircuitCables: { 1: { ft: 10 }, 3: { ft: 25 } } },
+        // DEV: hand-drawn circuits on cabinets 40 tall, no splitters. 1 and
+        // 2 run down from the top row (no room over their discs), 3 runs
+        // down from the middle row (room both sides), 4 runs right along
+        // the bottom row (no room under its disc) - the one head that
+        // cannot hang where the rest do.
+        DEV: { id: 8, name: 'DEV', columns: 6, rows: 3, offset_x: 0, offset_y: 0,
+               cabinet_height: 40, powerFlowPattern: 'custom', powerCustomIndex: 5,
+               powerSplitters: { enabled: false, maxWays: 3, manual: { merge: [], split: [] } },
+               powerCircuitCables: { 1: { ft: 10 }, 2: { ft: 10 }, 3: { ft: 10 }, 4: { ft: 10 } },
+               powerCustomPaths: {
+                   1: [{ row: 0, col: 0 }, { row: 1, col: 0 }, { row: 2, col: 0 }],
+                   2: [{ row: 0, col: 1 }, { row: 1, col: 1 }, { row: 2, col: 1 }],
+                   3: [{ row: 1, col: 2 }, { row: 2, col: 2 }],
+                   4: [{ row: 2, col: 3 }, { row: 2, col: 4 }, { row: 2, col: 5 }] } },
+        // DMIX: the data map's twin - ports 1 and 2 run down from the top
+        // row, port 3 runs right along the middle row (room both sides).
+        DMIX: { id: 9, name: 'DMIX', columns: 4, rows: 3, offset_x: 0, offset_y: 0,
+                cabinet_height: 40, dataFlow: true, showDataCableTags: true,
+                dataFlowLabelSize: 14,
+                customPortPaths: {
+                    1: [{ row: 0, col: 0 }, { row: 1, col: 0 }, { row: 2, col: 0 }],
+                    2: [{ row: 0, col: 1 }, { row: 1, col: 1 }, { row: 2, col: 1 }],
+                    3: [{ row: 1, col: 2 }, { row: 1, col: 3 }] } },
     };
     const layers = walls.map(n => screen(all[n]));
     const j = (method, url, body) => fetch(url, {method, headers: {'Content-Type': 'application/json'},
@@ -455,4 +485,128 @@ def test_a_data_tag_with_no_room_over_its_disc_goes_under_it(page):
         assert d['y'] - t['h'] < top, ('the fixture must leave no room above', d, t, top)
     bad = _faults(boxes, 'under')
     assert not bad, '\n'.join([''] + bad)
+    assert errors == []
+
+
+# ONE SIDE PER SCREEN (the owner, 2026-10-30, on a 16 x 5 wall run down
+# from its top row in 3fers): placed head by head, the heads whose tag and
+# 3fer stack was too tall for the room over the disc went under it while
+# the heads with one pill stayed over it - "all the cable lengths should
+# realistically be on the same side so that they match - only in
+# extenuating circumstances should they be different". The side is picked
+# once for the screen: the run's side when every head fits there, else the
+# other side when every head fits there, else the side most heads fit, and
+# only a head that cannot fit there goes elsewhere. A 3fer with no length
+# takes the cable tag's slot on that same side.
+
+def _side(b, d):
+    if b['y'] + b['h'] <= d['y'] + HAIR:
+        return 'above'
+    if b['y'] >= d['y'] + d['h'] - HAIR:
+        return 'under'
+    return 'beside'
+
+
+def _stacks(boxes):
+    """Every disc wearing a cable tag or a splitter pill, left to right:
+    (disc, [(kind, text, side of the disc)])."""
+    discs = _kind(boxes, 'disc')
+    near = lambda b: min(discs, key=lambda d: _gap(b, d))
+    worn = {}
+    for b in _kind(boxes, 'tag') + _kind(boxes, 'gang'):
+        d = near(b)
+        worn.setdefault(id(d), (d, []))[1].append((b['kind'], b['text'], _side(b, d)))
+    return sorted(worn.values(), key=lambda v: _cx(v[0]))
+
+
+def _covers(boxes):
+    """Every disc or pill a tag or pill covers, as lines."""
+    bad = []
+    ink = _kind(boxes, 'tag') + _kind(boxes, 'gang')
+    for b in ink:
+        for d in _kind(boxes, 'disc'):
+            if _meets_disc(b, d):
+                bad.append('%s %r covers disc %s' % (b['kind'], b['text'], d['text']))
+        for o in ink:
+            if o is not b and _over(b, o):
+                bad.append('%s %r covers %s %r' % (b['kind'], b['text'], o['kind'], o['text']))
+    return bad
+
+
+def test_every_head_of_a_screen_hangs_its_tags_on_one_side(page):
+    """MIXED, run down from the top row: the 3fer with a length has no room
+    for its tag and pill over its disc, while the 3fer with no length and
+    the lone 25' tag would each fit there. Every head hangs under its disc
+    - the tag first, the pill centred under it; the lone 3fer pill in the
+    tag's slot - covering nothing."""
+    pg, errors = page
+    try:
+        boxes = _probe(pg, ['MIXED'], 'tl-v')
+        stacks = _stacks(boxes)
+        shape = [sorted((k, t) for k, t, _ in worn) for _, worn in stacks]
+        assert shape == [[('gang', '3fer'), ('tag', "10' TRUE1")], [('gang', '3fer')],
+                         [('tag', "25' TRUE1")]], shape
+        (d1, _), (d2, _), (d3, _) = stacks
+        tag1 = [b for b in _kind(boxes, 'tag') if b['text'] == "10' TRUE1"][0]
+        pill2 = [b for b in _kind(boxes, 'gang') if _gap(b, d2) < 20][0]
+        # the fixture: the first head's stack cannot stand over its disc,
+        # the other two heads' single pills could
+        top = min(e['y'] for e in _kind(boxes, 'wallEdge'))
+        stand = 14 * 0.6
+        assert d1['y'] - top < stand + tag1['h'] + 1 + pill2['h'], ('no room for the stack over head 1', d1, top)
+        assert d2['y'] - top >= stand + pill2['h'], ('room for one pill over head 2', d2, top)
+        assert d3['y'] - top >= stand + tag1['h'], ('room for one tag over head 3', d3, top)
+        sides = [(d['text'], sorted(set(s for _, _, s in worn))) for d, worn in stacks]
+        assert all(s == ['under'] for _, s in sides), sides
+        bad = _faults(_wall_boxes(boxes, _heads(boxes)), 'under') + _covers(boxes)
+        # the lone pill sits in the tag's slot: centred under its disc, the
+        # stand-off a tag keeps
+        if abs(_cx(pill2) - _cx(d2)) > HAIR:
+            bad.append('lone 3fer centre x %.1f, disc %.1f' % (_cx(pill2), _cx(d2)))
+        t1 = tag1['y'] - (d1['y'] + d1['h'])
+        p2 = pill2['y'] - (d2['y'] + d2['h'])
+        if abs(p2 - t1) > HAIR:
+            bad.append('lone 3fer stands %.1f off its disc, the tag %.1f' % (p2, t1))
+        assert not bad, '\n'.join([''] + bad)
+    finally:
+        pg.evaluate(BUILD_JS, [['WALL'], 'tl-h', 0])
+    assert errors == []
+
+
+def test_only_the_head_that_cannot_fit_leaves_the_screen_s_side(page):
+    """DEV, hand-drawn: heads 1 and 2 on the top row (no room over them),
+    head 3 on the middle row (room both sides), head 4 on the bottom row
+    running right (no room under it). Under fits three, over fits two:
+    heads 1 to 3 hang under, and head 4 alone - the extenuating
+    circumstance - goes over its disc. Head 3 used to hang over."""
+    pg, errors = page
+    try:
+        boxes = _probe(pg, ['DEV'], 'custom')
+        stacks = _stacks(boxes)
+        sides = [(d['text'], [s for _, _, s in worn]) for d, worn in stacks]
+        assert [s for _, s in sides] == [['under'], ['under'], ['under'], ['above']], sides
+        assert all(t == "10' TRUE1" for _, worn in stacks for _, t, _ in worn), stacks
+        bad = _covers(boxes)
+        assert not bad, '\n'.join([''] + bad)
+    finally:
+        pg.evaluate(BUILD_JS, [['WALL'], 'tl-h', 0])
+    assert errors == []
+
+
+def test_a_data_screen_hangs_its_tags_on_one_side(page):
+    """DMIX on the data map: ports 1 and 2 run down from the top row (no
+    room over their discs), port 3 runs right along the middle row and has
+    room either side. All three tags hang under their markers."""
+    pg, errors = page
+    try:
+        boxes = _data_probe(pg, ['DMIX'], 'custom')
+        heads = _heads(boxes)
+        assert sorted(d['text'] for d, _, _ in heads) == ['P1', 'P2', 'P3'], heads
+        p3, t3 = [(d, t) for d, t, _ in heads if d['text'] == 'P3'][0]
+        top = min(e['y'] for e in _kind(boxes, 'wallEdge'))
+        assert p3['y'] - top >= 14 * 0.6 + t3['h'], ('room over port 3', p3, top)
+        bad = _faults(boxes, 'under')
+        assert not bad, '\n'.join([''] + bad)
+    finally:
+        pg.evaluate(BUILD_JS, [['WALL'], 'tl-h', 0])
     assert errors == []
