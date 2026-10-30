@@ -226,7 +226,7 @@ def test_mixed_pairs_cards_1_and_2_and_splits_card_3_one_card_at_a_time(page):
     assert page.evaluate(BAR_JS, ids['pid'])['lit'] == 'mixed'
     rows = page.evaluate(ROWS_JS, ids)
     assert [r['legend'] for r in rows] == [
-        f'Slot {i} · H_16xRJ45+2xfiber' for i in (1, 2, 3)], rows
+        f'Slot {i} · Card {i}' for i in (1, 2, 3)], rows
     for r in rows:
         assert r['modes'] == ['1to1', 'sequential', 'halves', 'manual'], r
         assert r['texts'] == ['1:1', 'Sequential', 'OPT Split', 'Manual'], r
@@ -248,7 +248,7 @@ def test_mixed_pairs_cards_1_and_2_and_splits_card_3_one_card_at_a_time(page):
     open_gear(page, ids['pid'])
     rows = page.evaluate(ROWS_JS, ids)
     assert rows[0]['pick'] == c2, rows
-    assert rows[1]['fact'] == 'Backup for Slot 1 · H_16xRJ45+2xfiber', rows
+    assert rows[1]['fact'] == 'Backup for Slot 1 · Card 1', rows
     assert rows[1]['modes'] is None and rows[1]['pick'] is None, (
         'a consumed card still offers controls', rows)
 
@@ -268,7 +268,7 @@ def test_mixed_pairs_cards_1_and_2_and_splits_card_3_one_card_at_a_time(page):
     # The tray reads each card on its own row; the header says Mixed.
     pills = page.evaluate(PILLS_JS, ids)
     assert pills == {'proc': 'R mixed',
-                     'cards': ['R 1:1 → H_16xRJ45+2xfiber in SR', None, 'R OPT split']}, pills
+                     'cards': ['R 1:1 → Card 2 in SR', None, 'R OPT split']}, pills
 
     # Card 3 back to 1:1: the cards now agree, the bar stays at Mixed.
     act(page, CLICK_CHIP_JS, [c3, '1to1'])
@@ -383,7 +383,7 @@ def test_a_mixed_chassis_with_no_pick_reads_mixed_from_its_cards(page):
     assert page.evaluate(BAR_JS, ids['pid'])['lit'] == 'mixed'
     rows = page.evaluate(ROWS_JS, ids)
     assert rows[0]['lit'] == '1to1' and rows[0]['pick'] == c2, rows
-    assert rows[1]['fact'] == 'Backup for Slot 1 · H_16xRJ45+2xfiber', rows
+    assert rows[1]['fact'] == 'Backup for Slot 1 · Card 1', rows
     assert rows[2]['lit'] == 'sequential', rows
     pills = page.evaluate(PILLS_JS, ids)
     assert pills['proc'] == 'R mixed' and pills['cards'][2] == 'R seq', pills
@@ -489,11 +489,18 @@ def test_the_binder_ports_tables_read_each_card(mixed_show, third):
 def test_the_binder_names_mixed_and_each_cards_backup(mixed_show, third):
     """The processor's Redundancy line says Mixed; the Cards table reads
     per card - card 1 its partner, card 2 whose backup it is, card 3 its
-    own shape (never a stale partner)."""
+    own shape (never a stale partner) - each in the app's own words: the
+    cards nobody named by their slots (Card 1, Card 2), the shape by the
+    chip's word, never the stored id ("halves", "sequential")."""
     texts = [o['t'] for p in mixed_show[third]['pages'].values() for o in p['texts']]
     assert 'Mixed' in texts, 'no sheet says the processor is Mixed'
-    assert 'backs up slot 1' in texts, 'card 2 does not say whose backup it is'
-    assert third in texts, f'card 3 does not read {third}'
+    assert 'backs up Card 1' in texts, 'card 2 does not say whose backup it is'
+    assert any('backed up by Card 2' in t for t in texts), 'card 1 does not name its partner'
+    # card 3 is an H_20xRJ45, copper only: its split names no OPT
+    word = {'halves': 'Split', 'sequential': 'Sequential'}[third]
+    assert word in texts, f'card 3 does not read {word}'
+    assert third not in texts, f'a sheet still prints the stored id {third}'
+    assert not any(t.startswith('slot ') for t in texts), [t for t in texts if 'slot' in t]
 
 
 @pytest.mark.parametrize('third', ['halves', 'sequential'])

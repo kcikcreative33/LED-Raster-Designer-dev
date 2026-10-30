@@ -2043,7 +2043,9 @@ def test_the_redundancy_pill_reads_the_state_and_opens_the_processor_gear(
         out = pills({'partner': made['backId']})
         assert out['main'] == 'R per card', out
         assert out['back'] == 'backs up SR', out
-        assert out['mainCards'] == ['R 1:1 → H_16xRJ45+2xfiber in SL'] * 2, out
+        # the partner cards nobody named, by their slots in SL
+        assert out['mainCards'] == ['R 1:1 → Card 1 in SL',
+                                    'R 1:1 → Card 2 in SL'], out
         assert out['backCards'] == [None, None], out
         out = pills({'partner': '', 'modes': ['sequential', 'halves']})
         assert out['main'] == 'R per port', out

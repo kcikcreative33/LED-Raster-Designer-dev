@@ -9,7 +9,8 @@ The part between the box and its trunk is now:
     "XD B · SX40 S3 · trunk B" - and nothing where nobody named it,
     "XD B · trunk B", never "slot 1" or the bare model;
   - a name that already starts with the model is not doubled;
-  - on a card-based processor (an H9): the card by name, else its slot.
+  - on a card-based processor (an H9): the card by name, else "Card N" by
+    its slot (owner, 2026-10-29: "Card 1, 2, 3 etc instead of H_16").
 
 Run locally (each session takes its own free port):
     python3 -m pytest tests/test_wiring_box_unit_name.py -v --browser chromium
@@ -144,6 +145,7 @@ def test_a_name_already_starting_with_the_model_is_not_doubled(page):
 
 def test_a_card_based_processor_names_its_card_or_its_slot(page):
     pg, ids = page
-    assert pg.evaluate(HOME_JS, ids['h9card']) == 'slot 1'
+    assert pg.evaluate(HOME_JS, ids['h9card']) == 'Card 1'
     pg.evaluate(RENAME_CARD_JS, [ids['h9'], ids['h9card'], 'SR'])
     assert pg.evaluate(HOME_JS, ids['h9card']) == 'SR'
+    pg.evaluate(RENAME_CARD_JS, [ids['h9'], ids['h9card'], ''])

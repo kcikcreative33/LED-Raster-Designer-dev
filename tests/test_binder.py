@@ -2420,9 +2420,10 @@ def test_a_logo_heads_the_title_block_on_every_sheet_and_reaches_the_pdf(page):
 
 def test_the_data_sheet_prints_the_return_end_and_the_processor_once(page):
     """Card SR backed 1:1 by a second (unnamed) card: the Ports table is
-    two halves (2026-09-26), the backup card banded "H9 slot 2 · …" - never
-    "slot 2 1" - over the backup half. Each row is SR's port and, beside
-    it, its return port on its own socket ("SR-1R", "H9 slot 2 · 1"), with
+    two halves (2026-09-26), the backup card banded "H9 Card 2 · 16 ports"
+    (Card N by its slot, no model - owner, 2026-10-29) over the backup
+    half. Each row is SR's port and, beside it, its return port on its
+    own socket ("SR-1R", "H9 Card 2 · 1"), with
     PANELS once and no PX; the Processor line names the unit once ("H9",
     not "H9 · H9"); Redundancy reads the bar ("Per card"). Each card's
     snake heads its own half ("SR Primary · 1 channel snake · 100'", "SR
@@ -2467,7 +2468,8 @@ def test_the_data_sheet_prints_the_return_end_and_the_processor_once(page):
         p0 = texts.index('PORTS')
         assert texts[p0 + 1:p0 + 14] == [
             'PRIMARY', 'BACKUP', 'H9 SR · H_16xRJ45+2xfiber · 16 ports',
-            'H9 slot 2 · H_16xRJ45+2xfiber · 16 ports',
+            # the backup card nobody named goes by its slot, no model
+            'H9 Card 2 · 16 ports',
             'PORT', 'OUTPUT', 'HOME RUN', 'PORT', 'OUTPUT', 'HOME RUN', 'PANELS',
             "SR Primary · 1 channel snake · 100'", "SR Backup · 1 channel snake · 150'"], texts[p0:p0 + 16]
         rows = []
@@ -2480,7 +2482,7 @@ def test_the_data_sheet_prints_the_return_end_and_the_processor_once(page):
             # it, on the backup card's own socket
             assert re.fullmatch(r'H9 SR · \d+', primary), (label, primary)
             socket = primary.rsplit(' · ', 1)[-1]
-            assert (blabel, boutput) == (f'{label}R', f'H9 slot 2 · {socket}'), rows
+            assert (blabel, boutput) == (f'{label}R', f'H9 Card 2 · {socket}'), rows
             assert _on_map(out['mapTexts'], f'{label}R'), (label, out['mapTexts'])
             assert panels != '—', rows
             # the run itself is in each heading; each end says only its
@@ -2503,12 +2505,13 @@ def test_the_data_sheet_prints_the_return_end_and_the_processor_once(page):
         proc = _render(pg, SHOW, PROC)['texts']
         assert proc[proc.index('Redundancy') + 1] == 'Per card'
         assert not [t for t in proc if BOX_WORD.search(t)]
-        # an unnamed card goes by its SLOT on its own processor, never by
-        # the device's long model string (_bCardShort's rule, 2026-09-09 -
-        # the model was being shrunk and cut); the row is its socket,
-        # 'ext', the length and the snake it hangs off
+        # an unnamed card goes by its slot on its own processor, "Card 2"
+        # the way a named one goes by its name (owner, 2026-10-29), never
+        # by the device's long model string (_bCardShort's rule,
+        # 2026-09-09 - the model was being shrunk and cut); the row is its
+        # socket, 'ext', the length and the snake it hangs off
         k = proc.index('ext')
-        assert proc[k - 1] == 'H9 slot 2 1' and proc[k:k + 3] == ['ext', "25'", 'SR Backup'], proc[k - 3:k + 4]
+        assert proc[k - 1] == 'Card 2 1' and proc[k:k + 3] == ['ext', "25'", 'SR Backup'], proc[k - 3:k + 4]
         assert proc[proc.index('SR Backup · 1 channel') : proc.index('SR Backup · 1 channel') + 3] == \
             ['SR Backup · 1 channel', 'snake', "150'"], proc
     finally:

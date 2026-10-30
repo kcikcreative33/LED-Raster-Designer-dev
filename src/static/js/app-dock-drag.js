@@ -516,8 +516,10 @@ class _DockDrag {
         const slot = ((proc && proc.slots) || []).find(s => s && s.card);
         if (!slot) return null;
         return { type: 'card', cardId: slot.card.id,
-                 title: (typeof this.cardTypedName === 'function'
-                     ? this.cardTypedName(proc, slot.card) : slot.card.name)
+                 title: (typeof this.cardShortName === 'function'
+                     && this.cardShortName(proc, slot.card))
+                     || (typeof this.cardTypedName === 'function'
+                         ? this.cardTypedName(proc, slot.card) : slot.card.name)
                      || slot.card.deviceName };
     }
 

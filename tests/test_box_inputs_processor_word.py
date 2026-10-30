@@ -259,10 +259,10 @@ def test_novastar_boxes_list_opt_inputs_under_card_on_an_h9(page):
     i = rows.index('OPT1 no fiber')
     assert rows[i - 3:i + 2] == [rows[i - 3], 'SR', 'OPT 1-2', 'OPT1 no fiber', 'OPT2 no fiber'], rows[i - 3:i + 2]
     assert rows[i - 3].startswith('CVT4K-S'), rows[i - 3]
-    # CVT10 A, its card (slot 2), the card's trunk OPT 1, then the box's
-    # own input OPT 1 over its count
+    # CVT10 A, its card (unnamed in slot 2: Card 2), the card's trunk OPT
+    # 1, then the box's own input OPT 1 over its count
     j = next(k for k, w in enumerate(rows) if w.startswith('CVT10'))
-    assert rows[j + 1:j + 4] == ['slot 2', 'OPT 1', 'OPT 1 no fiber'], rows[j:j + 5]
+    assert rows[j + 1:j + 4] == ['Card 2', 'OPT 1', 'OPT 1 no fiber'], rows[j:j + 5]
     assert 'PROCESSOR' not in words
 
 

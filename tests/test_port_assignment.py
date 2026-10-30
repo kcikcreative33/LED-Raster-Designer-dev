@@ -920,7 +920,7 @@ def test_placing_one_port_leaves_the_screens_other_ports_where_they_were(one_car
     assert 'held' not in resp.get_json()['moved'], (
         'the placement reports holding ports - nothing needs holding now')
     assert resp.get_json()['moved']['note'] == (
-        'Main port 3 is now on H9 slot 1 port 12.')
+        'Main port 3 is now on H9 Card 1 port 12.')
     assert resp.get_json()['resolution']['occupancy'][card].get('3') is None
 
 
@@ -1233,7 +1233,7 @@ def test_the_bounded_fill_says_how_many_it_took(one_card):
     moved = resp.get_json()['moved']
     assert [m['port'] for m in moved['moved']] == [13, 14, 15, 16]
     assert moved['note'] == (
-        'H9 slot 1 took 4 of 6 ports. 2 still have nowhere to go.')
+        'H9 Card 1 took 4 of 6 ports. 2 still have nowhere to go.')
     res = resp.get_json()['resolution']
     assert by_name(res, 'Main')['unplaced'] == [4, 5, 6, 7]
 

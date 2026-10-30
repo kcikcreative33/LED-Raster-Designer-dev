@@ -6248,9 +6248,12 @@ class _Binder {
     // not to print the model a second time beside it.
     // `cardTitle` is the part a wiring sheet's box names between the box
     // and its trunk (owner, 2026-10-29): on a card-based processor the
-    // card, by name or its slot; on a one-box unit the model and the
-    // name typed on it, "SX40 S3" - and nothing at all where nobody named
-    // it, never "slot 1" or the bare model.
+    // card, by name or else "Card 2" (cardShortName); on a one-box unit
+    // the model and the name typed on it, "SX40 S3" - and nothing at all
+    // where nobody named it, never "slot 1" or the bare model.
+    // `slotNamed` is true where the card goes by Card N because nobody
+    // named it: its model is said only where gear is pulled, so a band or
+    // a box drops it.
     _bPortHome(cardId, socket) {
         const found = (typeof this._dockFindCard === 'function') ? this._dockFindCard(cardId) : null;
         if (!found) return null;
@@ -6259,9 +6262,11 @@ class _Binder {
         const slot = (proc.slots || []).find(s => s.card && s.card.id === card.id);
         const typed = (typeof this.cardTypedName === 'function') ? this.cardTypedName(proc, card) : card.name;
         const model = String(proc.deviceName || '').trim();
+        const slotNamed = this.procIsCardBased(proc) && !typed && !!this.cardSlotTitle(proc, card);
         let cardTitle;
         if (this.procIsCardBased(proc)) {
-            cardTitle = typed || (slot ? `slot ${(slot.index || 0) + 1}` : card.deviceName);
+            cardTitle = this.cardShortName(proc, card)
+                || (slot ? `slot ${(slot.index || 0) + 1}` : card.deviceName);
         } else if (this.cardIsUnitFace(proc, card)) {
             cardTitle = !typed ? ''
                 : (!model || typed.toLowerCase().startsWith(model.toLowerCase()) ? typed : `${model} ${typed}`);
@@ -6273,7 +6278,7 @@ class _Binder {
         const n = parseInt(socket, 10);
         const box = (card.cvts || []).find(c => (c.ports || []).some(p => p.number === n)) || null;
         const port = (card.ports || []).find(p => p.number === n) || null;
-        return { proc, card, procTitle, cardTitle, box, port,
+        return { proc, card, procTitle, cardTitle, box, port, slotNamed,
                  unitTitle: unit.title, named: unit.named };
     }
 
@@ -6315,7 +6320,8 @@ class _Binder {
     }
 
     _bCardBandText(home) {
-        const model = home.card.deviceName || '';
+        // a card going by Card N is not gear here: "H9 Card 1 · 16 ports"
+        const model = home.slotNamed ? '' : (home.card.deviceName || '');
         const says = model && home.unitTitle.toLowerCase().includes(model.toLowerCase());
         return [home.unitTitle, says ? '' : model,
                 this._bPlural(this._bCardPortCount(home.card), 'port')]
@@ -6323,11 +6329,14 @@ class _Binder {
     }
 
     // A card by id as a sheet names it: the name somebody typed (the
-    // unit's, for a one-box unit's face - cardTypedName), else its slot on
-    // its processor - never the device's long model string.
+    // unit's, for a one-box unit's face - cardTypedName), else "Card 2" on
+    // a card-based processor (cardShortName) - never the device's long
+    // model string.
     _bCardShort(cardId) {
         const found = (typeof this._dockFindCard === 'function') ? this._dockFindCard(cardId) : null;
         if (!found) return cardId || '—';
+        const short = this.cardShortName(found.proc, found.card);
+        if (short) return short;
         const typed = (typeof this.cardTypedName === 'function')
             ? this.cardTypedName(found.proc, found.card) : found.card.name;
         if (typed) return typed;
@@ -7045,12 +7054,28 @@ class _Binder {
             }
             const asg = ((this._assignment && this._assignment.screens) || [])
                 .find(s => String(s.layerId) === String(layer.id));
+            // The cards the screen's ports land on, each followed by the
+            // card its returns land on: a 1:1 backup card is a card in the
+            // rack to pull like any other (cardIds holds the primaries).
+            const cardIds = [];
             for (const cid of (asg && asg.cardIds) || []) {
+                cardIds.push(cid);
+                for (const p of (asg && asg.ports) || []) {
+                    if (!p || p.cardId !== cid) continue;
+                    const home = this._bPortHome(cid, p.port);
+                    const back = home && home.port && home.port.backedBy;
+                    if (back && back.cardId && !cardIds.includes(back.cardId)) cardIds.push(back.cardId);
+                }
+            }
+            for (const cid of cardIds) {
                 if (seenCard.has(cid)) continue;
                 seenCard.add(cid);
                 const home = this._bPortHome(cid, 0);
-                if (home) hw.push({ cells: ['', home.unitTitle,
-                                            home.named ? home.card.deviceName : ''] });
+                if (!home) continue;
+                // A card on a card-based processor is gear: its model is
+                // its DETAIL ("H9 Card 1 | H_16xRJ45+2xfiber").
+                const detail = this.procIsCardBased(home.proc) || home.named ? home.card.deviceName : '';
+                hw.push({ cells: ['', home.unitTitle, detail || ''] });
             }
         }
         blocks.push(this._bPullBlock(book, {
@@ -7612,8 +7637,11 @@ class _Binder {
             title: carded ? 'Cards' : oneBox ? 'Processor' : 'Outputs',
             cols: [...lead, { title: 'device', w: 1.6 },
                    { title: 'ports', w: 0.6, align: 'right' }, { title: 'backs up', w: 1.3 }],
+            // each card backs up the main's card in its slot, by its name
+            // or "Card 2" on a card-based processor (cardShortName)
             rows: cards.map(s => ({ cells: [...leadCell(s), s.card.deviceName, count(s.card),
-                                            this.cardTypedName(proc, s.card) || mainTitle] })),
+                                            this.cardShortName(proc, s.card)
+                                            || this.cardTypedName(proc, s.card) || mainTitle] })),
         }) });
         if ((unit.boxes || []).length) {
             blocks.push({ lines: this._bTableLines(book, {
@@ -7650,8 +7678,8 @@ class _Binder {
             return {
                 title: 'Cards',
                 cols: [{ title: 'slot', w: 0.5, align: 'right' }, { title: 'card', w: 1 }, { title: 'device', w: 1.6 },
-                       { title: 'ports', w: 0.8, align: 'right' }, { title: 'backup', w: 1 }],
-                rows: cards.map(({ slot, card }) => ({ cells: [String((slot || 0) + 1), this.cardTypedName(proc, card) || '—',
+                       { title: 'ports', w: 0.8, align: 'right' }, { title: 'backup', w: 1, list: true }],
+                rows: cards.map(({ slot, card }) => ({ cells: [String((slot || 0) + 1), this.cardShortName(proc, card) || '—',
                                                               card.deviceName, taken(card), backupOf(card)] })),
             };
         }
@@ -7659,7 +7687,7 @@ class _Binder {
             return {
                 title: 'Processor',
                 cols: [{ title: 'device', w: 1.6 }, { title: 'ports', w: 0.8, align: 'right' },
-                       { title: 'backup', w: 1 }],
+                       { title: 'backup', w: 1, list: true }],
                 rows: cards.map(({ card }) => ({ cells: [card.deviceName || proc.deviceName, taken(card), backupOf(card)] })),
             };
         }
@@ -7670,7 +7698,7 @@ class _Binder {
         return {
             title: 'Outputs',
             cols: [{ title: 'output', w: 0.6 }, { title: this.unitWordFor(proc, cards[0].card), w: 0.9 },
-                   { title: 'device', w: 1.1 }, { title: 'ports', w: 0.8, align: 'right' }, { title: 'backup', w: 1 }],
+                   { title: 'device', w: 1.1 }, { title: 'ports', w: 0.8, align: 'right' }, { title: 'backup', w: 1, list: true }],
             rows: cards.map(({ slot, card }) => ({ cells: [slotName(slot),
                                                           this.cardTypedName(proc, card) || card.unitTitle || '—',
                                                           card.deviceName, taken(card), backupOf(card)] })),
@@ -7682,7 +7710,7 @@ class _Binder {
     // processor's name - its model where nobody named it - never "slot 1";
     // on an SQ200 the QD-S it hangs on, "QD 1".
     _bBoxUnitCell(proc, card, nameOf) {
-        if (this.procIsCardBased(proc)) return this.cardTypedName(proc, card) || nameOf(card.id);
+        if (this.procIsCardBased(proc)) return this.cardShortName(proc, card) || nameOf(card.id);
         if (this.cardIsUnitFace(proc, card)) return this.dataUnitTitle(proc, card).title;
         return this.cardTypedName(proc, card) || card.unitTitle || nameOf(card.id);
     }
@@ -7700,7 +7728,8 @@ class _Binder {
         // never the raw id the sheet used to print).
         const nameOf = (cardId) => {
             const hit = cards.find(c => c.card.id === cardId);
-            if (hit) return this.cardTypedName(proc, hit.card) || `slot ${(hit.slot || 0) + 1}`;
+            if (hit) return this.cardShortName(proc, hit.card) || this.cardTypedName(proc, hit.card)
+                || `slot ${(hit.slot || 0) + 1}`;
             if (!cardId) return '—';
             return this.dataUnitTitleForCard(cardId).title || cardId;
         };
@@ -7710,15 +7739,23 @@ class _Binder {
         // a partner pick inert under a port shape, and a card switched to
         // a split must not still print its old partner - and a card that
         // is another's 1:1 backup says whose.
+        // In the app's own words, never the stored id ("1to1", "halves"):
+        // the card's ⚙ line "1:1, backed up by Card 2" and "backs up Card
+        // 1", the tray pill's "1:1, no partner", the processor ⚙'s chips
+        // "Sequential", "OPT Split", "Manual", and a pairing the device
+        // fixes as its card row in the tray reads it ("Loop A to B").
         const backupOf = (card) => {
-            const shape = card.redundancyShape && card.redundancyShape.mode;
+            const rshape = card.redundancyShape;
+            const shape = rshape && rshape.mode;
             if (card.backupFor && card.backupFor.cardId) {
                 return `backs up ${nameOf(card.backupFor.cardId)}`;
             }
+            if (!shape || shape === 'off') return '—';
+            if (rshape.forced && typeof this._dockLoopText === 'function') return this._dockLoopText(proc);
             if (shape === '1to1') {
-                return card.backupCardId ? nameOf(card.backupCardId) : '—';
+                return card.backupCardId ? `1:1, backed up by ${nameOf(card.backupCardId)}` : '1:1, no partner';
             }
-            return shape && shape !== 'off' ? shape : '—';
+            return this._redundancyShapeLabel(card, shape) || '—';
         };
         const taken = (card) => `${used(card.id)} / ${this._bCardPortCount(card) != null ? this._bCardPortCount(card) : '?'}`;
         const blocks = [];
@@ -7800,7 +7837,8 @@ class _Binder {
         const runs = [];
         for (const { card } of cards) {
             const owners = [{ kind: 'card', id: card.id,
-                              title: this.cardTypedName(proc, card) || this.dataUnitTitle(proc, card).title,
+                              title: this.cardShortName(proc, card) || this.cardTypedName(proc, card)
+                                  || this.dataUnitTitle(proc, card).title,
                               rec: card }]
                 .concat((card.cvts || []).map(c => ({
                     kind: 'cvt', id: c.id, title: this._bBoxTitle(c), rec: c })));
@@ -8072,12 +8110,13 @@ class _Binder {
         const hosts = slots.some(s => s.card && s.card.linkHost);
         // In a chassis of several cards each card has its own OPT 1: the
         // output is named with its card as the Breakout boxes table names
-        // it ("SR · OPT 1", "slot 2 · OPT 1"); a card that is a unit of its
+        // it ("SR · OPT 1", "Card 2 · OPT 1"); a card that is a unit of its
         // own already says it ("QD 1 A").
         const several = slots.filter(s => s.card).length > 1;
         const onCard = (slot, card, output) => {
             if (!several || card.unitTitle) return output;
-            const named = typeof this.cardTypedName === 'function' ? this.cardTypedName(proc, card) : '';
+            const named = this.cardShortName(proc, card)
+                || (typeof this.cardTypedName === 'function' ? this.cardTypedName(proc, card) : '');
             return `${named || `slot ${(slot.index || 0) + 1}`} · ${output}`;
         };
         for (const slot of slots) {
