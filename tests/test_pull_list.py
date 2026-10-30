@@ -1161,6 +1161,9 @@ def test_smoke_live_show_b(page):
         await j('PUT', '/api/project', project);
         app.project = await j('GET', '/api/project');
         app.dedupeProjectLayers('pull_smoke');
+        // what File > Open does with a show saved before 1.5.4: its
+        // automatic 2fers stay as saved (keepOlderShowShares)
+        if (app.olderShowKeepsShares(app.project)) app.keepOlderShowShares();
         app.selectLayer(app.project.layers.find(l => (l.type || 'screen') === 'screen'));
         await app.refreshProcessors();
         await app.refreshPortAssignment();
@@ -1180,7 +1183,7 @@ def test_smoke_live_show_b(page):
     by = {p['name']: _rows(p['rows']) for p in out['positions']}
     scr = {name: _rows(out['byScreen'][str(i)]['rows']) for name, i in screen.items()
            if str(i) in out['byScreen']}
-    # SR - MAIN on its own: four boxes SR 1-4 at 125' / 100' / 125' / 100'
+    # SR - MAIN on its own: four boxes SR1-SR4 at 125' / 100' / 125' / 100'
     # (two plan entries share box 3 and two share box 4 - one Multi each),
     # the 14 typed cables, one breakout per box. Jumpers (2026-09-25): the
     # file predates the per-screen lengths, so every short link reads the
@@ -1191,42 +1194,53 @@ def test_smoke_live_show_b(page):
     # two (54 beside, 1 down): 297 + 7 = 304 data jumpers. No run of this
     # show leaves a touching cabinet, so no long jump.
     # Data: both boxes deliver SR - MAIN's sockets - the primary and the
-    # backup end - an extension at either end is an Cat6 row under its
-    # port's label with its snake in Notes, rows of one length merging
-    # (labels and notes in the order the ports are walked), and a barrel
-    # each; a snake is said once with its home run, the 100' before the
-    # 150'. The distro's row and the CVTs are the position's, not the screen's.
+    # backup end. The CVT4K-S's outputs are etherCON (its catalog entry,
+    # from NovaStar's spec), so its cables are etherCON rows. An extension
+    # at either end is an etherCON Extension row under its port's label
+    # with its snake in Notes, rows of one length merging (labels and notes
+    # in the order the ports are walked), and a barrel each; a snake is
+    # said once with its home run, the 100' before the 150'. Rows sort by
+    # type, so the Barrel row reads before the Extensions. The multis go by
+    # their boxes' own names, SR2 and SR4 (no two follow on, so nothing
+    # folds). The distro's row, its feeder, the panels and the CVTs are the
+    # position's, not the screen's.
     assert scr['SR - MAIN'] == [
         ('Data Jump', "6'", 304, 'SR - MAIN', ''),
-        ('Cat6 Extension', "10'", 3, 'SR A-1, SR B-1, SR B-3', 'ext · SR A; ext · SR B'),
-        ('Cat6 Extension', "25'", 2, 'SR A-3, SR A-4', 'ext · SR A'),
-        ('Cat6 Extension', "75'", 1, 'SR B-4', 'ext · SR B'),
-        ('Cat6 Barrel', 'EA', 6, 'SR A-1, SR A-3, SR A-4, SR B-1, SR B-3, SR B-4', ''),
-        ('Cat6 Snake', "100'", 1, 'SR B-1 … B-4', 'SR B · 4 channel'),
-        ('Cat6 Snake', "150'", 1, 'SR A-1 … A-4', 'SR A · 4 channel'),
-        ('Multi', "100'", 2, 'SR 2, 4', ''),
-        ('Multi', "125'", 2, 'SR 1, 3', ''),
+        ('etherCON Barrel', 'EA', 6, 'SR A-1, SR A-3, SR A-4, SR B-1, SR B-3, SR B-4', ''),
+        ('etherCON Extension', "10'", 3, 'SR A-1, SR B-1, SR B-3', 'ext · SR A; ext · SR B'),
+        ('etherCON Extension', "25'", 2, 'SR A-3, SR A-4', 'ext · SR A'),
+        ('etherCON Extension', "75'", 1, 'SR B-4', 'ext · SR B'),
+        ('etherCON Snake', "100'", 1, 'SR B-1 … B-4', 'SR B · 4 channel'),
+        ('etherCON Snake', "150'", 1, 'SR A-1 … A-4', 'SR A · 4 channel'),
+        ('Multi', "100'", 2, 'SR2, SR4', ''),
+        ('Multi', "125'", 2, 'SR1, SR3', ''),
         ('TRUE1', "6'", 8, 'SR1-2, SR1-5, SR2-3, SR2-6, SR3-2, SR3-5, SR4-2, SR4-6', ''),
         ('TRUE1', "10'", 6, 'SR1-1, SR1-6, SR2-2, SR3-1, SR3-6, SR4-1', ''),
         ('TRUE1 Breakout', 'EA', 4, 'SR 1-4', ''),
         ('TRUE1 Power Jump', "6'", 286, 'SR - MAIN', ''),
     ]
-    # SR - Return: box 5 at 125', its cables as typed; the auto wall packs
+    # SR - Return: box SR5 at 125', its cables as typed; the auto wall packs
     # with splitters on (maxWays 3) and gangs circuits 1-5 through 2fers.
+    # This save is from before 1.5.4, when a US circuit packed to 100% of
+    # its breaker: each 2fer is two rows of six 305 W cabinets, 17.6 A on a
+    # 20 A breaker held to 16 A now. Opening the show keeps them as saved
+    # (keepOlderShowShares) and flags them OVER, so the Return still has its
+    # six circuits on one multi and its five 2fers.
     # Its one port rides a loose cable at each end - 100' on SR A-5, 50'
     # on the backup SR B-5 - no snake, so no barrel and no note. Its port
     # serpentines 6 x 11 (55 links beside, 10 down: 65 data jumpers), its
-    # 11 circuits are rows of six (5 links each: 55 power jumpers).
+    # 11 runs are rows of six (5 links each: 55 power jumpers). A run of
+    # three or more circuit labels folds by its ends, SR5-1 … 5-5.
     assert scr['SR - Return'] == [
         ('Data Jump', "6'", 65, 'SR - Return', ''),
-        ('Cat6', "50'", 1, 'SR B-5', ''),
-        ('Cat6', "100'", 1, 'SR A-5', ''),
-        ('Multi', "125'", 1, 'SR 5', ''),
+        ('etherCON', "50'", 1, 'SR B-5', ''),
+        ('etherCON', "100'", 1, 'SR A-5', ''),
+        ('Multi', "125'", 1, 'SR5', ''),
         ('TRUE1', "6'", 1, 'SR5-3', ''),
         ('TRUE1', "10'", 2, 'SR5-2, SR5-5', ''),
         ('TRUE1', "25'", 2, 'SR5-1, SR5-6', ''),
-        ('TRUE1 2fer', 'EA', 5, 'SR5-1, SR5-2, SR5-3, SR5-4, SR5-5', ''),
-        ('TRUE1 Breakout', 'EA', 1, 'SR 5', ''),
+        ('TRUE1 2fer', 'EA', 5, 'SR5-1 … 5-5', ''),
+        ('TRUE1 Breakout', 'EA', 1, 'SR5', ''),
         ('TRUE1 Power Jump', "6'", 55, 'SR - Return', ''),
     ]
     assert out['returnLegs'] == [[[1, 'SR5-1'], [2, 'SR5-2'], [3, 'SR5-3'], [4, 'SR5-4'], [5, 'SR5-5'], [6, 'SR5-6']]]
@@ -1237,62 +1251,72 @@ def test_smoke_live_show_b(page):
         tuple(v.replace('SR', 'SL') if isinstance(v, str) else v for v in r) for r in scr['SR - Return']]
     assert scr['SL - MAIN'] == [
         ('Data Jump', "6'", 304, 'SL - MAIN', ''),
-        ('Cat6 Extension', "10'", 3, 'SL A-1, SL B-1, SL B-3', 'ext · SL A; ext · SL B'),
-        ('Cat6 Extension', "25'", 2, 'SL A-3, SL A-4', 'ext · SL A'),
-        ('Cat6 Extension', "100'", 1, 'SL B-4', 'ext · SL B'),
-        ('Cat6 Barrel', 'EA', 6, 'SL A-1, SL A-3, SL A-4, SL B-1, SL B-3, SL B-4', ''),
-        ('Cat6 Snake', "100'", 1, 'SL A-1 … A-4', 'SL A · 4 channel'),
-        ('Cat6 Snake', "150'", 1, 'SL B-1 … B-4', 'SL B · 4 channel'),
-        ('Multi', "100'", 2, 'SL 2, 4', ''),
-        ('Multi', "125'", 2, 'SL 1, 3', ''),
+        ('etherCON Barrel', 'EA', 6, 'SL A-1, SL A-3, SL A-4, SL B-1, SL B-3, SL B-4', ''),
+        ('etherCON Extension', "10'", 3, 'SL A-1, SL B-1, SL B-3', 'ext · SL A; ext · SL B'),
+        ('etherCON Extension', "25'", 2, 'SL A-3, SL A-4', 'ext · SL A'),
+        ('etherCON Extension', "100'", 1, 'SL B-4', 'ext · SL B'),
+        ('etherCON Snake', "100'", 1, 'SL A-1 … A-4', 'SL A · 4 channel'),
+        ('etherCON Snake', "150'", 1, 'SL B-1 … B-4', 'SL B · 4 channel'),
+        ('Multi', "100'", 2, 'SL2, SL4', ''),
+        ('Multi', "125'", 2, 'SL1, SL3', ''),
         ('TRUE1', "6'", 8, 'SL1-2, SL1-5, SL2-3, SL2-6, SL3-2, SL3-5, SL4-2, SL4-6', ''),
         ('TRUE1', "10'", 6, 'SL1-1, SL1-6, SL2-2, SL3-1, SL3-6, SL4-1', ''),
         ('TRUE1 Breakout', 'EA', 4, 'SL 1-4', ''),
         ('TRUE1 Power Jump', "6'", 286, 'SL - MAIN', ''),
     ]
     # A position is its screens' rows merged by (type, length), labels in
-    # screen order, plus what the position alone carries: five boxes in use
-    # on SR (1-4 on the MAIN, 5 on the Return), its gear row a "Distro", listed
-    # once; both CVTs by the names their ⚙ carry.
+    # screen order, plus what the position alone carries: a row for each
+    # panel type on its screens (both walls are Absen VN 8.3, 308 + 66
+    # cabinets), five boxes in use on SR (SR1-SR4 on the MAIN, SR5 on the
+    # Return), its gear row a "Distro", listed once, with its Feeder (no
+    # length typed in this save); both CVTs by the names their ⚙ carry. A
+    # plain home run and an extension of one length are two rows - two
+    # different cables - so SL's 100' loose run on SL A-5 is an etherCON
+    # row of its own beside SL B-4's 100' extension.
     assert by['SR'] == [
+        ('Absen VN 8.3', 'EA', 374, 'SR - MAIN, SR - Return', ''),
         ('CVT4K-S', 'EA', 2, 'SR A, SR B', ''),
         ('Data Jump', "6'", 369, 'SR - MAIN, SR - Return', ''),
         ('Distro', 'EA', 1, 'SR', ''),
-        ('Cat6 Extension', "10'", 3, 'SR A-1, SR B-1, SR B-3', 'ext · SR A; ext · SR B'),
-        ('Cat6 Extension', "25'", 2, 'SR A-3, SR A-4', 'ext · SR A'),
-        ('Cat6', "50'", 1, 'SR B-5', ''),
-        ('Cat6 Extension', "75'", 1, 'SR B-4', 'ext · SR B'),
-        ('Cat6', "100'", 1, 'SR A-5', ''),
-        ('Cat6 Barrel', 'EA', 6, 'SR A-1, SR A-3, SR A-4, SR B-1, SR B-3, SR B-4', ''),
-        ('Cat6 Snake', "100'", 1, 'SR B-1 … B-4', 'SR B · 4 channel'),
-        ('Cat6 Snake', "150'", 1, 'SR A-1 … A-4', 'SR A · 4 channel'),
+        ('etherCON', "50'", 1, 'SR B-5', ''),
+        ('etherCON', "100'", 1, 'SR A-5', ''),
+        ('etherCON Barrel', 'EA', 6, 'SR A-1, SR A-3, SR A-4, SR B-1, SR B-3, SR B-4', ''),
+        ('etherCON Extension', "10'", 3, 'SR A-1, SR B-1, SR B-3', 'ext · SR A; ext · SR B'),
+        ('etherCON Extension', "25'", 2, 'SR A-3, SR A-4', 'ext · SR A'),
+        ('etherCON Extension', "75'", 1, 'SR B-4', 'ext · SR B'),
+        ('etherCON Snake', "100'", 1, 'SR B-1 … B-4', 'SR B · 4 channel'),
+        ('etherCON Snake', "150'", 1, 'SR A-1 … A-4', 'SR A · 4 channel'),
+        ('Feeder', '', 1, 'SR', 'no length'),
         ('H9', 'EA', 1, '', ''),
-        ('Multi', "100'", 2, 'SR 2, 4', ''),
-        ('Multi', "125'", 3, 'SR 1, 3, 5', ''),
+        ('Multi', "100'", 2, 'SR2, SR4', ''),
+        ('Multi', "125'", 3, 'SR1, SR3, SR5', ''),
         ('TRUE1', "6'", 9, 'SR1-2 … SR5-3 (9)', ''),
         ('TRUE1', "10'", 8, 'SR1-1, SR1-6, SR2-2, SR3-1, SR3-6, SR4-1, SR5-2, SR5-5', ''),
         ('TRUE1', "25'", 2, 'SR5-1, SR5-6', ''),
-        ('TRUE1 2fer', 'EA', 5, 'SR5-1, SR5-2, SR5-3, SR5-4, SR5-5', ''),
+        ('TRUE1 2fer', 'EA', 5, 'SR5-1 … 5-5', ''),
         ('TRUE1 Breakout', 'EA', 5, 'SR 1-5', ''),
         ('TRUE1 Power Jump', "6'", 341, 'SR - MAIN, SR - Return', ''),
     ]
     assert by['SL'] == [
+        ('Absen VN 8.3', 'EA', 374, 'SL - MAIN, SL - Return', ''),
         ('CVT4K-S', 'EA', 2, 'SL A, SL B', ''),
         ('Data Jump', "6'", 369, 'SL - MAIN, SL - Return', ''),
         ('Distro', 'EA', 1, 'SL', ''),
-        ('Cat6 Extension', "10'", 3, 'SL A-1, SL B-1, SL B-3', 'ext · SL A; ext · SL B'),
-        ('Cat6 Extension', "25'", 2, 'SL A-3, SL A-4', 'ext · SL A'),
-        ('Cat6', "50'", 1, 'SL B-5', ''),
-        ('Cat6 Extension', "100'", 2, 'SL B-4, SL A-5', 'ext · SL B'),
-        ('Cat6 Barrel', 'EA', 6, 'SL A-1, SL A-3, SL A-4, SL B-1, SL B-3, SL B-4', ''),
-        ('Cat6 Snake', "100'", 1, 'SL A-1 … A-4', 'SL A · 4 channel'),
-        ('Cat6 Snake', "150'", 1, 'SL B-1 … B-4', 'SL B · 4 channel'),
-        ('Multi', "100'", 2, 'SL 2, 4', ''),
-        ('Multi', "125'", 3, 'SL 1, 3, 5', ''),
+        ('etherCON', "50'", 1, 'SL B-5', ''),
+        ('etherCON', "100'", 1, 'SL A-5', ''),
+        ('etherCON Barrel', 'EA', 6, 'SL A-1, SL A-3, SL A-4, SL B-1, SL B-3, SL B-4', ''),
+        ('etherCON Extension', "10'", 3, 'SL A-1, SL B-1, SL B-3', 'ext · SL A; ext · SL B'),
+        ('etherCON Extension', "25'", 2, 'SL A-3, SL A-4', 'ext · SL A'),
+        ('etherCON Extension', "100'", 1, 'SL B-4', 'ext · SL B'),
+        ('etherCON Snake', "100'", 1, 'SL A-1 … A-4', 'SL A · 4 channel'),
+        ('etherCON Snake', "150'", 1, 'SL B-1 … B-4', 'SL B · 4 channel'),
+        ('Feeder', '', 1, 'SL', 'no length'),
+        ('Multi', "100'", 2, 'SL2, SL4', ''),
+        ('Multi', "125'", 3, 'SL1, SL3, SL5', ''),
         ('TRUE1', "6'", 9, 'SL1-2 … SL5-3 (9)', ''),
         ('TRUE1', "10'", 8, 'SL1-1, SL1-6, SL2-2, SL3-1, SL3-6, SL4-1, SL5-2, SL5-5', ''),
         ('TRUE1', "25'", 2, 'SL5-1, SL5-6', ''),
-        ('TRUE1 2fer', 'EA', 5, 'SL5-1, SL5-2, SL5-3, SL5-4, SL5-5', ''),
+        ('TRUE1 2fer', 'EA', 5, 'SL5-1 … 5-5', ''),
         ('TRUE1 Breakout', 'EA', 5, 'SL 1-5', ''),
         ('TRUE1 Power Jump', "6'", 341, 'SL - MAIN, SL - Return', ''),
     ]
@@ -1300,26 +1324,29 @@ def test_smoke_live_show_b(page):
     # and notes unioned in position order; long label runs fold to their
     # ends and a count, past eight pieces
     assert _rows(out['totals']) == [
+        ('Absen VN 8.3', 'EA', 748, 'SR - MAIN, SR - Return, SL - MAIN, SL - Return', ''),
         ('CVT4K-S', 'EA', 4, 'SR A, SR B, SL A, SL B', ''),
         ('Data Jump', "6'", 738, 'SR - MAIN, SR - Return, SL - MAIN, SL - Return', ''),
         ('Distro', 'EA', 2, 'SR, SL', ''),
-        ('Cat6 Extension', "10'", 6, 'SR A-1, SR B-1, SR B-3, SL A-1, SL B-1, SL B-3', 'ext · SR A; ext · SR B; ext · SL A; ext · SL B'),
-        ('Cat6 Extension', "25'", 4, 'SR A-3, SR A-4, SL A-3, SL A-4', 'ext · SR A; ext · SL A'),
-        ('Cat6', "50'", 2, 'SR B-5, SL B-5', ''),
-        ('Cat6 Extension', "75'", 1, 'SR B-4', 'ext · SR B'),
-        ('Cat6 Extension', "100'", 3, 'SR A-5, SL B-4, SL A-5', 'ext · SL B'),
-        ('Cat6 Barrel', 'EA', 12, 'SR A-1 … SL B-4 (12)', ''),
-        ('Cat6 Snake', "100'", 1, 'SR B-1 … B-4', 'SR B · 4 channel'),
-        ('Cat6 Snake', "100'", 1, 'SL A-1 … A-4', 'SL A · 4 channel'),
-        ('Cat6 Snake', "150'", 1, 'SR A-1 … A-4', 'SR A · 4 channel'),
-        ('Cat6 Snake', "150'", 1, 'SL B-1 … B-4', 'SL B · 4 channel'),
+        ('etherCON', "50'", 2, 'SR B-5, SL B-5', ''),
+        ('etherCON', "100'", 2, 'SR A-5, SL A-5', ''),
+        ('etherCON Barrel', 'EA', 12, 'SR A-1 … SL B-4 (12)', ''),
+        ('etherCON Extension', "10'", 6, 'SR A-1, SR B-1, SR B-3, SL A-1, SL B-1, SL B-3', 'ext · SR A; ext · SR B; ext · SL A; ext · SL B'),
+        ('etherCON Extension', "25'", 4, 'SR A-3, SR A-4, SL A-3, SL A-4', 'ext · SR A; ext · SL A'),
+        ('etherCON Extension', "75'", 1, 'SR B-4', 'ext · SR B'),
+        ('etherCON Extension', "100'", 1, 'SL B-4', 'ext · SL B'),
+        ('etherCON Snake', "100'", 1, 'SR B-1 … B-4', 'SR B · 4 channel'),
+        ('etherCON Snake', "100'", 1, 'SL A-1 … A-4', 'SL A · 4 channel'),
+        ('etherCON Snake', "150'", 1, 'SR A-1 … A-4', 'SR A · 4 channel'),
+        ('etherCON Snake', "150'", 1, 'SL B-1 … B-4', 'SL B · 4 channel'),
+        ('Feeder', '', 2, 'SR, SL', 'no length'),
         ('H9', 'EA', 1, '', ''),
-        ('Multi', "100'", 4, 'SR 2, 4, SL 2, 4', ''),
-        ('Multi', "125'", 6, 'SR 1, 3, 5, SL 1, 3, 5', ''),
+        ('Multi', "100'", 4, 'SR2, SR4, SL2, SL4', ''),
+        ('Multi', "125'", 6, 'SR1, SR3, SR5, SL1, SL3, SL5', ''),
         ('TRUE1', "6'", 18, 'SR1-2 … SL5-3 (18)', ''),
         ('TRUE1', "10'", 16, 'SR1-1 … SL5-5 (16)', ''),
         ('TRUE1', "25'", 4, 'SR5-1, SR5-6, SL5-1, SL5-6', ''),
-        ('TRUE1 2fer', 'EA', 10, 'SR5-1 … SL5-5 (10)', ''),
+        ('TRUE1 2fer', 'EA', 10, 'SR5-1 … 5-5, SL5-1 … 5-5', ''),
         ('TRUE1 Breakout', 'EA', 10, 'SR 1-5, SL 1-5', ''),
         ('TRUE1 Power Jump', "6'", 682, 'SR - MAIN, SR - Return, SL - MAIN, SL - Return', ''),
     ]
@@ -1327,12 +1354,12 @@ def test_smoke_live_show_b(page):
     # the primary box, three on the backup - none for the Returns' loose
     # home runs at either end
     assert [r for n in ('SR - MAIN', 'SR - Return', 'SL - MAIN', 'SL - Return')
-            for r in scr[n] if r[0] == 'Cat6 Barrel'] == [
-        ('Cat6 Barrel', 'EA', 6, 'SR A-1, SR A-3, SR A-4, SR B-1, SR B-3, SR B-4', ''),
-        ('Cat6 Barrel', 'EA', 6, 'SL A-1, SL A-3, SL A-4, SL B-1, SL B-3, SL B-4', '')]
+            for r in scr[n] if r[0] == 'etherCON Barrel'] == [
+        ('etherCON Barrel', 'EA', 6, 'SR A-1, SR A-3, SR A-4, SR B-1, SR B-3, SR B-4', ''),
+        ('etherCON Barrel', 'EA', 6, 'SL A-1, SL A-3, SL A-4, SL B-1, SL B-3, SL B-4', '')]
     # SL's data cable count is SR's: the same ports, the same extensions
-    sr_data = [r for r in by['SR'] if r[0].startswith('Cat6')]
-    sl_data = [r for r in by['SL'] if r[0].startswith('Cat6')]
+    sr_data = [r for r in by['SR'] if r[0].startswith('etherCON')]
+    sl_data = [r for r in by['SL'] if r[0].startswith('etherCON')]
     assert sum(q for _t, _l, q, _lab, _n in sl_data) == sum(q for _t, _l, q, _lab, _n in sr_data) == 16
     # the workbook takes it
     r = pg.evaluate("""async (list) => {

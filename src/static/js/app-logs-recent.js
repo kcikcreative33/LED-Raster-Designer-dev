@@ -534,6 +534,10 @@ class _LogsRecent {
                     this.normalizeLoadedPowerFlowPattern(layer);
                 });
             }
+            // An older show's automatic 2fers and 3fers, kept as saved -
+            // asked before the stamp, as loadProjectFromFile does.
+            const olderShares = this.olderShowKeepsShares(this.project);
+            if (olderShares) this.keepOlderShowShares();
             // Same stamp as loadProjectFromFile, for the same reason: the
             // migrations have run, the PUT below never stamps on the server.
             this.project.app_version = this.appVersion();
@@ -574,6 +578,7 @@ class _LogsRecent {
                             this.normalizeLoadedPowerFlowPattern(layer);
                         });
                     }
+                    if (olderShares) this.keepOlderShowShares();
                     // v0.11.0: no-op when the pre-PUT pass already fixed them;
                     // kept so the object that feeds resetHistory() below is
                     // always normalized.

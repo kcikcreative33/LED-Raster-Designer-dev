@@ -3013,6 +3013,8 @@ def test_smoke_live_show_b(page):
         await j('PUT', '/api/project', project);
         app.project = await j('GET', '/api/project');
         app.dedupeProjectLayers('binder_smoke');
+        // File > Open keeps a pre-1.5.4 show's automatic 2fers as saved
+        if (app.olderShowKeepsShares(app.project)) app.keepOlderShowShares();
         app.selectLayer(app.project.layers.find(l => (l.type || 'screen') === 'screen'));
         await app.refreshProcessors();
         await app.refreshPortAssignment();
@@ -3062,8 +3064,10 @@ def test_smoke_live_show_b(page):
     # show's pull list beside it
     assert names[PULL4] == ['SR', 'SL']
     assert names['Distros - SR, SL'] == ['SR', 'SL'] and names['Processor - H9 · Pull list'] == ['H9', 'All positions']
-    # eight positions make two pull sheets, four columns each (the show's
-    # two beaches, three more copies of each)
+    # eight positions make three pull sheets (the show's two beaches, three
+    # more copies of each): at its narrowest each of this show's positions
+    # is now wider than a quarter of a Tabloid sheet, so three share one
+    # (owner approved, 1.5.4) and the last sheet takes the two left over
     two = pg.evaluate("""(opts) => {
         const app = window.app;
         const real = app.buildPullSheet;
@@ -3076,8 +3080,9 @@ def test_smoke_live_show_b(page):
         try { return app.planBinder(opts).filter(p => p.kind === 'pull').map(p => [p.number, p.cols, p.names]); }
         finally { app.buildPullSheet = real; }
     }""", json.loads(_SHOW_JSON))
-    assert two == [['3.1', 4, ['SR', 'SL', 'SR B', 'SL B']],
-                   ['3.2', 4, ['SR C', 'SL C', 'SR D', 'SL D']]], two
+    assert two == [['3.1', 3, ['SR', 'SL', 'SR B']],
+                   ['3.2', 3, ['SL B', 'SR C', 'SL C']],
+                   ['3.3', 2, ['SR D', 'SL D']]], two
     # on Letter SR - MAIN's power sheet stays at 1 and, its tables wrapped
     # around the map (2026-09-26), fits the one sheet it used to continue
     # from; the Return's data sheets fit theirs too
@@ -3140,7 +3145,9 @@ def test_smoke_live_show_b(page):
     assert '22 at 208 V / 20 A · 14 panels each' in texts
     rulers = [t['text'] for t in main['textInfo'] if t['size'] == 22 and t['weight'] == 700]
     assert rulers[:7] == ['1', '5', '10', '15', '20', '25', '28'] and rulers[7:] == [str(i) for i in range(1, 12)]
-    assert ["SR1 · 125'", "SR2 · 100'", "SR3 · 125'", "SR4 · 100'"] == [t for t in main['texts'] if re.fullmatch(r"SR\d · \d+'", t)]
+    # each bracket's label once, with its length (drawn a side at a time,
+    # the left side's first: _bBoxBrackets)
+    assert ["SR3 · 125'", "SR4 · 100'", "SR1 · 125'", "SR2 · 100'"] == [t for t in main['texts'] if re.fullmatch(r"SR\d · \d+'", t)]
     # the map: every label, and the typed cables as tags (the screen's switch is on);
     # no screen-name plate over them - the title block names the screen
     assert _on_map(main['mapTexts'], 'SR1-1') and "10' TRUE1" in main['mapTexts'], main['mapTexts'][:20]
@@ -3223,7 +3230,8 @@ def test_smoke_live_show_b(page):
     # of the rows, and each end carries only the extension it adds
     # (2026-09-10: "Why is the same data written multiple times under the
     # snake under a specific port number"). One barrel per extension,
-    # primary and backup, six in all, still counted in Cables this screen.
+    # primary and backup, six in all, still counted in Cables this screen
+    # (etherCON: the CVT4K-S's outputs are etherCON, from its catalog entry).
     heading_a = "SR A · 4 channel snake · 150'"
     heading_b = "SR B · 4 channel snake · 100'"
     assert data.count(heading_a) == 1 and data.count(heading_b) == 1, [t for t in data if 'channel' in t]
@@ -3231,8 +3239,8 @@ def test_smoke_live_show_b(page):
     assert [data[data.index(f'SR A-{n}') + 1] for n in (1, 2, 3, 4)] == ["+10'", '—', "+25'", "+25'"], data
     assert [data[data.index(f'SR A-{n}') + 3] for n in (1, 2, 3, 4)] == ["+10'", '—', "+10'", "+75'"], data
     cables = data[data.index('CABLES THIS SCREEN'):data.index('FACTS')]
-    k = cables.index('Cat6 Barrel')
-    assert cables[k:k + 3] == ['Cat6 Barrel', 'EA', '6'], cables
+    k = cables.index('etherCON Barrel')
+    assert cables[k:k + 3] == ['etherCON Barrel', 'EA', '6'], cables
     # the processor once, the redundancy in the bar's words
     assert data[data.index('Processor') + 1] == 'H9' and 'H9 · H9' not in data
     assert data[data.index('Redundancy') + 1] == 'Per card'
