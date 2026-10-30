@@ -256,3 +256,12 @@ def test_logs_reveal_rejects_remote_clients(client):
     resp = client.post('/api/logs/reveal',
                        environ_overrides={'REMOTE_ADDR': '10.0.0.9'})
     assert resp.status_code == 403
+
+
+def test_a_test_run_never_opens_a_real_dialog():
+    """conftest's _no_os_dialogs: an export no test stubbed answers
+    "unavailable" (the browser-download fallback) instead of putting a real
+    Save or folder dialog on the desktop of whoever is at the machine."""
+    import routes_dialog
+    assert routes_dialog._native_choose_save_file('probe.pdf') == (None, 'unavailable')
+    assert routes_dialog._native_choose_directory() == (None, 'unavailable')
