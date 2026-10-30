@@ -314,6 +314,12 @@ FIXES
   any of those, and enhanced cards set to different modes can't load one
   screen. The app refuses that placement, or the mode change that would
   cause it, and says why.
+- FIX: A minimized distro in the tray shows only its header and legs. Its
+  outputs, like Multi 208 or L21-30, are hidden until you open it again,
+  so there's nothing to drag off a minimized distro.
+- FIX: Esc ends an Alt+click redraw or drops an Alt sweep of circuits in
+  Power, even when a box in the left panel still had the cursor. Before,
+  that box took the Esc and the circuit stayed selected.
 
 v1.5.3 - October 21, 2026
 ----------------------------

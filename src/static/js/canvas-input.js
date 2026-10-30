@@ -561,6 +561,7 @@ Object.assign(CanvasRenderer.prototype, {
             // by the _snapshotReplacer convention).
             if (this.viewMode === 'power') {
                 e.preventDefault();
+                this._altPressReleasesField();
                 const run = window.app
                     && typeof window.app.runAtPoint === 'function'
                     ? window.app.runAtPoint(worldX, worldY) : null;
@@ -579,6 +580,7 @@ Object.assign(CanvasRenderer.prototype, {
             if (this.viewMode === 'data-flow') {
                 if (window.app && typeof window.app.handleOverrideClick === 'function') {
                     e.preventDefault();
+                    this._altPressReleasesField();
                     window.app.handleOverrideClick(worldX, worldY);
                 }
                 return;
@@ -2034,6 +2036,23 @@ Object.assign(CanvasRenderer.prototype, {
             this.magneticSnap = !this.magneticSnap;
             const snapCheckbox = document.getElementById('magnetic-snap');
             if (snapCheckbox) snapCheckbox.checked = this.magneticSnap;
+        }
+    },
+
+    // An Alt+press on the canvas (the take-over click, the sweep) calls
+    // preventDefault, and that also keeps the browser from moving focus
+    // off the field that had it - which a plain press on the canvas does.
+    // A select or text box left focused there made Escape that field's
+    // own (isTypingTarget), so it could not end the redraw or drop the
+    // sweep (owner, 2026-10-30: "when I use alt + click to redraw we need
+    // a way to deselect like the escape key"). The press lets go of the
+    // field the way any other press on the canvas does; its blur commits
+    // the field as a click elsewhere would.
+    _altPressReleasesField() {
+        const el = document.activeElement;
+        if (el && el !== document.body && window.isTypingTarget(el)
+                && typeof el.blur === 'function') {
+            el.blur();
         }
     },
 
