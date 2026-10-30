@@ -4885,6 +4885,92 @@
             },
             after: function () { closePrefs(); }
         },
+        // Mirror a screen (owner, 2026-10-30: "You pick the screen to copy;
+        // the copy screen's port map follows the first automatically and
+        // can't be drawn separately"). NovaStar's H_4xfiber in Copy mode:
+        // "OPT 3 copies the output on OPT 1, while OPT 4 copies the output
+        // on OPT 2". The guide's own MX40 Pro stays as the steps before left
+        // it, so an H9 with an H_4xfiber in Copy and four CVT10s, and two
+        // matched IMAG screens with IMAG L on the card, are put in for you;
+        // the pick under Mirror a screen is made for real.
+        mirrorScreen: {
+            since: '1.5.4',
+            target: '#mirror-screen-row', place: 'left', title: 'Mirror a screen',
+            body: 'An H_4xfiber in Copy mode sends OPT 1 and 2 out again on OPT 3 and 4. Pick IMAG L under Mirror a screen: IMAG R takes its port map, and its runs come off the copy boxes.',
+            before: function () { closePrefs(); hideMenus(); closePopover(); switchView('data-flow'); },
+            act: function (t) {
+                var a = A(), w = wall(), pid = null, cid = null, left = null, right = null;
+                var addImag = function (name, dx) {
+                    return j('POST', '/api/layer/add', {
+                        name: name, columns: 4, rows: 3,
+                        cabinet_width: w.cabinet_width, cabinet_height: w.cabinet_height,
+                        offset_x: (Number(w.offset_x) || 0) + dx,
+                        offset_y: (Number(w.offset_y) || 0) + w.rows * w.cabinet_height + 200
+                    }).then(function (layer) {
+                        a.initializeLayerDefaults(layer);
+                        layer.processorType = 'novastar-armor';
+                        a.upsertProjectLayer(layer);
+                        a.updateLayers([layer]);
+                        return layer;
+                    });
+                };
+                return j('POST', '/api/processors', { deviceId: 'novastar-h9' }).then(function (st) {
+                    pid = st.resolved[st.resolved.length - 1].id;
+                    return j('PUT', '/api/processors/' + pid + '/slots/0', { deviceId: 'novastar-card-h-4xfiber' });
+                }).then(function (st) {
+                    var h = st.resolved.find(function (p) { return p.id === pid; });
+                    cid = h.slots[0].card.id;
+                    return j('PUT', '/api/processors/' + pid + '/cards/' + cid, { mode: 'copy' });
+                }).then(function () {
+                    return [0, 1, 2, 3].reduce(function (chain) {
+                        return chain.then(function () {
+                            return j('POST', '/api/processors/' + pid + '/cards/' + cid + '/cvts', { deviceId: 'novastar-cvt10', pair: false });
+                        });
+                    }, Promise.resolve());
+                }).then(function () {
+                    return addImag('IMAG L', 0);
+                }).then(function (l) {
+                    left = l;
+                    return addImag('IMAG R', 4 * w.cabinet_width + 200);
+                }).then(function (r) {
+                    right = r;
+                    t.mem.left = left.id; t.mem.right = right.id; t.mem.card = cid;
+                    return a.refreshProcessors();
+                }).then(function () {
+                    return a._assignmentRequest('/api/port-assignments/place-overflow', 'POST',
+                        { layerId: String(left.id), cardId: cid }, null, 'Place Ports');
+                }).then(function () {
+                    var r = a.project.layers.find(function (l) { return l.id === t.mem.right; });
+                    a.selectLayer(r);
+                    frameLayers([a.project.layers.find(function (l) { return l.id === t.mem.left; }), r]);
+                    a.saveState('Add Layer');
+                    a.updatePortCapacityDisplay();
+                    return t.wait(function () { return $('#mirror-screen option[value="' + t.mem.left + '"]'); });
+                }).then(function (opt) {
+                    if (!opt) throw new Error('IMAG L is not offered under Mirror a screen');
+                    return t.select('#mirror-screen', String(t.mem.left));
+                }).then(function () {
+                    return t.wait(function () {
+                        var scr = ((a._assignment && a._assignment.screens) || []).find(function (s) { return s.layerId === String(t.mem.right); });
+                        return scr && scr.ports.length && scr.ports.every(function (p) { return p.source === 'mirror'; }) ? scr : null;
+                    });
+                });
+            },
+            check: function (mem) {
+                var a = A();
+                var r = (a.project.layers || []).find(function (l) { return l.id === mem.right; });
+                if (!r || String(r.dataMirrorOf) !== String(mem.left)) return null;
+                var scr = ((a._assignment && a._assignment.screens) || []).find(function (s) { return s.layerId === String(mem.right); });
+                if (!scr || !scr.ports.length || !scr.ports.every(function (p) { return p.source === 'mirror'; })) return null;
+                var found = a._dockFindCard ? a._dockFindCard(mem.card) : null;
+                var box = found ? (found.card.cvts || []).find(function (b) {
+                    return (b.ports || []).some(function (p) { return p.number === scr.ports[0].port; });
+                }) : null;
+                return 'IMAG R mirrors IMAG L: its ' + scr.ports.length + (scr.ports.length === 1 ? ' port comes' : ' ports come')
+                    + ' off ' + (box ? (box.displayTitle + ' on ' + box.trunkTitle) : 'the copy box') + '.';
+            },
+            after: function () { closePopover(); }
+        },
         helpMenu: {
             target: '[data-menu="help"]', place: 'bottom', title: 'Help',
             body: 'Every guide lives under Help: Quick Start, What&rsquo;s New, the Advanced Guide and the keyboard shortcuts.',
@@ -4965,7 +5051,7 @@
                     'addService', 'serviceRating', 'serviceDistro', 'feederLength',
                     'addBeach', 'screenBeach', 'addScreen', 'beachByMenu', 'crossScreens', 'groupScreens',
                     'exportBinder', 'screenOrder', 'wiringTick', 'titleBlock', 'fileExports', 'preferences',
-                    'helpMenu', 'outroAdvanced']
+                    'mirrorScreen', 'helpMenu', 'outroAdvanced']
         }
     };
 

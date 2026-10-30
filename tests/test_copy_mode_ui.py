@@ -223,6 +223,11 @@ def test_the_pull_sheet_and_the_box_show_the_mirrors_runs(page):
         const sl = pull.byScreen[ids.sl];
         const card = app._dockFindCard(ids.cid).card;
         const mirrorBox = card.cvts[2];
+        // the binder's Ports table, wiring and processor sheets read a
+        // socket's home through _bPortHome: the mirror socket is the
+        // copy box's
+        const home = app._bPortHome(ids.cid, 17);
+        if (!home || !home.box || home.box.id !== mirrorBox.id) return null;
         return {sr: sr ? sr.ports.slice(0, 2).map(p => p.box) : null,
                 sl: sl ? sl.ports.slice(0, 2).map(p => p.box) : null,
                 title: app.pullBoxTitle(mirrorBox),

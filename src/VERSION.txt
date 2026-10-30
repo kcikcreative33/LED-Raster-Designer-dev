@@ -105,6 +105,22 @@ backs up another says which one, and the tray, the binder and the pull
 sheet read each card the way you set it. A show whose cards were already
 set different ways opens on Mixed, just as you left it.
 
+MIRROR SCREENS AND COPY MODE
+
+An H_4xfiber card now has NovaStar's three modes: Independent, Copy and
+Backup. In Copy, OPT 3 copies OPT 1 and OPT 4 copies OPT 2, and those
+copies feed a second screen. Select that screen and, in Screen Info's Data
+settings, pick the screen it copies under Mirror a screen. Its port map
+follows the first screen cabinet for cabinet and can't be drawn on its
+own, and its runs come off the boxes on the copy OPTs. Both screens must
+be the same size and use the same panel, or the app tells you what's
+different. The enhanced H_4xfiber does the same with OPT 5 to 8, and on
+an MX40 Pro in 20-port mode a box going on OPT 3 or 4 asks whether it's a
+Mirror or a Backup. The tray, the pull sheet and the binder list the
+mirror's runs on its own boxes, and a second card backing up the first
+1:1 backs up the mirror too. A card saved in the old Copy / Backup mode
+opens as Backup, the way it ran.
+
 OPENING AN OLDER SHOW
 
 Some counts will change when you open a show from an earlier version.
@@ -266,6 +282,22 @@ FIXES
 - FIX: On the binder's data wiring sheets, a breakout box on an SX40 or
   another processor without cards no longer says slot 1. A named one
   reads XD B · SX40 S3 · trunk B, and an unnamed one reads XD B · trunk B.
+- FIX: The enhanced H_4xfiber has all eight of its OPTs. OPT 1 to 4 carry
+  its 40 ports and OPT 5 to 8 back them up or copy them, so a box can go on
+  any of the eight and never adds ports. In Backup mode a new box brings
+  its backup on the OPT that backs it up. Older shows keep their boxes on
+  OPT 1 to 4.
+- FIX: On an MX40 Pro or an H_16xRJ45+2xfiber, each port an OPT also
+  carries plugs in at one place, the unit's or card's own RJ45 or the
+  breakout box, never both. Pick it on the port's chip in the tray, or for
+  a whole OPT in the card's ⚙. Labels, the binder's Ports table and wiring
+  sheets, the pull sheet and the socket counts follow. Ports a box carries
+  stay at the box until you change them.
+- FIX: An H_4xfiber can't load a screen together with an H_20xRJ45 or an
+  H_16xRJ45+2xfiber card, an enhanced H_4xfiber can't share a screen with
+  any of those, and enhanced cards set to different modes can't load one
+  screen. The app refuses that placement, or the mode change that would
+  cause it, and says why.
 
 v1.5.3 - October 21, 2026
 ----------------------------
