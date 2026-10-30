@@ -184,15 +184,16 @@ def test_the_favorites_list_and_summary_show_the_librarys_panel(page):
     got = pg.evaluate(ROWS_JS)
     rows = {r['key']: r for r in got['rows']}
     s = got['summaries']
-    # renamed: ROE's name today, its 125 W and 5.1 kg
+    # renamed: ROE's name today, its 125 W and 5.1 kg (and the sheet's
+    # 62 W average beside the max, 2026-10-30)
     old = 'ROE|Graphite 2.6 (4 in 1) Half Tile'
     assert rows[old]['label'] == 'ROE Graphite GP2.6 (4 in 1) Half Tile', rows[old]
     assert '125W/panel' in rows[old]['sub'] and '160W' not in rows[old]['sub'], rows[old]
-    assert s[old] == 'Panel: ROE Graphite GP2.6 (4 in 1) Half Tile, 500×500mm · 192×192px · 5.1kg · 125W', s
+    assert s[old] == 'Panel: ROE Graphite GP2.6 (4 in 1) Half Tile, 500×500mm · 192×192px · 5.1kg · 125W max · 62W avg', s
     # corrected: 9.0 kg in the library, 8.5 kg in the snapshot
     gp39 = 'ROE|Graphite GP3.9 Full Tile'
     assert rows[gp39]['label'] == 'ROE Graphite GP3.9 Full Tile', rows[gp39]
-    assert s[gp39] == 'Panel: ROE Graphite GP3.9 Full Tile, 500×1000mm · 128×256px · 9kg · 320W', s
+    assert s[gp39] == 'Panel: ROE Graphite GP3.9 Full Tile, 500×1000mm · 128×256px · 9kg · 320W max · 160W avg', s
     # gone from the library: the snapshot, as a pick makes it
     gone = 'ROE|Retired Test Tile'
     assert rows[gone]['label'] == 'ROE Retired Test Tile', rows[gone]

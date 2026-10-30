@@ -110,6 +110,7 @@ class _Presets {
                 width_mm: panel.width_mm, height_mm: panel.height_mm,
                 pixels_w: panel.pixels_w, pixels_h: panel.pixels_h,
                 weight_kg: panel.weight_kg, watts_max: panel.watts_max,
+                watts_ave: panel.watts_ave,
                 source: panel.source
             });
         }
@@ -950,6 +951,15 @@ class _Presets {
     // the manufacturer's published spec sheet/PDF rather than only the aggregated catalog's
     // (sometimes-outdated) internal database. Treats any source starting with
     // "official:" or containing "spec PDF" / "absen ... PDF" as verified.
+    // A panel's watts as the picker shows them: the max, which every power
+    // figure in the app is planned on, and the catalog's average beside it
+    // for reference where the sheet gives one (owner, 2026-10-30) -
+    // "340W max · 120W avg", or "340W" with no average.
+    _panelWattsText(p) {
+        if (!p || p.watts_max == null) return '';
+        return p.watts_ave != null ? `${p.watts_max}W max · ${p.watts_ave}W avg` : `${p.watts_max}W`;
+    }
+
     _isPanelVerified(p) {
         const s = (p && p.source || '').toLowerCase();
         if (!s) return false;
@@ -1001,7 +1011,7 @@ class _Presets {
             if (p.width_mm != null && p.height_mm != null) specs.push(`${p.width_mm}×${p.height_mm}mm`);
             if (p.pixels_w != null && p.pixels_h != null) specs.push(`${p.pixels_w}×${p.pixels_h}px`);
             if (p.weight_kg != null) specs.push(`${p.weight_kg}kg`);
-            if (p.watts_max != null) specs.push(`${p.watts_max}W`);
+            if (p.watts_max != null) specs.push(this._panelWattsText(p));
             // Verified ⭐: panel specs were cross-checked against the manufacturer's
             // own published spec sheet/PDF (not just the aggregated catalog).
             const verified = this._isPanelVerified(p);
@@ -1071,7 +1081,7 @@ class _Presets {
             if (p.width_mm != null) parts.push(`${p.width_mm}×${p.height_mm}mm`);
             if (p.pixels_w != null) parts.push(`${p.pixels_w}×${p.pixels_h}px`);
             if (p.weight_kg != null) parts.push(`${p.weight_kg}kg`);
-            if (p.watts_max != null) parts.push(`${p.watts_max}W`);
+            if (p.watts_max != null) parts.push(this._panelWattsText(p));
             summary.textContent = `Panel: ${this._catalogModelLabel(p._mfr, p)}, ${parts.join(' · ')}`;
         } else if (sel.type === 'preset' && sel.key && sel.key !== '__default__') {
             summary.textContent = `Preset: ${sel.label || sel.key}`;
@@ -1359,6 +1369,7 @@ class _Presets {
             if (p.pixels_w != null) lines.push(`- Pixels: ${p.pixels_w} × ${p.pixels_h}`);
             if (p.weight_kg != null) lines.push(`- Weight: ${p.weight_kg} kg`);
             if (p.watts_max != null) lines.push(`- Max power: ${p.watts_max} W`);
+            if (p.watts_ave != null) lines.push(`- Average power: ${p.watts_ave} W`);
             if (p.source) lines.push(`- Source: ${p.source}`);
             currentValues = lines.join('\n');
         } else {

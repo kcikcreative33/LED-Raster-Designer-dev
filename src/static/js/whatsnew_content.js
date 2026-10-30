@@ -33,8 +33,8 @@ window.WHATS_NEW_CONTENT = {
               d: 'A panel you pick from the library is saved on the screen, and Screen Info\'s Panel field shows its name or takes one you type. The pull sheet counts your panels by that name, a row for each type on each screen, with half tiles on rows of their own.' },
             { h: 'A stock list for each kind of cable',
               d: 'In Preferences > Cable stock, tick A list for each kind of cable to give multis, data, power, L21-30 and Harting home runs, direct-output cables and feeders their own lengths. Shows and presets from before keep the lists they had.' },
-            { h: 'Mixed redundancy on one processor',
-              d: 'On a chassis like an H series, the redundancy bar has a Mixed choice, so card 1 can be backed up 1:1 by card 2 while card 3 pairs its own ports. Each card picks its own on a row under the bar.' },
+            { h: 'Mixed redundancy and mirror screens',
+              d: 'On a chassis like an H series, the redundancy bar has a Mixed choice, so card 1 can be backed up 1:1 by card 2 while card 3 pairs its own ports. And an H_4xfiber in Copy mode, or an MX40 Pro box set to Mirror, feeds a second screen: pick the screen it copies under Mirror a screen in Screen Info, and its runs come off the copy OPTs.' },
             { h: 'Check paperwork you\'ve already ordered from',
               d: 'US screens may need more circuits, powerCON screens listed TRUE1 jumpers, Edison and L6-20 screens had the wrong cables, and saved 2fers and 3fers past 80% now read OVER. If you ordered from an older pull sheet, export it again and compare.' }
         ]

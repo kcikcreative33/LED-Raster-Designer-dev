@@ -330,6 +330,9 @@ FIXES
   binder. Before, a circuit with a length and a 3fer could sit under its
   label while the circuits next to it sat above theirs. Only a label with
   no room on that side puts its tags somewhere else.
+- FIX: The panel library shows a panel's average power beside its max,
+  like 340W max · 120W avg, where the spec sheet gives one. Power is still
+  planned on the max.
 
 v1.5.3 - October 21, 2026
 ----------------------------
