@@ -210,10 +210,18 @@ class _MirrorScreens {
     }
 
     _dimMirrorControls(on) {
+        // Only what this dimmed is put back, to the opacity it had: other
+        // code owns these controls' look (the Port Mapping buttons' '1').
         document.querySelectorAll(MIRROR_LOCKED_CONTROLS).forEach(el => {
-            el.style.opacity = on ? '0.45' : '';
-            if (on) el.dataset.mirrorLocked = '1';
-            else delete el.dataset.mirrorLocked;
+            if (on) {
+                if (el.dataset.mirrorLocked === undefined) {
+                    el.dataset.mirrorLocked = el.style.opacity || '';
+                }
+                el.style.opacity = '0.45';
+            } else if (el.dataset.mirrorLocked !== undefined) {
+                el.style.opacity = el.dataset.mirrorLocked;
+                delete el.dataset.mirrorLocked;
+            }
         });
     }
 
