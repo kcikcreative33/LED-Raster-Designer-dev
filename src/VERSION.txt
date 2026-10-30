@@ -319,6 +319,11 @@ FIXES
   tag keeps its place by the port's label and the percentage moves to the
   other side of the label, or beside it when there's no room, on the
   screen and in the binder.
+- FIX: A screen's cable lengths and 2fer or 3fer tags all sit on the same
+  side of their circuit labels on the Power and Data views and in the
+  binder. Before, a circuit with a length and a 3fer could sit under its
+  label while the circuits next to it sat above theirs. Only a label with
+  no room on that side puts its tags somewhere else.
 
 v1.5.3 - October 21, 2026
 ----------------------------

@@ -1315,6 +1315,8 @@ Object.assign(CanvasRenderer.prototype, {
     // day), then beside it (right-or-left, the other), with the same
     // clear-first / least-bad scoring. Called with no `place` the order is
     // the old one (beside first) - no map calls it that way any more.
+    // Both maps call it through placeTagHeads, which picks the side for
+    // the whole screen first (2026-10-30) and hands it in as `prefer`.
     // `place.stack` ({ w, h, gap }, _stackReserve)
     // is a pill that will stack under this one (a head's 2fer / 3fer): the
     // column is judged whole, and hung ABOVE the disc the tag stands that
