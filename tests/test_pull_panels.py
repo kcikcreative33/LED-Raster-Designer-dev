@@ -370,10 +370,21 @@ PICK_JS = """async () => {
     const before = app.project.layers.length;
     app.addLayer(app._panelToPresetData({ ...panel, _mfr: 'KINESIK' }));
     for (let i = 0; i < 100 && app.project.layers.length === before; i++) await new Promise(r => setTimeout(r, 50));
-    const layer = app.project.layers[app.project.layers.length - 1];
+    // Renamed the way the name field does it - saved through updateLayers.
+    // A name set only on the page was lost whenever the add's own save
+    // answered after it, since a layer's echo carries the server's name.
+    const id = app.project.layers[app.project.layers.length - 1].id;
+    const layer = app.project.layers.find(l => l.id === id);
     layer.name = 'AIR';
+    app.updateLayers([layer]);
+    for (let i = 0; i < 100; i++) {
+        const p = await (await fetch('/api/project')).json();
+        const s = p.layers.find(l => l.id === id);
+        if (s && s.name === 'AIR' && app.project.layers.find(l => l.id === id).name === 'AIR') break;
+        await new Promise(r => setTimeout(r, 50));
+    }
     await new Promise(r => setTimeout(r, 600));
-    return layer.id;
+    return id;
 }"""
 
 MODEL_JS = """(id) => {
