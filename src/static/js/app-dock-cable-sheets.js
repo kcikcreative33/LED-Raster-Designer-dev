@@ -49,8 +49,8 @@ class _DockCableSheets {
         btn.className = 'hw-dock-cablebtn' + (open ? ' hw-dock-cablebtn-on' : '');
         btn.textContent = '≡';
         btn.title = open
-            ? 'Cable sheet - click to show the chips again.'
-            : 'Cable sheet - a length and connector per circuit, for the '
+            ? 'Cable sheet. Click to show the chips again.'
+            : 'Cable sheet: a length and connector per circuit, for the '
                 + 'paperwork. Click to flip the chips into the sheet.';
         btn.dataset.lrdField = `power-cable-sheet-${d.id}-${n}`;
         btn.addEventListener('click', (e) => {
@@ -93,9 +93,10 @@ class _DockCableSheets {
             const changed = this.setCircuitCable(
                 layer, circuit, { ft, connector: connector || null });
             if (!changed) {
-                // A locked screen refused it (the setter named it): redraw
-                // so the row shows the cable it kept.
-                if (layer && layer.locked) this._rebuildAfterGesture(() => this.renderHardwareDock());
+                // A locked screen or a length that is no length refused it
+                // (the setter said why), or "30m" converted to the figure
+                // already stored: redraw so the row shows the cable kept.
+                this._rebuildAfterGesture(() => this.renderHardwareDock());
                 return;
             }
             this.saveClientSideProperties();
@@ -139,10 +140,11 @@ class _DockCableSheets {
                 // the sheet exists so six cables is one open - and the
                 // connector stays a click away for the odd one.
                 const td3 = document.createElement('td');
+                // Text, so a length in the other unit can be typed and
+                // converted ("30m" in a feet show, readTypedLength).
                 const ft = document.createElement('input');
-                ft.type = 'number';
-                ft.min = '0';
-                ft.step = 'any';
+                ft.type = 'text';
+                ft.inputMode = 'decimal';
                 ft.placeholder = '—';
                 ft.className = 'hw-dock-cable-ft';
                 ft.value = stored && Number(stored.ft) > 0
@@ -161,8 +163,12 @@ class _DockCableSheets {
                 sel.className = 'hw-dock-cable-connector';
                 sel.dataset.lrdField =
                     `power-cable-connector-${layer.id}-${h.circuit}`;
-                const follows = this.cableConnectorName(
+                // what a blank pick prints: the box's tail connector, or on a
+                // direct output the cable outlet to panel ("Edison → TRUE1")
+                let follows = this.cableConnectorName(
                     this.boxTailConnector(d, n, layer)) || '';
+                const direct = typeof this.faceBox === 'function' ? this.faceBox(d, n) : null;
+                if (direct && direct.kind === 'direct') follows = this.directCableType(follows, layer);
                 const blank = document.createElement('option');
                 blank.value = '';
                 blank.textContent = `follows ${typeName} (${follows})`;
@@ -177,7 +183,7 @@ class _DockCableSheets {
                     && connectors.some(c => c.id === stored.connector)
                     ? stored.connector : '';
                 sel.title = `The plug on this cable. Follows the ${typeName} `
-                    + 'unless changed - only the odd one needs picking.';
+                    + 'unless changed, so only the odd one needs picking.';
                 td4.appendChild(sel);
                 tr.appendChild(td4);
 
@@ -204,8 +210,11 @@ class _DockCableSheets {
         // by length and connector. A flat readout, not a control.
         const counts = new Map();
         held.forEach(({ layer, circuit }) => {
-            const c = this.powerCircuitCable(layer, circuit);
-            if (!c) return;
+            const own = this.powerCircuitCable(layer, circuit);
+            if (!own) return;
+            // a circuit alone on a direct output: its cable is the output's
+            // one cable, from the direct-output stock (directCircuitCable)
+            const c = this.directCircuitCable(layer, circuit) || own;
             counts.set(c.text, (counts.get(c.text) || 0) + 1);
         });
         const tot = document.createElement('tr');
@@ -300,9 +309,8 @@ class _DockCableSheets {
     _cableQuickAny(row, key, label, title, run) {
         const memo = this._cableQuickAnyFt || (this._cableQuickAnyFt = {});
         const box = document.createElement('input');
-        box.type = 'number';
-        box.min = '0';
-        box.step = 'any';
+        box.type = 'text';
+        box.inputMode = 'decimal';
         box.placeholder = this.cableUnitAbbr();
         box.className = 'hw-dock-cable-ft';
         box.value = memo[key] ? String(memo[key]) : '';
@@ -310,10 +318,13 @@ class _DockCableSheets {
         box.title = `A length of your own, in ${this.cableUnitWord()}. Enter, or the button `
             + 'beside it, fills with it.';
         const go = () => {
-            const ft = Number(box.value.trim());
-            if (!(Number.isFinite(ft) && ft > 0)) {
+            // read the way every typed length is: "30m" in a feet show
+            // fills with 98.4, said; text that is no length is refused
+            const read = this.readTypedLength(box.value.trim(), 'cable');
+            const ft = read.n;
+            if (!read.ok || ft === null) {
                 box.value = memo[key] ? String(memo[key]) : '';
-                this._dockSay(`Type a length in ${this.cableUnitWord()} first.`);
+                if (read.ok) this._dockSay(`Type a length in ${this.cableUnitWord()} first.`);
                 return;
             }
             memo[key] = ft;
@@ -382,8 +393,8 @@ class _DockCableSheets {
             + (open ? ' hw-dock-cablebtn-on' : '');
         btn.textContent = '≡';
         btn.title = open
-            ? 'Cable sheet - click to show the chips again.'
-            : 'Cable sheet - snakes and home runs per port, for the '
+            ? 'Cable sheet. Click to show the chips again.'
+            : 'Cable sheet: snakes and home runs per port, for the '
                 + 'paperwork. Click to flip into the sheet.';
         btn.dataset.lrdField = `data-cable-sheet-${owner.id}`;
         btn.addEventListener('click', (e) => {
@@ -496,10 +507,10 @@ class _DockCableSheets {
             if (window.canvasRenderer) window.canvasRenderer.render();
         };
         const ftInput = (key, value, title) => {
+            // text, so "30m" in a feet show can be typed (readTypedLength)
             const ft = document.createElement('input');
-            ft.type = 'number';
-            ft.min = '0';
-            ft.step = 'any';
+            ft.type = 'text';
+            ft.inputMode = 'decimal';
             ft.placeholder = '—';
             ft.className = 'hw-dock-cable-ft';
             ft.value = Number(value) > 0 ? String(value) : '';
@@ -597,7 +608,7 @@ class _DockCableSheets {
                     m => this._cableTickedMember(m));
                 td0.appendChild(tick(
                     `data-snake-tick-${owner.id}-s-${snake.id}`, all,
-                    'Tick the whole snake, wherever its sockets sit - for '
+                    'Tick the whole snake, wherever its sockets sit, for '
                     + 'Unsnake above.',
                     (on) => members.forEach(
                         m => this._setCableTickMember(m, on))));
@@ -617,7 +628,7 @@ class _DockCableSheets {
                 // "if we pass a threshold then grow like option B").
                 name.size = Math.max(6, (snake.name || '').length + 1);
                 name.dataset.lrdField = `data-snake-name-${owner.id}-${snake.id}`;
-                name.title = 'The snake’s name - what the packet and '
+                name.title = 'The snake’s name: what the packet and '
                     + 'the tag on the map print. Typed names win over the '
                     + 'SNAKE A default.';
                 name.addEventListener('change', () => {
@@ -698,7 +709,7 @@ class _DockCableSheets {
                                stored && stored.ft,
                                (snake
                                    ? 'Extension from the snake to this '
-                                     + `panel, in ${this.cableUnitWord()} - the shorter cable `
+                                     + `panel, in ${this.cableUnitWord()}: the shorter cable `
                                      + 'a snake’s fan-out sometimes needs. '
                                      + 'Blank = none.'
                                    : `This port’s own home run in ${this.cableUnitWord()}. `
@@ -750,7 +761,7 @@ class _DockCableSheets {
         // are the gesture, and the button they are pressed on is only
         // where the hand happened to be.
         ticked.appendChild(button('Snake', `data-cable-snake-${owner.id}`,
-            `Form one snake of every ticked port - on this ${this.unitWordForCard(owner.cardId)} or box or `
+            `Form one snake of every ticked port, on this ${this.unitWordForCard(owner.cardId)} or box or `
             + 'any other. One name, one home run. One undo step.',
             () => {
                 const members = this._allTickedMembers();
@@ -770,7 +781,7 @@ class _DockCableSheets {
                 });
             }));
         ticked.appendChild(button('Unsnake', `data-cable-loosen-${owner.id}`,
-            `Take every ticked port out of its snake - on this ${this.unitWordForCard(owner.cardId)} or box `
+            `Take every ticked port out of its snake, on this ${this.unitWordForCard(owner.cardId)} or box `
             + 'or any other. One undo step.',
             () => {
                 const members = this._allTickedMembers().filter(m => {
@@ -790,7 +801,7 @@ class _DockCableSheets {
         // 2026-09-24): each ticked row gets what its own field would
         // take - a loose port its home run, a snaked one its extension.
         this._cableQuickAny(ticked, `data-cable-ticked-fill-${owner.id}`, 'Fill',
-            `Every ticked port on this ${this.unitWordForCard(owner.cardId)} or box gets the typed length - `
+            `Every ticked port on this ${this.unitWordForCard(owner.cardId)} or box gets the typed length: `
             + 'a loose port as its home run, a snaked port as its extension. '
             + 'One undo step.',
             (ft) => this.fillTickedPortCables(owner, ft, ports).then(after));
@@ -991,9 +1002,8 @@ class _DockCableSheets {
         const wrap = document.createElement('span');
         wrap.className = 'hw-dock-fiber-field';
         const f = document.createElement('input');
-        f.type = 'number';
-        f.min = '0';
-        f.step = 'any';
+        f.type = 'text';
+        f.inputMode = 'decimal';
         f.className = 'hw-dock-cable-ft';
         f.placeholder = this.cableUnitAbbr();
         f.dataset.lrdField = `fiber-copper-ft-${box.id}-${l.key}`;
@@ -1001,15 +1011,13 @@ class _DockCableSheets {
         f.value = ft !== null ? String(ft) : '';
         const max = this.copperLinkMax(l.copper.copper);
         f.title = `The ${l.copper.copper} run's length in ${this.cableUnitWord()}`
-            + (max ? ` - ${this.copperLinkMaxWords(max)} is its 10G maximum.` : '.');
+            + (max ? `. ${this.copperLinkMaxWords(max)} is its 10G maximum.` : '.');
         f.addEventListener('change', () => {
-            const raw = f.value.trim();
-            const v = raw === '' ? null : Number(raw);
-            if (v !== null && !(Number.isFinite(v) && v >= 0)) {
-                this._dockSay(`Type a length in ${this.cableUnitWord()}, or leave it blank.`);
-                return;
-            }
-            this.setFiberLink(box, l.key, { copper: l.copper.copper, ft: v }, 'Set Copper Length');
+            // read the way every typed length is (readTypedLength): the
+            // other unit converted and said, text that is no length refused
+            const read = this.readTypedLength(f.value.trim(), 'cable');
+            if (!read.ok) return;
+            this.setFiberLink(box, l.key, { copper: l.copper.copper, ft: read.n }, 'Set Copper Length');
         });
         wrap.appendChild(f);
         wrap.appendChild(document.createTextNode(` ${this.cableUnitAbbr()}`));
@@ -1125,7 +1133,7 @@ class _DockCableSheets {
         chip.type = 'button';
         chip.className = 'hw-dock-fiber-strand';
         chip.dataset.lrdField = `fiber-strand-${box.id}-${l.key}-${i}`;
-        chip.title = `Strand ${strand} of ${cable.name} - click to change it.`;
+        chip.title = `Strand ${strand} of ${cable.name}. Click to change it.`;
         chip.appendChild(this._fiberSwatch(strand, cable));
         chip.appendChild(document.createTextNode(this.fiberStrandName(strand, cable)));
         chip.addEventListener('click', (e) => {
@@ -1254,16 +1262,16 @@ class _DockCableSheets {
         } else if (wz.step === 'ft') {
             cap.textContent = `New ${word} · length:`;
             const go = () => {
-                const raw = f.value.trim();
-                const v = raw === '' ? null : Number(raw);
-                if (v !== null && !(Number.isFinite(v) && v >= 0)) {
-                    this._dockSay(`Type a length in ${this.cableUnitWord()}, or leave it blank.`);
-                    return;
-                }
+                const read = this.readTypedLength(f.value.trim(), word);
+                if (!read.ok) return;
+                const v = read.n;
                 if (wz.kind === 'tac') step({ ft: v, step: 'connector' });
                 else { wz.ft = v; create(); }
             };
-            const f = field('number', `${base}-ft`, wz.ft, this.cableUnitAbbr(), go);
+            // text, so "30m" in a feet show can be typed (readTypedLength)
+            const f = field('text', `${base}-ft`, wz.ft, this.cableUnitAbbr(), go);
+            f.className = 'hw-dock-cable-ft';
+            f.inputMode = 'decimal';
             div.appendChild(document.createTextNode(` ${this.cableUnitAbbr()} `));
             button(wz.kind === 'tac' ? 'Next' : 'Create', `${base}-ft-next`,
                 wz.kind === 'tac' ? 'On to the ends.' : `Make the ${word} on this link.`, go);
@@ -1277,7 +1285,7 @@ class _DockCableSheets {
                 create();
             });
             f.setAttribute('list', `hw-fiber-connectors-${box.id}`);
-            button('Create', `${base}-create`, 'Make the TAC on this link - ends as typed, '
+            button('Create', `${base}-create`, 'Make the TAC on this link, ends as typed, '
                 + 'or none.', () => { wz.connector = f.value.trim(); create(); });
         }
         button('Cancel', `${base}-cancel`, 'Make nothing.', () => {
@@ -1330,14 +1338,15 @@ class _DockCableSheets {
                 put({ strands: v }, 'Set Fiber Strand Count');
             });
         }
-        const ft = field(this.cableUnitAbbr(), input('number', `fiber-cable-ft-${cable.id}`,
-            Number(cable.ft) > 0 ? cable.ft : ''));
-        ft.min = '0';
-        ft.step = 'any';
+        const ft = field(this.cableUnitAbbr(), input('text', `fiber-cable-ft-${cable.id}`,
+            Number(cable.ft) > 0 ? cable.ft : '', 'hw-dock-cable-ft'));
+        ft.inputMode = 'decimal';
         ft.placeholder = '—';
         ft.addEventListener('change', () => {
-            const v = ft.value.trim();
-            put({ ft: v === '' ? null : Number(v) }, 'Set Fiber Length');
+            // read the way every typed length is (readTypedLength)
+            const read = this.readTypedLength(ft.value.trim(), 'fiber');
+            if (!read.ok) return;
+            put({ ft: read.n }, 'Set Fiber Length');
         });
         if (cable.kind === 'tac') {
             const conn = field('ends', input('text', `fiber-cable-connector-${cable.id}`, cable.connector));
@@ -1371,7 +1380,7 @@ class _DockCableSheets {
             const f = input('text', `fiber-strand-name-${cable.id}-${n}`,
                 (cable.strandNames || {})[String(n)] || '');
             f.placeholder = fiberStrandName(n, plain);
-            f.title = `Strand ${n}'s name - blank reads ${f.placeholder}.`;
+            f.title = `Strand ${n}'s name. Blank reads ${f.placeholder}.`;
             f.addEventListener('change', () => put(
                 { strandName: { strand: n, name: f.value } }, 'Rename Strand'));
             cell.appendChild(f);

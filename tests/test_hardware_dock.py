@@ -137,7 +137,8 @@ SEED_JS = """async () => {
         // default (Legacy) onto it and every drop here would refuse.
         await fetch(`/api/layer/${l.id}`, {method: 'PUT',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({powerVoltage: 208, powerAmperage: 20,
+            // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+            body: JSON.stringify({powerVoltage: 208, powerAmperage: 25,
                                   processorType: 'novastar-coex-1g'})});
     }
     const p = await (await fetch('/api/project')).json();
@@ -1237,7 +1238,7 @@ def test_a_whole_card_is_refused_when_nothing_is_unassigned(dock_page):
         status: document.getElementById('status-message').textContent,
         pins: (window.app.project.port_assignments || {}).pins || []})""")
     assert out['status'] == (
-        'Every port of WALL B is already on a processor - clear it first'), out
+        'Every port of WALL B is already on a processor. Clear it first.'), out
     assert out['pins'] == parked, f'the refusal still moved something: {out}'
     assert page.evaluate(HIST_LEN_JS) == before, (
         'a refused drop must not write history')
@@ -1936,7 +1937,7 @@ def test_the_redundancy_pill_reads_the_state_and_opens_the_processor_gear(
     """The user's pick of option D's cheap half (2026-09-04): a read-only
     pill on the processor and card headers that states the shape in force
     and opens the PROCESSOR's gear, where the bar that sets it lives.
-    Nothing while redundancy is off; `R per card` / `R 1:1 — no partner`
+    Nothing while redundancy is off; `R per card` / `R 1:1, no partner`
     with nothing paired; `R per card` on the main and `backs up SR` on the
     partner once every card is paired onto it (the partner's consumed cards
     carry the role in their names and get no pill); `R per port` / `R
@@ -2037,7 +2038,7 @@ def test_the_redundancy_pill_reads_the_state_and_opens_the_processor_gear(
             'mainCards': [None, None], 'backCards': [None, None]}
         assert pills({'redundancy': True}) == {
             'main': 'R per card', 'back': None, 'bu': None,
-            'mainCards': ['R 1:1 — no partner', 'R 1:1 — no partner'],
+            'mainCards': ['R 1:1, no partner', 'R 1:1, no partner'],
             'backCards': [None, None]}
         out = pills({'partner': made['backId']})
         assert out['main'] == 'R per card', out
@@ -2050,12 +2051,13 @@ def test_the_redundancy_pill_reads_the_state_and_opens_the_processor_gear(
         assert out['back'] is None, out
         out = pills({'modes': ['manual', 'halves']})
         assert out['mainCards'] == ['R manual', 'R OPT split'], out
+        # cards that disagree read Mixed (2026-10-29), each card its own
         out = pills({'modes': ['1to1', 'halves']})
-        assert out['main'] == 'R per card', out
-        assert out['mainCards'] == ['R 1:1 — no partner', 'R OPT split'], out
+        assert out['main'] == 'R mixed', out
+        assert out['mainCards'] == ['R 1:1, no partner', 'R OPT split'], out
         # the backup processor rides the main's header beside it
         out = pills({'backupUnit': {}})
-        assert out['bu'] == 'Backup: SR BU' and out['main'] == 'R per card', out
+        assert out['bu'] == 'Backup: SR BU' and out['main'] == 'R mixed', out
         out = pills({'backupUnit': None})
         assert out['bu'] is None, out
 
@@ -2661,7 +2663,7 @@ SPLIT_SEED_JS = """async (which) => {
             // screen is refused (owner, 2026-10-16: 110, 115 and 120 are 120V;
             // anything else that does not fit the system is refused). 110V x 5A
             // still fits five 100W cabinets a circuit, so the plans are unchanged.
-            body: JSON.stringify({powerVoltage: '110', powerAmperage: '5',
+            body: JSON.stringify({powerVoltage: '110', powerAmperage: '6.25',
                 panelWatts: '100', powerOrganized: true, powerMaximize: false,
                 powerFlowPattern: 'tl-v',
                 // Same platform stamp as the module seed: the only card in
@@ -2764,7 +2766,7 @@ def test_a_multi_section_wears_six_circuit_chips(dock_page):
     # the chip face says tail number + derived label + occupant screen
     assert 'C2-2-1' in occ[0]['text'] and 'OFF SL' in occ[0]['text'], occ
     assert 'OFF SL' in occ[0]['title'] and 'C2-2-1' in occ[0]['title'], occ
-    assert 'Circuit 5 - free' in occ[4]['title'], occ
+    assert 'Circuit 5: free' in occ[4]['title'], occ
     assert 'free' in occ[4]['text'], occ
     empty = out['empty']
     assert empty and len(empty) == 6 and all(empty), out
@@ -3531,7 +3533,8 @@ def test_power_chips_fill_from_the_plans_leg_figures(dock_page):
         app._restateNaming();
         app.renderHardwareDock();
         const s = app.getSocaPlan(a).find(x => x.soca === 1);
-        const capA = parseFloat(a.powerAmperage);
+        // the circuit's capacity: 80% of the breaker on a US screen
+        const capA = app.circuitCapacity(a).amps;
         const leg = s.legs.find(l => l.leg === 1);
         return { amps: leg.amps, capA, pct: (leg.amps / capA) * 100 };
     }""", ids)
@@ -3571,7 +3574,7 @@ def test_power_chips_fill_from_the_plans_leg_figures(dock_page):
             const s = app.getSocaPlan(a).find(x => x.soca === 1);
             const leg = s.legs.find(l => l.leg === 1);
             return { amps: leg.amps, over: leg.amps
-                     > parseFloat(a.powerAmperage) };
+                     > app.circuitCapacity(a).amps };
         }""", ids)
         assert over_model['over'], (
             f'the drawn circuit must overload in the model first: '
@@ -4565,7 +4568,7 @@ SPLITTERS_ON_JS = """(ids) => {
     const a = app.project.layers.find(x => x.id === ids.aId);
     a.powerSplitters = { enabled: true, maxWays: 2,
                          manual: { merge: [], split: [] } };
-    a.powerAmperage = 30;
+    a.powerAmperage = 37.5;
     app._circuitTailCache = null;
     app.updateLayers([a]);
     app.resetHistory('Dock Seed');
@@ -4576,7 +4579,7 @@ SPLITTERS_OFF_JS = """(ids) => {
     const a = app.project.layers.find(x => x.id === ids.aId);
     a.powerSplitters = { enabled: false, maxWays: 3,
                          manual: { merge: [], split: [] } };
-    a.powerAmperage = 20;
+    a.powerAmperage = 25;
     app._circuitTailCache = null;
     app.updateLayers([a]);
     app._sweepSelection = null;
@@ -4695,9 +4698,10 @@ def test_alt_drag_sweeps_and_alt_click_stays_takeover(dock_page):
 def test_sweep_right_click_deals_nfers_in_one_entry(dock_page):
     """Sweep three circuits (five packed runs), right-click: the menu
     offers the sizes with the group math, suppresses the single-run share
-    item, and '3fer them' deals [1,2,3] + [4,5] as ONE '3fer Selection'
-    entry. One undo heals the whole deal. (A 30 A circuit - see
-    SPLITTERS_ON_JS - so the 3fer is within the amps.)"""
+    item, and '2fer them' deals [1,2] + [3,4] + a plain 5 as ONE '2fer
+    Selection' entry. One undo heals the whole deal. The Max splitter is
+    2fer (SPLITTERS_ON_JS), so no '3fer them' is offered (the owner,
+    2026-10-21: the batch never deals past it)."""
     page, ids = dock_page
     open_view(page, 'power')
     page.evaluate(RESET_POWER_JS, ids)
@@ -4716,24 +4720,23 @@ def test_sweep_right_click_deals_nfers_in_one_entry(dock_page):
     landed(page)
     items = page.evaluate(BATCH_ITEMS_JS)
     assert items['shown'], items
-    assert items['n0'] and items['n0']['label'].startswith('2fer them ('), items
-    assert items['n1'] and '3fer them (1 × 3fer + 1 × 2fer)' == \
-        items['n1']['label'], items
-    assert items['n1'] and not items['n1']['disabled'], items
+    assert items['n0'] and items['n0']['label'] == '2fer them (2 × 2fer + 1 plain)', items
+    assert not items['n0']['disabled'], items
+    assert items['n1'] is None, f'no size past the Max splitter: {items}'
     assert items['share'] is None, (
         f'the single-run share must stand down behind a sweep: {items}')
     # the packed 2fers count as existing gangs, so removing them is offered
     assert items['unshare'] and items['unshare']['label'] == 'Remove 2fers from these', items
 
-    page.locator('#context-menu [data-action="hw-batch-n1"]').click()
+    page.locator('#context-menu [data-action="hw-batch-n0"]').click()
     landed(page)
     out = page.evaluate(SPLITTER_STATE_JS, ids['aId'])
-    assert out['merge'] == [[1, 2, 3], [4, 5]], (
-        f'the 3fer deal must partition the five runs as 3+2: {out}')
-    assert out['split'] == [], out
-    assert [len(r) for r in out['runIds'] if r] == [3, 2], out
+    assert out['merge'] == [[1, 2], [3, 4]], (
+        f'the 2fer deal must partition the five runs as 2+2+1: {out}')
+    assert out['split'] == [5], out
+    assert [len(r) for r in out['runIds'] if r] == [2, 2, 1], out
     assert out['sel'] is None, 'the commit must clear the selection'
-    assert page.evaluate(HIST_JS, 1) == ['3fer Selection']
+    assert page.evaluate(HIST_JS, 1) == ['2fer Selection']
     assert page.evaluate(HIST_LEN_JS) == before + 1, (
         'the batch deal is not ONE history entry')
 
@@ -4748,9 +4751,10 @@ def test_sweep_right_click_deals_nfers_in_one_entry(dock_page):
 
 def test_whole_wall_right_click_batches_and_keeps_single_run_items(dock_page):
     """No selection: right-click a run and the batch entries act on the
-    whole screen ('3fer this screen'), beside the single-run share item,
+    whole screen ('2fer this screen'), beside the single-run share item,
     which keeps working unchanged. (A 30 A circuit, as above: the deal
-    is within the amps.)"""
+    is within the amps; the Max splitter is 2fer, so no '3fer this
+    screen'.)"""
     page, ids = dock_page
     open_view(page, 'power')
     page.evaluate(RESET_POWER_JS, ids)
@@ -4763,15 +4767,16 @@ def test_whole_wall_right_click_batches_and_keeps_single_run_items(dock_page):
     landed(page)
     items = page.evaluate(BATCH_ITEMS_JS)
     assert items['shown'], items
-    assert items['n1'] and items['n1']['label'].startswith('3fer this screen ('), items
+    assert items['n0'] and items['n0']['label'].startswith('2fer this screen ('), items
+    assert items['n1'] is None, items
     assert items['share'] is not None, (
         f'the single-run share must keep working with no sweep: {items}')
 
-    page.locator('#context-menu [data-action="hw-batch-n1"]').click()
+    page.locator('#context-menu [data-action="hw-batch-n0"]').click()
     landed(page)
     out = page.evaluate(SPLITTER_STATE_JS, ids['aId'])
-    assert out['merge'] == [[1, 2, 3], [4, 5]], out
-    assert page.evaluate(HIST_JS, 1) == ['3fer Screen']
+    assert out['merge'] == [[1, 2], [3, 4]] and out['split'] == [5], out
+    assert page.evaluate(HIST_JS, 1) == ['2fer Screen']
     assert page.evaluate(HIST_LEN_JS) == before + 1
 
     page.evaluate("() => window.app.undo()")
@@ -4782,9 +4787,11 @@ def test_whole_wall_right_click_batches_and_keeps_single_run_items(dock_page):
 
 
 def test_batch_entries_gated_off_with_reason(dock_page):
-    """Splitters off and circuits auto: the batch entries stay ON the menu,
-    disabled, with the sharing gate as their title - discoverable, never
-    rule-breaking - and a click on one changes nothing."""
+    """Splitters off and circuits auto: the whole screen's entries are
+    offered and tick sharing as they deal (the owner's ruling,
+    2026-10-22). Runs picked by a sweep stay gated: their entries stay ON
+    the menu, disabled, with the sharing gate as their title, and a click
+    on one changes nothing."""
     page, ids = dock_page
     open_view(page, 'power')
     page.evaluate(RESET_POWER_JS, ids)
@@ -4797,19 +4804,25 @@ def test_batch_entries_gated_off_with_reason(dock_page):
     landed(page)
     items = page.evaluate(BATCH_ITEMS_JS)
     assert items['shown'], items
-    assert items['n0'] and items['n0']['disabled'], items
-    assert 'Sharing is off' in items['n0']['title'], items
-    assert items['n1'] and items['n1']['disabled'], items
-    # three plain runs: no 4fer to offer
-    assert items['n2'] is None, items
+    assert items['n0'] and not items['n0']['disabled'], items
+    assert 'Also turns on "Share circuits via splitters"' in items['n0']['title'], items
+    close_menu(page)
 
-    page.locator('#context-menu [data-action="hw-batch-n0"]').click()
-    landed(page)
+    swept = page.evaluate("""([id, x, y]) => {
+        const app = window.app;
+        app._sweepSelection = { layerId: id, nums: [1, 2] };
+        const m = app._prepareBatchMenu(x, y);
+        app._sweepSelection = null;
+        return m && { scope: m.scope, entries: m.entries.map(e => ({
+            label: e.label, disabled: !!e.disabled, title: e.title || '' })) };
+    }""", [ids['aId'], p0['x'], p0['y']])
+    assert swept and swept['scope'] == 'selection', swept
+    assert swept['entries'] and all(e['disabled'] for e in swept['entries']), swept
+    assert 'Sharing is off' in swept['entries'][0]['title'], swept
     out = page.evaluate(SPLITTER_STATE_JS, ids['aId'])
     assert out['merge'] == [], f'a disabled entry still dealt: {out}'
     assert page.evaluate(HIST_LEN_JS) == before, (
         'a disabled batch entry earned a history entry')
-    close_menu(page)
     page.evaluate(RESET_POWER_JS, ids)
     landed(page)
 

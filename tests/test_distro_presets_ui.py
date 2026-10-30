@@ -151,7 +151,7 @@ def test_a_refused_save_says_why_in_plain_words(page, presets_file):
     try:
         pg.once('dialog', lambda d: d.accept('Rack X'))
         pg.click('#hw-gear-popover [data-lrd-field="distro-preset-save-d1"]')
-        _status_is(pg, 'Preset not saved - the server said 500.')
+        _status_is(pg, 'Preset not saved: the server said 500.')
     finally:
         pg.unroute('**/api/distro-presets', fail_put)
     assert not os.path.exists(presets_file) or _stored_names(presets_file) == []
@@ -159,9 +159,9 @@ def test_a_refused_save_says_why_in_plain_words(page, presets_file):
     # the server's own reason, when it gives one
     said = pg.evaluate("""() => window.app.saveDistroPreset('d1', 'x'.repeat(80))
                                    .then(() => 'saved', e => e.message)""")
-    assert said == 'Preset not saved - a preset needs a name of 1 to 60 characters.', said
+    assert said == 'Preset not saved: a preset needs a name of 1 to 60 characters.', said
     said = pg.evaluate("""() => window.app.deleteDistroPreset('Nobody')
                                    .then(() => 'deleted', e => e.message)""")
-    assert said == 'Preset not deleted - no preset by that name.', said
+    assert said == 'Preset not deleted: no preset by that name.', said
     pg.evaluate("() => window.app._hwPopoverClose()")
     assert not errors, errors

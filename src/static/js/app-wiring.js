@@ -353,7 +353,7 @@ class _Wiring {
     // Screen Info: the numeric geometry inputs, the Show Look resets,
     // Image Scale, Drop Shadow, Show Numbers and the weight unit.
     _wireScreenInfo() {
-        ['offset-x', 'offset-y', 'cabinet-width', 'cabinet-height',
+        ['offset-x', 'offset-y', 'cabinet-width', 'cabinet-height', 'panel-model-name',
          'screen-columns', 'screen-rows', 'number-size', 'panel-width-mm', 'panel-height-mm', 'panel-weight-kg', 'image-scale', 'image-scale-range',
          'show-offset-x', 'show-offset-y',
          'size-by-dimensions', 'target-width', 'target-height', 'target-unit'].forEach(id => {
@@ -501,7 +501,7 @@ class _Wiring {
                 // the typed field is judged on its commit, by the Screen
                 // Info funnel (updateLayerFromInputs) - the slider names it
                 // as it moves.
-                if (this.currentLayer.locked) {
+                if (this._layerLocked(this.currentLayer)) {
                     const cur = Number(this.currentLayer.imageScale) || 1;
                     if (!typed && Math.abs(cur - pct / 100) > 1e-9) {
                         this._reportLockedEdit([this.currentLayer]);
@@ -515,7 +515,7 @@ class _Wiring {
                 if (!this.currentLayer || (this.currentLayer.type || 'screen') !== 'image') return;
                 // A locked image wrote nothing: the commit only ends the
                 // attempt and lets the field snap back.
-                if (this.currentLayer.locked) {
+                if (this._layerLocked(this.currentLayer)) {
                     this._lockedEditSettled();
                     return;
                 }
@@ -664,7 +664,7 @@ class _Wiring {
                     .filter(l => l && (l.type || 'screen') === 'screen');
                 screens.forEach(layer => {
                     const oldUnit = layer.weight_unit || 'kg';
-                    if (layer.locked || oldUnit === newUnit) return;
+                    if (this._layerLocked(layer) || oldUnit === newUnit) return;
                     // || 20: the figure Screen Info and the labels show
                     // for a screen with no weight stored
                     const value = Number(layer.panel_weight) || 20;
@@ -1377,7 +1377,7 @@ class _Wiring {
                 if (!this.currentLayer) return;
                 // The number already active is no change, so no error.
                 const typedPort = parseInt(customActivePortInput.value, 10);
-                if (this.currentLayer.locked
+                if (this._layerLocked(this.currentLayer)
                         && typedPort === (this.currentLayer.customPortIndex || 1)) return;
                 if (this._lockedStepRefused(this.currentLayer)) {
                     customActivePortInput.value = `${this.currentLayer.customPortIndex || 1}`;
@@ -1824,7 +1824,7 @@ class _Wiring {
                     layer.showDataCableTags = showDataCableTagsEl.checked;
                 });
                 this.saveClientSideProperties();
-                this.updateLayers(this.getSelectedLayers(), true, 'Toggle Data Cable Tags');
+                this.updateLayers(this.getSelectedLayers(), true, 'Toggle Data Tags');
                 window.canvasRenderer.render();
             });
         }
@@ -1957,8 +1957,10 @@ class _Wiring {
                 const owner = this.powerPathOwner(this.currentLayer);
                 const circuitNum = owner.powerCustomIndex || 1;
                 // This screen's circuit, and - whole - any peer's circuit of
-                // the same number that lands here - see clearCustomRun.
-                const { touched, skipped } = this.clearCustomRun(owner, 'power', circuitNum);
+                // the same number that lands here - see clearCustomRun. A
+                // custom 2fer / 3fer is one circuit: every leg goes, in one
+                // entry (clearCustomCircuit).
+                const { touched, skipped } = this.clearCustomCircuit(owner, circuitNum);
                 if (touched.length) {
                     this.saveState('Power Custom Clear Circuit');
                     this.saveClientSideProperties();
@@ -2000,21 +2002,28 @@ class _Wiring {
                 // The active circuit of a custom group is the wall owner's
                 // (powerPathOwner).
                 const owner = this.powerPathOwner(this.currentLayer);
+                // The field reads and takes the CIRCUIT on a custom wall:
+                // 5 is the fifth circuit, a 3fer's legs counted once
+                // (customCircuitRun), never the drawn run numbered 5.
+                const shownNow = () => `${this.customCircuitShown(owner, owner.powerCustomIndex || 1)}`;
+                const typed = parseInt(powerCustomActive.value, 10);
+                const typedCircuit = (Number.isFinite(typed) && typed >= 1
+                        && !this._isOverrideEditing(owner, 'power'))
+                    ? this.customCircuitRun(owner, typed) : typed;
                 // The number already active is no change, so no error.
-                const typedCircuit = parseInt(powerCustomActive.value, 10);
-                if (owner.locked
+                if (this._layerLocked(owner)
                         && typedCircuit === (owner.powerCustomIndex || 1)) return;
                 if (this._lockedStepRefused(owner)) {
-                    powerCustomActive.value = `${owner.powerCustomIndex || 1}`;
+                    powerCustomActive.value = shownNow();
                     return;
                 }
                 this.ensureCustomPowerState(owner);
-                const nextVal = parseInt(powerCustomActive.value, 10);
+                const nextVal = typedCircuit;
                 // Pinned to the override list while one is open - see the
                 // data-flow input above.
                 if (this._isOverrideEditing(owner, 'power')
                         && !this.getOverrideNums(owner, 'power').includes(nextVal)) {
-                    powerCustomActive.value = `${owner.powerCustomIndex || 1}`;
+                    powerCustomActive.value = shownNow();
                     return;
                 }
                 if (Number.isFinite(nextVal) && nextVal >= 1) {

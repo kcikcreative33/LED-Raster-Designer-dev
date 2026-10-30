@@ -151,11 +151,11 @@ class _DockDrag {
         if (!d || !s) return;
         const cur = this.distroService(d);
         if (cur && cur.id === s.id) {
-            this._dockSay(`${d.name || d.id} is already on ${s.name || s.id}.`);
+            this._dockSay(`${this.distroLabel(d)} is already on ${s.name || s.id}.`);
             return;
         }
         if (this.setDistroService(d.id, s.id)) {
-            this._dockSay(`${d.name || d.id} is on ${this.serviceLabel(s)}.`);
+            this._dockSay(`${this.distroLabel(d)} is on ${this.serviceLabel(s)}.`);
         }
         this.renderHardwareDock();
     }
@@ -567,7 +567,7 @@ class _DockDrag {
         }
         if (unit.type === 'box' && unit.beyondTrunks) {
             return { ok: false, nums: [],
-                     message: `${unit.title} has no trunk on its ${this.unitWordForCard(unit.cardId)} - its `
+                     message: `${unit.title} has no trunk on its ${this.unitWordForCard(unit.cardId)}, so its `
                         + 'ports are not delivered, so nothing can land on '
                         + 'them.' };
         }
@@ -580,7 +580,7 @@ class _DockDrag {
         if (!unplaced.length) {
             return { ok: false, nums: [],
                      message: `Every port of ${scr.name} is already on a `
-                        + 'processor - clear it first' };
+                        + 'processor. Clear it first.' };
         }
         const wanted = upTo == null
             ? unplaced : unplaced.filter(n => n <= upTo);
@@ -702,8 +702,8 @@ class _DockDrag {
             if (load && load.ratingA > 0 && load.over) {
                 const lim = `${+load.limitA.toFixed(1)} A`;
                 warn = load.legs
-                    ? `${d.name || d.id} legs to ${load.amps.toFixed(0)} A of ${lim}`
-                    : `${d.name || d.id} to ${load.amps.toFixed(0)} A of ${lim}`;
+                    ? `${this.distroLabel(d)} legs to ${load.amps.toFixed(0)} A of ${lim}`
+                    : `${this.distroLabel(d)} to ${load.amps.toFixed(0)} A of ${lim}`;
             }
         } finally {
             if (had) map[s.soca] = prev; else delete map[s.soca];
@@ -711,7 +711,7 @@ class _DockDrag {
         }
         const nums = s.legs.map(g => g.circuit);
         const boxName = name
-            || `${d.name || d.id}${number != null ? ` ${number}` : ''}`;
+            || `${this.distroLabel(d)}${number != null ? ` ${number}` : ''}`;
         return {
             ok: true, glyph, socaIndex: s.soca, nums, number, boxName,
             amps: s.amps, badge: type.badge, warn,
@@ -761,7 +761,7 @@ class _DockDrag {
                 if (!faceRow) {
                     const why = fits.length
                         ? this.faceBoxEligible(d, fits[0].boxes[0], layer).why
-                        : `${d.name || d.id} has no multi outputs — drag one of its `
+                        : `${this.distroLabel(d)} has no multi outputs. Drag one of its `
                             + 'outputs onto a circuit';
                     return { ok: false, glyph: 'soca', message: why };
                 }
@@ -801,8 +801,8 @@ class _DockDrag {
         if (!type.breakouts.includes(bt.id)) {
             return { ok: false, glyph,
                      message: `${layer.name} is set to `
-                        + `${this._breakoutShortName(bt)} — change its `
-                        + 'breakout first' };
+                        + `${this._breakoutShortName(bt)}. Change its `
+                        + 'breakout first.' };
         }
         return { ok: true, d, type, glyph };
     }
@@ -819,7 +819,7 @@ class _DockDrag {
         const box = this.faceRowFreeBoxes(d, faceRow)[0];
         if (!box) {
             return { ok: false, glyph,
-                     message: `Every ${type.name} on ${d.name || d.id} is in use.` };
+                     message: `Every ${type.name} on ${this.distroLabel(d)} is in use.` };
         }
         const plan = this.getSocaPlan(layer);
         const s = plan.find(x => !x.distroId);
@@ -832,7 +832,7 @@ class _DockDrag {
         }
         const nums = direct ? [s.legs[0].circuit] : s.legs.map(g => g.circuit);
         const amps = direct ? (s.legs[0].amps || 0) : s.amps;
-        const boxName = `${d.name || d.id} ${box.number}`;
+        const boxName = `${this.distroLabel(d)} ${box.number}`;
         return {
             ok: true, glyph, face: true, direct,
             socaIndex: (!direct || s.legs.length === 1) ? s.soca : null,
@@ -848,7 +848,7 @@ class _DockDrag {
     _faceDropPlug(payload, layer, plan) {
         // A locked screen stays unchanged until unlocked, and says so
         // (owner, 2026-10-16).
-        if (layer.locked) {
+        if (this._layerLocked(layer)) {
             this._showLockedError([layer]);
             return;
         }
@@ -858,11 +858,18 @@ class _DockDrag {
             const r = this.takeSocaOnto(layer, ordinal, payload.distroId,
                                         plan.number, 'Assign Multi Distro');
             if (!r.ok) {
+                // a locked screen it would repack is named by the lock's
+                // own error already
+                if (r.locked) return;
                 this._dockSay(this._takeRefusalText(
                     payload, r, this.getPowerCircuitLabel(layer, plan.nums[0]), layer));
                 return;
             }
         } else {
+            // A locked screen the assignment would repack (one grouped
+            // with this screen) refuses the whole drop before the pin or
+            // the entry (owner, 2026-10-22).
+            if (this._assignRepacksLocked(layer, [[plan.socaIndex, payload.distroId]])) return;
             const touched = new Set();
             this.setSocaDistro(layer, plan.socaIndex, payload.distroId, false)
                 .forEach(l => touched.add(l));
@@ -899,7 +906,7 @@ class _DockDrag {
             .flatMap(s => s.legs)
             .filter(g => nums.includes(g.circuit))
             .reduce((t, g) => t + (g.amps || 0), 0);
-        const boxName = `${d.name || d.id} ${plan.number}`;
+        const boxName = `${this.distroLabel(d)} ${plan.number}`;
         const whole = plan.seg && plan.spanStart === plan.seg.start
             && plan.spanEnd === plan.seg.end;
         return {
@@ -918,7 +925,7 @@ class _DockDrag {
             // A paired connector whose circuits are already patched
             // through its pair (1.5, ruling 7).
             return `${payload.title} shares its circuits with ${r.busy[0].label} `
-                + '(paired) - a circuit can be patched to either connector, not both.';
+                + '(paired). A circuit can be patched to either connector, not both.';
         }
         if (r.why === 'other-box') {
             // A circuit on another box is somebody's feed: the drop never
@@ -927,13 +934,13 @@ class _DockDrag {
             const rec = layer && r.seg && typeof this._powerNaming === 'function'
                 ? this._powerNaming(layer).socas.get(r.seg.index) : null;
             const where = rec && rec.name ? rec.name : 'another distro';
-            return `${label} is already on ${where} - clear it first; `
+            return `${label} is already on ${where}. Clear it first; `
                 + `${payload.title} never takes a circuit that is already fed.`;
         }
         // The place-overflow refusal, in circuits: a box with no free
         // circuit takes nothing, and no cut happens for nothing.
         const len = r.tailLen != null ? r.tailLen : r.remaining;
-        return `${payload.title} has no free circuits - the ${len} circuit`
+        return `${payload.title} has no free circuits: the ${len} circuit`
             + `${len === 1 ? '' : 's'} up to ${label} stay where they are.`;
     }
 
@@ -986,7 +993,7 @@ class _DockDrag {
             if (p.glyph) pill.appendChild(this.plugGlyph(p.glyph));
             const t = document.createElement('span');
             t.textContent = p.ok
-                ? p.text + (p.warn ? ` — ${p.warn}` : '') : p.message;
+                ? p.text + (p.warn ? `. ${p.warn}` : '') : p.message;
             pill.appendChild(t);
         }
         pill.style.display = '';
@@ -1015,6 +1022,10 @@ class _DockDrag {
             return;
         }
         if (plan.face) return this._faceDropPlug(payload, layer, plan);
+        // A locked screen the assignment would repack (one grouped with
+        // this screen) refuses the drop before anything is stamped or
+        // recorded (owner, 2026-10-22).
+        if (this._assignRepacksLocked(layer, [[plan.socaIndex, payload.distroId]])) return;
         // The box this makes wears the type it was dragged as - stamped
         // before the assignment's entry, so the gesture stays one step.
         if (plan.number != null) {
@@ -1025,7 +1036,7 @@ class _DockDrag {
         this.updateLayers([...new Set(touched)], true, 'Assign Multi Distro');
         this._restateNaming();
         if (plan.warn) {
-            this._dockSay(`${plan.boxName} landed on ${layer.name} — `
+            this._dockSay(`${plan.boxName} landed on ${layer.name}: `
                 + `${plan.warn}.`);
         }
     }
@@ -1052,7 +1063,7 @@ class _DockDrag {
         const loads = (typeof this.getDistroLoads === 'function'
             && this.getDistroLoads()) || [];
         const entries = distros.map(d => {
-            const name = d.name || d.id;
+            const name = this.distroLabel(d);
             if (this.distroFace(d)) {
                 // A face distro offers what its rows feed this screen.
                 const gate = this._plugGate({ distroId: d.id, output: null }, layer);
@@ -1060,7 +1071,7 @@ class _DockDrag {
                 const fig = load && load.ratingA > 0
                     ? ` ${load.amps.toFixed(0)}/${+load.limitA.toFixed(1)} A` : '';
                 if (!gate.ok) {
-                    return { label: `${name} — ${gate.message}`, disabled: true,
+                    return { label: `${name}: ${gate.message}`, disabled: true,
                              title: gate.message };
                 }
                 const payload = { type: 'plug', distroId: d.id,
@@ -1078,7 +1089,7 @@ class _DockDrag {
             }
             if (!this.distroOffers(d, type.id)) {
                 return {
-                    label: `${name} — does not offer ${type.name}`,
+                    label: `${name} does not offer ${type.name}`,
                     disabled: true,
                     title: `Tick ${type.name} under ${name}'s ⚙ Outputs to `
                         + 'offer it.',
@@ -1094,7 +1105,7 @@ class _DockDrag {
                 label: `${name}${fig}`,
                 disabled: !plan.ok,
                 title: plan.ok
-                    ? `${plan.text}${plan.warn ? ` — ${plan.warn}` : ''}. `
+                    ? `${plan.text}${plan.warn ? `. ${plan.warn}` : ''}. `
                         + 'One undoable step.'
                     : plan.message,
                 run: () => {
@@ -1165,7 +1176,7 @@ class _DockDrag {
                 Object.keys(layer.customPortPaths).forEach(numStr => {
                     const num = parseInt(numStr, 10);
                     this.getResolvedPathPanels(
-                        layer, layer.customPortPaths[numStr] || [])
+                        layer, layer.customPortPaths[numStr] || [], 'data')
                         .forEach(r => map.set(r.panel,
                                               { ownerId: layer.id, portNum: num }));
                 });
@@ -1253,9 +1264,9 @@ class _DockDrag {
             // released, and the locked screens are named.
             const layerOf = (o) => (this.project.layers || [])
                 .find(l => String(l.id) === String(o.layerId));
-            const lockedClaims = claimants.map(layerOf).filter(l => l && l.locked);
+            const lockedClaims = claimants.map(layerOf).filter(l => l && this._layerLocked(l));
             this._showLockedError(lockedClaims);
-            const occupants = claimants.filter(o => { const l = layerOf(o); return !(l && l.locked); });
+            const occupants = claimants.filter(o => { const l = layerOf(o); return !(l && this._layerLocked(l)); });
             if (!occupants.length) return;
             // Every claim on a socket is a pin - nothing lands any other
             // way - so every claimant is released. One release per
@@ -1345,12 +1356,17 @@ class _DockDrag {
                     this._dockSay(plan.message);
                     return;
                 }
+                // A locked screen the take would repack refuses the drop
+                // before the box type is stamped (owner, 2026-10-22).
+                if (this._takeRepacksLocked(layer, this._socaTakePlan(layer, ordinal,
+                        payload.distroId, payload.number), payload.distroId)) return;
                 this._stampBoxType(payload.distroId, payload.number,
                                    payload.output);
             }
             const r = this.takeSocaOnto(layer, ordinal, payload.distroId,
                                         payload.number, 'Assign Multi Distro');
             if (!r.ok) {
+                if (r.locked) return;
                 this._dockSay(this._takeRefusalText(payload, r, label, layer));
                 return;
             }
@@ -1359,7 +1375,7 @@ class _DockDrag {
                 // place-overflow follows with spare ports: the FIRST
                 // circuits land, the rest wait.
                 this._dockSay(`${payload.title} had ${r.free} free `
-                    + `circuit${r.free === 1 ? '' : 's'} - took ${r.took} `
+                    + `circuit${r.free === 1 ? '' : 's'} and took ${r.took} `
                     + `of the ${r.tailLen} circuits up to ${label}; `
                     + 'the rest stay as their own unassigned multi.');
             }
@@ -1433,7 +1449,7 @@ class _DockDrag {
             const busy = this._facePairedHolders(tailD, n, payload.tail);
             if (busy.length) {
                 this._dockSay(`${payload.title} is the same circuit as `
-                    + `${busy[0].label} (paired) - a circuit can be patched to `
+                    + `${busy[0].label} (paired). A circuit can be patched to `
                     + 'either connector, not both.');
                 return;
             }
@@ -1460,12 +1476,25 @@ class _DockDrag {
             if (ml === layer && m.soca === rec.index
                     && mr.circuits[i] === target.num) continue;
             this._dockSay(`Circuit ${payload.tail} is held by ${ml.name} `
-                + `${this.getPowerCircuitLabel(ml, mr.circuits[i])} - `
-                + 'clear it first, or drop on a free pip.');
+                + `${this.getPowerCircuitLabel(ml, mr.circuits[i])}. `
+                + 'Clear it first, or drop on a free pip.');
             return;
         }
         const at = rec.circuits.indexOf(target.num);
         if (at < 0) return;
+        // A locked screen the move would repack - one grouped with this
+        // screen, whose packing % the group shares - stays unchanged
+        // (owner, 2026-10-22): the cuts and the assignment are tried and
+        // put back, and the drop is refused whole when they move its %.
+        if (this._repackRefused(() => {
+            let i = rec.index;
+            if (at > 0) {
+                if (!this._splitSocaApply(layer, i, at)) return;
+                i += 1;
+            }
+            if (rec.circuits.length - at > 1 && !this._splitSocaApply(layer, i, 1)) return;
+            (layer.powerSocaDistro || (layer.powerSocaDistro = {}))[i] = payload.distroId;
+        }, [layer])) return;
         // Leaving its box - for another distro, another box on this one,
         // or from no distro at all - the circuit leaves the old feed's
         // lengths behind (owner, 2026-10-17): its cable, and the home run
@@ -1549,6 +1578,11 @@ class _DockDrag {
                 return;
             }
         }
+        // All or nothing for the lock too: a locked screen the drop would
+        // repack (one grouped with this screen) refuses it whole (owner,
+        // 2026-10-22).
+        if (this._assignRepacksLocked(layer,
+                unassigned.map(s => [s.soca, payload.distroId]))) return;
         // The existing per-multi assignment, once per unassigned multi, in
         // plan order - the numbers fall out of the distro's own sequence.
         // Undo audit: one drag, one entry. The handle's own tooltip calls
@@ -1622,13 +1656,13 @@ class _DockDrag {
         const bt = this.getPowerBreakout(layer);
         const type = this.outputTypeForBreakout(bt, layer.powerVoltage);
         if (!type) {
-            return `${layer.name} is set to ${this._breakoutShortName(bt)} `
-                + '— change its breakout first';
+            return `${layer.name} is set to ${this._breakoutShortName(bt)}. `
+                + 'Change its breakout first.';
         }
         if (!this.distroOffers(d, type.id)) {
-            return `${d.name || d.id} does not offer `
-                + `${type.name} — tick ${type.name} under its `
-                + '⚙ Outputs first';
+            return `${this.distroLabel(d)} does not offer `
+                + `${type.name}. Tick ${type.name} under its `
+                + '⚙ Outputs first.';
         }
         const gate = this._plugGate({ distroId: d.id, output: type.id }, layer);
         return gate.ok ? null : gate.message;

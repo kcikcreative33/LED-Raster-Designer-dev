@@ -2369,7 +2369,7 @@ def place_overflow(processors, screens, state, layer_id, card_id,
                       f'lands here.')
     if not current['unplaced']:
         return None, (f'Every port of {current["name"]} is already on a '
-                      f'processor - clear it first.')
+                      f'processor. Clear it first.')
     spare = [i for i in current['unplaced']
              if last_index is None or i <= int(last_index)]
     if not spare:

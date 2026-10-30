@@ -322,7 +322,7 @@ def test_the_dock_calls_the_unit_what_the_binder_does(page, kind, word):
     pg.wait_for_timeout(600)
     got = pg.evaluate(DOCK_JS, kind)
     assert got['gear'] is not None, got
-    assert got['gear'].startswith(f'Configure this {word} '), got
+    assert got['gear'].startswith(f'Configure this {word}: '), got
     if got['add'] is not None:
         assert got['add'] == f'Add a breakout box to this {word}.', got
 

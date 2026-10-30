@@ -112,7 +112,8 @@ SEED_JS = """async () => {
     for (const l of p1.layers) {
         await fetch(`/api/layer/${l.id}`, {method: 'PUT',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({powerVoltage: 208, powerAmperage: 10,
+            // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+            body: JSON.stringify({powerVoltage: 208, powerAmperage: 12.5,
                                   panelWatts: 200,
                                   processorType: 'novastar-coex-1g'})});
     }
@@ -502,10 +503,10 @@ def test_a_mismatched_connector_is_refused_with_the_fix(page):
     assert mid['target']['nums'] == [] and mid['lit'] == [], mid
     assert mid['pill']['cls'] == 'hw-dock-pill-bad', mid
     assert mid['pill']['text'] == \
-        'WALL B is set to L21-30 — change its breakout first', mid
+        'WALL B is set to L21-30. Change its breakout first.', mid
     assert pg.evaluate(POWER_STATE_JS, ids['bId'])['distro'] == {}
     assert pg.evaluate(STATUS_JS) == \
-        'WALL B is set to L21-30 — change its breakout first'
+        'WALL B is set to L21-30. Change its breakout first.'
     assert pg.evaluate(HIST_LEN_JS) == n, 'a refused drop earned an entry'
     # an L21-30 against a soca screen (WALL A defaults to Multi → True1)
     sx, sy = chip_center(pg, f'plug-{d}-l2130')
@@ -514,7 +515,7 @@ def test_a_mismatched_connector_is_refused_with_the_fix(page):
                mid_check=lambda p: p.evaluate(MID_JS, ids['aId']))
     assert mid['lit'] == [] and mid['pill']['cls'] == 'hw-dock-pill-bad', mid
     assert mid['pill']['text'] == \
-        'WALL A is set to Multi → True1 — change its breakout first', mid
+        'WALL A is set to Multi → TRUE1. Change its breakout first.', mid
     assert pg.evaluate(POWER_STATE_JS, ids['aId'])['distro'] == {}
     # the L21-30 chip DOES land on the L21-30 box - three circuits, one box
     sx, sy = chip_center(pg, f'plug-{d}-l2130')
@@ -543,7 +544,7 @@ def test_a_mismatched_connector_is_refused_with_the_fix(page):
                mid_check=lambda p: p.evaluate(MID_JS, ids['bId']))
     assert mid['lit'] == [] and mid['pill']['cls'] == 'hw-dock-pill-bad', mid
     assert mid['pill']['text'] == \
-        'WALL B runs at 120V — a Multi 208 output feeds screens above 120V', mid
+        'WALL B runs at 120V, and a Multi 208 output feeds screens above 120V', mid
     assert pg.evaluate(POWER_STATE_JS, ids['bId'])['distro'] == {}
     # and the Multi 120 chip is what that screen takes
     sx, sy = chip_center(pg, f'plug-{d}-soca120')
@@ -580,7 +581,7 @@ def test_a_true1_screen_is_matched_by_its_voltage(page):
                mid_check=lambda p: p.evaluate(MID_JS, ids['bId']))
     assert mid['lit'] == [] and mid['pill']['cls'] == 'hw-dock-pill-bad', mid
     assert mid['pill']['text'] == \
-        'WALL B runs at 120V — a Multi 208 output feeds screens above 120V', mid
+        'WALL B runs at 120V, and a Multi 208 output feeds screens above 120V', mid
     assert pg.evaluate(POWER_STATE_JS, ids['bId'])['distro'] == {}
     assert pg.evaluate(HIST_LEN_JS) == n
     # 120V True1 on a Multi 120: lands
@@ -599,7 +600,7 @@ def test_a_true1_screen_is_matched_by_its_voltage(page):
                mid_check=lambda p: p.evaluate(MID_JS, ids['aId']))
     assert mid['lit'] == [] and mid['pill']['cls'] == 'hw-dock-pill-bad', mid
     assert mid['pill']['text'] == \
-        'WALL A runs at 208V — a Multi 120 output feeds screens up to 120V', mid
+        'WALL A runs at 208V, and a Multi 120 output feeds screens up to 120V', mid
     assert pg.evaluate(POWER_STATE_JS, ids['aId'])['distro'] == {}
     assert pg.evaluate(HIST_LEN_JS) == n
     # and the Multi 208 lands on it
@@ -666,7 +667,7 @@ def test_the_pill_warns_amber_past_the_rating_and_still_lands(page):
                mid_check=lambda p: p.evaluate(MID_JS, ids['aId']))
     assert mid['lit'] == [1, 2, 3, 4, 5, 6], mid
     assert mid['pill']['cls'] == 'hw-dock-pill-warn', mid
-    assert mid['pill']['text'].startswith('PD1 → circuits 1–6 · 46 A — '
+    assert mid['pill']['text'].startswith('PD1 → circuits 1–6 · 46 A. '
                                           'PD legs to '), mid
     # read against the main's continuous limit: 80% of 5 A on a US distro
     assert ' A of 4 A' in mid['pill']['text'], mid
@@ -728,7 +729,7 @@ def test_the_submenu_lists_offering_distros_with_loads(page):
             # the figure is against the main's continuous limit - 80%
             # of a 400 A US distro's rating (2026-10-18)
             ('PD 0/320 A', False),
-            ('SR — does not offer Multi 208', True)], m
+            ('SR does not offer Multi 208', True)], m
         assert 'Tick Multi 208 under SR' in m['entries'][1]['title'], m
         # hover opens the submenu; the pick is the drop
         pg.locator('#context-menu [data-action="hw-outputs"]').hover()
@@ -949,7 +950,7 @@ def test_a_220v_or_230v_screen_is_refused_by_a_120_208_distro(page):
                        mid_check=lambda p: p.evaluate(MID_JS, ids['bId']))
             assert mid['lit'] == [] and mid['pill']['cls'] == 'hw-dock-pill-bad', (chip, mid)
             assert mid['pill']['text'] == (
-                f'WALL B runs at {volts}V — PD gives 120V or 208V. Set the screen to 208V.'), mid
+                f'WALL B runs at {volts}V, and PD gives 120V or 208V. Set the screen to 208V.'), mid
             assert pg.evaluate(POWER_STATE_JS, ids['bId'])['distro'] == {}
         assert pg.evaluate(HIST_LEN_JS) == n
     cls = pg.evaluate("""() => { const app = window.app;
@@ -1095,7 +1096,7 @@ def test_a_screen_is_written_an_eligible_breakout_on_load(page):
             b.powerVoltage = saved.v; b.powerBreakoutType = saved.bt;
             return r;
         }""", ids)
-        assert out['readsTrue1'] == ['soca-true1', 'soca208', 'True1'], out
+        assert out['readsTrue1'] == ['soca-true1', 'soca208', 'TRUE1'], out
         assert out['fileOpen'] == 'soca-true1', out
         assert out['startup'] == 'soca-edison', out
     finally:
@@ -1345,7 +1346,7 @@ def test_a_whole_distro_drag_passes_the_plug_gate(page):
     assert pg.evaluate(POWER_STATE_JS, ids['aId'])['distro'] == {}, \
         'a refused whole-distro drop assigned a multi'
     assert pg.evaluate(STATUS_JS) == \
-        'PD does not offer Multi 208 — tick Multi 208 under its ⚙ Outputs first'
+        'PD does not offer Multi 208. Tick Multi 208 under its ⚙ Outputs first.'
     assert pg.evaluate(HIST_LEN_JS) == n, 'a refused drop earned an entry'
     # an L6-20 screen: no output type names the breakout
     pg.evaluate(RESET_JS, ids)
@@ -1360,7 +1361,7 @@ def test_a_whole_distro_drag_passes_the_plug_gate(page):
         return {
             refusal: app._distroDropRefusal({ distroId: dd.id }, a, s),
             expect: `WALL A is set to ${app._breakoutShortName(
-                app.getPowerBreakout(a))} — change its breakout first`,
+                app.getPowerBreakout(a))}. Change its breakout first.`,
         };
     }""", ids)
     assert out['refusal'] == out['expect'], out
@@ -1575,7 +1576,7 @@ def test_an_occupied_box_chip_is_read_only_and_reads_its_members(page):
     chip = pg.evaluate(TYPECHIP_JS, [d, 1])
     assert chip['tag'] == 'SPAN' and chip['ro'], chip
     assert chip['text'] == 'Multi 208' and chip['chips'] == 6, chip
-    assert 'is a Multi 208 - ' in chip['title'] and 'Clear its circuits' in chip['title'], chip
+    assert 'is a Multi 208. The type follows' in chip['title'] and 'Clear its circuits' in chip['title'], chip
     assert 'output' not in chip['payload'], chip
     assert not chip['clash'] and chip['stripTyped'] == [], chip
     # one undo forgets the stamp with the assignment
@@ -1656,9 +1657,9 @@ def test_a_typed_spare_box_drags_as_its_plug(page):
     assert mid['lit'] == [], mid
     assert mid['pill'] and mid['pill']['cls'] == 'hw-dock-pill-bad', mid
     assert mid['pill']['text'] == \
-        'WALL A is set to Multi → True1 — change its breakout first', mid
+        'WALL A is set to Multi → TRUE1. Change its breakout first.', mid
     assert pg.evaluate(STATUS_JS) == \
-        'WALL A is set to Multi → True1 — change its breakout first'
+        'WALL A is set to Multi → TRUE1. Change its breakout first.'
     assert pg.evaluate(POWER_STATE_JS, ids['aId'])['distro'] == {}
     assert pg.evaluate(HIST_LEN_JS) == n, 'a refused drop earned an entry'
     # onto an L21-30 screen, dropped on its THIRD circuit: the anchored

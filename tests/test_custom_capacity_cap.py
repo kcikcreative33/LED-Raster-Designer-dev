@@ -68,7 +68,10 @@ def page(e2e_server, pw_browser):
 # One screen built through the real add endpoint so cabinets carry real
 # geometry. 115 W cabinets on a 110 V / 15 A circuit (1,650 W) pack 14 to a
 # circuit - the user's own figure. 256 px cabinets (65,536 px) on a Brompton
-# port at 8-bit / 60 Hz (525,000 px) pack 8 to a port.
+# port at 8-bit / 60 Hz (525,000 px) pack 8 to a port. A US circuit packs to
+# 80% of its breaker (2026-10-22), so every breaker set here is the figure
+# the docstrings name x 1.25 (15 A -> 18.75 A): the circuit still carries
+# the same watts, and the readouts say "at 80%".
 HELPERS_JS = r"""
 window.__cap = {
     toasts: [],
@@ -107,7 +110,7 @@ window.__cap = {
         l.powerOrganized = true;
         l.powerMaximize = false;
         l.powerVoltage = 110;
-        l.powerAmperage = 15;
+        l.powerAmperage = 18.75;
         l.panelWatts = 115;
         l.processorType = 'brompton';
         l.bitDepth = 8;
@@ -222,7 +225,7 @@ def test_power_serpentine_over_a_14x6_block_fills_circuits_1_to_6_at_14_each(pag
     # And the status says what was filled, with the cap it was filled to.
     assert len(out['toasts']) == 1, out['toasts']
     assert out['toasts'][0].startswith('Filled circuits '), out['toasts'][0]
-    assert 'whole rows, up to 14 panels each at 110V/15A' in out['toasts'][0], out['toasts'][0]
+    assert 'whole rows, up to 14 panels each at 110V/18.75A at 80%' in out['toasts'][0], out['toasts'][0]
 
 
 def test_a_run_snakes_inside_itself_and_the_next_restarts_from_the_start_side(page):
@@ -313,7 +316,7 @@ def test_power_fill_counts_half_tiles_by_watt_equivalent(page):
 # 120 V / 20 A (2,400 W) - 24 cabinets a circuit, a row is 18.
 WHOLE_ROWS_JS = """() => {
     const l = window.__cap.layer();
-    l.powerVoltage = 120; l.powerAmperage = 20; l.panelWatts = 100;
+    l.powerVoltage = 120; l.powerAmperage = 25; l.panelWatts = 100;
 }"""
 
 
@@ -340,7 +343,7 @@ def test_rows_at_24_a_circuit_are_one_row_per_circuit_not_24_and_a_bit(page):
     for n in range(1, 8):
         assert paths[str(n)] == [[n - 1, c] for c in range(18)], (n, paths[str(n)])
     assert out['active'] == 7, out['active']
-    assert 'whole rows, up to 24 panels each at 120V/20A' in out['toasts'][0], out['toasts']
+    assert 'whole rows, up to 24 panels each at 120V/25A at 80%' in out['toasts'][0], out['toasts']
 
 
 def test_two_rows_go_on_one_circuit_when_both_fit_whole(page):
@@ -350,7 +353,7 @@ def test_two_rows_go_on_one_circuit_when_both_fit_whole(page):
     circuit 4."""
     reset(page, columns=18, rows=7)
     page.evaluate(WHOLE_ROWS_JS)
-    page.evaluate("() => { window.__cap.layer().powerAmperage = 33.4; }")
+    page.evaluate("() => { window.__cap.layer().powerAmperage = 41.75; }")
     out = page.evaluate("""() => {
         const app = window.app, cap = window.__cap;
         app.selectPowerPanelsInRect(cap.layer(), cap.rect(18, 7, 128));
@@ -400,7 +403,7 @@ def test_a_row_longer_than_a_circuit_is_cut_and_its_remainder_stands_alone(page)
     from the start side."""
     reset(page, columns=18, rows=2)
     page.evaluate(WHOLE_ROWS_JS)
-    page.evaluate("() => { window.__cap.layer().powerAmperage = 10; }")
+    page.evaluate("() => { window.__cap.layer().powerAmperage = 12.5; }")
     out = page.evaluate("""() => {
         const app = window.app, cap = window.__cap;
         app.selectPowerPanelsInRect(cap.layer(), cap.rect(18, 2, 128));
@@ -499,7 +502,7 @@ def test_maximize_power_packs_14x6_as_one_snake_cut_at_14(page):
     assert out['active'] == 6, out['active']
     assert out['hist'] == ['Initial State', 'Power Custom Pattern Apply'], out['hist']
     assert len(out['toasts']) == 1 and out['toasts'][0].startswith('Filled circuits '), out['toasts']
-    assert '(packed full, up to 14 panels each at 110V/15A)' in out['toasts'][0], out['toasts'][0]
+    assert '(packed full, up to 14 panels each at 110V/18.75A at 80%)' in out['toasts'][0], out['toasts'][0]
     assert 'whole rows' not in out['toasts'][0], out['toasts'][0]
 
 
@@ -535,7 +538,7 @@ def test_maximize_power_at_24_a_circuit_cuts_mid_row_and_carries_the_snake_on(pa
     assert paths['1'][18:] == [[1, c] for c in range(17, 11, -1)], paths['1']
     assert paths['2'][0] == [1, 11], paths['2']
     assert out['active'] == 6, out['active']
-    assert '(packed full, up to 24 panels each at 120V/20A)' in out['toasts'][0], out['toasts']
+    assert '(packed full, up to 24 panels each at 120V/25A at 80%)' in out['toasts'][0], out['toasts']
 
 
 def test_max_capacity_data_packs_ports_of_8_8_8_across_the_row_break(page):
@@ -723,7 +726,7 @@ def test_power_click_past_the_cap_is_refused_and_does_not_advance(page):
     assert out['steps'] == 0, out
     assert len(out['toasts']) == 1, out['toasts']
     msg = out['toasts'][0]
-    assert 'is full — 14 panels at 110V/15A' in msg, msg
+    assert 'is full, 14 panels at 110V/18.75A at 80%' in msg, msg
     assert 'Step to the next circuit (Tab / ])' in msg, msg
     assert out['fill']['full'] is True and out['fill']['count'] == 14, out['fill']
 
@@ -741,7 +744,7 @@ def test_data_click_past_the_cap_is_refused(page):
     }""")
     assert out['n'] == 8 and out['active'] == 1, out
     assert len(out['toasts']) == 1, out['toasts']
-    assert 'is full — 8 panels at 525,000 px/port' in out['toasts'][0], out['toasts']
+    assert 'is full, 8 panels at 525,000 px/port' in out['toasts'][0], out['toasts']
     assert 'Step to the next port (Tab / ])' in out['toasts'][0], out['toasts']
 
 
@@ -769,7 +772,9 @@ def test_a_per_run_override_is_capped_by_the_same_gate(page):
     }""")
     assert out['seeded'] == 14 and out['editing'] is True, out
     assert out['n'] == 14, out
-    assert len(out['toasts']) == 1 and 'already wired to circuit 2' in out['toasts'][0], out['toasts']
+    # named by the label the wall prints (the owner, 2026-10-21), not "circuit 2"
+    name = page.evaluate("() => window.app.getPowerCircuitLabel(window.__cap.layer(), 2)")
+    assert len(out['toasts']) == 1 and f'already wired to circuit {name}.' in out['toasts'][0], out['toasts']
 
 
 def test_no_capacity_means_no_cap(page):
@@ -806,7 +811,7 @@ def test_the_badge_reads_the_fill_and_calls_the_run_full(page):
     assert out['full']['pill'] == '14/14 on circuit · full', out['full']
     assert out['full']['full'] is True, out['full']
     # The sidebar mirrors it under the custom controls.
-    assert '9/14 panels' in out['midReadout'] and '(110V/15A)' in out['midReadout'], out['midReadout']
+    assert '9/14 panels' in out['midReadout'] and '(110V/18.75A at 80%)' in out['midReadout'], out['midReadout']
     assert '14/14 panels · full' in out['fullReadout'], out['fullReadout']
 
 

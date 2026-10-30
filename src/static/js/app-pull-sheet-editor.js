@@ -98,6 +98,8 @@ class _PullSheetEditor {
         if (typeof this.refreshPortAssignment === 'function') {
             try { await this.refreshPortAssignment(); } catch (_) {}
         }
+        // the panel rows' names come from the panel library
+        if (typeof this.pullPanelCatalogReady === 'function') await this.pullPanelCatalogReady();
         this._pullSheetLoadVocab();
         this.renderPullSheetEditor();
     }
@@ -222,8 +224,9 @@ class _PullSheetEditor {
             const mine = stale.filter(s => s.positionKey === key);
             if (mine.length) {
                 html.push('<div class="pull-stale-list">');
+                const liveKeys = pos.rows.map(r => this.pullRowKey(r));
                 for (const s of mine) {
-                    const [t, l] = s.key.split('|');
+                    const [t, l] = this._pullStaleKeyText(s.key, liveKeys);
                     const what = s.edit.removed ? 'hidden' : FIELDS.filter(f => s.edit[f] !== undefined)
                         .map(f => `${f} ${JSON.stringify(String(s.edit[f]))}`).join(', ');
                     html.push(`<div class="pull-stale" data-key="${esc(s.key)}" title="The show no longer produces this row; the edit is kept but not exported.">`
@@ -241,7 +244,7 @@ class _PullSheetEditor {
             html.push('<div class="pull-pos pull-pos-orphan" data-pos="">'
                 + '<div class="pull-pos-head"><div class="pull-pos-name">Positions no longer in the show</div></div><div class="pull-stale-list">');
             for (const s of orphan) {
-                const [t, l] = s.key.split('|');
+                const [t, l] = this._pullStaleKeyText(s.key, []);
                 html.push(`<div class="pull-stale" data-pos="${esc(s.positionKey)}" data-key="${esc(s.key)}">`
                     + `<span class="pull-stale-tag">STALE</span><span class="pull-stale-text">${esc(t)} ${esc(l)}</span>`
                     + '<button type="button" class="btn pull-forget" tabindex="-1">Forget</button></div>');
@@ -251,6 +254,21 @@ class _PullSheetEditor {
         html.push('<div class="pull-pos pull-totals" id="pull-sheet-totals"></div>');
         board.innerHTML = html.join('');
         this.renderPullSheetEditorTotals(sheet);
+    }
+
+    // A stale edit's type and length as the editor names it: in today's
+    // spelling, never a retired one ("Tru-1 Power Jump 6'" reads "TRUE1
+    // Power Jump 6'"); an old row that is two rows now names both ("TRUE1
+    // Power Jump / powerCON Power Jump 6'"), so the user sees which rows
+    // the count could have meant. [type, length].
+    _pullStaleKeyText(key, liveKeys) {
+        const raw = String(key == null ? '' : key);
+        const length = raw.split('|')[1] || '';
+        const hits = typeof this._pullEditHits === 'function' ? this._pullEditHits(raw, liveKeys || []) : [];
+        const types = [...new Set(hits.map(k => String(k).split('|')[0]))];
+        if (types.length > 1) return [types.join(' / '), length];
+        const type = typeof this._pullEditType === 'function' ? this._pullEditType(raw) : raw.split('|')[0];
+        return [type, length];
     }
 
     _pullSheetEngineRowHtml(r, e) {

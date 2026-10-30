@@ -576,11 +576,20 @@ class _Processors {
     //   'fixed'  - the vendor fixes the pairing (a fact, not a level)
     //   'unit'   - a standalone unit whose one card is at 1:1, partner
     //              picked or not - "Backed up" is its level
+    //   'mixed'  - a chassis whose cards disagree (some 1:1, some in a
+    //              port shape), or one the user put at Mixed on purpose
+    //              (the stored redundancyMixed pick)
     //   'port'   - every card is in a port shape
     //   'card'   - anything else: cards at 1:1, paired singly or not yet
     // A chassis has no whole-unit level any more (2026-09-25): a second
     // unit mirroring it whole is its backup processor, the switch under
     // the bar.
+    //
+    // The cards that decide are the ones with a choice of their own: a
+    // card consumed as somebody's 1:1 backup is its main's return end, and
+    // whatever mode it stored underneath is inert - so it never makes a
+    // chassis read Mixed. Where every card is consumed the stored modes
+    // are all there is, and they are read as before.
     _procRedundancyLevel(proc) {
         if (!proc.redundancy) return 'off';
         if (this._backupUnitMainId(proc)) return 'backup';
@@ -590,10 +599,31 @@ class _Processors {
             return cards.length && this._cardPortShaped(cards[0])
                 ? 'port' : 'unit';
         }
-        if (cards.length && cards.every(c => this._cardPortShaped(c))) {
-            return 'port';
-        }
+        if (this._procMixable(proc) && proc.redundancyMixed) return 'mixed';
+        const live = cards.filter(c => !c.backupFor);
+        const deciding = live.length ? live : cards;
+        const shaped = deciding.filter(c => this._cardPortShaped(c)).length;
+        if (deciding.length && shaped === deciding.length) return 'port';
+        if (shaped && this._procMixable(proc)) return 'mixed';
         return 'card';
+    }
+
+    // Whether the bar offers Mixed on this unit: a chassis with more than
+    // one slot (owner, 2026-10-29: "on say H series i have 3 16 port
+    // cards"). A standalone unit is its one card, so there is nothing to
+    // mix; a vendor-fixed pairing never reaches here (its own bar).
+    _procMixable(proc) {
+        return proc.form === 'chassis' && (proc.slots || []).length > 1;
+    }
+
+    // A row's legend under the bar - one place, so the words a slot row
+    // wears can change in one place (a "Card 1" reading is pending).
+    // A chassis says its slot and the card in it, the slot counted from
+    // one; a standalone unit is its one card, read by its unit title.
+    _redRowLegend(proc, slot, card) {
+        return proc.form === 'chassis'
+            ? `Slot ${slot.index + 1} · ${card.name || card.deviceName}`
+            : this.dataUnitTitle(proc, card).title;
     }
 
     // The segment the bar lights: the derived level. (A remembered pick
@@ -617,25 +647,49 @@ class _Processors {
     //          (_procRedundancyShown) and outside history, since the two
     //          are the same stored shape read at two levels. The partner
     //          pick under either is what actually pairs.
+    //   mixed - (a chassis only) no card moves: redundancy on where it
+    //          was off, and the Mixed pick remembered on the processor
+    //          (redundancyMixed) so the bar stays here while the cards
+    //          happen to agree. Each card then picks its own kind in its
+    //          row. Per card / Per port from Mixed convert every card as
+    //          they always did, and the server drops the pick with them.
     _setRedundancyLevel(proc, level) {
         const cards = (proc.slots || []).map(s => s.card).filter(Boolean);
         const url = `/api/processors/${proc.id}`;
+        const shown = this._procRedundancyShown(proc);
         if (level === 'off' || level === 'on') {
             if (!!proc.redundancy === (level === 'on')) return;
             this._processorRequest(url, 'PUT', { redundancy: level === 'on' },
                                    'Toggle Redundancy');
             return;
         }
+        if (level === 'mixed') {
+            if (shown === 'mixed') return;
+            this._processorRequest(
+                url, 'PUT', { redundancy: true, redundancyMixed: true },
+                'Set Redundancy Mixed');
+            return;
+        }
         if (level === 'port') {
+            // The lit segment is a no-op, whatever a consumed card stored.
+            if (shown === 'port') return;
             if (proc.redundancy && cards.length
-                    && cards.every(c => this._cardPortShaped(c))) return;
+                    && cards.every(c => this._cardPortShaped(c))) {
+                // Already every card in a port shape: nothing moves - the
+                // bar sat at Mixed by pick, which Per port lets go of in
+                // one write, the shapes left as they are.
+                if (!proc.redundancyMixed) return;
+                this._processorRequest(url, 'PUT', { redundancyMixed: false },
+                                       'Set Redundancy Per Port');
+                return;
+            }
             this._processorRequest(
                 url, 'PUT',
                 { redundancy: true, cardsRedundancyMode: 'sequential' },
                 'Set Redundancy Per Port');
             return;
         }
-        const moving = !proc.redundancy
+        const moving = !proc.redundancy || shown === 'mixed'
             || cards.some(c => this._cardPortShaped(c));
         if (!moving) return;
         this._processorRequest(
@@ -759,10 +813,14 @@ class _Processors {
 
         const chassis = proc.form === 'chassis';
         const shown = this._procRedundancyShown(proc);
-        block.appendChild(this._buildRedundancyStrip(proc, chassis
+        // Mixed (owner, 2026-10-29: "i want to leave the bar. so i think
+        // adding mixed makes the most sense") rides the chassis's bar only
+        // where there is more than one slot to mix.
+        const segments = chassis
             ? [['off', 'Off'], ['card', `Per ${this.unitWordFor(proc)}`], ['port', 'Per port']]
-            : [['off', 'Off'], ['unit', 'Backed up'], ['port', 'Per port']],
-            shown));
+            : [['off', 'Off'], ['unit', 'Backed up'], ['port', 'Per port']];
+        if (chassis && this._procMixable(proc)) segments.push(['mixed', 'Mixed']);
+        block.appendChild(this._buildRedundancyStrip(proc, segments, shown));
         if (shown === 'off') return block;
 
         if (!cards.length) {
@@ -790,9 +848,11 @@ class _Processors {
         (proc.slots || []).forEach(slot => {
             const card = slot.card;
             if (!card) return;
-            const legend = chassis
-                ? `Slot ${slot.index + 1} · ${card.name || card.deviceName}`
-                : this.dataUnitTitle(proc, card).title;
+            const legend = this._redRowLegend(proc, slot, card);
+            if (shown === 'mixed') {
+                block.appendChild(this._buildMixedCardRow(proc, card, legend));
+                return;
+            }
             let control = shown === 'card'
                 ? this._buildCardBackupPick(proc, card)
                 : this._buildCardShapeChips(proc, card);
@@ -840,7 +900,8 @@ class _Processors {
 
     _buildRedundancyBar(proc, segments, shown) {
         const bar = document.createElement('div');
-        bar.className = 'hw-pop-seg';
+        // Four segments size to their words (theme.css hw-pop-seg-fit).
+        bar.className = 'hw-pop-seg' + (segments.length > 3 ? ' hw-pop-seg-fit' : '');
         bar.setAttribute('role', 'radiogroup');
         bar.setAttribute('aria-label', 'Redundancy');
         bar.dataset.lrdField = `processor-redundancy-${proc.id}`;
@@ -857,6 +918,8 @@ class _Processors {
             // the word its own face prints (_portShapeSplitLabel).
             port: `Per port: ports pair inside ${word === 'processor' ? 'the processor' : `each ${word}`} - sequential, `
                 + 'split, or picked by hand on each chip.',
+            mixed: `Mixed: each ${word} picks its own - 1:1 onto a ${word} you pick, `
+                + 'or its ports paired inside it. One row per slot.',
         };
         segments.forEach(([level, text]) => {
             const seg = document.createElement('button');
@@ -894,13 +957,77 @@ class _Processors {
         return row;
     }
 
+    // One slot's row under MIXED (owner, 2026-10-29: "i want card 1 and 2
+    // to be primary and backup but then card 3 i want port level
+    // backup"). The card picks its own kind on one chip row - 1:1 beside
+    // the same Sequential / Split / Manual chips Per port draws, with the
+    // same tips - and at 1:1 the same partner pick Per card draws sits
+    // under it, held to the same pairing rules (the server's). Every
+    // gesture writes ONLY this card, through the card's own route, one
+    // request and one undo step each, and says redundancyMixed so the
+    // bar stays at Mixed even where the write leaves the cards agreeing.
+    // A card consumed as another card's 1:1 backup is that card's return
+    // end: it says whose, gold, and offers nothing.
+    _buildMixedCardRow(proc, card, legend) {
+        if (card.backupFor) {
+            const fact = document.createElement('span');
+            fact.className = 'hw-pop-red-backupfor';
+            fact.style.fontSize = '11px';
+            fact.style.color = '#c8a04a';
+            fact.style.minWidth = '0';
+            fact.style.flex = '1 1 100%';
+            fact.style.overflow = 'hidden';
+            fact.style.textOverflow = 'ellipsis';
+            fact.style.whiteSpace = 'nowrap';
+            fact.dataset.lrdField = `processor-card-backupfor-${card.id}`;
+            // The main by the same legend its own row wears where it sits
+            // in this chassis (three cards of one model read apart only by
+            // their slots), else by the unit it sits in.
+            const mainId = card.backupFor.cardId;
+            const mainSlot = (proc.slots || [])
+                .find(s => s.card && s.card.id === mainId);
+            const elsewhere = mainSlot ? null : this._otherCards(card.id)
+                .find(x => x.card.id === mainId);
+            const main = mainSlot ? this._redRowLegend(proc, mainSlot, mainSlot.card)
+                : elsewhere ? this._backupUnitTitle(elsewhere.proc, elsewhere.card)
+                : card.backupFor.title;
+            fact.textContent = `Backup for ${main}`;
+            fact.title = `${fact.textContent} - its ports carry that `
+                + `${this.unitWordFor(proc, card)}’s returns. Clear the pick `
+                + 'on that row to free it.';
+            const row = this._buildRedRow(legend, fact);
+            // legend over the line, the way a chip row wraps
+            row.classList.add('hw-pop-red-row-chips');
+            return row;
+        }
+        const chips = this._buildCardShapeChips(proc, card,
+                                                { pair: true, mixed: true });
+        if (!chips) {
+            const none = document.createElement('span');
+            none.style.fontSize = '11px';
+            none.style.color = 'var(--ps-dim, #c0c0c0)';
+            none.textContent = card.redundancyShape
+                ? 'fixed by the device' : `not supported on this ${this.unitWordFor(proc, card)}`;
+            return this._buildRedRow(legend, none);
+        }
+        const row = this._buildRedRow(legend, chips);
+        if (card.redundancyShape.mode === '1to1') {
+            const pick = this._buildCardBackupPick(proc, card,
+                                                   { redundancyMixed: true });
+            if (pick) row.appendChild(pick);
+        }
+        return row;
+    }
+
     // The card's 1:1 partner pick. Every other card in the project is
     // offered with its port count in the text, because the count is the
     // eligibility rule - a 1:1 backup mirrors port for port, and the
     // server refuses a mismatch with both counts in the reason. Ranges
     // over the whole project because a backup unit is usually a second
     // machine, not a second slot.
-    _buildCardBackupPick(proc, card) {
+    // `extra` rides in the same request body (a Mixed row's
+    // redundancyMixed), so the pick stays one request and one undo step.
+    _buildCardBackupPick(proc, card, extra = null) {
         const shape = card.redundancyShape;
         if (!shape || shape.forced) return null;
         const partner = document.createElement('select');
@@ -929,7 +1056,8 @@ class _Processors {
         });
         partner.addEventListener('change', () => this._processorRequest(
             `/api/processors/${proc.id}/cards/${card.id}`, 'PUT',
-            { backupCardId: partner.value }, 'Change Backup Unit'));
+            Object.assign({ backupCardId: partner.value }, extra || {}),
+            'Change Backup Unit'));
         return partner;
     }
 
@@ -1576,13 +1704,26 @@ class _Processors {
     // fiber" (2026-09-07).
     getDataCableConnectors() {
         return (this._dataCableConnectors || [
-            { id: 'cat', name: 'CAT' },
+            { id: 'cat', name: 'Cat6' },
+            { id: 'ethercon', name: 'etherCON' },
         ]).map(c => ({ id: c.id, name: c.name }));
     }
 
     dataCableConnectorName(id) {
         const hit = this.getDataCableConnectors().find(c => c.id === id);
         return hit ? hit.name : null;
+    }
+
+    // THE word for a data home run, on every surface that names one - the
+    // pull sheet, the binder's PORTS / CABLES / Snakes & home runs, the
+    // map's cable tags and the tray chips (owner, 2026-10-21): "etherCON"
+    // where the box's output is etherCON, "Cat6" where it is plain RJ45 or
+    // nobody documented it. A snake is "<word> Snake", its extension
+    // "<word> Extension", a coupler "<word> Barrel". Fiber keeps its own
+    // names (fiberCableTypeText).
+    dataCableWord(id) {
+        return this.dataCableConnectorName(id)
+            || this.dataCableConnectorName('cat') || 'Cat6';
     }
 
     // The record that OWNS a socket's home run: the first breakout box
@@ -1875,19 +2016,19 @@ class _Processors {
 
     // The connector a socket's cable FOLLOWS: the stored pick where there
     // is one, else the catalog's word for the device the port comes out of
-    // (rec.portConnector - the box, else the card, else the processor),
-    // else null: no name is printed rather than a guessed one.
+    // (rec.portConnector - a box's own, never its card's; a card's, else
+    // its processor's), else 'cat': an undocumented port reads Cat6.
     dataPortConnectorId(owner, stored) {
         if (stored && this.dataCableConnectorName(stored)) return stored;
         const follows = owner && owner.rec && owner.rec.portConnector;
         return follows && this.dataCableConnectorName(follows)
-            ? follows : null;
+            ? follows : 'cat';
     }
 
     // What one socket's home run reads as: the snake it rides
     // ({ kind: 'snake', snake, owner, ext, extConnector, text: 'SNAKE A'
     // or "SNAKE A +25'" }) or its own cable ({ kind: 'cable', ft,
-    // connector, id, name, text: "50' CAT" }), or null for a socket with
+    // connector, id, name, text: "50' Cat6" }), or null for a socket with
     // neither. On a snaked socket `ext` is the EXTENSION from the snake's
     // fan-out to the panel (rec.portCables on that socket - the same store
     // a loose socket's home run lives in), null when none; `text` is what
@@ -1914,7 +2055,7 @@ class _Processors {
         }
         if (!hasFt) return null;
         const id = this.dataPortConnectorId(owner, rec.connector);
-        const name = this.dataCableConnectorName(id) || '';
+        const name = this.dataCableWord(id);
         return {
             kind: 'cable', owner, ft, connector: rec.connector || null,
             id, name, text: this.cableText(ft, name, 'data'),
@@ -1925,9 +2066,18 @@ class _Processors {
     // the pull list share this: a snake reads "SR Primary 150'" (its name
     // and its home run; "SR Primary · no length" without one), plus
     // " +25'" when the socket carries an extension; a loose cable reads
-    // as its text ("50' CAT"); nothing reads '—'.
-    runText(cable) {
-        if (!cable) return '—';
+    // as its text ("50' Cat6"); nothing reads '—'. A socket a port is
+    // placed on (`at`, { cardId, port }) with no home run typed reads as
+    // the pull list writes it, "etherCON no length" (owner, 2026-10-22):
+    // '—' is only for a truly empty cell.
+    runText(cable, at = null) {
+        if (!cable) {
+            const owner = at && at.cardId != null && typeof this._dataPortOwner === 'function'
+                ? this._dataPortOwner(at.cardId, at.port) : null;
+            if (!owner || typeof this.pullDataConnectorWord !== 'function') return '—';
+            const rec = (owner.rec.portCables || {})[String(at.port)];
+            return `${this.pullDataConnectorWord(this.dataPortConnectorId(owner, rec && rec.connector))} no length`;
+        }
         if (cable.kind !== 'snake') return cable.text || '—';
         const s = cable.snake || {};
         const ft = this.parseCableLength(s.ft);
@@ -1963,7 +2113,7 @@ class _Processors {
     // read off the tree by _pullBackedBy (app-pull-list.js: the pull list
     // walks the backup end through the same helper - one implementation),
     // then that socket's own home run: the backup box's snake, "+25'" when
-    // the backup socket carries an extension, "50' CAT" for a loose backup
+    // the backup socket carries an extension, "50' Cat6" for a loose backup
     // cable. Null while the port is on no card, has no backup, or the
     // backup socket carries nothing.
     dataPortBackupCableForScreen(layer, portNum) {
@@ -2145,7 +2295,16 @@ class _Processors {
         const body = {};
         if ('name' in patch) body.name = (patch.name || '').trim();
         if ('ft' in patch) {
-            body.ft = this.parseCableLength(patch.ft);
+            // read the way every typed length is (readTypedLength,
+            // 2026-10-22): "30m" in a feet show converted and said, text
+            // that is no length refused and said, the length kept
+            if (typeof patch.ft === 'string') {
+                const read = this.readTypedLength(patch.ft, 'snake');
+                if (!read.ok) return Promise.resolve();
+                body.ft = read.n;
+            } else {
+                body.ft = this.parseCableLength(patch.ft);
+            }
         }
         if ('connector' in patch) {
             body.connector = patch.connector
@@ -2176,7 +2335,14 @@ class _Processors {
         const stores = this._dataCableStores(owner);
         const key = String(parseInt(socket, 10));
         const before = JSON.stringify(stores.portCables[key] || null);
-        const ft = cable ? this.parseCableLength(cable.ft) : null;
+        // a length typed as text reads the way every typed length does
+        // (readTypedLength): converted and said, or refused and kept
+        let ft = cable ? this.parseCableLength(cable.ft) : null;
+        if (cable && typeof cable.ft === 'string') {
+            const read = this.readTypedLength(cable.ft, 'cable');
+            if (!read.ok) return Promise.resolve();
+            ft = read.n;
+        }
         const connector = cable && cable.connector
             && this.dataCableConnectorName(cable.connector)
             ? cable.connector : null;
@@ -2344,7 +2510,12 @@ class _Processors {
     // bar's own Per card level. A vendor-fixed pairing (Brompton
     // adjacent) never draws chips - it is stated under the bar instead -
     // and a card the sheet says cannot pair draws none either.
-    _buildCardShapeChips(proc, card) {
+    //
+    // Under MIXED (opts.pair) the trio gains a 1:1 chip in front - the
+    // card's own pick between a partner card and a port shape - and every
+    // chip's write carries redundancyMixed (opts.mixed) so the bar stays
+    // at Mixed. Same chips, same tips, same stored ids otherwise.
+    _buildCardShapeChips(proc, card, opts = {}) {
         const shape = card.redundancyShape;
         if (!shape || shape.forced) return null;
         const group = document.createElement('div');
@@ -2352,9 +2523,14 @@ class _Processors {
         group.setAttribute('role', 'radiogroup');
         group.setAttribute('aria-label', 'Port shape');
         group.dataset.lrdField = `processor-card-shape-${card.id}`;
+        if (opts.pair) group.classList.add('hw-pop-chips-pair');
         const half = card.ceilingKnown && card.ceiling
             ? Math.floor(card.ceiling / 2) : null;
-        [['sequential', 'Sequential',
+        const word = this.unitWordFor(proc, card);
+        [...(opts.pair ? [['1to1', '1:1',
+          `1:1: another ${word} mirrors this one, port for port. `
+          + 'Pick it under the chips.']] : []),
+         ['sequential', 'Sequential',
           card.ceilingKnown && card.ceiling
               ? `1 backed by 2, 3 by 4 - ${shape.mode === 'sequential'
                   ? shape.usable : Math.ceil(card.ceiling / 2)} of `
@@ -2399,9 +2575,11 @@ class _Processors {
             chip.title = tip;
             chip.addEventListener('click', () => {
                 if (id === shape.mode) return;
+                const body = { redundancyMode: id };
+                if (opts.mixed) body.redundancyMixed = true;
                 this._processorRequest(
                     `/api/processors/${proc.id}/cards/${card.id}`, 'PUT',
-                    { redundancyMode: id }, 'Change Redundancy Mode');
+                    body, 'Change Redundancy Mode');
             });
             group.appendChild(chip);
         });

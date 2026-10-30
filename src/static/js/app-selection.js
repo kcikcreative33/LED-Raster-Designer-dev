@@ -74,14 +74,24 @@ class _Selection {
         const hold = this._holdLockedLayers ? this._holdLockedLayers(layers) : null;
         const snapshot = this._snapshotSharedFields
             ? this._snapshotSharedFields(layers) : null;
+        // NOR IS A LOCKED SCREEN REPACKED THROUGH ANOTHER (the owner's
+        // ruling, 2026-10-23): a power setting written onto an unlocked
+        // member of a locked screen's group (its panel watts, say) can move
+        // the group's packing % (circuitCapacity). The edit is checked once
+        // it is written; when it moves a locked screen's %, every screen it
+        // reached is put back and the locked screen is named, so the
+        // caller's commit records nothing.
+        const repack = this._repackEditTrial ? this._repackEditTrial(layers) : null;
         layers.forEach(fn);
-        const refused = hold ? hold.release() : [];
+        let refused = hold ? hold.release() : [];
         if (snapshot && this._propagateChangedSharedFields) {
             this._propagateChangedSharedFields(layers, snapshot, { lockedOut: refused });
         }
+        const repacked = repack ? repack() : [];
+        if (repacked.length) refused = repacked;
         // Called with nothing refused too: a commit that reaches the funnel
         // ends the attempt and lets a waiting snap-back repaint run.
-        if (this._reportLockedEdit) this._reportLockedEdit(refused);
+        if (this._reportLockedEdit) this._reportLockedEdit(refused, repacked.length ? 'repack' : null);
     }
 
     setSelectedLayersByIds(ids, primaryId = null) {

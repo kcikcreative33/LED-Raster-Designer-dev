@@ -659,6 +659,35 @@ def across_partner(card, proc):
     return None
 
 
+def mixed_redundancy_refusal(proc):
+    """Why `proc` cannot hold the bar's MIXED level, or None where it can.
+
+    The owner (2026-10-29): "sometimes on say H series i have 3 16 port
+    cards. and i want card 1 and 2 to be primary and backup but then card 3
+    i want port level backup." Mixed lets each card of ONE chassis pick its
+    own kind - 1:1 onto a partner card, or a port shape of its own - so it
+    is offered only where there is more than one slot to mix. A standalone
+    unit is its one card, and a unit whose vendor fixes the pairing (an
+    SQ200's loops, Brompton's adjacent pairs) has no kind to pick at all.
+    """
+    device = get_device((proc or {}).get('deviceId')) or {}
+    name = device.get('name', 'This processor')
+    if not is_chassis(device) or len((proc or {}).get('slots') or []) < 2:
+        return (f'{name} is one unit - Mixed is for a chassis with more '
+                f'than one slot.')
+    if ((device.get('redundancy') or {}).get('pairing')) == 'adjacent':
+        return (f'{name} pairs its outputs itself - there is nothing to '
+                f'mix.')
+    for slot in (proc or {}).get('slots') or []:
+        card = (slot or {}).get('card')
+        cdev = get_device((card or {}).get('deviceId')) or {}
+        if ((cdev.get('redundancy') or {}).get('pairing')) == 'adjacent':
+            return (f'Slot {(slot.get("index") or 0) + 1}: '
+                    f'{cdev.get("name", "this card")} pairs its outputs '
+                    f'itself - there is nothing to mix.')
+    return None
+
+
 def across_pairing(proc, device, cards):
     """The SQ200's loop statement, from how many QD-S are fitted (`cards`,
     resolved, in slot order), or None with redundancy off or on a device
@@ -1184,10 +1213,12 @@ def sync_next_processor_seq(project):
 # need an extension" (2026-09-07) - the same shape as power's per-circuit
 # cable under a multi. ``connector`` null means "follows the port" - the
 # connector the catalog documents for the device the port comes out of
-# (data_port_connector), and NOTHING where the catalog is silent: a
-# reading that guessed copper for an undocumented box would be a hardware
-# assumption, so it prints the length alone instead. A snake's way count
-# is whatever was put in it - no 4/6/12-way shapes are assumed.
+# (data_port_connector): "etherCON" where that device's outputs are
+# etherCON, "Cat6" where they are plain RJ45 or nobody documented them
+# (owner, 2026-10-21: one word for a data home run on every surface). A
+# box answers for itself alone - it never borrows its card's or its
+# processor's connector. A snake's way count is whatever was put in it -
+# no 4/6/12-way shapes are assumed.
 #
 # Fiber is NOT a port's or a snake's connector: "panels dont take fiber.
 # what would take fiber is processor to breakout box" (2026-09-07). The
@@ -1198,14 +1229,19 @@ def sync_next_processor_seq(project):
 # resolved_show_snakes).
 
 DATA_CABLE_CONNECTORS = (
-    {'id': 'cat', 'name': 'CAT'},
+    {'id': 'cat', 'name': 'Cat6'},
+    {'id': 'ethercon', 'name': 'etherCON'},
 )
 
+# The cable a port takes where its device documents nothing: plain Cat6.
+DEFAULT_DATA_CABLE_CONNECTOR = 'cat'
+
 # The catalog's connector words, mapped to the cable connector they imply.
-# Only documented copper maps: 'rj45' is CAT. A fiber-kind card's loose
-# ports follow nothing - the plug on a panel lead off a fiber card is not
-# documented, so no plug is guessed.
-_PORT_KIND_CONNECTOR = {'rj45': 'cat'}
+# A device states its outputs with ``connector`` in processor_catalog.json:
+# 'ethercon' for etherCON outputs, 'rj45' for plain RJ45. Anything else
+# (a fiber card's 'fiber', or no key at all) maps to nothing here and the
+# port reads the default, Cat6.
+_PORT_KIND_CONNECTOR = {'rj45': 'cat', 'ethercon': 'ethercon'}
 
 SNAKE_NAME_PREFIX = 'SNAKE '
 
@@ -1218,19 +1254,22 @@ def data_cable_connector_ids():
     return [c['id'] for c in DATA_CABLE_CONNECTORS]
 
 
-def data_port_connector(cvt_device, card_device, proc_device):
+def data_port_connector(cvt_device, card_device, proc_device, box=False):
     """The cable connector a port FOLLOWS, from the catalog alone.
 
-    The nearest device downstream that documents a ``connector`` answers:
-    the breakout box the port comes out of, else the card, else the
-    processor. None where none of them says - the reading then carries no
-    connector name rather than an invented one.
+    A port a breakout box delivers (``box`` true) follows the BOX alone:
+    a CVT4K-S under an RJ45 card does not take the card's plug, so a box
+    that documents nothing reads the default. A port on the card's own
+    face follows the card, else the processor. Where nothing documented
+    answers, the default - Cat6 (owner, 2026-10-21: "Cat6" when it's
+    plain RJ45 or unknown).
     """
-    for device in (cvt_device, card_device, proc_device):
+    chain = (cvt_device,) if box else (card_device, proc_device)
+    for device in chain:
         kind = (device or {}).get('connector')
         if kind in _PORT_KIND_CONNECTOR:
             return _PORT_KIND_CONNECTOR[kind]
-    return None
+    return DEFAULT_DATA_CABLE_CONNECTOR
 
 
 def _snake_letter_name(taken, prefix=SNAKE_NAME_PREFIX):
@@ -2949,6 +2988,29 @@ def reslot_chassis_units(project):
     return out
 
 
+def settle_redundancy_mixed(project):
+    """Hold each processor's `redundancyMixed` to its one shape.
+
+    The flag is the bar's Mixed segment, remembered where the cards happen
+    to agree (owner, 2026-10-29: "i want to leave the bar. so i think
+    adding mixed makes the most sense"). It is stored only as `True`, only
+    with redundancy on, and only on a unit that can mix
+    (mixed_redundancy_refusal); anything else - a hand-edited file, a
+    payload from a build that never had it - is dropped, so a file with no
+    Mixed pick carries no key. Runs where a whole project ENTERS server
+    state (file load, undo/redo, every project POST), never on a read.
+    Idempotent. Cards are never touched: a chassis whose cards disagree
+    reads as Mixed whatever this flag says.
+    """
+    for proc in (project or {}).get('processors') or []:
+        if not isinstance(proc, dict) or 'redundancyMixed' not in proc:
+            continue
+        if proc.get('redundancyMixed') is not True \
+                or not proc.get('redundancy') \
+                or mixed_redundancy_refusal(proc):
+            proc.pop('redundancyMixed', None)
+
+
 def adopt_fixed_card_names(project):
     """Move a name typed on a one-box unit's fixed card up to the unit.
 
@@ -3543,12 +3605,12 @@ def resolve_card(card, proc):
             'ports': [],
         }
         # The box's port cables ride the resolved box, with the connector
-        # its sockets FOLLOW (the catalog's word for the box, else the
-        # card's, else nothing - see data_port_connector). Snakes are the
-        # show's now (project['snakes']) and ride no device.
+        # its sockets FOLLOW (the catalog's word for the box itself, never
+        # its card's - see data_port_connector). Snakes are the show's now
+        # (project['snakes']) and ride no device.
         resolved['portCables'] = resolved_port_cables(cvt)
         resolved['portConnector'] = data_port_connector(
-            cvt_device, device, get_device(proc.get('deviceId')))
+            cvt_device, None, None, box=True)
         cvts.append(resolved)
         placed_by_id[resolved['id']] = resolved
         if size and copy_role == 'mirror' and mirror_numbers:
@@ -4044,7 +4106,7 @@ def resolve_card(card, proc):
     }
     # The card's own port cables, for the ports on its face; the connector
     # those sockets follow is the card's documented kind, else the
-    # processor's, else nothing. Snakes belong to the show, not the card.
+    # processor's, else Cat6. Snakes belong to the show, not the card.
     out['portCables'] = resolved_port_cables(card)
     out['portConnector'] = data_port_connector(
         None, device, get_device(proc.get('deviceId')))
@@ -4157,6 +4219,11 @@ def resolve_processor(proc):
         'redundancyPairs': proc_redundancy_pairs(proc, device)
         if proc.get('redundancy') else [],
         'redundancyPairMarks': trunk_pair_marks(device),
+        # The bar's Mixed segment, remembered (settle_redundancy_mixed):
+        # each card picks its own kind. Read only with redundancy on; the
+        # bar ALSO reads Mixed wherever the cards disagree, flag or not.
+        'redundancyMixed': bool(proc.get('redundancy')
+                                and proc.get('redundancyMixed') is True),
         # The BACKUP PROCESSOR (2026-09-25): an option ON this unit - "when
         # we add backup processor it's just an option on the primary and
         # then we are capable of naming but everything else is automatic".

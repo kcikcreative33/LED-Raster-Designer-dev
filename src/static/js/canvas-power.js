@@ -448,18 +448,17 @@ Object.assign(CanvasRenderer.prototype, {
                 // distro but it shows extensions on my screen" - leftovers
                 // whose circuits were renumbered under them. Before, only an
                 // exported map left them off.
-                const cable = typeof window.app.printedCircuitCable === 'function'
+                // A circuit alone on a DIRECT output (1.5): its one cable,
+                // distro to screen - its own when typed, else the output's -
+                // from the direct-output stock, as the pull sheet and the
+                // tray write it (directCircuitCable). A crowded output's
+                // home run is no one circuit's cable.
+                const direct = typeof window.app.directCircuitCable === 'function'
+                    ? window.app.directCircuitCable(layer, circuitNum) : null;
+                const cable = direct || (typeof window.app.printedCircuitCable === 'function'
                     ? window.app.printedCircuitCable(layer, circuitNum)
-                    : window.app.powerCircuitCable(layer, circuitNum);
+                    : window.app.powerCircuitCable(layer, circuitNum));
                 if (cable) cableText = cable.text;
-                // A DIRECT output's own cable, distro to screen (1.5), when
-                // the circuit carries no cable of its own - only for a
-                // circuit alone on it: a crowded output's home run is no
-                // one circuit's cable (directCircuitCable).
-                if (!cableText && typeof window.app.directCircuitCable === 'function') {
-                    const direct = window.app.directCircuitCable(layer, circuitNum);
-                    if (direct) cableText = direct.text;
-                }
             }
             const gang = circuitNum != null ? gangByRun.get(circuitNum) || null : null;
             if (cableText || gang) pendingTags.push({ text: cableText, disc, gang, step });
@@ -854,6 +853,12 @@ Object.assign(CanvasRenderer.prototype, {
             return box ? app.faceBoxType(d, box).badge : null;
         };
         const sharedBadge = badgeText;
+        // A box on a distro wears its label on paper: two boxes typed the
+        // same name read "-1" / "-2", as the pull sheet and the binder
+        // say them (app.distroBoxLabels).
+        const boxLabels = plan.some(s => s.distroId) && typeof app.distroBoxLabels === 'function'
+            ? app.distroBoxLabels() : null;
+        const boxName = (s) => (s.distroId && boxLabels && boxLabels.get(`${s.distroId}|${s.number}`)) || s.name;
         for (const { s, r } of placed) {
             const badgeText = faceBadge(s) || sharedBadge;
             const dashed = !!(pend && pend.socaIndex === s.soca);
@@ -913,13 +918,13 @@ Object.assign(CanvasRenderer.prototype, {
             // A multi on no distro has no feed and so no home run to print
             // (owner, 2026-10-17), whatever an older file left stored.
             // Written as the show's cable stock pieces ("100'+25'"): a
-            // direct output's one cable from the circuits' stock, a
-            // multi's home run from the multis'.
+            // direct output's one cable from the direct-output stock, a
+            // box's home run from its own kind's (multi, L21-30, Harting).
             const homeRun = this.exportMode && s.distroId
                 ? this._homeRunText(lone ? lone.ft : s.length,
-                                    lone ? 'circuit' : (typeof app.socaHomeRunKind === 'function'
+                                    lone ? 'direct' : (typeof app.socaHomeRunKind === 'function'
                                         ? app.socaHomeRunKind(s) : 'multi')) : '';
-            const label = (dashed ? pend.boxName : s.name)
+            const label = (dashed ? pend.boxName : boxName(s))
                 + (homeRun ? ` · ${homeRun}` : '')
                 + ` · ${s.amps.toFixed(1)}A`;
             const cx = (s.x1 + s.x2) / 2;
@@ -1040,7 +1045,9 @@ Object.assign(CanvasRenderer.prototype, {
         const shared = window.app.screenCircuits(layer)
             .filter(c => Array.isArray(c.runIds) && c.runIds.length > 1);
         if (!shared.length) return [];
-        const cap = parseFloat(layer.powerAmperage) || 0;
+        // 80% of the breaker on a US screen (app circuitCapacity).
+        const cap = typeof window.app.circuitCapacity === 'function'
+            ? window.app.circuitCapacity(layer).amps : (parseFloat(layer.powerAmperage) || 0);
         const byNum = new Map();
         if (typeof window.app.getSocaPlan === 'function') {
             (window.app.getSocaPlan(layer) || []).forEach(s =>

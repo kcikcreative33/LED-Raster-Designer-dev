@@ -39,6 +39,10 @@ def add_layer():
         'sizeByDimensions', 'targetWidth', 'targetHeight', 'targetUnit',
         'lastFlowPattern',
         'weight_unit', 'infoLabelSize',
+        # The panel saved on the screen (2026-10-22): the library model it
+        # was picked from, its name, and its halves' names. A copy is the
+        # same panel.
+        'panelModelId', 'panelModelName', 'panelModelHalves',
         'halfFirstColumn', 'halfLastColumn', 'halfFirstRow', 'halfLastRow',
         'show_numbers', 'number_size', 'show_panel_borders', 'panel_border_width', 'show_circle_with_x',
         'border_color', 'border_color_pixel', 'border_color_cabinet', 'border_color_data', 'border_color_power',
@@ -96,6 +100,8 @@ def add_layer():
         'powerSocaLengths', 'powerSocaPhaseOffset',
         'powerSocaPhasePos', 'powerBreakoutType', 'showSocaBrackets',
         'powerSocaDistro',
+        # The panel input of an Edison / L6-20 screen ('true1' / 'powercon').
+        'powerPanelInput',
         # Multi names ({socaIndex: 'SL1'}), the numbers pinned onto multis
         # ({socaIndex: 3} - two multis pinned to one number on one distro are
         # one physical soca), and the stamp saying the per-multi stores above
@@ -356,6 +362,9 @@ def update_layer(layer_id):
     for key in ['name', 'columns', 'rows', 'cabinet_width', 'cabinet_height',
                 'offset_x', 'offset_y', 'rotation', 'color1', 'color2',
                 'panel_width_mm', 'panel_height_mm', 'panel_weight', 'weight_unit', 'visible',
+                # The panel saved on the screen (2026-10-22): its library
+                # model, its name and its halves' names.
+                'panelModelId', 'panelModelName', 'panelModelHalves',
                 'halfFirstColumn', 'halfLastColumn', 'halfFirstRow', 'halfLastRow',
                 'show_numbers', 'number_size', 'show_panel_borders', 'panel_border_width', 'show_circle_with_x', 'border_color',
                 'border_color_pixel', 'border_color_cabinet', 'border_color_data', 'border_color_power',
@@ -461,6 +470,9 @@ def update_layer(layer_id):
                 # soca-l620), and the power-map bracket toggle.
                 'powerSocaLengths', 'powerSocaPhaseOffset', 'powerSocaPhasePos',
                 'powerBreakoutType', 'showSocaBrackets',
+                # The panel input an Edison / L6-20 screen's adapter cables,
+                # jumpers and splitters are ('true1' / 'powercon'; absent is TRUE1).
+                'powerPanelInput',
                 # Production suite: power splitters (circuit sharing) -
                 # {enabled, maxWays, manual: {merge, split}}. Must be listed
                 # or every per-layer PUT drops the packing toggle and the

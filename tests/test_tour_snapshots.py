@@ -240,7 +240,7 @@ def _indices(tour, n, every=1):
     return [i for i in range(1, n) if (i % every == 0 or i == n - 1)]
 
 
-ADVANCED_STEPS = 74
+ADVANCED_STEPS = 81
 QUICK_STEPS = 10
 
 
@@ -286,12 +286,13 @@ def test_ids_after_a_restored_show_do_not_collide(page):
     try:
         _assert_landed('advanced', i, landed, landing, st)
         assert page.evaluate("() => window.app.getDistros().map(d => d.id)") == ['d1']
+        # the guide's MX40 Pro and the H9 its Mixed redundancy step adds
         procs = page.evaluate("() => (window.app._processorsResolved || []).map(p => p.id)")
-        assert len(procs) == 1, procs
+        assert len(procs) == 2, procs
         fresh = page.evaluate("""() => fetch('/api/processors', {method: 'POST',
             headers: {'Content-Type': 'application/json'}, body: JSON.stringify({deviceId: 'novastar-h9'})})
             .then(r => r.json()).then(st => st.processors.map(p => p.id))""")
-        assert len(fresh) == 2 and len(set(fresh)) == 2, fresh
+        assert len(fresh) == 3 and len(set(fresh)) == 3, fresh
     finally:
         _end(page)
 

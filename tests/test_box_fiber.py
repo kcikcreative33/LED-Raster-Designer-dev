@@ -455,7 +455,10 @@ def test_the_pull_list_lists_the_boxs_fiber_once_and_nothing_is_unmodelled(page)
     assert fiber == [['12 Tac Fiber', "250'", 1, 'CVT10 A', '', 'data']], out['rows']
     assert out['unmodelled'] == []
     # the box's own gear row (2026-09-07) rides the processor's list too
+    # the box's six sockets carry no home run typed: one Cat6 row, "no
+    # length" (2026-10-21), its six port labels folded as a run
     assert out['hardware'] == [[['12 Tac Fiber', "250'", 1, 'CVT10 A', '', 'data'],
+                                ['Cat6', '', 6, 'SR-1 … SR-6', 'no length', 'data'],
                                 ['CVT10', 'EA', 1, 'A', '', 'data'],
                                 ['H9', 'EA', 1, '', '', 'data']]], out['hardware']
     assert out['ports'] == [[n, 'CVT10 A'] for n in range(1, 7)], out['ports']

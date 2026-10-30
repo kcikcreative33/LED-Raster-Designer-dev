@@ -1,6 +1,272 @@
 LED RASTER DESIGNER - VERSION HISTORY
 =====================================
 
+v1.5.4 - October 23, 2026
+----------------------------
+
+The pull sheet and the binder now say exactly which cable to pull: TRUE1
+or powerCON for power, Cat6 or etherCON for data, and every distro gets a
+row for its feeder. Edison and L6-20 screens pick the connector their
+panels take, each kind of cable can have its own stock list, and the
+panel you pick is saved on the screen and counted on the pull sheet. US
+circuits now fill to 80% of the breaker, and several other fixes change
+counts on the pull sheet, so check any show you've already ordered cable
+from. They're all listed under Opening an older show.
+
+POWER CABLES NAME THEIR CONNECTOR
+
+Power cables are spelled the way Neutrik spells them, TRUE1 and powerCON,
+on the map, in the tray, on the pull sheet and in the binder. A screen's
+jumpers follow its own breakout, so a show with TRUE1 screens and powerCON
+screens lists both. Preferences > Pull sheet & cables and the Export
+dialog have a name for each jumper, and a power jumper name you'd changed
+before carries over to TRUE1.
+
+THE PANEL INPUT
+
+An Edison or L6-20 breakout doesn't say what your panels take, so those
+screens now have a Panel input under Breakout: TRUE1 or powerCON. The
+jumpers and splitters follow it, and each circuit gets one cable from the
+breakout's plug to the panel input: Edison → TRUE1, Edison → powerCON,
+L6-20 → TRUE1 or L6-20 → powerCON. The 2fers and 3fers sit at the
+panels.
+
+DATA CABLES NAME THEIR CONNECTOR
+
+Data runs read etherCON where the box's output is etherCON and Cat6 where
+it's plain RJ45, on the pull sheet, in the binder, on the map tags and the
+tray's chips. The catalog now says which one each processor and breakout
+box has, from the maker's spec sheet, and a box always uses its own
+connector, never its card's.
+
+FEEDERS
+
+Every distro has a Feeder behind its gear: a length, and whether it's fed
+from the service or thru another distro. A 400 A cam input lists a 400 A
+cam set with 5-wire in Notes, and an L21-30 input lists an L21-30
+feeder. The feeder is always on the pull sheet, with no length until you
+type one, and the binder says what each distro is fed from, like
+Fed from: HOUSE · 600 A · 120/208V 3φ · 200 A cam set 100'+50'. It only
+reads Feeder: when there's no service or distro to name.
+
+A distro you feed thru is listed even with nothing plugged into it, and
+the load of a distro fed thru another counts on the service. The binder's
+FACTS for a screen on that distro show the service it's really on. Thru
+only links distros on the same power system, so you can't move a distro
+to another system while it's fed thru, or feeds, another distro, and the
+app tells you which distro that is.
+
+THE PANEL ON EACH SCREEN
+
+When you pick a panel from the library, the screen now saves it. Screen
+Info has a Panel field that shows its name, and you can type your own
+name for a custom panel. Half tiles read their name, weight and watts
+from the saved panel, even where other panels in the library are the
+same size. If you type your own panel weight, the half tiles follow it,
+keeping the library's split between a full and a half tile.
+
+The pull sheet counts your panels: a row for each panel type on each
+screen, under the screen's position, and TOTALS adds them up across the
+show. Half tiles get rows of their own, and blank and hidden cabinets
+aren't counted. A screen from an older show uses the library's name for
+a panel that matches its size, pixels and weight, or its size, like
+500 × 500 mm panel.
+
+THE AMPERAGE BOX
+
+You still type the breaker size in a screen's Amperage box, and the
+amps you can use now show beside it: 20 A breaker · 16 A usable on US
+power, or 20 A breaker · 20 A usable where the breakers are 100% rated
+and on EU and UK power. If you typed 16 in an older show to allow for the
+80% rule, it now reads 16 A breaker · 12.8 A usable, so change it to the
+breaker size.
+
+NEW TILES IN THE PANEL LIBRARY
+
+The panel library has every Graphite model from ROE's spec sheets: 12
+tiles, including the GP1.9 (4 in 1) and the GP2.6 Right Angle corners,
+with corrected weights and power. The GP2.6 (4 in 1) is now named the way
+ROE names it, Graphite GP2.6 (4 in 1).
+
+A STOCK LIST FOR EACH KIND OF CABLE
+
+Tick A list for each kind of cable in Preferences > Cable stock and you
+get lists for L21-30 and Harting home runs, direct-output cables and
+feeders, as well as multis, data and power. Older shows and presets read
+the new lists from the ones those cables used before.
+
+MIXED REDUNDANCY ON ONE PROCESSOR
+
+On a chassis like an H series, the redundancy bar behind the processor's
+⚙ now reads Off, Per card, Per port and Mixed. Pick Mixed and each card
+gets a row of its own: back up card 1 with card 2, 1:1, and let card 3
+pair its own ports with Sequential, OPT Split or Manual. A card that
+backs up another says which one, and the tray, the binder and the pull
+sheet read each card the way you set it. A show whose cards were already
+set different ways opens on Mixed, just as you left it.
+
+OPENING AN OLDER SHOW
+
+Some counts will change when you open a show from an earlier version.
+The first four come from the new 80% fill, the last six change what's
+listed or what you can do, and the rest were wrong before. Export the
+pull sheet again and compare it with anything you've already ordered.
+
+- FIX (IMPORTANT): Circuits on US power now fill to 80% of the breaker,
+  the same limit the distro checks them against, so a US screen may need
+  more circuits than before. The limit follows the distro's region: a
+  circuit on a US distro fills to 80% whatever its voltage, so 240V on a
+  US 120/240V distro is 80%, and the distro checks hold it to 80% too. A
+  US distro with 100% rated breakers fills to 100%, and so do EU and UK
+  distros. A screen on no distro goes by its voltage: 80% at 208V and
+  below, 100% above. The panels per circuit and watts per circuit
+  readouts follow. A change that would repack a locked screen is refused,
+  and the message names the screen: turning 100% rated on or off,
+  changing a distro's system, removing a distro, plugging in, moving or
+  unplugging a multi, grouping, sharing circuits through a 2fer or 3fer
+  or removing one, 2fer it or 3fer it, typing a power setting on a screen
+  grouped with it, or hiding or showing a screen.
+- FIX (IMPORTANT): Automatic 2fers and 3fers saved in an older show that
+  fit at 100% can be over the limit at 80%. They're kept as they were and
+  flagged OVER, so share them again.
+- FIX (IMPORTANT): A screen whose panels can't fit on a circuit at 80%
+  warns you when you export the binder, and its power sheet prints with a
+  note that it can't fit.
+- CHANGE (IMPORTANT): A screen you set to 16 A in an older show to allow
+  for the 80% rule now reads 16 A breaker · 12.8 A usable. Change it to
+  the breaker size.
+- FIX (IMPORTANT): powerCON screens listed their jumpers as TRUE1 power
+  jumpers. They list powerCON jumpers now, under the powerCON jumper name.
+- FIX (IMPORTANT): Edison and L6-20 screens listed the wrong cables and
+  splitters. Each circuit now gets one cable to the panel input (Edison →
+  TRUE1, Edison → powerCON, L6-20 → TRUE1 or L6-20 → powerCON), and the
+  splitters at the panels are TRUE1 or powerCON 2fers.
+- FIX (IMPORTANT): Blank cabinets on a hand-drawn run counted jumpers.
+  They count nothing now, on power and data, and a data path you draw
+  steps over them in the drawing too, the same as automatic routing.
+- FIX (IMPORTANT): When the cable stock makes a run from more than one
+  piece, the pull sheet adds a barrel for each join on data (one per
+  channel on a snake) and a powerCON Coupler on powerCON. TRUE1 cables and
+  multis need none.
+- FIX (IMPORTANT): A multi shared by screens with different breakouts
+  lists a breakout for each connector, and the binder's band names the
+  connector.
+- FIX (IMPORTANT): A placed data port with no home run typed is still
+  listed on the pull sheet, as a Cat6 or etherCON row with no length.
+- FIX (IMPORTANT): The QD-S input fiber is listed where its boxes are,
+  and with the screen's cables.
+- FIX (IMPORTANT): Rows you hide and counts you change on the pull sheet
+  now reach the binder's cable tables for each screen and the distro and
+  processor pull lists.
+- FIX (IMPORTANT): Pull sheet edits saved in an older version follow
+  their rows when the rows are renamed. Where one old row is now two,
+  like TRUE1 and powerCON jumpers of the same length, a hidden row hides
+  both, and a count you changed goes back to the show's count and is
+  listed as stale for you to redo.
+- FIX (IMPORTANT): A multi box carrying more circuits than it holds gets
+  a note on the pull sheet, like 8 circuits on a six-circuit output, and
+  a Crowded line on the distro sheet.
+- CHANGE (IMPORTANT): The pull sheet has a row for each panel type on
+  each screen and a feeder row for each distro, so an older show's pull
+  sheet gets these new rows.
+- CHANGE (IMPORTANT): Hidden screens keep their multi numbers and outputs
+  reserved, so no other screen takes them, but they're left out of distro
+  and service loads everywhere, so the distro and Service sheets match
+  the pull sheet. Balance holds their multis in place and leaves them out
+  of what it searches.
+- CHANGE (IMPORTANT): The Overview's totals in the binder leave out
+  hidden screens.
+- CHANGE (IMPORTANT): A distro with nothing on it, or only hidden
+  screens, is left off the binder, and a service with nothing printing on
+  it gets no Service sheet.
+- CHANGE (IMPORTANT): The library's corrected Graphite figures change
+  older shows with ROE Graphite screens. GP2.6 (4 in 1) half tiles now
+  draw 50% of a full tile instead of 64%. GP2.6, GP3.1 and GP3.9 Full
+  Tile screens saved at 8.5 kg no longer match the library, which now
+  lists 9.0 kg, so their panel rows print by size and their half tiles
+  weigh 65% of a full tile. Pick the panel from the library again to get
+  the new figures.
+- CHANGE (IMPORTANT): A group saved half locked in an older show now
+  counts as locked. You can still hide and show its screens when that
+  doesn't change their circuits, but any other edit waits until you pick
+  Lock or Unlock for the group.
+
+FIXES
+
+- FIX: A direct output's cable names both ends, like CEE 16A → TRUE1, or
+  just TRUE1 when the outlet already is one.
+- FIX: Distro boxes are listed by their own names everywhere (SR1,
+  DISTRO 1-1, or the name you typed).
+- FIX: When two distros share a name they read SR-1 and SR-2 everywhere,
+  and their boxes and circuits are named from that, so a box name never
+  matches a circuit name. Only distros that print are counted, so an
+  unused duplicate doesn't add a suffix.
+- FIX: Typing a multi name another multi already has shows a warning
+  asking you to rename it.
+- FIX: A single name is never split, so SR 13x5 stays SR 13x5, and a run
+  of names folds into one, like SR-1 … SR-6.
+- FIX: Rows you typed on the pull sheet yourself in an older version are
+  updated to today's spellings, like TRUE1, etherCON and Edison → TRUE1
+  cable, in their notes as well as their type.
+- FIX: Snakes are labeled by their ports, with the snake's name and size
+  in Notes (SNAKE A · 4 channel), and an extension by its port. Two snakes
+  are never merged into one row.
+- FIX: The exported workbook's GEAR LIST lists only the connectors the
+  show uses, spelled etherCON and TRUE1.
+- FIX: A fiber cable with no length is flagged in the binder's cable
+  tables, strand maps and fiber connections.
+- FIX: A data port with no home run says no length in the binder's Ports
+  table, the same as in its cable list.
+- FIX: The binder's tables no longer cut off names or overlap. Distro
+  names and cable types wrap onto another line instead of folding into
+  +N more.
+- FIX: A length typed in the other unit, like 30m in a feet show,
+  converts wherever you type a home run, cable, feeder, snake or fiber
+  length.
+- FIX: A favorite panel in Add Screen and Change cabinet uses the
+  library's figures as they are now, not as they were when you saved it,
+  and finds a panel the library has renamed.
+- FIX: A custom Share with next run no longer joins a wide circuit, or a
+  circuit already on a 2fer or 3fer.
+- FIX: Clear Circuit clears a whole custom 3fer, not just one leg of it.
+- FIX: After Clear Circuit, the circuit field still matches the numbers
+  on the wall, and Next and Previous skip the gap.
+- FIX: On a custom wall, a 2fer or 3fer shows its circuit number in the
+  field and in messages.
+- FIX: The custom fill readout and its limit count every leg of a 2fer
+  or 3fer, so you can't click a shared circuit past its amps.
+- FIX: Picking 2fer this screen or 3fer this screen ticks Share circuits
+  via splitters for you, in automatic mode as well as custom.
+- FIX: Sharing a whole screen or a selection from the right-click menu
+  keeps to the screen's splitter size.
+- FIX: Locked screens keep their settings when you group them, Share
+  circuits via splitters included, and screens you ungroup keep the
+  settings they had in the group.
+- FIX: Every distro's rating reads the same way, like
+  400 A service · 120/208V 3φ.
+- FIX: The tray's chips on direct outputs name the same cable as the
+  paperwork.
+- FIX: When a Power sheet has too many multis for their labels to fit
+  beside the wall, the brackets get short tags and a key on the sheet
+  lists each tag's full name and length. Tags come from the distro's own
+  name, so B1 is always DISTRO B's multi 1. Before, the labels were cut
+  to D… or ran into each other. Power sheets whose labels already fit
+  print as they did; deep stacks print their labels larger where there's
+  room.
+- FIX: The tray and the distro checks now warn you when an output carries
+  more circuits than it takes, like two visible screens on a one-circuit
+  output or a multi with more circuits than its output has. The pull
+  sheet and the distro sheet already showed a crowded direct output and
+  a multi on a one-circuit output, and now they flag a multi box carrying
+  more circuits than it holds too.
+- FIX: The binder's Cards table lists a card's 1:1 partner only while
+  the card is backed up 1:1, never an old partner from before you
+  switched it to Sequential, OPT Split or Manual, and a card that backs
+  up another says which one, like backs up SR.
+- FIX: On the binder's data wiring sheets, a breakout box on an SX40 or
+  another processor without cards no longer says slot 1. A named one
+  reads XD B · SX40 S3 · trunk B, and an unnamed one reads XD B · trunk B.
+
 v1.5.3 - October 21, 2026
 ----------------------------
 
@@ -59,7 +325,7 @@ FIXES
   for two columns, 3fer for three, 4fer for four.
 - FIX: The 3fer Screen button splits a circuit that spans three columns
   into its own three legs, the way automatic mode does, instead of joining
-  it to its neighbours.
+  it to its neighbors.
 - FIX: In a group, Share circuits via splitters is one setting for the
   whole wall. Before, each screen had its own, and a fill followed the
   first screen's even when another screen showed it ticked.

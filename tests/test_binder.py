@@ -85,20 +85,24 @@ from conftest import private_fixture, private_fixture_missing  # noqa: E402
 SCRATCH_FIXTURE = private_fixture('live-show-b.json', 'LRD_PULL_SMOKE_JSON')
 
 BOX_WORD = re.compile(r'\b(box|boxes)\b', re.I)
-# The band over a multi's circuits: "SR1 · Multi 208 · 125' · 6 circuits" -
-# name · type · length · count (no "home run": the length IS the home run,
+# The band over a multi's circuits: "SR1 · Multi 208 TRUE1 breakout · 125'
+# · 6 circuits" - name · type and the connector it breaks out to
+# (2026-10-21) · length · count (no "home run": the length IS the home run,
 # user 2026-09-08).
-BAND = re.compile(r"^.+ · (Multi (208|120)|L21-30|no distro) · .+ · \d+ circuits?( · .*)?$")
+BAND = re.compile(r"^.+ · ((Multi (208|120)|L21-30) (TRUE1|powerCON|Edison|L6-20) breakout|no distro)"
+                  r" · .+ · \d+ circuits?( · .*)?$")
 def _bands(texts):
     return [t for t in texts if BAND.match(t)]
 # "breakout" as the generic noun for the power unit is gone (2026-09-07);
-# the pull list's "Tru-1 Breakout" CABLE row and the data side's "breakout
+# the pull list's "TRUE1 Breakout" CABLE row and the data side's "breakout
 # box" keep their names - and the Power Wiring sheet's block for a multi
 # IS its breakout, the fan-out, named by type ("Multi 208 breakout", user
 # 2026-09-08: "it is a breakout also known as a fan out / but i like the
 # first option").
 BREAKOUT_WORD = re.compile(r'\bbreakouts?\b', re.I)
-POWER_BREAKOUT = re.compile(r'\b(Multi (208|120)|L21-30) breakout\b')
+POWER_BREAKOUT = re.compile(r'\b(Multi (208|120)|L21-30)( (TRUE1|powerCON|Edison|L6-20))? breakout\b')
+# the pull list's breakout CABLE row, one per connector ("TRUE1 Breakout")
+BREAKOUT_CABLE = re.compile(r'\b(TRUE1|powerCON|Edison|L6-20) Breakout\b')
 
 
 # The Fiber connections table's own headings say BREAKOUT for the end of a
@@ -109,7 +113,7 @@ FIBER_BREAKOUT_HEADS = {'BREAKOUT', 'AT THE BREAKOUT'}
 
 def _generic_breakout(texts):
     return [t for t in texts if BREAKOUT_WORD.search(t)
-            and 'breakout box' not in t.lower() and 'Tru-1 Breakout' not in t
+            and 'breakout box' not in t.lower() and not BREAKOUT_CABLE.search(t)
             and not POWER_BREAKOUT.search(t) and t not in FIBER_BREAKOUT_HEADS]
 
 
@@ -240,8 +244,11 @@ def test_the_menu_items_the_format_option_and_the_section_are_served(client):
     assert not [l for l in literals if re.search(r'\btails?\b', l)], [l for l in literals if 'tail' in l]
     # "Multi" may name a CABLE (the GEAR LIST's word); it never names the unit
     assert not [l for l in literals if 'Multi' in l], [l for l in literals if 'Multi' in l]
+    # the power band names a multi's breakout by its type and connector
+    # (2026-10-21, _bBoxTypeText)
+    band_type = {'`${box.type} ${box.connector} breakout`', '`${box.type} breakout`'}
     generic = [l for l in literals if BREAKOUT_WORD.search(l) and 'breakout box' not in l.lower()
-               and l.strip("'").upper() not in FIBER_BREAKOUT_HEADS]
+               and l.strip("'").upper() not in FIBER_BREAKOUT_HEADS and l not in band_type]
     assert not generic, generic
     assert not [l for l in literals if 'Palette' in l], [l for l in literals if 'Palette' in l]
     # the wiring sheet's own strings the same - save the power block's
@@ -334,18 +341,19 @@ SEED_JS = """async () => {
     await j('PUT', '/api/project', proj);
     const add = (body) => j('POST', '/api/layer/add', body);
     await add({name: 'WALL-A', columns: 4, rows: 3, cabinet_width: 200, cabinet_height: 200,
-               powerVoltage: 208, powerAmperage: 10, panelWatts: 200,
+               // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+               powerVoltage: 208, powerAmperage: 12.5, panelWatts: 200,
                powerFlowPattern: 'tl-h', powerOrganized: true, flowPattern: 'tl-h',
                processorType: 'novastar-armor'});
     await add({name: 'WALL-B', columns: 4, rows: 3, cabinet_width: 200, cabinet_height: 200,
-               powerVoltage: 208, powerAmperage: 10, panelWatts: 250,
+               powerVoltage: 208, powerAmperage: 12.5, panelWatts: 250,
                powerFlowPattern: 'tl-h', powerOrganized: true, flowPattern: 'tl-h',
                processorType: 'novastar-armor', offset_x: 900});
     await add({name: 'CENTER', columns: 3, rows: 5, cabinet_width: 128, cabinet_height: 128,
                // stated, not implied: a screen with no breakout takes the
                // PREFERENCE (True1 as shipped), not Edison (2026-09-22)
                powerVoltage: 110, powerBreakoutType: 'soca-edison',
-               powerAmperage: 15, panelWatts: 100,
+               powerAmperage: 18.75, panelWatts: 100,
                powerFlowPattern: 'tl-v', powerOrganized: true, flowPattern: 'tl-h',
                powerSplitters: {enabled: true, maxWays: 2, manual: {merge: [], split: []}},
                processorType: 'novastar-armor', offset_x: 1800});
@@ -571,7 +579,7 @@ def test_the_power_sheet_carries_its_title_block_and_says_home_run_once_per_box(
     bands = _bands(texts)
     # the type is Multi, and the length stands alone - "125' home run"
     # said it twice (user, 2026-09-08)
-    assert bands == ["SR1 · Multi 208 · 125' · 2 circuits"], texts
+    assert bands == ["SR1 · Multi 208 TRUE1 breakout · 125' · 2 circuits"], texts
     assert not [t for t in texts if 'home run' in t.lower()], [t for t in texts if 'home run' in t.lower()]
     # "Multi" alone is a cable row, never a heading
     assert not any(t.strip() == 'MULTI' for t in texts), [t for t in texts if t.strip() == 'MULTI']
@@ -582,13 +590,13 @@ def test_the_power_sheet_carries_its_title_block_and_says_home_run_once_per_box(
     # · AMPS · CABLE - the band above the headings (2026-09-26: "same with
     # distros") - the cable typed on each, the cables table, the facts
     i = texts.index('CIRCUITS')
-    assert texts[i + 1:i + 7] == ["SR1 · Multi 208 · 125' · 2 circuits",
+    assert texts[i + 1:i + 7] == ["SR1 · Multi 208 TRUE1 breakout · 125' · 2 circuits",
                                   'CIRCUIT', 'NO.', 'PANELS', 'AMPS', 'CABLE'], texts[i:i + 8]
     assert 'SR1-1' in texts and 'SR1-2' in texts
-    assert texts.count("10' True1") >= 2
+    assert texts.count("10' TRUE1") >= 2
     assert 'CABLES THIS SCREEN' in texts and 'FACTS' in texts
     assert 'Multi' in texts and "125'" in texts      # the breakout's cable, in the GEAR LIST's word
-    assert 'Tru-1 Breakout' in texts
+    assert 'TRUE1 Breakout' in texts
     assert 'SHARED CIRCUITS' not in texts
     assert not [t for t in texts if 'Palette' in t]
     # the view bubble under the map: view 2, the sheet's name
@@ -606,7 +614,9 @@ def test_shared_circuits_are_listed_only_where_a_screen_has_them(page):
     i = ganged.index('SHARED CIRCUITS')
     assert ganged[i:i + 7] == ['SHARED CIRCUITS', 'CIRCUIT', 'SPLITTER', 'AMPS', ganged[i + 4], '2fer', ganged[i + 6]]
     assert ganged[i + 4].endswith('1') or ganged[i + 4]   # the shared circuit's label
-    assert 'Edison 2fer' in ganged
+    # the splitter is on the panels' side: CENTER's Edison breakout feeds
+    # TRUE1 panels (2026-10-21)
+    assert 'TRUE1 2fer' in ganged
 
 
 def test_the_rulers_number_every_fifth_column_and_the_ends_in_bold(page):
@@ -638,14 +648,14 @@ def test_the_printer_sheet_has_no_colour_and_a_dash_per_circuit(page):
 def test_cable_tags_follow_the_screens_switch(page):
     pg, ids = page
     on = _render(pg, SHOW, 'WALL-A - Power - Front View')['mapTexts']
-    assert "10' True1" in on and _on_map(on, 'SR1-1'), on
+    assert "10' TRUE1" in on and _on_map(on, 'SR1-1'), on
     off = _render(pg, SHOW, 'WALL-B - Power - Front View')['mapTexts']
-    assert _on_map(off, 'SR2-1') and "6' True1" not in off, off
+    assert _on_map(off, 'SR2-1') and "6' TRUE1" not in off, off
     # flip WALL-A off, and the tag leaves the map
     pg.evaluate("(id) => { window.app.project.layers.find(l => l.id === id).showPowerCableTags = false; }", ids['a'])
     try:
         flipped = _render(pg, SHOW, 'WALL-A - Power - Front View')['mapTexts']
-        assert "10' True1" not in flipped and _on_map(flipped, 'SR1-1'), flipped
+        assert "10' TRUE1" not in flipped and _on_map(flipped, 'SR1-1'), flipped
     finally:
         pg.evaluate("(id) => { window.app.project.layers.find(l => l.id === id).showPowerCableTags = true; }", ids['a'])
 
@@ -1239,7 +1249,7 @@ def test_the_map_carries_no_screen_name_plate_but_the_export_still_does(page):
 def test_no_sheet_says_box_breakout_or_palette(page):
     """No sheet text says box ("I dont like calling them boxes"), none
     says breakout as the generic noun ("no need to call it a breakout") -
-    save a data-side breakout box's own name and the pull list's "Tru-1
+    save a data-side breakout box's own name and the pull list's "TRUE1
     Breakout" cable row - and none says Palette. The distro sheet names
     its table by what it lists: "2 Multi 208", the units by type."""
     pg, ids = page
@@ -1251,10 +1261,12 @@ def test_no_sheet_says_box_breakout_or_palette(page):
         assert not boxy, (idx, boxy)
         assert not _generic_breakout(texts), (idx, _generic_breakout(texts))
         assert not [t for t in texts if 'palette' in t.lower()], (idx, texts)
+        # never "tail", the Edison adapter included: it is "Edison → TRUE1
+        # cable" (the owner, 2026-10-21)
         assert not [t for t in texts if re.search(r'\btails?\b', t.lower())], (idx, texts)
     distro = _render(pg, SHOW, DISTRO)['texts']
     i = distro.index('2 MULTI 208')
-    assert distro[i + 1] == 'NAME' and distro[i + 2] == 'TYPE' and 'SR 1' in distro and 'SR 2' in distro
+    assert distro[i + 1] == 'NAME' and distro[i + 2] == 'TYPE' and 'SR1' in distro and 'SR2' in distro
     assert 'BREAKOUTS' not in distro and 'Breakouts' not in distro
     assert [t for t in distro if re.fullmatch(r'\d+ on 2 Multi 208', t)], distro
 
@@ -1624,9 +1636,12 @@ PULL_SPREAD_JS ="""([opts, n]) => {
     }
 }"""
 
-PULL_SECTIONS = ('POWER CABLES', 'DATA CABLES', 'HARDWARE', 'SCREENS')
-PULL_HEADINGS = ('CABLE', 'LENGTH', 'QTY', 'LABEL', 'ITEM', 'DETAIL',
+PULL_SECTIONS = ('POWER CABLES', 'DATA CABLES', 'HARDWARE', 'PANELS', 'SCREENS')
+PULL_HEADINGS = ('CABLE', 'LENGTH', 'QTY', 'LABEL', 'ITEM', 'DETAIL', 'PANEL',
                  'SCREEN', 'SIZE', 'PANELS', 'CIRCUITS', 'PORTS', 'SHARED')
+# PANELS is both a section (the position's panel rows, 2026-10-22) and the
+# SCREENS table's column heading: each is told by its size.
+PULL_SECTION_AND_HEADING = {'PANELS'}
 
 
 @pytest.mark.parametrize('n', [1, 2, 4], ids=['one position', 'two positions', 'four positions'])
@@ -1659,13 +1674,20 @@ def test_the_pull_sheet_spreads_across_the_page_and_cuts_no_heading(page, n):
     # nothing on the sheet is cut, and every heading is whole and full size
     assert not [t for t in texts if t.endswith('…')], [t for t in texts if t.endswith('…')]
     sc = out['scale'] or 1
+    title_size = 25 * sc
     for h in PULL_HEADINGS:
         sizes = [o['size'] for o in out['ops'] if o['t'] == h and o['weight'] == 700]
+        if h in PULL_SECTION_AND_HEADING:
+            sizes = [s for s in sizes if abs(s - title_size) >= 0.05]
         assert len(sizes) >= n, (h, texts)
         if n < 4:
             assert all(abs(s - 21 * sc) < 0.05 for s in sizes), (h, sizes, sc)
     for h in sections:
         sizes = [o['size'] for o in out['ops'] if o['t'] == h and o['weight'] == 700]
+        if h in PULL_SECTION_AND_HEADING:
+            sizes = [s for s in sizes if abs(s - title_size) < 0.05]
+            assert len(sizes) >= n, (h, sizes, sc)
+            continue
         assert sizes and all(abs(s - 25 * sc) < 0.05 for s in sizes), (h, sizes, sc)
     assert ids['errors'] == []
 
@@ -2407,7 +2429,7 @@ def test_the_data_sheet_prints_the_return_end_and_the_processor_once(page):
     Backup · 1 channel snake · 150'") and each end's HOME RUN is its own
     extension ("+25'" on the backup's socket, 2026-09-07: "i have no way of
     putting lengths for redundancy cables"), never cut to "…"; Cables this screen lists the
-    backup's snake, the extension and the extension's `Ether-con Barrel`
+    backup's snake, the extension and the extension's `Cat6 Barrel`
     (one per extension, 2026-09-07); the processor sheet lists the
     extension as an `ext` row under its snake."""
     pg, ids = page
@@ -2467,11 +2489,12 @@ def test_the_data_sheet_prints_the_return_end_and_the_processor_once(page):
         assert 'PX' not in texts
         assert not [t for t in texts if t.startswith('slot ') or t.endswith('…')]
         cables = texts[texts.index('CABLES THIS SCREEN'):texts.index('Screen')]
-        assert ['Ether-con', "25'", '1'] == cables[cables.index('Ether-con'):cables.index('Ether-con') + 3], cables
-        k = cables.index('Ether-con Barrel')
-        assert cables[k:k + 3] == ['Ether-con Barrel', 'EA', '1'], cables
-        assert cables.count('Ether-con Barrel') == 1, cables
-        assert cables.count('Ether-con Snake') == 2, cables
+        k = cables.index('Cat6 Extension')
+        assert ['Cat6 Extension', "25'", '1'] == cables[k:k + 3], cables
+        k = cables.index('Cat6 Barrel')
+        assert cables[k:k + 3] == ['Cat6 Barrel', 'EA', '1'], cables
+        assert cables.count('Cat6 Barrel') == 1, cables
+        assert cables.count('Cat6 Snake') == 2, cables
         assert "150'" in cables and "100'" in cables, cables
         # the Facts say how many ports, never a px-per-port ceiling
         assert texts[texts.index('Ports') + 1] == '1 port' and not [t for t in texts if 'px/port' in t]
@@ -2535,8 +2558,10 @@ def test_a_box_delivering_the_port_is_listed_instead_of_the_card(page):
         band = "CVT4K-S A-B · OPT 1-2 · 16 ports · 12 Tac Fiber 250'"
         assert band in texts, texts
         i = texts.index(band)
+        # a placed port with no home run typed says so, as CABLES THIS
+        # SCREEN does (owner, 2026-10-22) - '—' is for an empty cell
         assert texts[i + 1:i + 8] == ['PORT', 'OUTPUT', 'HOME RUN', 'PANELS',
-                                      'SR-1', 'CVT4K-S A-B · 1', '—'], texts[i:i + 10]
+                                      'SR-1', 'CVT4K-S A-B · 1', 'etherCON no length'], texts[i:i + 10]
         assert not [t for t in texts if t.startswith('H9 SR ·')], 'the card is not listed where the box delivers'
         k = texts.index('CABLES THIS SCREEN')
         assert texts[k + 4:k + 7] == ['12 Tac Fiber', "250'", '1'], texts[k:k + 12]
@@ -2555,7 +2580,7 @@ def test_a_box_delivering_the_port_is_listed_instead_of_the_card(page):
         # left out (2026-10-18), the port's run beside it
         assert 'SR · 1' not in texts and 'OUTPUT' not in texts
         i = texts.index('SR-1')
-        assert texts[i - 3:i + 2] == ['PORT', 'HOME RUN', 'PANELS', 'SR-1', '—'], texts[i - 4:i + 3]
+        assert texts[i - 3:i + 2] == ['PORT', 'HOME RUN', 'PANELS', 'SR-1', 'etherCON no length'], texts[i - 4:i + 3]
         # the processor sheet: the box under its card, with its fiber
         proc = _render(pg, SHOW, PROC)['texts']
         b = proc.index('BREAKOUT BOXES')
@@ -2611,7 +2636,7 @@ def test_a_box_delivering_the_port_is_listed_instead_of_the_card(page):
             # so neither half prints OUTPUT (2026-10-18)
             assert texts[j + 4:j + 9] == ['PORT', 'HOME RUN', 'PORT', 'HOME RUN', 'PANELS'], texts[j:j + 12]
             i = texts.index('SR-1')
-            assert i > j and texts[i:i + 4] == ['SR-1', '—', 'BK-1', '—'], texts[i:i + 8]
+            assert i > j and texts[i:i + 4] == ['SR-1', 'etherCON no length', 'BK-1', 'etherCON no length'], texts[i:i + 8]
             assert 'SR · 1' not in texts and 'BK · 1' not in texts
             assert not [t for t in texts if t.endswith('…')]
         finally:
@@ -2654,7 +2679,7 @@ def test_the_port_cell_reads_a_long_label_whole(page):
         texts = out['texts']
         assert 'SR A-1' in texts, texts
         i = texts.index('SR A-1')
-        assert texts[i:i + 3] == ['SR A-1', 'H9 SR A · 1', '—'], texts[i:i + 6]
+        assert texts[i:i + 3] == ['SR A-1', 'H9 SR A · 1', 'Cat6 no length'], texts[i:i + 6]
         assert not [t for t in texts if t.endswith('…')], [t for t in texts if t.endswith('…')]
         assert _on_map(out['mapTexts'], 'SR A-1'), out['mapTexts']
     finally:
@@ -3103,10 +3128,10 @@ def test_smoke_live_show_b(page):
     assert 'CIRCUITS' in texts and 'FACTS' in texts and 'CABLES THIS SCREEN' in texts
     bands = _bands(texts)
     assert bands == [
-        "SR1 · Multi 208 · 125' · 6 circuits",
-        "SR2 · Multi 208 · 100' · 5 circuits",
-        "SR3 · Multi 208 · 125' · 6 circuits",
-        "SR4 · Multi 208 · 100' · 5 circuits",
+        "SR1 · Multi 208 TRUE1 breakout · 125' · 6 circuits",
+        "SR2 · Multi 208 TRUE1 breakout · 100' · 5 circuits",
+        "SR3 · Multi 208 TRUE1 breakout · 125' · 6 circuits",
+        "SR4 · Multi 208 TRUE1 breakout · 100' · 5 circuits",
     ]
     assert not [t for t in texts if 'home run' in t.lower()]
     assert len([t for t in texts if re.fullmatch(r'SR[1-4]-\d', t)]) == 22
@@ -3118,7 +3143,7 @@ def test_smoke_live_show_b(page):
     assert ["SR1 · 125'", "SR2 · 100'", "SR3 · 125'", "SR4 · 100'"] == [t for t in main['texts'] if re.fullmatch(r"SR\d · \d+'", t)]
     # the map: every label, and the typed cables as tags (the screen's switch is on);
     # no screen-name plate over them - the title block names the screen
-    assert _on_map(main['mapTexts'], 'SR1-1') and "10' True1" in main['mapTexts'], main['mapTexts'][:20]
+    assert _on_map(main['mapTexts'], 'SR1-1') and "10' TRUE1" in main['mapTexts'], main['mapTexts'][:20]
     assert not _on_map(main['mapTexts'], 'SR - MAIN')
     # the band rule: every band is followed straight by its headings and
     # then its first circuit (2026-09-26: the band above the headings)
@@ -3159,7 +3184,7 @@ def test_smoke_live_show_b(page):
     i = ret.index('SHARED CIRCUITS')
     assert ret[i + 4:i + 4 + 15:3] == ['SR5-1', 'SR5-2', 'SR5-3', 'SR5-4', 'SR5-5']
     assert ret.count('2fer') == 5
-    assert "SR5 · Multi 208 · 125' · 6 circuits" in ret
+    assert "SR5 · Multi 208 TRUE1 breakout · 125' · 6 circuits" in ret
     dpage = _render(pg, SHOW, 'SR - MAIN - Data - Front View')
     assert not _on_map(dpage['mapTexts'], 'SR - MAIN')
     _title_block(dpage['texts'], 'SR - MAIN · DATA · FRONT VIEW', '2.3', show=project['name'])
@@ -3206,8 +3231,8 @@ def test_smoke_live_show_b(page):
     assert [data[data.index(f'SR A-{n}') + 1] for n in (1, 2, 3, 4)] == ["+10'", '—', "+25'", "+25'"], data
     assert [data[data.index(f'SR A-{n}') + 3] for n in (1, 2, 3, 4)] == ["+10'", '—', "+10'", "+75'"], data
     cables = data[data.index('CABLES THIS SCREEN'):data.index('FACTS')]
-    k = cables.index('Ether-con Barrel')
-    assert cables[k:k + 3] == ['Ether-con Barrel', 'EA', '6'], cables
+    k = cables.index('Cat6 Barrel')
+    assert cables[k:k + 3] == ['Cat6 Barrel', 'EA', '6'], cables
     # the processor once, the redundancy in the bar's words
     assert data[data.index('Processor') + 1] == 'H9' and 'H9 · H9' not in data
     assert data[data.index('Redundancy') + 1] == 'Per card'
@@ -3321,7 +3346,7 @@ NINE_BY_FIVE_JS = """async () => {
     proj.name = 'Nine by Five';
     await j('PUT', '/api/project', proj);
     await j('POST', '/api/layer/add', {name: 'D - OffSL IMAG', columns: 9, rows: 5, cabinet_width: 216, cabinet_height: 216,
-               powerVoltage: 208, powerAmperage: 20, panelWatts: 800,
+               powerVoltage: 208, powerAmperage: 25, panelWatts: 800,
                powerFlowPattern: 'tl-v', powerOrganized: true, flowPattern: 'tl-h',
                processorType: 'novastar-armor'});
     let st = await j('POST', '/api/processors', {deviceId: 'novastar-h9'});
@@ -3405,7 +3430,7 @@ def test_the_fill_picks_the_layout_that_covers_most(page):
     # the bands and the rows say what the wall is
     texts = tabloid['texts']
     bands = _bands(texts)
-    assert bands == ["SR1 · Multi 208 · 125' · 6 circuits", "SR2 · Multi 208 · 100' · 3 circuits"], bands
+    assert bands == ["SR1 · Multi 208 TRUE1 breakout · 125' · 6 circuits", "SR2 · Multi 208 TRUE1 breakout · 100' · 3 circuits"], bands
     assert len([t for t in texts if re.fullmatch(r'SR[12]-\d', t)]) == 9
     # the record: the tables' text at base x s, the rulers and brackets at
     # their own sizes, the title block at its own
@@ -3483,7 +3508,7 @@ ORDER_SEED_JS = """async () => {
     let x = 0;
     for (const name of ['B - X', 'A - Y', 'C - Z']) {
         await j('POST', '/api/layer/add', {name, columns: 4, rows: 3, cabinet_width: 200, cabinet_height: 200,
-                   powerVoltage: 208, powerAmperage: 10, panelWatts: 200,
+                   powerVoltage: 208, powerAmperage: 12.5, panelWatts: 200,
                    powerFlowPattern: 'tl-h', powerOrganized: true, flowPattern: 'tl-h',
                    processorType: 'novastar-armor', offset_x: x});
         x += 900;

@@ -102,6 +102,10 @@
         return ls.find(function (l) { return l.name === 'DEMO WALL 2'; }) || null;
     }
     function proc() { return ((A() && A()._processorsResolved) || [])[0] || null; }
+    // The H9 the Mixed redundancy step puts beside the guide's own unit.
+    function chassis() {
+        return ((A() && A()._processorsResolved) || []).find(function (p) { return p.deviceId === 'novastar-h9'; }) || null;
+    }
     function card() {
         var p = proc();
         var s = ((p && p.slots) || []).find(function (x) { return x && x.card; });
@@ -315,6 +319,16 @@
     }
     function closeExport() { var m = $('#export-modal'); if (m) m.style.display = 'none'; }
     function closeExportUnless(next) { if (!next || !next.exportStep) closeExport(); }
+    // The pull sheet editor (app-pull-sheet-editor.js), opened from the
+    // Export dialog's Edit rows; closed here without the editor's own trip
+    // back to the Export dialog.
+    var PANEL_ROW = '#pull-sheet-board tr.pull-row[data-side="panel"]';
+    function pullSheetOpen() { var m = $('#pull-sheet-modal'); return !!m && m.style.display === 'block'; }
+    function closePullSheet() {
+        var a = A(), m = $('#pull-sheet-modal');
+        if (a) a._pullSheetReturnToExport = false;
+        if (m) m.style.display = 'none';
+    }
     function hideMenus() {
         $$('.menu-dropdown').forEach(function (m) { m.style.display = 'none'; });
         $$('#menu-bar .menu-item.active').forEach(function (i) { i.classList.remove('active'); });
@@ -2293,6 +2307,7 @@
         closePrefs();
         var pp = $('#preset-picker-modal'); if (pp) pp.style.display = 'none';
         hideMenus();
+        closePullSheet();
         closeExport();
         if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     }
@@ -2568,6 +2583,33 @@
                     ? 'Each cabinet is 200 × 200 px.' : null;
             }
         },
+        // The panel saved on the screen (1.5.4, app-screen-info.js
+        // updateLayerFromInputs, app-presets.js catalogPanelModelFields): a
+        // pick from the panel library fills Screen Info's Panel field, and
+        // a typed name names a panel of your own. The cabinet step just
+        // typed its pixels by hand, which forgets any saved panel, so the
+        // demo wall names its own here; the pull sheet's panel rows print it.
+        panelName: {
+            since: '1.5.4',
+            target: '#panel-model-name', place: 'right', title: 'Name the panel',
+            avoid: ['#panel-model-name'],
+            body: 'Panel is the cabinet as the pull sheet names it. A pick from the panel library fills it in; for a panel of your own, type its name.',
+            before: function () { switchView('pixel-map'); },
+            act: function (t) {
+                return t.type('#panel-model-name', 'Demo Panel', { enter: true }).then(function () {
+                    return t.wait(function () { var w = wall(); return w && w.panelModelName === 'Demo Panel'; });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the screen did not take the panel name');
+                    return t.pause(PACE.rest);
+                });
+            },
+            check: function () {
+                var w = wall();
+                if (!w || w.panelModelName !== 'Demo Panel') return null;
+                var types = A().pullPanelTypes(w);
+                return (w.name || 'The screen') + ' hangs ' + types.none + ': the pull sheet counts its cabinets by that name, and a half tile as ' + types.height + '.';
+            }
+        },
         gridSize: {
             target: '#screen-columns', ring: ['#screen-columns', '#screen-rows'], place: 'right', title: 'Columns and rows',
             avoid: ['#screen-columns', '#screen-rows'],
@@ -2762,7 +2804,7 @@
                 var name = proc() && proc().name ? proc().name : '';
                 var odd = proc() && proc().redundancy && socks.every(function (s) { return s % 2 === 1; });
                 return ps.length + ' ports on ' + (odd ? 'the odd sockets ' : 'sockets ') + socks[0] + ' to ' + socks[socks.length - 1]
-                    + (name ? ', labelled ' + name + '-' + socks[0] + ' …' : '')
+                    + (name ? ', labeled ' + name + '-' + socks[0] + ' …' : '')
                     + (odd ? ' Their returns ride the even sockets.' : '.');
             }
         },
@@ -3068,6 +3110,84 @@
             },
             after: function () { closePopover(); }
         },
+        // Mixed (owner, 2026-10-29: "on say H series i have 3 16 port
+        // cards. and i want card 1 and 2 to be primary and backup but then
+        // card 3 i want port level backup"). The guide's own processor is a
+        // one-box unit, which has nothing to mix, so an H9 with three
+        // 16-port cards goes in the tray beside it (the Add button pressed,
+        // the chassis and its cards put in for you, the way the second
+        // screen is), then the bar's Mixed, card 1's partner and card 3's
+        // split are each pressed for real.
+        mixedRedundancy: {
+            since: '1.5.4',
+            target: function () { var h = chassis(); return h ? '[data-hwpop="proc-' + h.id + '"]' : '#hw-dock-data-controls'; },
+            place: 'top', title: 'Mixed redundancy on a chassis',
+            avoid: ['#processor-add-btn'],
+            body: 'On a chassis like an H9 the bar adds Mixed, and each card picks its own. Here card 1 is backed up 1:1 by card 2, and card 3 splits its own ports.',
+            before: function () { switchView('data-flow'); closePopover(); },
+            act: function (t) {
+                var a = A(), pid = null;
+                var bar = function () { return '[data-lrd-field="processor-redundancy-' + pid + '"]'; };
+                var cards = function () { var h = chassis(); return h ? h.slots.filter(function (s) { return s.card; }).map(function (s) { return s.card; }) : []; };
+                return t.hover('#processor-add-btn').then(function (p) {
+                    press(true); ripple(p.x, p.y);
+                    return t.pause(200);
+                }).then(function () {
+                    press(false);
+                    return j('POST', '/api/processors', { deviceId: 'novastar-h9' });
+                }).then(function (st) {
+                    pid = st.resolved[st.resolved.length - 1].id;
+                    return [0, 1, 2].reduce(function (chain, i) {
+                        return chain.then(function () {
+                            return j('PUT', '/api/processors/' + pid + '/slots/' + i, { deviceId: 'novastar-card-h-16xrj45-2xfiber' });
+                        });
+                    }, Promise.resolve());
+                }).then(function () {
+                    return a.refreshProcessors();
+                }).then(function () {
+                    a.saveState('Add Processor');
+                    return t.wait(function () { return $('[data-hwpop="proc-' + pid + '"]'); });
+                }).then(function (gear) {
+                    if (!gear) throw new Error('the H9 did not land in the tray');
+                    return t.click('[data-hwpop="proc-' + pid + '"]');
+                }).then(function () {
+                    return t.wait(function () { var pop = $('#hw-gear-popover'); return pop && pop.style.display === 'block' && $(bar() + ' [data-level="mixed"]'); });
+                }).then(function (seg) {
+                    if (!seg) throw new Error('no Mixed on the H9 bar');
+                    return t.click(bar() + ' [data-level="mixed"]', { hover: 400, rest: 600 });
+                }).then(function () {
+                    return t.wait(function () { var h = chassis(); return h && h.redundancyMixed && $('[data-lrd-field="processor-card-backup-' + cards()[0].id + '"]'); });
+                }).then(function (pick) {
+                    if (!pick) throw new Error('the Mixed rows did not come up');
+                    var cs = cards();
+                    t.mem.cards = cs.map(function (c) { return c.id; });
+                    return t.select('[data-lrd-field="processor-card-backup-' + cs[0].id + '"]', cs[1].id);
+                }).then(function () {
+                    return t.wait(function () { var cs = cards(); return cs[1] && cs[1].backupFor ? cs : null; });
+                }).then(function (cs) {
+                    if (!cs) throw new Error('card 2 did not take card 1');
+                    // The chip the card's face calls OPT Split.
+                    var split = $$('[data-lrd-field="processor-card-shape-' + cs[2].id + '"] [data-mode]')
+                        .filter(function (c) { return /Split$/.test(c.textContent); })[0];
+                    if (!split) throw new Error('no Split chip on card 3');
+                    t.mem.split = split.dataset.mode;
+                    return t.click(split, { hover: 400, rest: 1200 });
+                }).then(function () {
+                    return t.wait(function () { var cs = cards(); return cs[2] && cs[2].redundancyShape && cs[2].redundancyShape.mode === t.mem.split; });
+                });
+            },
+            check: function () {
+                var h = chassis();
+                if (!h || !h.redundancyMixed) return null;
+                var cs = h.slots.filter(function (s) { return s.card; }).map(function (s) { return s.card; });
+                // card 3 at the split: a port shape that is neither of the others
+                var mode = cs[2] && cs[2].redundancyShape ? cs[2].redundancyShape.mode : null;
+                if (cs.length < 3 || cs[0].backupCardId !== cs[1].id || !cs[1].backupFor
+                        || !mode || ['1to1', 'sequential', 'manual'].indexOf(mode) >= 0) return null;
+                return (h.name || h.deviceName) + ' runs Mixed: card 2 backs up card 1 port for port, and card 3 brings its own returns back on ports 9 to 16.';
+            },
+            after: function () { closePopover(); }
+        },
         overrideRun: {
             target: '#main-canvas', place: 'top', title: 'Take over one run',
             body: 'Hold Alt and the run under the cursor lights up. Alt+click takes over just that port: click cabinets to redraw it, Esc when done.',
@@ -3293,27 +3413,137 @@
                 return (w.name || 'The screen') + ' takes 2 ft vertical and 3 ft horizontal power jumpers.';
             }
         },
+        // One power jumper name per connector (1.5.4, app-pull-list.js
+        // pullPowerJumpName): the show's names live in the Export dialog's
+        // Pull Sheet section (project.pullSheet, one undo step each); the
+        // Preferences hold the names a new show starts with. The wall is
+        // TRUE1 here, so the TRUE1 name is the one its rows print.
+        jumperNames: {
+            since: '1.5.4',
+            exportStep: true,
+            target: '#export-pull-sheet-power-jump-name-true1', place: 'left', title: 'A name for each jumper',
+            avoid: ['#export-pull-sheet-power-jump-name-true1', '#export-pull-sheet-power-jump-name-powercon'],
+            body: 'The pull sheet names TRUE1 and powerCON jumpers apart. Type what your shop calls them in the Export dialog; Preferences holds the names a new show starts with.',
+            before: function () {
+                switchView('power');
+                var a = A();
+                if (!exportOpen() || ($('#export-format') && $('#export-format').value !== 'pull-sheet')) {
+                    a.openExportModal('pull-sheet');
+                }
+            },
+            act: function (t) {
+                return t.type('#export-pull-sheet-power-jump-name-true1', 'TRUE1 Jumper').then(function () {
+                    return t.wait(function () {
+                        return A().getPullSheetSettings().powerJumpNameTrue1 === 'TRUE1 Jumper';
+                    });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the show did not take the jumper name');
+                    return t.pause(PACE.rest);
+                });
+            },
+            check: function () {
+                var s = A().getPullSheetSettings();
+                if (s.powerJumpNameTrue1 !== 'TRUE1 Jumper') return null;
+                return 'TRUE1 jumpers print as TRUE1 Jumper, one row per length; a powerCON screen\'s print as '
+                    + s.powerJumpNamePowercon + '.';
+            },
+            after: function () { closeExport(); }
+        },
+        // Panel counts on the pull sheet (1.5.4, app-pull-list.js
+        // pullPanelCounts): the Export dialog's Edit rows opens the pull
+        // sheet editor, and each screen's position has a row per panel type
+        // it hangs, named by the panel saved on it (the Name the panel
+        // step), blank and hidden cabinets left out.
+        pullPanels: {
+            since: '1.5.4',
+            target: function () { return pullSheetOpen() ? PANEL_ROW : '#export-pull-sheet-edit-rows'; },
+            place: 'left', title: 'Panels on the pull sheet',
+            avoid: ['#export-pull-sheet-edit-rows'],
+            body: 'Edit rows opens the pull sheet. Each screen gets a row for every panel type it hangs, half tiles on rows of their own, and a blank cabinet isn&rsquo;t counted.',
+            before: function () {
+                closePullSheet();
+                var a = A();
+                if (!exportOpen() || ($('#export-format') && $('#export-format').value !== 'pull-sheet')) {
+                    a.openExportModal('pull-sheet');
+                }
+            },
+            act: function (t) {
+                return t.click('#export-pull-sheet-edit-rows').then(function () {
+                    return t.wait(function () { return pullSheetOpen() && $(PANEL_ROW); }, 6000);
+                }).then(function (row) {
+                    if (!row) throw new Error('the pull sheet did not list the panels');
+                    return t.spot(row).then(function () { return t.pause(PACE.opened); });
+                });
+            },
+            check: function () {
+                var w = wall(), row = pullSheetOpen() ? $(PANEL_ROW) : null;
+                if (!w || !row) return null;
+                var counts = A().pullPanelCounts(w);
+                var full = counts[0];
+                var blank = (w.panels || []).filter(function (p) { return p && (p.blank || p.hidden); }).length;
+                if (!full) return null;
+                return 'The pull sheet lists ' + full.qty + ' ' + full.type + ' for ' + (w.name || 'the screen')
+                    + (blank ? ', the ' + (blank === 1 ? 'blank cabinet' : blank + ' blank cabinets') + ' left out' : '')
+                    + ', and TOTALS adds up every screen.';
+            },
+            after: function () { closePullSheet(); closeExport(); }
+        },
         panelWatts: {
             target: '#power-panel-watts', place: 'right', title: 'Power view and the math',
-            avoid: ['[data-mode="power"]', '#power-panel-watts'],
-            body: 'Power plans the electrical. Voltage, amperage and watts per cabinet set the cabinets a circuit carries and the circuits required.',
+            avoid: ['[data-mode="power"]', '#power-panel-watts', '#power-amperage-usable'],
+            body: 'Voltage, amperage and watts per cabinet set the cabinets a circuit carries and the circuits required. Beside Amperage you see the amps you can use, 16 A of a 20 A breaker on US power.',
             act: function (t) {
                 return t.click('[data-mode="power"]').then(function () {
-                    return t.type('#power-panel-watts', '200', { enter: true });
+                    return t.type('#power-panel-watts', '150', { enter: true });
                 }).then(function () {
-                    return t.wait(function () { var w = wall(); return w && Number(w.panelWatts) === 200; });
+                    return t.wait(function () { var w = wall(); return w && Number(w.panelWatts) === 150; });
                 });
             },
             check: function () {
                 var w = wall();
-                if (!w || Number(w.panelWatts) !== 200) return null;
+                if (!w || Number(w.panelWatts) !== 150) return null;
                 var req = $('#power-circuits-required') ? $('#power-circuits-required').textContent.trim() : '?';
-                return '200 W per cabinet at 208 V, 20 A. Circuits required: ' + req + '.';
+                var usable = $('#power-amperage-usable') ? $('#power-amperage-usable').textContent.trim() : '';
+                if (!usable) return null;
+                return '150 W per cabinet at 208 V, ' + usable + '. Circuits required: ' + req + '.';
+            }
+        },
+        // The panel input (1.5.4, app-power.js panelInput): a TRUE1 or
+        // powerCON breakout IS the panels' connector; an Edison or L6-20
+        // one leaves it to the screen. The demo wall is 208V, so the L6-20
+        // breakout is the one that offers the choice. The breakout step
+        // after it puts the wall on Multi to TRUE1 for the rest of the tour.
+        panelInput: {
+            since: '1.5.4',
+            target: '#power-breakout-type', place: 'right', title: 'The panel input',
+            avoid: ['#power-breakout-type', '#power-panel-input'],
+            body: 'Pick Multi to L6-20 and Panel input appears: the connector your panels take. Pick powerCON and the cables, jumpers and splitters all say powerCON.',
+            before: function () { switchView('power'); },
+            act: function (t) {
+                return t.select('#power-breakout-type', 'soca-l620').then(function () {
+                    return t.wait(function () {
+                        var w = wall(), row = $('#power-panel-input-row');
+                        return w && w.powerBreakoutType === 'soca-l620' && row && row.style.display !== 'none';
+                    });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the Panel input did not come up');
+                    return t.select('#power-panel-input', 'powercon');
+                }).then(function () {
+                    return t.wait(function () { var w = wall(); return w && w.powerPanelInput === 'powercon'; });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the screen did not take powerCON');
+                    return t.pause(PACE.rest);
+                });
+            },
+            check: function () {
+                var w = wall();
+                if (!w || w.powerBreakoutType !== 'soca-l620' || A().panelInput(w).id !== 'powercon') return null;
+                return (w.name || 'The screen') + ' takes powerCON at the panels: each circuit gets an L6-20 → powerCON cable, and its jumpers and splitters are powerCON.';
             }
         },
         breakoutType: {
             target: '#power-breakout-type', place: 'right', title: 'The breakout',
-            body: 'How each multi fans out to the cabinets. Multi to True1 is six circuits a box; the choice drives the gear list.',
+            body: 'How each multi fans out to the cabinets. Multi to TRUE1 is six circuits a box; the choice drives the gear list.',
             before: function () { switchView('power'); },
             act: function (t) {
                 return t.select('#power-breakout-type', 'soca-true1').then(function () {
@@ -3322,7 +3552,7 @@
             },
             check: function () {
                 var w = wall();
-                return w && w.powerBreakoutType === 'soca-true1' ? 'Each multi fans out to True1: six circuits a box.' : null;
+                return w && w.powerBreakoutType === 'soca-true1' ? 'Each multi fans out to TRUE1: six circuits a box.' : null;
             }
         },
         addDistro: {
@@ -3745,6 +3975,57 @@
                 return 'The 125 ft home run is written ' + a.cableStockText(125, 'multi') + ': the pull sheet lists one 100 ft and one 25 ft multi.';
             }
         },
+        // A list per kind (1.5.4, app-cable-stock.js): multis, data, power,
+        // L21-30 and Harting home runs, direct-output cables and feeders.
+        // The kinds' lists are kept apart from the one shared list, so the
+        // multis get theirs again and the feeders a list of their own; the
+        // Feeder step types a length this list makes. Save is pressed the
+        // way the Cable stock step presses it.
+        cableStockPerKind: {
+            since: '1.5.4',
+            target: '#pref-cable-stock-per-kind', place: 'bottom', title: 'A list for each kind of cable',
+            avoid: ['#pref-cable-stock-per-kind', '#pref-cable-stock-multi-ft', '#pref-cable-stock-feeder-ft', '#preferences-save'],
+            body: 'Tick A list for each kind of cable and each kind gets its own lengths. Here the multis keep 25, 50 and 100, and the feeders come in 50 and 100.',
+            before: function () {
+                switchView('power');
+                var a = A();
+                a.openPreferencesModal();
+                a.showPreferencesTab('stock');
+            },
+            act: function (t) {
+                return t.click('#pref-cable-stock-per-kind').then(function () {
+                    return t.wait(function () {
+                        var c = $('#pref-cable-stock-per-kind'), f = $('#pref-cable-stock-feeder-ft');
+                        return c && c.checked && f && f.offsetParent !== null;
+                    });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the lists for each kind did not come up');
+                    return t.type('#pref-cable-stock-multi-ft', '25, 50, 100');
+                }).then(function () {
+                    return t.type('#pref-cable-stock-feeder-ft', '50, 100');
+                }).then(function () {
+                    return t.hover('#preferences-save');
+                }).then(function (p) {
+                    press(true);
+                    ripple(p.x, p.y);
+                    return t.pause(90);
+                }).then(function () {
+                    press(false);
+                    A().applyCableStockPreferences();
+                    return t.wait(function () { return A().cableStockList('feeder', 'ft').join(',') === '50,100'; });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the show did not take the lists');
+                    return t.pause(PACE.rest);
+                });
+            },
+            check: function () {
+                var a = A();
+                if (a.cableStockList('feeder', 'ft').join(',') !== '50,100'
+                        || a.cableStockList('multi', 'ft').join(',') !== '25,50,100') return null;
+                return 'Multis come in 25, 50 and 100 ft, feeders in 50 and 100 ft: a 150 ft feeder is written ' + a.cableStockText(150, 'feeder') + '.';
+            },
+            after: function () { closePrefs(); }
+        },
         powerCableTags: {
             target: '#show-power-cable-tags', place: 'right', title: 'Show Cable Tags (power)',
             body: 'Tick it and each circuit&rsquo;s cable prints as a gold tag beside its label on the wall and in the export.',
@@ -3762,9 +4043,11 @@
             }
         },
         // 2fers and 3fers, straight through (the owner's rulings,
-        // 2026-10-19). At 200 W a cabinet a row of the demo wall is more
-        // than half a circuit, so no two rows ever share; a column is a
-        // third of one. So the section turns the circuits down the
+        // 2026-10-19). At 150 W a cabinet a row of the demo wall (1,800 W)
+        // is more than half a circuit, so no two rows ever share; a column
+        // (900 W) is under a third of one (a 208V / 20A circuit packs to
+        // 80%, 3,328 W, 2026-10-22; the owner kept the 3fer story with
+        // lighter demo panels). So the section turns the circuits down the
         // columns, shares them in automatic mode, takes one 3fer over by
         // hand (it stays a 3fer), turns custom mode on (it starts empty),
         // fills the wall as custom runs (the same 3fers as automatic) and
@@ -3793,7 +4076,7 @@
         splitters: {
             target: '#power-splitters-enabled', place: 'right', title: 'Share runs through 3fers',
             avoid: ['#power-splitters-enabled', '#main-canvas'],
-            body: 'Tick Share circuits via splitters and each column, or each row on a wall cabled across, becomes a run of its own, with neighbours sharing one circuit through a 2fer or 3fer while the load fits.',
+            body: 'Tick Share circuits via splitters and each column, or each row on a wall cabled across, becomes a run of its own, with neighbors sharing one circuit through a 2fer or 3fer while the load fits.',
             before: function () { switchView('power'); },
             act: function (t) {
                 return t.click('#power-splitters-enabled').then(function () {
@@ -3806,8 +4089,10 @@
                 if (!w || A().isCustomPower(w) || !shared.length) return null;
                 if (shared.some(function (s) { return s.over; })) return null;
                 var load = A().shareLoad(w, shared[0].runIds);
+                var cap = A().circuitCapacity(w);
                 return shared.length + ' circuits, each a ' + shared[0].ways + 'fer of ' + shared[0].ways + ' column runs: '
-                    + load.amps.toFixed(1) + ' A on a ' + (+load.cap.toFixed(1)) + ' A circuit.';
+                    + load.amps.toFixed(1) + ' A against ' + (+load.cap.toFixed(1)) + ' A usable on a '
+                    + (+cap.breakerA.toFixed(1)) + ' A breaker.';
             }
         },
         // A take-over in automatic mode (canvas.js Alt+click): the shared
@@ -3894,7 +4179,7 @@
             since: '1.5.3',
             target: '.power-flow-pattern-btn[data-pattern="tl-v"]', place: 'right', title: 'Draw the circuits',
             avoid: ['.power-flow-pattern-btn[data-pattern="tl-v"]', '#main-canvas'],
-            body: 'Drag across the cabinets, then press Top-left, vertical first. With sharing on you get what automatic mode makes: a run per column (or per row on a wall cabled across), neighbours sharing a 3fer while the load fits.',
+            body: 'Drag across the cabinets, then press Top-left, vertical first. With sharing on you get what automatic mode makes: a run per column (or per row on a wall cabled across), neighbors sharing a 3fer while the load fits.',
             before: function () { switchView('power'); },
             act: function (t) {
                 var w = wall();
@@ -4112,6 +4397,52 @@
                 return (d.name || 'The distro') + ' is on ' + (s.name || 'the service')
                     + (u ? ': its busiest leg reads ' + u.textContent.trim() + '.' : '.');
             }
+        },
+        // The feeder (1.5.4, app-services.js _buildDistroFeederRow): the
+        // cable that powers the distro, behind its gear. A length, written
+        // from the feeders' stock list, and where it is fed from: the
+        // service, or thru another distro. It is always on the pull sheet,
+        // "no length" until one is typed.
+        feederLength: {
+            since: '1.5.4',
+            target: function () { var d = distro(); return d ? '[data-hwpop="distro-' + d.id + '"]' : '#hardware-dock-body .hw-dock-gear'; },
+            place: 'top', title: 'The distro&rsquo;s feeder',
+            avoid: [function () { var d = distro(); return d ? '[data-lrd-field="distro-feeder-ft-' + d.id + '"]' : null; },
+                    function () { var d = distro(); return d ? '[data-lrd-field="distro-feeder-from-' + d.id + '"]' : null; }],
+            body: 'Open the distro&rsquo;s &#9881; and type its Feeder length. Beside it you pick where it&rsquo;s fed from: the service, or thru another distro.',
+            before: function () { switchView('power'); closePopover(); },
+            act: function (t) {
+                var d = distro();
+                if (!d) throw new Error('there is no distro to feed');
+                return t.click('[data-hwpop="distro-' + d.id + '"]').then(function () {
+                    return t.wait(popover);
+                }).then(function (pop) {
+                    if (!pop) throw new Error('the distro\'s gear popover did not open');
+                    return t.spot(pop).then(function () { return t.pause(900); });
+                }).then(function () {
+                    return t.type('[data-lrd-field="distro-feeder-ft-' + d.id + '"]', '150');
+                }).then(function () {
+                    return t.wait(function () { var q = distro(); return q && q.feeder && Number(q.feeder.ft) === 150; });
+                }).then(function (ok) {
+                    if (!ok) throw new Error('the feeder did not take 150');
+                    return t.wait(function () { return $('[data-lrd-field="distro-feeder-from-' + d.id + '"]'); });
+                }).then(function (sel) {
+                    if (!sel) throw new Error('the fed-from choice did not come up');
+                    return t.hover('[data-lrd-field="distro-feeder-from-' + d.id + '"]');
+                }).then(function () {
+                    return t.pause(PACE.acted);
+                });
+            },
+            check: function () {
+                var d = distro(), a = A();
+                if (!d || !d.feeder || Number(d.feeder.ft) !== 150) return null;
+                var f = a.distroFeeder(d);
+                var from = f.from ? 'thru ' + (f.from.name || f.from.id)
+                    : 'from ' + (f.service ? f.service.name || 'the service' : 'the service');
+                return (d.name || 'The distro') + '\'s feeder: ' + a.feederText(d) + ', fed ' + from
+                    + '. The pull sheet lists it where the distro sits.';
+            },
+            after: function () { closePopover(); }
         },
         // Distros built from their outputs (1.5, app-distro-systems.js
         // _buildDistroOutputRows): a preset lays the system, input, rating,
@@ -4619,17 +4950,19 @@
         advanced: {
             title: 'Advanced Guide',
             seed: { name: 'New Show', layer: { panelWatts: 100, powerBreakoutType: 'soca-powercon' } },
-            steps: ['introAdvanced', 'projectName', 'cabinetSize', 'gridSize', 'fit', 'blankCabinet',
+            steps: ['introAdvanced', 'projectName', 'cabinetSize', 'panelName', 'gridSize', 'fit', 'blankCabinet',
                     'cabinetIdStyle', 'showLook', 'processing', 'flowPattern', 'addProcessor',
-                    'nameProcessor', 'redundancy', 'backupProcessor', 'dropProcessor', 'releasePort', 'attachmentFlag', 'pinPort',
+                    'nameProcessor', 'redundancy', 'backupProcessor', 'mixedRedundancy', 'dropProcessor', 'releasePort', 'attachmentFlag', 'pinPort',
                     'clearPortByMenu', 'clearCard', 'dropProcessorAgain',
                     'snakePorts', 'cableSheet', 'snakeHomeRun', 'loosePortLength', 'dataJumpers', 'dataCableTags',
-                    'overrideRun', 'addBreakoutBox', 'boxFiber', 'fiberStrands', 'panelWatts', 'breakoutType', 'addDistro', 'nameDistro',
+                    'overrideRun', 'addBreakoutBox', 'boxFiber', 'fiberStrands', 'panelWatts', 'panelInput', 'breakoutType',
+                    'addDistro', 'nameDistro',
                     'distroPhase', 'distroRating', 'distroMain', 'distroPreset', 'distroRows',
                     'dropMulti', 'clearCircuit', 'clearMultiByMenu', 'dropMultiAgain',
-                    'multiCableSheet', 'powerJumpers', 'cableUnit', 'cableStock', 'cableStockPieces', 'powerCableTags',
+                    'multiCableSheet', 'powerJumpers', 'jumperNames', 'pullPanels', 'cableUnit', 'cableStock', 'cableStockPieces',
+                    'cableStockPerKind', 'powerCableTags',
                     'powerColumns', 'splitters', 'takeOver', 'customPower', 'customDraw', 'sweepShare', 'balance',
-                    'addService', 'serviceRating', 'serviceDistro',
+                    'addService', 'serviceRating', 'serviceDistro', 'feederLength',
                     'addBeach', 'screenBeach', 'addScreen', 'beachByMenu', 'crossScreens', 'groupScreens',
                     'exportBinder', 'screenOrder', 'wiringTick', 'titleBlock', 'fileExports', 'preferences',
                     'helpMenu', 'outroAdvanced']

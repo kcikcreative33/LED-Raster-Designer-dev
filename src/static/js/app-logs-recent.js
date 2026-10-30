@@ -258,8 +258,8 @@ class _LogsRecent {
             input.style.width = '70px';
             input.placeholder = from ? '10' : '5';
             input.title = from
-                ? `Start of range, included — this many ${word} ago. Pick a unit next to it, or Date… to type an absolute date. Blank = no start bound.`
-                : `End of range, included — this many ${word} ago. Same units as From. Blank = now.`;
+                ? `Start of range, included: this many ${word} ago. Pick a unit next to it, or Date… to type an absolute date. Blank = no start bound.`
+                : `End of range, included: this many ${word} ago. Same units as From. Blank = now.`;
         }
     }
 
@@ -293,7 +293,7 @@ class _LogsRecent {
             // plainly that no filtering happened.
             if (statusEl) {
                 statusEl.style.color = '#f0ad4e';
-                statusEl.textContent = `${bad.join(' and ')} unrecognized — filter not applied`;
+                statusEl.textContent = `${bad.join(' and ')} unrecognized, so the filter is not applied`;
             }
             return { lines, sinceMs, untilMs, valid: false };
         }

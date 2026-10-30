@@ -1036,6 +1036,11 @@ select, .info-select {
 #hw-gear-popover .hw-pop-seg > button.hw-pop-seg-btn:last-child {
   border-radius:0 3px 3px 0 !important;
 }
+/* a chassis's four segments (Off · Per card · Per port · Mixed): each as
+   wide as its word, Off the narrowest, so none is cut to "Per c…" */
+#hw-gear-popover .hw-pop-seg.hw-pop-seg-fit > button.hw-pop-seg-btn {
+  flex:1 1 auto; padding:3px 6px !important;
+}
 #hw-gear-popover .hw-pop-seg > button.hw-pop-seg-btn.hw-pop-seg-on {
   z-index:1;
   background:linear-gradient(var(--ps-accent-hi),var(--ps-accent)) !important;
@@ -1055,6 +1060,14 @@ select, .info-select {
 #hw-gear-popover .hw-pop-red-row > select { flex:1 1 0; min-width:0; }
 #hw-gear-popover .hw-pop-red-row-chips { flex-wrap:wrap; gap:3px 6px; }
 #hw-gear-popover .hw-pop-red-row-chips > .hw-pop-red-key { flex:0 0 100%; max-width:100%; }
+/* a Mixed row at 1:1: its partner pick on a line of its own under the chips */
+#hw-gear-popover .hw-pop-red-row-chips > select { flex:1 1 100%; }
+/* a Mixed row's four chips: each as wide as its word, the short 1:1 the
+   narrowest, so Sequential and OPT Split are never cut */
+#hw-gear-popover .hw-pop-chips.hw-pop-chips-pair > button.hw-pop-chip {
+  flex:1 1 auto; padding:2px 6px !important;
+}
+#hw-gear-popover .hw-pop-chips-pair > button.hw-pop-chip[data-mode="1to1"] { flex:0 0 auto; }
 #hw-gear-popover .hw-pop-chips { display:flex; gap:4px; flex:1 1 100%; min-width:0; }
 #hw-gear-popover .hw-pop-chips > button.hw-pop-chip {
   flex:1 1 0; min-width:0; padding:2px 4px !important; font-size:10px !important;

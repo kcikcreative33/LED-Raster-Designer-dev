@@ -40,7 +40,7 @@ side, top to bottom:
                 land on ("CVT4K-S SR A · Card 1 · OPT 1-2", or the card
                 itself), a backup its own block; a multi's BREAKOUT, the
                 fan out ("there are no boxes... it is a breakout also
-                known as a fan out"): "SR1 · Multi 208 breakout · 125'".
+                known as a fan out"): "SR1 · Multi 208 TRUE1 breakout · 125'".
   the RUNS    - OUT OF THE WALL AND ROUND IT. A run leaves its disc at
                 its own row, crosses to the WALL'S NEAREST EDGE and no
                 further, and travels in the clear space round the wall:
@@ -812,7 +812,7 @@ def test_each_side_is_a_sheet_behind_its_own_map_and_runs_its_port_and_its_circu
     (no tag of ours over it), one CARD block "H9 SR · H_16xRJ45+2xfiber"
     with 16 sockets - socket 1 green, the rest grey rings - and one run from
     the disc onto socket 1, cased in white. POWER WIRING: two orange discs,
-    one BREAKOUT block "SR1 · Multi 208 breakout · 125'" with six sockets, 1
+    one BREAKOUT block "SR1 · Multi 208 TRUE1 breakout · 125'" with six sockets, 1
     and 2 orange, and two runs. The wall is sized by the room the sheet
     gives it, which is the whole page's; the printer sheets have no
     colour."""
@@ -864,7 +864,7 @@ def test_each_side_is_a_sheet_behind_its_own_map_and_runs_its_port_and_its_circu
     assert abs(m['y'] - (card['y'] + card['h']) - sig['gap']['top']) < 0.01, (card, m, sig['gap'])
     # the power side
     assert [(d['text'], d['kind']) for d in pwr['discs']] == [('SR1-1', 'power'), ('SR1-2', 'power')]
-    assert [b['title'] for b in pwr['blocks']] == ["SR1 · Multi 208 breakout · 125'"]
+    assert [b['title'] for b in pwr['blocks']] == ["SR1 · Multi 208 TRUE1 breakout · 125'"]
     bk = pwr['blocks'][0]
     assert [(s['n'], s['state'], s['note']) for s in bk['sockets']] == \
         [(1, 'power', None), (2, 'power', None), (3, 'free', None), (4, 'free', None),
@@ -1008,7 +1008,7 @@ def test_a_shared_multi_shows_the_other_screens_circuits_against_its_socket(page
     try:
         out = _sheet(pg, json.loads(_SHOW_JSON), 'WALL-A - Power Wiring')
         a_side = _half(out, 'power')
-        assert len(a_side['blocks']) == 1 and a_side['blocks'][0]['title'].startswith('SR1 · Multi 208 breakout'), a_side['blocks']
+        assert len(a_side['blocks']) == 1 and a_side['blocks'][0]['title'].startswith('SR1 · Multi 208 TRUE1 breakout'), a_side['blocks']
         socks = a_side['blocks'][0]['sockets']
         mine = [s['n'] for s in socks if s['state'] == 'power']
         theirs = [(s['n'], s['note']) for s in socks if s['state'] == 'other']
@@ -1216,8 +1216,8 @@ def test_smoke_live_show_b_sr_main(page):
     assert sorted(d['text'] for d in pwr['discs']) == sorted(f'SR{k}-{n}' for k, ns in
                                                              ((1, range(1, 7)), (2, range(2, 7)), (3, range(1, 7)), (4, (1, 2, 4, 5, 6)))
                                                              for n in ns)
-    assert [b['title'] for b in pwr['blocks']] == ["SR3 · Multi 208 breakout · 125'", "SR4 · Multi 208 breakout · 100'",
-                                                   "SR2 · Multi 208 breakout · 100'", "SR1 · Multi 208 breakout · 125'"], pwr['blocks']
+    assert [b['title'] for b in pwr['blocks']] == ["SR3 · Multi 208 TRUE1 breakout · 125'", "SR4 · Multi 208 TRUE1 breakout · 100'",
+                                                   "SR2 · Multi 208 TRUE1 breakout · 100'", "SR1 · Multi 208 TRUE1 breakout · 125'"], pwr['blocks']
     # SR3's and SR1's circuits stand on the wall's upper half, SR4's and
     # SR2's on its lower: the outer pair stands over the wall, the inner
     # pair under it - one row each side, each keeping its place across
@@ -1643,7 +1643,8 @@ TOP_RUN_SEED_JS = """async () => {
     delete proj.port_assignments; delete proj.pullSheet; delete proj.binder;
     await j('PUT', '/api/project', proj);
     await j('POST', '/api/layer/add', {name: 'OVERHEAD', columns: 12, rows: 4,
-        cabinet_width: 200, cabinet_height: 200, powerVoltage: 208, powerAmperage: 10,
+        // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+        cabinet_width: 200, cabinet_height: 200, powerVoltage: 208, powerAmperage: 12.5,
         panelWatts: 500, powerFlowPattern: 'tl-v', powerOrganized: true, flowPattern: 'tl-h',
         processorType: 'novastar-armor'});
     app.project = await j('GET', '/api/project');
@@ -1761,7 +1762,7 @@ BOTTOM_DATA_SEED_JS = """async () => {
     delete proj.port_assignments; delete proj.pullSheet; delete proj.binder;
     await j('PUT', '/api/project', proj);
     await j('POST', '/api/layer/add', {name: 'UNDER', columns: 8, rows: 2,
-        cabinet_width: 400, cabinet_height: 400, powerVoltage: 208, powerAmperage: 10,
+        cabinet_width: 400, cabinet_height: 400, powerVoltage: 208, powerAmperage: 12.5,
         panelWatts: 200, powerFlowPattern: 'tl-h', powerOrganized: true, flowPattern: 'bl-v',
         processorType: 'novastar-armor'});
     // the add takes the layer's size; its data flow is set on the layer

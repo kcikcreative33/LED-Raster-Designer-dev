@@ -43,8 +43,10 @@ class _ScreenInfo {
     // the screen's own figure; a HALF TILE is the panel library's weight
     // for the model's matching half-size variant where the library has
     // one that matches perfectly (catalogHalfWeightKg: same manufacturer
-    // and series, exactly half on the halved axis, the same pitch), else
-    // 0.65 of the full cabinet's (_panelWeightFactor), as it always was.
+    // and series, exactly half on the halved axis, the same pitch; a
+    // weight typed over the saved model's scales it by the library's
+    // half/full ratio), else 0.65 of the full cabinet's
+    // (_panelWeightFactor), as it always was.
     // Power reads its own factor (getPanelLoadFactor).
     getPanelWeightKg(layer, panel) {
         const w = Number(layer && layer.panel_weight) || 20;
@@ -1271,6 +1273,12 @@ class _ScreenInfo {
     toggleLayerVisibility(layerId) {
         const layer = this.project.layers.find(l => l.id === layerId);
         if (!layer) return;
+        // Visibility is not a change: a locked screen shows and hides, and
+        // so does any member of a half-locked group (the owner's ruling,
+        // round 7). No lock guard on the screen itself; but a hide or show
+        // that would re-plan ANOTHER locked screen is refused, naming it
+        // (_visibilityRepacksLocked, round 8).
+        if (this._visibilityRepacksLocked([layer], !layer.visible)) return;
         layer.visible = !layer.visible;
         // Undo audit: the eye toggle recorded history but never told the
         // server, so any server-sourced adoption (a canvas edit's response,
@@ -1335,6 +1343,58 @@ class _ScreenInfo {
         // v0.10.5: record the show/hide. Without an entry of its own it rode
         // along on whatever the user did next, so one Undo reverted both.
         this.saveState(layer.visible ? 'Show Layer' : 'Hide Layer');
+    }
+
+    // HIDING NEVER RE-PLANS A LOCKED SCREEN (the owner's ruling, round 8):
+    // a hidden screen leaves its group's wall walk and packing, so hiding
+    // or showing one member can re-plan the others (a locked member that
+    // rode the wall's circuits gets its own multi). When the show or hide
+    // of `toggled` (set to `visible`) would change any OTHER locked
+    // screen's circuits (their number, cabinets or multi) or its packing
+    // %, the toggle is refused whole, the locked screens named, and
+    // nothing changes: no write, no history entry. A hide that changes
+    // nothing locked still works, on a locked or half-locked group too.
+    //
+    // Tried on the live records: the flags are set, every locked screen
+    // read, and the flags put back before this returns. The toggled
+    // screens themselves are not compared: a hidden screen prints nowhere,
+    // and showing it brings back what it had. True when refused.
+    _visibilityRepacksLocked(toggled, visible) {
+        const list = (toggled || []).filter(Boolean);
+        if (!list.some(l => (l.type || 'screen') === 'screen')) return false;
+        if (typeof this.circuitCapacity !== 'function' || typeof this.screenCircuits !== 'function') return false;
+        const skip = new Set(list);
+        const locked = ((this.project && this.project.layers) || []).filter(l => l
+            && !skip.has(l) && (l.type || 'screen') === 'screen' && this._layerLocked(l));
+        if (!locked.length) return false;
+        const sig = (l) => {
+            const circuits = this.screenCircuits(l).map(c => [c.num, (c.panels || []).map((p, i) => {
+                const on = c.layers && c.layers[i] ? c.layers[i].id : l.id;
+                return `${on}:${p.row}:${p.col}`;
+            })]);
+            const multis = (typeof this.getSocaPlan === 'function' ? this.getSocaPlan(l) : [])
+                .map(s => [s.soca, s.number, s.name, (s.legs || []).map(g => `${g.leg}:${g.label}`)]);
+            return JSON.stringify([this.circuitCapacity(l).pct, circuits, multis]);
+        };
+        this._circuitTailCache = null;
+        const before = new Map(locked.map(l => [l, sig(l)]));
+        const held = list.map(l => [l, Object.prototype.hasOwnProperty.call(l, 'visible'), l.visible]);
+        let after;
+        try {
+            list.forEach(l => { l.visible = visible; });
+            this._circuitTailCache = null;
+            after = new Map(locked.map(l => [l, sig(l)]));
+        } finally {
+            held.forEach(([l, had, v]) => {
+                if (had) l.visible = v;
+                else delete l.visible;
+            });
+            this._circuitTailCache = null;
+        }
+        const repacked = locked.filter(l => before.get(l) !== after.get(l));
+        if (!repacked.length) return false;
+        this._showLockedError(repacked, 'repack');
+        return true;
     }
 
     // A lock is the whole group's (app-screen-groups.js, "one lock per
@@ -1558,6 +1618,7 @@ class _ScreenInfo {
                     powerSocaSplits: this.currentLayer.powerSocaSplits,
                     powerSocaKeying: this.currentLayer.powerSocaKeying,
                     powerBreakoutType: this.currentLayer.powerBreakoutType,
+                    powerPanelInput: this.currentLayer.powerPanelInput,
                     showSocaBrackets: this.currentLayer.showSocaBrackets,
                     powerSplitters: this.currentLayer.powerSplitters,
                     powerCustomPaths: this.currentLayer.powerCustomPaths,
@@ -1725,7 +1786,7 @@ class _ScreenInfo {
                 // or the power map loses its home runs.
                 'powerSocaLengths', 'powerSocaPhaseOffset',
                 'powerSocaPhasePos', 'powerSocaDistro', 'powerBreakoutType',
-                'showSocaBrackets', 'powerSplitters',
+                'powerPanelInput', 'showSocaBrackets', 'powerSplitters',
                 // The names typed onto multis, the numbers pinned onto them
                 // (the shared-box key), the circuit boundaries a multi was
                 // split at, and the stamp saying the stores above are keyed
@@ -1883,6 +1944,10 @@ class _ScreenInfo {
         const panelWidthMMVal = readNumber('panel-width-mm').value;
         const panelHeightMMVal = readNumber('panel-height-mm').value;
         const panelWeightVal = readNumber('panel-weight-kg').value;
+        // The panel's name (2026-10-22): what was typed, trimmed - '' clears
+        // the saved panel - or null where the field was not touched.
+        const panelModelNameEl = pick('panel-model-name');
+        const panelModelNameVal = panelModelNameEl ? String(panelModelNameEl.value || '').trim() : null;
         const panelWeightUnitEl = pick('panel-weight-unit');
         const panelWeightUnitVal = panelWeightUnitEl ? panelWeightUnitEl.value : null;
         const imageScaleEl = pick('image-scale');
@@ -1988,7 +2053,7 @@ class _ScreenInfo {
         if (groupMoves) {
             groupMoves.forEach(move => {
                 move.members.forEach(member => {
-                    if (member.locked) {
+                    if (this._layerLocked(member)) {
                         // A locked member stays where it is, and is named.
                         if ((move.dx || move.dy || move.sdx || move.sdy)
                                 && !lockedRefused.includes(member)) {
@@ -2017,7 +2082,7 @@ class _ScreenInfo {
             if (movedByGroup.has(layer.id)) {
                 // its position was set with its group above; the rest of the
                 // fields apply below as for any screen
-            } else if (!layer.locked) {
+            } else if (!this._layerLocked(layer)) {
                 // (a locked screen is put back by the hold anyway; skipping
                 // its offset here keeps the footprint math off it)
                 // Capture whether the show offset is currently linked to the
@@ -2046,6 +2111,30 @@ class _ScreenInfo {
                     layer.imageScale = Math.max(0.01, imageScaleVal);
                 }
             } else {
+                // A hand change of the cabinet's pixels or millimetres means
+                // another panel: the saved one (its library model, name and
+                // halves) is forgotten, so it never names the wrong panel.
+                // Weight and watts edits keep it.
+                const figuresMoved = [['cabinet_width', cabinetWidthVal], ['cabinet_height', cabinetHeightVal],
+                                      ['panel_width_mm', panelWidthMMVal], ['panel_height_mm', panelHeightMMVal]]
+                    .some(([k, v]) => v !== null && Number(layer[k]) !== Number(v));
+                if (figuresMoved && typeof this.hasSavedPanelModel === 'function' && this.hasSavedPanelModel(layer)) {
+                    layer.panelModelId = null;
+                    layer.panelModelName = null;
+                    layer.panelModelHalves = null;
+                }
+                // A typed name names the panel; a library model keeps its
+                // id (its halves' weight and watts still read the library).
+                // Cleared, the screen saves no panel at all.
+                if (panelModelNameVal !== null && panelModelNameVal !== String(layer.panelModelName || '')) {
+                    if (panelModelNameVal) {
+                        layer.panelModelName = panelModelNameVal;
+                    } else {
+                        layer.panelModelId = null;
+                        layer.panelModelName = null;
+                        layer.panelModelHalves = null;
+                    }
+                }
                 if (cabinetWidthVal !== null) layer.cabinet_width = cabinetWidthVal;
                 if (cabinetHeightVal !== null) layer.cabinet_height = cabinetHeightVal;
                 if (columnsVal !== null) layer.columns = Math.round(columnsVal);
@@ -2127,6 +2216,7 @@ class _ScreenInfo {
         if (panelWidthMMVal !== null && document.getElementById('panel-width-mm')) document.getElementById('panel-width-mm').value = panelWidthMMVal;
         if (panelHeightMMVal !== null && document.getElementById('panel-height-mm')) document.getElementById('panel-height-mm').value = panelHeightMMVal;
         if (panelWeightVal !== null && document.getElementById('panel-weight-kg')) document.getElementById('panel-weight-kg').value = panelWeightVal;
+        this._showPanelModelName(targetLayers);
         this._captureScreenInfoBaseline();
         
         // Update port capacity display when panel size changes (screen layers only)
@@ -2408,6 +2498,7 @@ class _ScreenInfo {
         setTextInput('panel-width-mm', getCommon(l => l.panel_width_mm || 500));
         setTextInput('panel-height-mm', getCommon(l => l.panel_height_mm || 500));
         setTextInput('panel-weight-kg', getCommon(l => l.panel_weight || 20));
+        this._showPanelModelName(layers);
         const weightUnitEl = document.getElementById('panel-weight-unit');
         if (weightUnitEl) {
             const unitCommon = getCommon(l => l.weight_unit || 'kg');
@@ -2831,6 +2922,20 @@ class _ScreenInfo {
     // What Screen Info shows right now, input by input: the baseline that
     // updateLayerFromInputs compares against to tell an edited field from one
     // merely on display. Taken after every fill and every applied edit.
+    // The Panel field (2026-10-22): the saved panel's name, blank on a
+    // mixed selection; with none saved, the name the pull sheet gives the
+    // cabinet stands in as the placeholder ("500 × 500 mm panel").
+    _showPanelModelName(layers) {
+        const el = document.getElementById('panel-model-name');
+        if (!el) return;
+        const screens = (layers || []).filter(l => l && (l.type || 'screen') === 'screen');
+        const names = [...new Set(screens.map(l => String(l.panelModelName || '')))];
+        if (names.length > 1) { el.value = ''; el.placeholder = '-'; return; }
+        el.value = names[0] || '';
+        el.placeholder = (!el.value && screens.length && typeof this.pullPanelTypes === 'function')
+            ? this.pullPanelTypes(screens[0]).none : '';
+    }
+
     _captureScreenInfoBaseline() {
         const shown = new Map();
         document.querySelectorAll('input[id], select[id], textarea[id]').forEach(el => {

@@ -86,7 +86,8 @@ window.__ax = {
             panel_width_mm: 500, panel_height_mm: 500,
             offset_x: 0, offset_y: 0,
             panel_weight: 20, weight_unit: 'kg',
-            panelWatts: 200, powerVoltage: 208, powerAmperage: 20,
+            // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+            panelWatts: 200, powerVoltage: 208, powerAmperage: 25,
             processorType: 'brompton', bitDepth: 8, frameRate: 60,
             lowLatency: false,
             color1: { r: 64, g: 70, b: 128 }, color2: { r: 149, g: 156, b: 184 },
@@ -1596,7 +1597,7 @@ def test_route_switch_panel_row_checks_toggles_and_greys_out(page):
     assert out['third']['enabled'] is False, out
     # Mixed cabinet sizes are said in plain words (owner, 2026-10-16).
     assert out['third']['hint'] == (
-        'Cabinet sizes differ - runs stay per screen. Use Custom to run across.'), out
+        'Cabinet sizes differ, so runs stay per screen. Use Custom to run across.'), out
 
 
 def test_route_switch_row_exists_only_while_a_grouped_screen_is_shown(page):

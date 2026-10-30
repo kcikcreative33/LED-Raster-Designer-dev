@@ -380,7 +380,36 @@ def _set_cards_redundancy_mode(proc, mode):
             return f'Slot {slot.get("index", 0) + 1}: {why}'
     for _slot, card in cards:
         _set_redundancy_mode(card, mode)
+    # Per card and Per port speak for every card, so a remembered Mixed
+    # pick goes with them: the bar reads the level they just wrote.
+    proc.pop('redundancyMixed', None)
     return None
+
+
+def _check_redundancy_mixed(proc, value):
+    """Why `value` cannot be stored as `proc`'s Mixed pick, or None.
+
+    Checked BEFORE anything in the body is written, so a refused pick
+    leaves the rest of the request unapplied too. False (or null) clears
+    the pick and is always allowed."""
+    if value is None or value is False:
+        return None
+    if value is not True:
+        return 'redundancyMixed must be true or false.'
+    return catalog.mixed_redundancy_refusal(proc)
+
+
+def _set_redundancy_mixed(proc, value):
+    """Store the bar's Mixed segment as picked (owner, 2026-10-29: "i want
+    to leave the bar. so i think adding mixed makes the most sense"): each
+    card of the chassis picks its own kind, and the bar stays on Mixed
+    while the cards happen to agree, until another segment is clicked.
+    Stored only as True - a cleared pick leaves no key behind. Changes no
+    card: the kinds are each card's own redundancyMode / backupCardId."""
+    if value is True:
+        proc['redundancyMixed'] = True
+    else:
+        proc.pop('redundancyMixed', None)
 
 
 def _set_port_backup(card, card_id, number, spec):
@@ -581,6 +610,10 @@ def update_processor(processor_id):
         return jsonify({'error': (
             'A backup processor is an option on its main now - switch it '
             'on behind the main’s ⚙ (backupUnit).')}), 400
+    if 'redundancyMixed' in data:
+        why = _check_redundancy_mixed(proc, data.get('redundancyMixed'))
+        if why:
+            return jsonify({'error': why}), 400
     if 'redundancyPairs' in data:
         why = _set_redundancy_pairs(proc, data.get('redundancyPairs'))
         if why:
@@ -593,8 +626,14 @@ def update_processor(processor_id):
         why = _set_backup_unit(proc, data.get('backupUnit'))
         if why:
             return jsonify({'error': why}), 400
+    if 'redundancyMixed' in data:
+        _set_redundancy_mixed(proc, data.get('redundancyMixed'))
     changed = _apply(proc, data, ('name', 'mode', 'redundancy'))
-    for key in ('backupUnit', 'redundancyPairs', 'cardsRedundancyMode'):
+    if not proc.get('redundancy'):
+        # Off is another segment: the Mixed pick goes with it.
+        proc.pop('redundancyMixed', None)
+    for key in ('backupUnit', 'redundancyPairs', 'cardsRedundancyMode',
+                'redundancyMixed'):
         if key in data:
             changed[key] = data.get(key)
     log_event('processor_update', {'id': processor_id, 'changed': list(changed)})
@@ -730,6 +769,14 @@ def update_card(processor_id, card_id):
         why = _check_ethernet_ports(card, device, data.get('ethernetPorts'))
         if why:
             return jsonify({'error': why}), 400
+    # A row under the bar's Mixed segment writes ONLY its card, and says
+    # so with `redundancyMixed: true` in the same body: the processor
+    # stays at Mixed even where this write leaves its cards agreeing. One
+    # request, one undo step. Checked first, so a refusal writes nothing.
+    if 'redundancyMixed' in data:
+        why = _check_redundancy_mixed(proc, data.get('redundancyMixed'))
+        if why:
+            return jsonify({'error': why}), 400
     # The redundancy fields are validated, not allow-listed: a mode the
     # catalog does not know, a partner that cannot mirror this card, or a
     # vendor-fixed pairing are all refused with the reason, never stored.
@@ -752,6 +799,9 @@ def update_card(processor_id, card_id):
     for key in ('redundancyMode', 'backupCardId', 'snakes', 'portCables'):
         if key in data:
             changed[key] = card.get(key)
+    if 'redundancyMixed' in data and proc.get('redundancy'):
+        _set_redundancy_mixed(proc, data.get('redundancyMixed'))
+        changed['redundancyMixed'] = proc.get('redundancyMixed', False)
     if 'ethernetPorts' in data:
         _store_ethernet_ports(card, data.get('ethernetPorts'))
         changed['ethernetPorts'] = card.get('ethernetPorts') or []

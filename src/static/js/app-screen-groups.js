@@ -40,7 +40,7 @@ import { stripScreenFeeds } from './app-clipboard.js';
 // What the greyed "Route <group> as one screen" switch says when the
 // members' cabinet sizes differ (updateGroupRouteControl).
 const ROUTE_SIZES_DIFFER_TEXT =
-    'Cabinet sizes differ - runs stay per screen. Use Custom to run across.';
+    'Cabinet sizes differ, so runs stay per screen. Use Custom to run across.';
 
 class _ScreenGroups {
 
@@ -326,7 +326,7 @@ class _ScreenGroups {
             if (changed.length === 0) return;
             this.getGroupMembers(group).forEach(peer => {
                 if (!peer || peer.id === layer.id || edited.has(peer.id)) return;
-                if (peer.locked) {
+                if (this._layerLocked(peer)) {
                     const differs = changed.some(field => JSON.stringify(
                         peer[field] === undefined ? null : peer[field])
                         !== JSON.stringify(layer[field] === undefined ? null : layer[field]));
@@ -578,10 +578,16 @@ class _ScreenGroups {
         // all locked stay as they are and are named.
         const lock = await this._settleGroupLock(screens);
         if (!lock.ok) return null;
-        const chosen = await this._resolveGroupSettings(screens, 'create');
+        // Locked screens keep every setting (_lockedGroupSettings).
+        const keep = lock.locked === true ? screens.filter(l => l.locked) : [];
+        const chosen = keep.length ? this._lockedGroupSettings(screens, keep)
+            : await this._resolveGroupSettings(screens, 'create');
         if (!chosen) return null;  // Cancel groups nothing and changes nothing
+        // A grouping that would REPACK a locked screen is refused whole
+        // (_groupRepacksLocked).
+        if (this._groupRepacksLocked(screens, keep, chosen, null, screens)) return null;
         if (lock.locked !== null) screens.forEach(l => { l.locked = lock.locked; });
-        this._applyGroupSettings(screens, chosen);
+        this._applyGroupSettings(screens.filter(l => !keep.includes(l)), chosen);
         screens.forEach(layer => this._detachLayerFromGroups(layer));
         const group = {
             id: this._nextGroupId(),
@@ -591,6 +597,9 @@ class _ScreenGroups {
         if (!Array.isArray(this.project.groups)) this.project.groups = [];
         this.project.groups.push(group);
         screens.forEach(layer => { layer.group_id = group.id; });
+        // One "Share circuits via splitters" for the wall, stored on every
+        // member (_shareGroupSplitters).
+        this._shareGroupSplitters(group, keep);
         // A group is ONE row in the list, so its members have to be one block
         // in the layer order before that row can be drawn.
         this._reflowGroupBlocks();
@@ -610,18 +619,99 @@ class _ScreenGroups {
         // The joined group is locked or unlocked as one (_settleGroupLock).
         const lock = await this._settleGroupLock(all);
         if (!lock.ok) return false;
-        const chosen = await this._resolveGroupSettings(all, 'add');
+        const keep = lock.locked === true ? all.filter(l => l.locked) : [];
+        const chosen = keep.length ? this._lockedGroupSettings(all, keep)
+            : await this._resolveGroupSettings(all, 'add');
         if (!chosen) return false;
+        if (this._groupRepacksLocked(all, keep, chosen, group, incoming)) return false;
         if (lock.locked !== null) all.forEach(l => { l.locked = lock.locked; });
-        this._applyGroupSettings(all, chosen);
+        this._applyGroupSettings(all.filter(l => !keep.includes(l)), chosen);
         if (!Array.isArray(group.layer_ids)) group.layer_ids = [];
         incoming.forEach(layer => {
             this._detachLayerFromGroups(layer);
             group.layer_ids.push(layer.id);
             layer.group_id = group.id;
         });
+        this._shareGroupSplitters(group, keep);
         this._reflowGroupBlocks();
         await this._commitGroupChange('Add to Group');
+        return true;
+    }
+
+    // A LOCKED SCREEN IS NEVER REPACKED BY GROUPING (the owner's ruling,
+    // 2026-10-23): a wall packs as one (_circuitPackRule) and, of matching
+    // cabinets, walks its circuits as one (getAutoRoutePlan), so grouping
+    // a locked screen under "Lock the whole group" can move its packing %
+    // or re-walk its circuits into the wall. The grouping is tried first
+    // on the live records - the settings the unlocked screens take, the
+    // membership, the shared splitter knobs - and put back; when any
+    // locked screen of `keep` would pack at another % or read other
+    // circuits, it is refused whole and named, and nothing changes: no
+    // write, no history entry. `group` is the group joined (Add to group)
+    // or null for a new one; `incoming` the screens joining it.
+    _groupRepacksLocked(all, keep, chosen, group, incoming) {
+        if (!keep || !keep.length || typeof this.circuitCapacity !== 'function') return false;
+        const project = this.project || {};
+        const sig = (l) => {
+            const pct = this.circuitCapacity(l).pct;
+            const circuits = (typeof this.screenCircuits === 'function' ? this.screenCircuits(l) : [])
+                .map(c => [c.num, (c.panels || []).map((p, i) => {
+                    const on = c.layers && c.layers[i] ? c.layers[i].id : l.id;
+                    return `${on}:${p.row}:${p.col}`;
+                })]);
+            return JSON.stringify([pct, circuits]);
+        };
+        this._circuitTailCache = null;
+        const before = new Map(keep.map(l => [l, sig(l)]));
+        // everything the trial writes: the screens' fields, and the group
+        // list with each group's members
+        const reach = new Set(all);
+        (project.groups || []).forEach(g => (g && Array.isArray(g.layer_ids) ? g.layer_ids : [])
+            .forEach(id => {
+                if (!all.some(l => l.id === id)) return;
+                (this.getGroupMembers(g) || []).forEach(m => reach.add(m));
+            }));
+        const releaseFields = this._holdLayerFields([...reach]);
+        const hadGroups = Object.prototype.hasOwnProperty.call(project, 'groups');
+        const groupsRef = project.groups;
+        const groupsList = Array.isArray(groupsRef) ? groupsRef.slice() : null;
+        const memberIds = groupsList ? groupsList.map(g => (g && Array.isArray(g.layer_ids)
+            ? g.layer_ids.slice() : (g ? g.layer_ids : undefined))) : null;
+        let after;
+        try {
+            this._writeGroupSettings(all.filter(l => !keep.includes(l)), chosen);
+            let target = group;
+            if (target) {
+                if (!Array.isArray(target.layer_ids)) target.layer_ids = [];
+                (incoming || []).forEach(layer => {
+                    this._detachLayerFromGroups(layer);
+                    target.layer_ids.push(layer.id);
+                    layer.group_id = target.id;
+                });
+            } else {
+                all.forEach(layer => this._detachLayerFromGroups(layer));
+                target = { id: '__group_repack_trial__', name: '', layer_ids: all.map(l => l.id) };
+                if (!Array.isArray(project.groups)) project.groups = [];
+                project.groups.push(target);
+                all.forEach(layer => { layer.group_id = target.id; });
+            }
+            this._shareGroupSplitters(target, keep);
+            this._circuitTailCache = null;
+            after = new Map(keep.map(l => [l, sig(l)]));
+        } finally {
+            releaseFields();
+            if (!hadGroups) delete project.groups;
+            else project.groups = groupsRef;
+            if (groupsList) {
+                groupsRef.length = 0;
+                groupsList.forEach(g => groupsRef.push(g));
+                groupsList.forEach((g, i) => { if (g) g.layer_ids = memberIds[i]; });
+            }
+            this._circuitTailCache = null;
+        }
+        const repacked = keep.filter(l => before.get(l) !== after.get(l));
+        if (!repacked.length) return false;
+        this._showLockedError(repacked, 'repack');
         return true;
     }
 
@@ -657,11 +747,11 @@ class _ScreenGroups {
         // with one member is dissolved, which would take a locked member
         // out of it too - so either way nothing moves and the error names
         // the locked screens.
-        const lockedHit = layers.filter(l => l.locked);
+        const lockedHit = layers.filter(l => this._layerLocked(l));
         const going = new Set(layers.map(l => l.id));
         new Set(layers.map(l => l.group_id)).forEach(gid => {
             const left = (this.project.layers || []).filter(l => l && l.group_id === gid && !going.has(l.id));
-            if (left.length < 2) left.filter(l => l.locked).forEach(l => lockedHit.push(l));
+            if (left.length < 2) left.filter(l => this._layerLocked(l)).forEach(l => lockedHit.push(l));
         });
         if (this._lockedRefused(lockedHit)) return false;
         layers.forEach(layer => this._detachLayerFromGroups(
@@ -691,7 +781,13 @@ class _ScreenGroups {
         if (!group) return false;
         const members = this.getGroupMembers(group);
         if (members.length === 0) return false;
+        // Visibility is not a change: the eye works on a locked group and
+        // on a half-locked one alike (the owner's ruling, round 7), unless
+        // it would re-plan a locked screen outside the group
+        // (_visibilityRepacksLocked, round 8).
         const anyVisible = members.some(m => m.visible !== false);
+        if (typeof this._visibilityRepacksLocked === 'function'
+            && this._visibilityRepacksLocked(members, !anyVisible)) return false;
         members.forEach(m => { m.visible = !anyVisible; });
         if (anyVisible) {
             // Same reasoning as toggleLayerVisibility: a hidden layer must
@@ -820,7 +916,7 @@ class _ScreenGroups {
         row.title = canRoute
             ? 'Off: each screen cables on its own'
             : (sizesDiffer ? ROUTE_SIZES_DIFFER_TEXT
-                : 'These screens never route as one - the cabinets differ, or a member is hand-wired');
+                : 'These screens never route as one: the cabinets differ, or a member is hand-wired');
         if (note) {
             note.textContent = sizesDiffer ? ROUTE_SIZES_DIFFER_TEXT : '';
             note.style.display = sizesDiffer ? '' : 'none';
@@ -864,6 +960,14 @@ class _ScreenGroups {
     // is locked, nothing to settle; true / false - the lock every member
     // takes with the grouping.
     async _settleGroupLock(screens) {
+        // A member of a half-locked group (an old file's) is locked until
+        // the user picks Lock or Unlock for that group (_layerLocked): no
+        // grouping may take it out of its group or add to it.
+        const held = (screens || []).filter(l => l && this._halfLockedGroupHolders(l).length);
+        if (held.length) {
+            this._showLockedError(held);
+            return { ok: false, locked: null };
+        }
         const locked = (screens || []).filter(l => l && l.locked);
         if (!locked.length) return { ok: true, locked: null };
         if (locked.length === screens.length) {
@@ -873,6 +977,72 @@ class _ScreenGroups {
         const pick = await this.askGroupLock(screens);
         if (!pick) return { ok: false, locked: null };
         return { ok: true, locked: pick === 'lock' };
+    }
+
+    // "Share circuits via splitters" - the box and the splitter size - is
+    // ONE setting for a wall (app-power.js _splitterWallHost), and grouping
+    // stores it on every member (the owner's ruling, 2026-10-22): the
+    // locked screen's setting under "Lock the whole group", where the
+    // locked screens do not change, else the group's own, which is its
+    // first member's (the selection's first screen on a new group, the
+    // group's first member on Add to group). Only the two knobs are
+    // written; each member's own shares stay its own. Ungrouping or
+    // unlocking later reverts nothing: the members keep what they had.
+    _shareGroupSplitters(group, keep = []) {
+        if (typeof this._ownPowerSplitters !== 'function') return;
+        const members = this.getGroupMembers(group)
+            .filter(m => m && (m.type || 'screen') === 'screen');
+        if (!members.length) return;
+        const win = this._ownPowerSplitters(keep.length ? keep[0] : members[0]);
+        members.forEach(m => {
+            if (keep.includes(m)) return;
+            const own = this._ownPowerSplitters(m);
+            if (own.enabled === win.enabled && own.maxWays === win.maxWays) return;
+            m.powerSplitters = { ...(m.powerSplitters || {}),
+                                 enabled: win.enabled, maxWays: win.maxWays };
+        });
+    }
+
+    // Do locked screens disagree on "Share circuits via splitters"? Under
+    // "Lock the whole group" each would have to keep its own.
+    _lockedSplittersDisagree(locked) {
+        if (typeof this._ownPowerSplitters !== 'function') return false;
+        const keys = new Set((locked || []).map(l => {
+            const sp = this._ownPowerSplitters(l);
+            return `${sp.enabled}:${sp.maxWays}`;
+        }));
+        return keys.size > 1;
+    }
+
+    // "Lock the whole group" over locked and unlocked screens (the owner's
+    // ruling, 2026-10-21): the locked screens' settings win, and nothing on
+    // a locked screen changes. The settings the group has to share are
+    // theirs, so there is nothing to choose and no dialog: the unlocked
+    // screens take the locked ones' values. Locked screens that disagree
+    // among themselves cannot both keep theirs, so nothing is grouped and
+    // they are named. Returns the values to write, or null.
+    _lockedGroupSettings(screens, locked) {
+        const own = this.validateGroupSettings(locked);
+        const splitters = this._lockedSplittersDisagree(locked);
+        if (!own.ok || splitters) {
+            const n = locked.map(l => l.name || `Screen ${l.id}`);
+            const names = n.length <= 1 ? (n[0] || '')
+                : `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}`;
+            const fields = Object.keys(own.conflicts)
+                .map(f => this._groupSettingFieldLabel(f))
+                .concat(splitters ? ['Share circuits via splitters'] : []);
+            const what = fields.length <= 1 ? fields[0]
+                : `${fields.slice(0, -1).join(', ')} and ${fields[fields.length - 1]}`;
+            const msg = `${names} are locked and disagree on ${what}. A locked `
+                + 'screen keeps its settings, so they can\'t share one group. '
+                + 'Unlock one of them first.';
+            if (typeof this._toast === 'function') this._toast(msg, true, 6000);
+            return null;
+        }
+        const all = this.validateGroupSettings(screens);
+        const chosen = {};
+        Object.keys(all.conflicts).forEach(f => { chosen[f] = own.values[f][0]; });
+        return chosen;
     }
 
     // The question: resolves 'lock', 'unlock' or null (Cancel, Escape, the
@@ -1193,6 +1363,20 @@ class _ScreenGroups {
 
     _applyGroupSettings(layers, chosen) {
         if (!chosen) return;
+        this._writeGroupSettings(layers, chosen);
+        // The processor owns which bit depths and frame rates exist, so the
+        // two Screen Info selects have to be rebuilt against what was just
+        // written - the same call the single-screen processor handler makes.
+        // Without it the sidebar keeps offering the OLD processor's rates.
+        if (typeof this.updateBitDepthOptions === 'function') this.updateBitDepthOptions();
+        if (typeof this.updateFrameRateOptions === 'function') this.updateFrameRateOptions();
+        if (typeof this.updateLowLatencyUI === 'function') this.updateLowLatencyUI();
+    }
+
+    // The chosen settings written onto `layers`, and nothing else (the
+    // grouping's repack trial writes them too, _groupRepacksLocked).
+    _writeGroupSettings(layers, chosen) {
+        if (!chosen) return;
         Object.keys(chosen).forEach(field => {
             (layers || []).forEach(layer => {
                 if (!layer) return;
@@ -1207,13 +1391,6 @@ class _ScreenGroups {
                 layer[field] = chosen[field];
             });
         });
-        // The processor owns which bit depths and frame rates exist, so the
-        // two Screen Info selects have to be rebuilt against what was just
-        // written - the same call the single-screen processor handler makes.
-        // Without it the sidebar keeps offering the OLD processor's rates.
-        if (typeof this.updateBitDepthOptions === 'function') this.updateBitDepthOptions();
-        if (typeof this.updateFrameRateOptions === 'function') this.updateFrameRateOptions();
-        if (typeof this.updateLowLatencyUI === 'function') this.updateLowLatencyUI();
     }
 
     // Resolves to the values to write ({} when nothing had to be chosen), or

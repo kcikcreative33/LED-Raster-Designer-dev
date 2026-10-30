@@ -60,9 +60,18 @@ def test_a_stock_is_cleaned_and_a_junk_one_refused():
     import routes_cable_stock as rcs
     s = rcs.normalize_stock({'perKind': True, 'ft': {'multi': [100, 25, 50, 25.0]},
                              'm': {'all': [7.62]}})
+    # a stock saved before the L21-30, Harting, direct-output and feeder
+    # lists (2026-10-21) reads the L21-30 and Harting lists from its multi
+    # list and the direct-output list from its circuit list
     assert s == {'perKind': True,
-                 'ft': {'all': [], 'multi': [25, 50, 100], 'data': [], 'circuit': []},
-                 'm': {'all': [7.62], 'multi': [], 'data': [], 'circuit': []}}
+                 'ft': {'all': [], 'multi': [25, 50, 100], 'data': [], 'circuit': [],
+                        'l2130': [25, 50, 100], 'harting': [25, 50, 100], 'direct': [], 'feeder': []},
+                 'm': {'all': [7.62], 'multi': [], 'data': [], 'circuit': [],
+                       'l2130': [], 'harting': [], 'direct': [], 'feeder': []}}
+    # a list present, even empty, is that kind's own
+    s = rcs.normalize_stock({'perKind': True, 'ft': {'multi': [50], 'circuit': [10], 'l2130': [],
+                                                     'direct': [5], 'feeder': [100]}})
+    assert (s['ft']['l2130'], s['ft']['harting'], s['ft']['direct'], s['ft']['feeder']) == ([], [50], [5], [100])
     for junk in (None, [], 'x', {'perKind': 'yes'}, {'ft': {'all': [0]}},
                  {'ft': {'all': ['25']}}, {'ft': {'all': [True]}}, {'ft': [25]},
                  {'m': {'data': [-5]}}, {'ft': {'all': list(range(1, 60))}}):
@@ -303,30 +312,35 @@ TAG_TEXTS_JS = """(exportMode) => {
 
 def test_power_lengths_are_written_as_pieces_everywhere(page):
     """With 25 / 50 / 100 on hand: multi 1's typed 125 home run and circuit
-    1's 60 cable are written 100'+25' and 50'+25' True1 - the chip, the map
+    1's 60 cable are written 100'+25' and 50'+25' TRUE1 - the chip, the map
     tag, the exported map's bracket, the pull sheet (which counts the
-    pieces: a 100' and a 25' Multi, a 50' and two 25' Tru-1 with circuit
+    pieces: a 100' and a 25' Multi, a 50' and two 25' TRUE1 with circuit
     2's own 25), the workbook, the binder - while the multi's own field
     still holds 125."""
     pg, errors = page
     ids = _power_seed(pg, FEET)
     cable = pg.evaluate("([id]) => window.app.powerCircuitCable(window.app.project.layers.find(l => l.id === id), 1)",
                         [ids['id']])
-    assert cable['text'] == "50'+25' True1" and cable['ft'] == 60, cable
+    assert cable['text'] == "50'+25' TRUE1" and cable['ft'] == 60, cable
 
     pull = pg.evaluate(PULL_ROWS_JS)
     multis = sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'Multi')
     assert multis == [("100'", 1), ("25'", 1)], pull['totals']
-    tru = sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'Tru-1')
+    tru = sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'TRUE1')
     assert tru == [("25'", 2), ("50'", 1)], pull['totals']
     assert not [r for r in pull['rows'] if '+' in str(r[1])], 'the sheet lists pieces, never sums'
+    # a power multi joins without a barrel (2026-10-21), and a TRUE1
+    # cable without a coupler - a female mates with a male
+    assert not [r for r in pull['totals'] if 'Barrel' in r[0]], pull['totals']
+    assert not [r for r in pull['totals'] if 'Coupler' in r[0]], pull['totals']
     # the pieces keep the row's label
-    assert ['Multi', "100'", 1, 'SR 1'] in pull['rows'] and ['Multi', "25'", 1, 'SR 1'] in pull['rows'], pull['rows']
+    assert ['Multi', "100'", 1, 'SR1'] in pull['rows'] and ['Multi', "25'", 1, 'SR1'] in pull['rows'], pull['rows']
     # the distro's hardware rows count the same pieces
     assert sorted((r[1], r[2]) for r in pull['hardware'] if r[0] == 'Multi') == [("100'", 1), ("25'", 1)]
 
     tags = pg.evaluate(TAG_TEXTS_JS, False)
-    assert "50'+25' True1" in tags and "25' True1" in tags, tags
+    # a tag too wide for its disc wraps under its length (test_cable_tag_wrap)
+    assert "50'+25' TRUE1" in ' '.join(tags) and "25' TRUE1" in tags, tags
     exported = pg.evaluate(TAG_TEXTS_JS, True)
     assert any("SR1 · 100'+25'" in t for t in exported), [t for t in exported if 'SR1' in t]
 
@@ -347,8 +361,8 @@ def test_power_lengths_are_written_as_pieces_everywhere(page):
     ws = wb['Pull Sheet']
     col = pull_sheet.BLOCK_COLS[0]
     block = [tuple(ws.cell(r, col + i).value for i in range(4)) for r in range(7, 40)]
-    assert ('Multi', "100'", 1, 'SR 1') in block and ('Multi', "25'", 1, 'SR 1') in block, block
-    assert ('Tru-1', "50'", 1) in [b[:3] for b in block], block
+    assert ('Multi', "100'", 1, 'SR1') in block and ('Multi', "25'", 1, 'SR1') in block, block
+    assert ('TRUE1', "50'", 1) in [b[:3] for b in block], block
     assert not [b for b in block if b[1] and '+' in str(b[1])], block
 
     # the binder's power sheet: the circuits table and the multi's band
@@ -361,9 +375,9 @@ def test_power_lengths_are_written_as_pieces_everywhere(page):
         plan.forEach((p, i) => { out.push(...app.renderBinderPage(opts, i).texts); });
         return out;
     }""")
-    assert "50'+25' True1" in texts, [t for t in texts if 'True1' in t]
+    assert "50'+25' TRUE1" in texts, [t for t in texts if 'TRUE1' in t]
     assert any("100'+25'" in t and 'SR1' in t for t in texts), [t for t in texts if 'SR1' in t]
-    assert not [t for t in texts if "125'" in t or "60' True1" in t], [t for t in texts if "125'" in t]
+    assert not [t for t in texts if "125'" in t or "60' TRUE1" in t], [t for t in texts if "125'" in t]
 
     # the tray: the multi's field keeps what was typed, its tooltip says how
     # it is pulled; the circuit's sheet field the same
@@ -383,6 +397,31 @@ def test_power_lengths_are_written_as_pieces_everywhere(page):
     assert errors == [], errors
 
 
+def test_a_powercon_join_takes_a_coupler(page):
+    """A powerCON cable the stock splits is joined by one "powerCON
+    Coupler" EA per join, under the cable's label (owner, 2026-10-21):
+    circuit 1's 60 is 50'+25' - one join, one coupler; circuit 2's 25 is
+    one piece - none; the multi's 100'+25' joins with nothing."""
+    pg, errors = page
+    ids = _power_seed(pg, FEET)
+    pg.evaluate("""() => {
+        const app = window.app;
+        const wall = app.project.layers[0];
+        app.setCircuitCable(wall, 1, {ft: 60, connector: 'powercon'}, false);
+        app.setCircuitCable(wall, 2, {ft: 25, connector: 'powercon'}, false);
+        app.updateLayers([wall]);
+        app._circuitTailCache = null;
+    }""")
+    pull = pg.evaluate(PULL_ROWS_JS)
+    label = pg.evaluate("([id]) => window.app.getPowerCircuitLabel(window.app.project.layers.find(l => l.id === id), 1)",
+                        [ids['id']])
+    assert sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'powerCON') == [("25'", 2), ("50'", 1)], pull['totals']
+    assert [r for r in pull['totals'] if 'Coupler' in r[0]] == [['powerCON Coupler', 'EA', 1]], pull['totals']
+    assert ['powerCON Coupler', 'EA', 1, label] in pull['rows'], pull['rows']
+    assert not [r for r in pull['totals'] if 'Barrel' in r[0]], pull['totals']
+    assert errors == [], errors
+
+
 def test_an_old_show_without_a_stock_reads_as_before(page):
     """No cableStock (a file saved before the setting) or an emptied one:
     every length as typed, one row each, exactly as before."""
@@ -391,10 +430,10 @@ def test_an_old_show_without_a_stock_reads_as_before(page):
         ids = _power_seed(pg, stock)
         pull = pg.evaluate(PULL_ROWS_JS)
         assert sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'Multi') == [("125'", 1)], pull
-        assert sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'Tru-1') == [("25'", 1), ("60'", 1)]
+        assert sorted((r[1], r[2]) for r in pull['totals'] if r[0] == 'TRUE1') == [("25'", 1), ("60'", 1)]
         cable = pg.evaluate("([id]) => window.app.powerCircuitCable(window.app.project.layers.find(l => l.id === id), 1).text",
                             [ids['id']])
-        assert cable == "60' True1"
+        assert cable == "60' TRUE1"
     assert errors == [], errors
 
 
@@ -484,9 +523,14 @@ def test_data_lengths_are_written_as_pieces_everywhere(page):
     assert not [r for r in out['totals'] if '+' in str(r[1])], out['totals']
     snake_rows = [v for k, v in lengths.items() if k.endswith('Snake')]
     assert snake_rows and sorted(snake_rows[0]) == [("100'", 1), ("50'", 1)], lengths
-    flat = sorted(lengths.get('Ether-con', []))
     # the loose 125 (100 + 25) and the extension 60 (50 + 25)
-    assert flat == [("100'", 1), ("25'", 2), ("50'", 1)], lengths
+    assert sorted(lengths.get('Cat6', [])) == [("100'", 1), ("25'", 1)], lengths
+    assert sorted(lengths.get('Cat6 Extension', [])) == [("25'", 1), ("50'", 1)], lengths
+    # every stock join takes a barrel (2026-10-21): the loose run's one
+    # join, the extension's one, the 2 channel snake's one join per
+    # channel (2), plus the extension's own coupler to the fan-out
+    barrels = [q for t, length, q in out['totals'] if t == 'Cat6 Barrel' and length == 'EA']
+    assert barrels == [5], out['totals']
     pg.locator('[data-mode="power"]').click()
     pg.wait_for_timeout(300)
     assert errors == [], errors

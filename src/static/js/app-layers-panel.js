@@ -252,7 +252,7 @@ ${cabinetBtn}
                 const newName = nameInput.value.trim() || layer.name;
                 // A locked screen keeps its name (the owner's ruling,
                 // 2026-10-16): the field goes back and the error says why.
-                if (newName !== layer.name && layer.locked) {
+                if (newName !== layer.name && this._layerLocked(layer)) {
                     nameInput.value = layer.name;
                     this._showLockedError([layer]);
                     return;

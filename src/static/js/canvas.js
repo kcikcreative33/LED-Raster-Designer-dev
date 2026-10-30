@@ -1662,11 +1662,11 @@ class CanvasRenderer {
     // A path resolved to {layer, panel} pairs, hidden cabinets dropped, in path
     // order. Falls back to owner-only resolution so this is safe before
     // app-power.js grows getResolvedPathPanels.
-    _resolvePathPanels(ownerLayer, path) {
+    _resolvePathPanels(ownerLayer, path, kind = null) {
         const app = window.app;
         if (!app || !Array.isArray(path)) return [];
         if (typeof app.getResolvedPathPanels === 'function') {
-            return app.getResolvedPathPanels(ownerLayer, path) || [];
+            return app.getResolvedPathPanels(ownerLayer, path, kind) || [];
         }
         return path
             .map(pos => {
@@ -1713,8 +1713,8 @@ class CanvasRenderer {
     // duty: a printed map must not carry a data cable running off the wall onto
     // blank paper. So the line stops at the last cabinet that is actually drawn,
     // which is the same way the circle-and-X shrinks to what is lit.
-    _crossMemberDrawPanels(ownerLayer, path) {
-        return this._resolvePathPanels(ownerLayer, path)
+    _crossMemberDrawPanels(ownerLayer, path, kind = null) {
+        return this._resolvePathPanels(ownerLayer, path, kind)
             .filter(hit => hit && hit.layer && hit.layer.visible !== false)
             .map(hit => this._crossMemberPanelShim(hit.layer, hit.panel));
     }
@@ -1741,7 +1741,8 @@ class CanvasRenderer {
     // this returns null and the caller draws no badge rather than a number
     // nobody can act on.
     _crossMemberLoadPanels(ownerLayer, path) {
-        const hits = this._resolvePathPanels(ownerLayer, path);
+        // a data port's load: a blank cabinet counts nothing (isPanelDataDark)
+        const hits = this._resolvePathPanels(ownerLayer, path, 'data');
         if (hits.length === 0) return [];
         const rasterId = ownerLayer && ownerLayer.canvas_id;
         for (const hit of hits) {

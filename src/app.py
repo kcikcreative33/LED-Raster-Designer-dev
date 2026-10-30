@@ -1571,6 +1571,8 @@ def _normalize_services(project):
          id already seen is dropped too.
       2. a distro's ``serviceId`` that names no service, or names a service
          of another system, is removed.
+      3. a distro's ``feeder`` that is not a dict is dropped, and its
+         ``from`` cleared where it names no other distro.
 
     A project without a ``services`` key keeps not having one, so a file
     saved before services round-trips unchanged.
@@ -1591,8 +1593,26 @@ def _normalize_services(project):
             kept.append(svc)
         project['services'] = kept
     distros = project.get('distros')
-    for d in (distros if isinstance(distros, list) else []):
-        if not isinstance(d, dict) or 'serviceId' not in d:
+    distro_list = distros if isinstance(distros, list) else []
+    distro_ids = {d.get('id') for d in distro_list if isinstance(d, dict) and _is_hashable(d.get('id'))}
+    for d in distro_list:
+        if not isinstance(d, dict):
+            continue
+        # A distro's FEEDER (2026-10-21, app-services.js): {ft?, from?},
+        # `from` another distro's id. Not a dict: dropped. A `from` naming
+        # no distro, or the distro itself, is cleared (the service feeds
+        # it); a feeder left empty is dropped, as one never set.
+        if 'feeder' in d:
+            feeder = d.get('feeder')
+            if not isinstance(feeder, dict):
+                d.pop('feeder', None)
+            else:
+                src = feeder.get('from')
+                if 'from' in feeder and (not _is_hashable(src) or src not in distro_ids or src == d.get('id')):
+                    feeder.pop('from', None)
+                if not feeder:
+                    d.pop('feeder', None)
+        if 'serviceId' not in d:
             continue
         sid = d.get('serviceId')
         svc = by_id.get(sid) if _is_hashable(sid) else None

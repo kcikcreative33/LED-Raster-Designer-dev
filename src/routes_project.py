@@ -160,6 +160,9 @@ def save_project():
     # follows its main's redundancy. Before the fiber settle, which would
     # otherwise drop the links the move keeps. Idempotent.
     processor_catalog.migrate_backup_processors(app.current_project)
+    # The bar's remembered Mixed pick held to its one shape (True, with
+    # redundancy on, on a chassis that can mix). Idempotent.
+    processor_catalog.settle_redundancy_mixed(app.current_project)
     # The fiber store held to its rules the same way (links that no longer
     # hold, a 1.4.0 opticalCON's ownerBoxId) - never a cable pruned for
     # being unused here: a restore is what it restores.
@@ -316,6 +319,9 @@ def restore_project():
     # follows its main's redundancy. Before the fiber settle, which would
     # otherwise drop the links the move keeps. Idempotent.
     processor_catalog.migrate_backup_processors(app.current_project)
+    # The bar's remembered Mixed pick held to its one shape (True, with
+    # redundancy on, on a chassis that can mix). Idempotent.
+    processor_catalog.settle_redundancy_mixed(app.current_project)
     # The fiber store held to its rules the same way (links that no longer
     # hold, a 1.4.0 opticalCON's ownerBoxId) - never a cable pruned for
     # being unused here: a restore is what it restores.

@@ -1,7 +1,7 @@
 """Where a power head's cable tags hang: by the way its run leaves the disc.
 
 The owner's ruling (2026-09-25), chosen from rendered options on his show:
-the POWER map's cable tag (the circuit's cable, "10' True1") and the
+the POWER map's cable tag (the circuit's cable, "10' TRUE1") and the
 splitter pill stacked with it ("3fer" / "2fer") go by the direction the
 circuit's run LEAVES its label disc -
 
@@ -11,7 +11,7 @@ circuit's run LEAVES its label disc -
   - a circuit of one cabinet has no step        -> ABOVE;
 
 centred on the disc's x, the tag first and the pill beneath it, the pill
-CENTRED under the tag ("3fer etc needs to be centered under the True1
+CENTRED under the tag ("3fer etc needs to be centered under the TRUE1
 extension") - so above the disc the column reads tag, pill, disc and under
 it disc, tag, pill. The direction is the run's first step AS DRAWN: on a
 rotated screen "down" is down on the sheet. When the preferred spot would
@@ -62,7 +62,8 @@ BUILD_JS = """async ([walls, pattern, rot]) => {
             row: r, col: c, x: o.offset_x + c * o.cabinet_width, y: o.offset_y + r * o.cabinet_height,
             width: o.cabinet_width, height: o.cabinet_height, hidden: false, blank: false, halfTile: 'none' });
         return Object.assign({ type: 'screen', visible: true, cabinet_width: 128, cabinet_height: 128,
-            panel_weight: 20, weight_unit: 'kg', panelWatts: 100, powerVoltage: 100, powerAmperage: 15,
+            // A US circuit packs to 80 percent of its breaker (2026-10-22): the amps here are x 1.25, so a circuit carries what this wall was laid out for.
+            panel_weight: 20, weight_unit: 'kg', panelWatts: 100, powerVoltage: 100, powerAmperage: 18.75,
             powerBreakoutType: 'soca-true1',
             processorType: 'brompton', bitDepth: 8, frameRate: 60, lowLatency: false,
             flowPattern: dataFlow ? pattern : 'tl-h', portMappingMode: 'organized',
@@ -266,8 +267,8 @@ def test_the_tags_hang_by_the_way_the_run_leaves_its_disc(page, pattern, step, w
     one = [h for h in heads if _cx(h[0]) >= 120 + 800]
     # the fixture: two shared heads on the wall, each with its tag and pill
     assert sorted((t['text'], p and p['text']) for _, t, p in wall) == [
-        ("10' True1", '3fer'), ("25' True1", '2fer')], [(d['text'], t['text'], p and p['text']) for d, t, p in wall]
-    assert [(t['text'], p) for _, t, p in one] == [("10' True1", None)], one
+        ("10' TRUE1", '3fer'), ("25' TRUE1", '2fer')], [(d['text'], t['text'], p and p['text']) for d, t, p in wall]
+    assert [(t['text'], p) for _, t, p in one] == [("10' TRUE1", None)], one
     bad = _faults(_wall_boxes(boxes, wall), want)
     bad += _faults(_wall_boxes(boxes, one), 'above')
     assert not bad, '\n'.join([''] + bad)
