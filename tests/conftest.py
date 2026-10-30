@@ -85,6 +85,34 @@ def _scratch_cable_stock_presets_file(tmp_path_factory):
     yield routes_cable_stock.CABLE_STOCK_PRESETS_FILE
 
 
+# No test ever opens a real Save or folder dialog on the desktop. The server
+# runs in the test process, so an export a test did not stub reached
+# PowerShell / osascript and put a dialog in front of whoever was at the
+# machine (2026-10-30). A dialog helper about to really run answers
+# "unavailable" - the app's own fallback, a browser download. A test that
+# wants another answer patches _run_dialog_command or the dialog choosers
+# (test_native_dialogs), or fakes subprocess.run (test_native_dialog_contract),
+# and those still go through.
+
+@pytest.fixture(scope="session", autouse=True)
+def _no_os_dialogs():
+    import subprocess
+    import routes_dialog
+    real_run_dialog = routes_dialog._run_dialog_command
+    real_subprocess_run = subprocess.run
+
+    def guarded(cmd, what='dialog'):
+        binary = os.path.basename(str((cmd or [''])[0])).lower()
+        if (binary in ('powershell', 'powershell.exe', 'osascript', 'zenity')
+                and subprocess.run is real_subprocess_run):
+            return None, 'unavailable'
+        return real_run_dialog(cmd, what)
+
+    routes_dialog._run_dialog_command = guarded
+    yield
+    routes_dialog._run_dialog_command = real_run_dialog
+
+
 # ── Waiting for the page to settle ───────────────────────────────────────
 # A fixed sleep and then a read is a guess about how fast the machine is.
 # On a busy Windows box the dock's fold transition and the next animation
