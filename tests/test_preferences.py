@@ -228,6 +228,7 @@ NEW_FIELDS = [
     ('pref-binder-pull', True, 'binderPull', True),
     ('pref-binder-hardware', False, 'binderHardware', False),
     ('pref-binder-wiring', True, 'binderWiring', True),
+    ('pref-binder-rigging', False, 'binderRigging', False),
     ('pref-binder-title-block', False, 'binderTitleBlock', False),
     ('pref-binder-designer', 'Dee Signer', 'binderDesigner', 'Dee Signer'),
     ('pref-binder-pm-name', 'Pam Manager', 'binderPmName', 'Pam Manager'),

@@ -1283,6 +1283,11 @@ class _PullList {
                     land(base.key, { type, length: 'EA', qty, label: layer.name || '',
                                      notes: '', side: 'panel' }, null);
                 }
+                // The screen's header bars (Rigging tab): gear, EA, in the
+                // screen's own position, one row per header bar size.
+                if (typeof this.riggingPullRows === 'function') {
+                    for (const r of this.riggingPullRows(layer)) land(base.key, r, layer.id);
+                }
             }
         }
 
