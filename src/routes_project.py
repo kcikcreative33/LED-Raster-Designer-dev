@@ -142,6 +142,12 @@ def save_project():
     # on its fixed card moves up to the unit here, once, and is logged.
     for moved in processor_catalog.adopt_fixed_card_names(app.current_project):
         log_event('processor_name_adopted_from_card', moved)
+    # A card mode saved under its old id opens as the mode it names now:
+    # an H_4xfiber's combined copy-backup is Backup, the enhanced card's
+    # one "default" mode is Backup (NovaStar's modes, 2026-10-30). Logged,
+    # once - the pass is idempotent.
+    for moved in processor_catalog.migrate_card_modes(app.current_project):
+        log_event('processor_card_mode_migrated', moved)
     # Snakes moved to the SHOW (2026-09-09: "Any sockets, any device"), so a
     # file - or an undo snapshot - that carries them per card or per box is
     # folded into project['snakes'] here, and every member is re-homed onto
@@ -292,6 +298,12 @@ def restore_project():
     # on its fixed card moves up to the unit here, once, and is logged.
     for moved in processor_catalog.adopt_fixed_card_names(app.current_project):
         log_event('processor_name_adopted_from_card', moved)
+    # A card mode saved under its old id opens as the mode it names now:
+    # an H_4xfiber's combined copy-backup is Backup, the enhanced card's
+    # one "default" mode is Backup (NovaStar's modes, 2026-10-30). Logged,
+    # once - the pass is idempotent.
+    for moved in processor_catalog.migrate_card_modes(app.current_project):
+        log_event('processor_card_mode_migrated', moved)
     # Snakes moved to the SHOW (2026-09-09: "Any sockets, any device"), so a
     # file - or an undo snapshot - that carries them per card or per box is
     # folded into project['snakes'] here, and every member is re-homed onto

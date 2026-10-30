@@ -96,7 +96,43 @@ def _processors():
 
 
 def _screens():
-    return (request.json or {}).get('screens') or []
+    """The screens the client sent, each carrying the screen it mirrors
+    (mirror a screen, 2026-10-30): the payload's `mirrorOf` where it sent
+    one, else the layer's stored dataMirrorOf - the project is where the
+    setting lives, so a payload that leaves it out still resolves the
+    mirror the way the drawing shows it."""
+    screens = (request.json or {}).get('screens') or []
+    layers = {str(l.get('id')): l
+              for l in app.current_project.get('layers') or []
+              if isinstance(l, dict)}
+    stored = {k: l.get('dataMirrorOf') for k, l in layers.items()
+              if l.get('dataMirrorOf') not in (None, '')}
+    out = []
+    for scr in screens:
+        if not isinstance(scr, dict):
+            out.append(scr)
+            continue
+        key = str(scr.get('layerId', scr.get('id')))
+        if 'mirrorOf' not in scr and key in stored:
+            scr = dict(scr, mirrorOf=stored[key])
+        src = scr.get('mirrorOf')
+        # A mirror whose two screens no longer match (one resized after
+        # the mirror was set) is flagged, never followed.
+        if src not in (None, '') and str(src) in layers and key in layers:
+            why = assignment.mirror_mismatch(layers[str(src)], layers[key])
+            if why:
+                scr = dict(scr, mirrorMismatch=why)
+        out.append(scr)
+    return out
+
+
+def _mirror_refused(layer_id):
+    """The 409 for placing or releasing a mirror screen's ports on their
+    own (port_assignment.mirror_refusal), else None."""
+    why = assignment.mirror_refusal(_screens(), layer_id)
+    if why:
+        return jsonify({'error': why, 'mirror': True}), 409
+    return None
 
 
 def _payload(state=None):
@@ -124,6 +160,12 @@ def _link_refused(state):
                                     _screens(), state)
     if why:
         return jsonify({'error': why, 'canvas': True}), 409
+    # CARDS THAT CANNOT LOAD ONE SCREEN TOGETHER (NovaStar's H cards -
+    # port_assignment.mix_refusal): refused, never warned.
+    why = assignment.mix_refusal(_processors(), _state(), _processors(),
+                                 state, _screens())
+    if why:
+        return jsonify({'error': why, 'cardMix': True}), 409
     return None
 
 
@@ -236,6 +278,9 @@ def pin_port():
     if str(card_id) not in {c['cardId'] for c in
                             assignment.cards_in(_processors())}:
         return jsonify({'error': 'That card is not in this project'}), 404
+    refused = _mirror_refused(layer_id)
+    if refused:
+        return refused
     _retire()
     state = _working()
     pinned, error = assignment.pin_to_card(
@@ -280,6 +325,9 @@ def place_port():
     if str(card_id) not in {c['cardId'] for c in
                             assignment.cards_in(_processors())}:
         return jsonify({'error': 'That card is not in this project'}), 404
+    refused = _mirror_refused(layer_id)
+    if refused:
+        return refused
     _retire()
     state = _working()
     placed, error, conflict = assignment.place_port(
@@ -310,6 +358,9 @@ def unpin_port():
     layer_id = data.get('layerId')
     if layer_id is None:
         return jsonify({'error': 'layerId is required'}), 400
+    refused = _mirror_refused(layer_id)
+    if refused:
+        return refused
     _retire()
     if not (app.current_project.get(assignment.STATE_KEY) or {}).get('pins'):
         return jsonify(_payload())  # nothing pinned; releasing changes nothing
@@ -329,6 +380,9 @@ def move_block():
     start = data.get('startPort')
     first = data.get('firstPort')
     last = data.get('lastPort')
+    refused = _mirror_refused(layer_id)
+    if refused:
+        return refused
     _retire()
     state = _working()
     moved, error = assignment.move_block(
@@ -358,6 +412,9 @@ def place_overflow():
     first = data.get('firstPort')
     last = data.get('lastPort')
     last_index = data.get('lastIndex')
+    refused = _mirror_refused(layer_id)
+    if refused:
+        return refused
     _retire()
     state = _working()
     moved, error = assignment.place_overflow(

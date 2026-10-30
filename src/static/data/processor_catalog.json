@@ -22,9 +22,12 @@
         "defaultMode": "40-port",
         "modes": [
           {"id": "40-port", "label": "40-port mode", "count": 40, "ownPorts": 20},
-          {"id": "20-port", "label": "20-port mode", "count": 20}
+          {"id": "20-port", "label": "20-port mode", "count": 20, "copyTrunks": "per-box"}
         ]
       },
+      "copyTrunksNote": "MX40 Pro LED Display Controller User Manual V1.5.0 p.9, 20-port mode: \"OPT 3 is the copy channel of OPT 1\", \"OPT 4 is the copy channel of OPT 2\". Owner, 2026-10-30, \"Either, you pick\": a box on OPT 3/4 is set per box to Mirror (it feeds a mirror screen) or Backup (it backs up OPT 1/2). A box saved before the choice reads Backup.",
+      "plugChoice": {"ports": 20},
+      "plugChoiceNote": "MX40 Pro LED Display Controller User Manual V1.5.0 p.9: \"You can use the optical port alongside the physical Ethernet port, with priority given in the following order: OPT 1/2 > OPT 3/4 > Ethernet ports 1-20\", and never the same-numbered port both ways. So each of ports 1-20 plugs in at ONE place, chosen per port (owner, 2026-10-30, \"Per port\"): the unit's own RJ45 or the box on OPT 1/2.",
       "ownPortsNote": "Owner, 2026-09-30: \"40 port's o mx40 only works with breakouts connected. simple mx40 can only do 20 ports\". 20 RJ45s on the unit; 21-40 only through boxes on OPT 3/4, so a bare MX40 Pro reaches 20 and its halves split falls at 11.",
       "note": "40 via the 4x 10G optical outs. In 20-port mode OPT 3/4 are copies of OPT 1/2; in 40-port mode they carry ports 21-40. The summary spec sheet leads with 20, which is why two research passes both came back 20."
     },
@@ -459,6 +462,7 @@
       "connector": "rj45",
       "trunks": 0,
       "ports": {"defaultMode": "default", "modes": [{"id": "default", "label": "", "count": 20}]},
+      "screenExcludes": ["novastar-card-h-4xfiber", "novastar-card-h-4xfiber-enhanced"],
       "note": "Occupies 2 chassis slots, but the documented chassis limits are card counts and are NOT halved for it - an H15 still takes 10. Copper only: no OPT, so no CVT can hang off it at all."
     },
     {
@@ -474,6 +478,9 @@
       "trunkRate": "10G",
       "trunkDelivery": "copy",
       "ports": {"defaultMode": "default", "modes": [{"id": "default", "label": "", "count": 16}]},
+      "plugChoice": {"ports": 16},
+      "plugChoiceNote": "OPT 1 copies Ethernet 1-8 and OPT 2 copies 9-16 (H15 Video Wall Splicer Specifications V1.15.0: \"two OPT ports that copy the outputs on Ethernet ports\"), and both get used on one card (owner, 2026-10-30: \"Yes, I've done it\"). Each port plugs in at ONE place, chosen per port: the card's own RJ45 or the box's socket.",
+      "screenExcludes": ["novastar-card-h-4xfiber", "novastar-card-h-4xfiber-enhanced"],
       "note": "The OPT ports copy Ethernet 1-8 / 9-16, so they add no ports - a breakout box on OPT 1 is another place to plug into ports 1-8, not eight more ports. Both deliveries are real and both get used: patch the copper on the card, or take the same ports out at a box across the room. Counted as an RJ45 sending card against the H9 Enhanced limit; no document says which side of that split a mixed card falls on."
     },
     {
@@ -493,9 +500,13 @@
         "defaultMode": "independent",
         "modes": [
           {"id": "independent", "label": "Independent", "count": 32},
-          {"id": "copy-backup", "label": "Copy / Backup", "count": 16}
+          {"id": "copy", "label": "Copy", "count": 16, "copyTrunks": "mirror"},
+          {"id": "backup", "label": "Backup", "count": 16, "copyTrunks": "backup", "aliases": ["copy-backup"]}
         ]
       },
+      "modesNote": "H15 Video Wall Splicer Specifications V1.15.0 p.36 (H2/H5 V1.17.0 and H9 V1.16.0 say the same): \"Independent, copy and backup modes are supported.\" Independent: four OPTs, one block of 8 each. Copy: \"OPT 3 copies the output on OPT 1, while OPT 4 copies the output on OPT 2\" - the copies feed a mirror screen. Backup: \"OPT 3 serves as the backup of OPT 1, while OPT 4 serves as the backup of OPT 2.\" Files saved with the old combined mode copy-backup open as Backup, the way they behaved.",
+      "screenExcludes": ["novastar-card-h-20xrj45", "novastar-card-h-16xrj45-2xfiber", "novastar-card-h-4xfiber-enhanced"],
+      "screenRuleNote": "H15 Video Wall Splicer Specifications V1.15.0 p.2: \"The fiber sending card cannot be used together with the H_20xRJ45 sending card or H_16xRJ45+2xfiber sending card to load the same screen\", and the same page: the enhanced card \"cannot be used together with the H_4xfiber sending card to load the same screen\".",
       "note": "4x 10G OPT at 8B/10B, one OPT = 8 Ethernet ports. Max 20,800,000 px. Cannot share a screen with RJ45 cards. Needs NovaLCT 5.4.8."
     },
     {
@@ -505,14 +516,24 @@
       "kind": "card",
       "family": "novastar-h",
       "connector": "fiber",
-      "trunks": 4,
+      "trunks": 8,
       "trunkWord": "OPT",
       "portsPerTrunk": 10,
       "trunkRate": "10G",
       "requiresDistribution": true,
       "requiresDistributionNote": "Owner, 2026-10-04: \"when using quad opt or quad opt enhanced which is 8 OPT's, you cannot show it as having 32 or 40/80 with backup without having CVT's\" - and every fiber-only card the same. No port of its own: every port comes out of a breakout box on an OPT, so a bare card has none.",
-      "ports": {"defaultMode": "default", "modes": [{"id": "default", "label": "", "count": 40}]},
-      "note": "EIGHT 10G connectors but still four primaries - OPT 5-8 back up OPT 1-4 - and one OPT = 10 Ethernet ports. 4 x 10 = 40. Counting connectors gets this wrong in both directions: not 8, not 80. Max 26,000,000 px. Needs NovaLCT 5.8.0 or above."
+      "ports": {
+        "defaultMode": "backup",
+        "modes": [
+          {"id": "copy", "label": "Copy", "count": 40, "copyTrunks": "mirror"},
+          {"id": "backup", "label": "Backup", "count": 40, "copyTrunks": "backup", "aliases": ["default"]}
+        ]
+      },
+      "modesNote": "H15 Video Wall Splicer Specifications V1.15.0 p.37: \"8x 10G OPT Ports\", \"OPT 1 to OPT 4 serve as the primary ports, and OPT 5 to OPT 8 serve as the backup ones\", \"OPT 5 backs up or copies the output on OPT 1\" (6 on 2, 7 on 3, 8 on 4), \"Copy and backup modes are supported.\" No independent mode. A file saved before the modes reads Backup: 40 ports on OPT 1-4 and nothing on OPT 5-8 is what it always was.",
+      "screenExcludes": ["novastar-card-h-4xfiber", "novastar-card-h-20xrj45", "novastar-card-h-16xrj45-2xfiber"],
+      "screenSameMode": true,
+      "screenRuleNote": "H15 Video Wall Splicer Specifications V1.15.0 p.37-38: \"This card cannot be used together with the H_4xfiber sending card, H_20xRJ45 sending card or H_16xRJ45+2xfiber sending card to load the same screen\" and \"Only the cards set in the same modes can be used together to load a screen.\"",
+      "note": "EIGHT 10G connectors but still four primaries - OPT 5-8 back up or copy OPT 1-4 - and one OPT = 10 Ethernet ports. 4 x 10 = 40. Counting connectors gets this wrong in both directions: not 8, not 80. Max 26,000,000 px. Needs NovaLCT 5.8.0 or above."
     },
     {
       "id": "novastar-card-mx-4x10g",

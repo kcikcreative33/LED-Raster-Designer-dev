@@ -9,6 +9,7 @@ from flask import Blueprint, request, jsonify
 
 import app
 import port_assignment
+import port_assignment as assignment
 from app import _assign_canvas_id, _build_panels, _find_canvas, _rebuild_layer_geometry_from_panel_states, _seed_data_with_canvas_defaults, create_image_layer, create_layer, create_text_layer, log_event, socketio
 
 layers_bp = Blueprint('layers', __name__)
@@ -308,6 +309,49 @@ def update_layer(layer_id):
     previous_offset_y = layer.get('offset_y', 0)
     previous_group_id = layer.get('group_id')
     previous_beach_id = layer.get('beachId')
+
+    # MIRROR A SCREEN (owner, 2026-10-30): dataMirrorOf names the screen
+    # this one copies - its data port map follows that screen's and lands on
+    # the copy OPTs of the card feeding it (port_assignment's mirror pass).
+    # It names another object, so it is validated, not taken on trust, and a
+    # refused one refuses the whole PUT before anything is written: a size
+    # or panel mismatch, a copy of a copy, itself
+    # (port_assignment.mirror_set_refusal). A PUT carrying the value the
+    # layer already has changes nothing and is never refused. Setting it
+    # lets go of the screen's own pins - from here on its ports follow the
+    # source's.
+    mirror_set = False
+    if 'dataMirrorOf' in data:
+        wanted = data.get('dataMirrorOf')
+        wanted = None if wanted in (None, '') else wanted
+        if str(wanted) != str(layer.get('dataMirrorOf')) \
+                and not (wanted is None and layer.get('dataMirrorOf') is None):
+            if wanted is not None:
+                why = assignment.mirror_set_refusal(app.current_project,
+                                                    layer, wanted)
+                if why:
+                    log_event('update_layer_mirror_refused',
+                              {'id': layer_id, 'mirrorOf': wanted,
+                               'why': why})
+                    return jsonify({'error': why, 'mirror': True}), 409
+                try:
+                    wanted = int(wanted)
+                except (TypeError, ValueError):
+                    pass
+            mirror_set = True
+        data.pop('dataMirrorOf', None)
+        if mirror_set:
+            if wanted is None:
+                layer.pop('dataMirrorOf', None)
+            else:
+                layer['dataMirrorOf'] = wanted
+                state = app.current_project.get(assignment.STATE_KEY)
+                if isinstance(state, dict) and state.get('pins'):
+                    state['pins'] = [p for p in state['pins']
+                                     if str((p or {}).get('layerId'))
+                                     != str(layer_id)]
+            log_event('update_layer_mirror', {'id': layer_id,
+                                              'mirrorOf': wanted})
 
     for key in ['name', 'columns', 'rows', 'cabinet_width', 'cabinet_height',
                 'offset_x', 'offset_y', 'rotation', 'color1', 'color2',
