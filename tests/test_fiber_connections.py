@@ -339,8 +339,8 @@ def test_an_sq200_lists_its_outs_and_the_qd_s_outputs(page):
 
 def test_each_card_of_a_chassis_names_its_own_outputs(page):
     """DUAL: two cards, each with its own OPT 1 - the output is named with
-    its card as the Breakout boxes table names it (SR, else its slot), and
-    an input with no cable says so."""
+    its card as the Breakout boxes table names it (SR, else Card N by its
+    slot), and an input with no cable says so."""
     pg, ids = page
     cells = [r['cells'] for r in _rows(pg, ids['dual'])]
     assert cells == [
@@ -348,10 +348,10 @@ def test_each_card_of_a_chassis_names_its_own_outputs(page):
         ['SR · OPT 2', 'not used', '', '', ''],
         ['SR · OPT 3', 'not used', '', '', ''],
         ['SR · OPT 4', 'not used', '', '', ''],
-        ['slot 2 · OPT 1', 'no fiber picked', '', 'OPT 1 on CVT10 A', ''],
-        ['slot 2 · OPT 2', 'not used', '', '', ''],
-        ['slot 2 · OPT 3', 'not used', '', '', ''],
-        ['slot 2 · OPT 4', 'not used', '', '', ''],
+        ['Card 2 · OPT 1', 'no fiber picked', '', 'OPT 1 on CVT10 A', ''],
+        ['Card 2 · OPT 2', 'not used', '', '', ''],
+        ['Card 2 · OPT 3', 'not used', '', '', ''],
+        ['Card 2 · OPT 4', 'not used', '', '', ''],
     ], cells
 
 

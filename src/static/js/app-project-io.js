@@ -130,6 +130,13 @@ class _ProjectIo {
                                 this.normalizeLoadedPowerFlowPattern(layer);
                             });
                         }
+                        // A show saved before US circuits packed to 80%
+                        // keeps its automatic 2fers and 3fers as saved
+                        // (app-power keepOlderShowShares). Read off the
+                        // file's own stamp, so it is asked here, before the
+                        // stamp below, and again on the server's copy.
+                        const olderShares = this.olderShowKeepsShares(this.project);
+                        if (olderShares) this.keepOlderShowShares();
                         // The migrations above have run against the file's
                         // own stamp; from here the project is this build's.
                         // Stamped BEFORE the PUT below, because a load never
@@ -195,6 +202,9 @@ class _ProjectIo {
                                         this.normalizeLoadedPowerFlowPattern(layer);
                                     });
                                 }
+                                // the keep worked out again on the copy the
+                                // server stored, the one the session edits
+                                if (olderShares) this.keepOlderShowShares();
                                 // v0.11.0: no-op when the pre-PUT pass already
                                 // fixed them; kept so the object that feeds
                                 // resetHistory() below is always normalized.

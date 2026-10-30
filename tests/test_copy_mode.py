@@ -644,7 +644,9 @@ def test_the_plug_choice_is_refused_where_there_is_none(client):
     resp = client.put(f'/api/processors/{hid}/cards/{h20}/ports/1',
                       json={'plug': 'card'})
     assert resp.status_code == 400
-    assert 'no ports that plug in at both' in resp.get_json()['error']
+    # an unnamed chassis card reads Card N, never slot N or its model
+    assert resp.get_json()['error'].startswith(
+        'Card 1 has no ports that plug in at both')
 
 
 def test_h16_port_plugs_in_at_the_card_or_the_box(client):
@@ -672,8 +674,9 @@ def test_fiber_and_rj45_h_cards_never_load_one_screen(client):
     resp = pin(client, screens, a, 1, rj, 1)
     assert resp.status_code == 409
     err = resp.get_json()['error']
-    assert err.startswith('W cannot be loaded by both H_4xfiber') \
-        and 'H_20xRJ45' in err, err
+    # an unnamed chassis card reads Card N, never slot N
+    assert err.startswith('W cannot be loaded by both H_4xfiber (H9 Card 1) '
+                          'and H_20xRJ45 (H9 Card 2)'), err
     assert 'NovaStar does not allow those cards to load the same screen' \
         in err
 

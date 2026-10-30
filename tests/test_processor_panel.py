@@ -4597,8 +4597,7 @@ def test_a_chassis_chooses_its_level_and_switches_its_backup_processor_on(
     assert bar['levels'] == ['off', 'card', 'port', 'mixed'], bar
     assert bar['texts'] == ['Off', 'Per card', 'Per port', 'Mixed'], bar
     assert bar['lit'] == 'card' and bar['litCount'] == 1, bar
-    assert bar['rows'] == ['Slot 1 · H_16xRJ45+2xfiber',
-                           'Slot 2 · H_16xRJ45+2xfiber'], bar
+    assert bar['rows'] == ['Slot 1 · Card 1', 'Slot 2 · Card 2'], bar
     out = page.evaluate(BACKUP_JS, ids['mainId'])
     assert out['cap'] == 'BACKUP PROCESSOR' and out['underBar'], out
     assert out['levels'] == ['off', 'on'] and out['lit'] == 'off', out

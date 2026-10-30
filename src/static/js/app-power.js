@@ -1,6 +1,12 @@
 // app-power: feature methods for LEDRasterApp (verbatim from the old
 // monolithic app.js), attached to the prototype via the carrier class.
 import { LEDRasterApp } from './app-core.js';
+import { sendClientLog } from './helpers.js';
+
+// The build whose US circuits first packed to 80% of the breaker: a show
+// saved before it keeps its automatic 2fers and 3fers as they were
+// (keepOlderShowShares).
+const KEPT_SHARES_BEFORE = '1.5.4';
 
 class _Power {
 
@@ -4873,6 +4879,182 @@ class _Power {
         return { circuits, runs: counts, runIds };
     }
 
+    // ---- an older show's automatic shares (1.5.4) ---------------------------
+    //
+    // Before 1.5.4 a US circuit packed to 100% of its breaker; it packs to
+    // 80% now (circuitCapacity). Automatic 2fers and 3fers are never
+    // stored: the walk above derives them from that figure on every read,
+    // so an older show whose 2fers fit at 100% but not at 80% opened with
+    // them re-split - more circuits, more multis, a different pull sheet -
+    // and nothing said. The owner's ruling (2026-10-30): keep them as they
+    // were saved and flag the ones past the limit OVER; the user shares
+    // them again.
+    //
+    // KEPT: opening a show saved before KEPT_SHARES_BEFORE
+    // (olderShowKeepsShares, read off the file's app_version before the
+    // load stamps it) runs keepOlderShowShares. Every screen whose
+    // automatic walk shares circuits is packed the way the old build
+    // packed it, at 100% of the breaker, and where that differs from
+    // today's pack the old circuits are written on the screen as
+    //   powerSplitters.kept = { groups: [[1, 2], [3, 4], ..., [11]], sig }
+    // - every run ordinal in walk order, one array per circuit - and the
+    // walk emits exactly those circuits (_packKeptRuns). A screen whose
+    // 2fers still fit, and every manual share, gets nothing: it packs the
+    // same either way. A locked screen is kept like any other, so it opens
+    // unchanged too. Hand-drawn (custom) circuits never come here.
+    //
+    // OVER: nothing new. A kept circuit past the screen's figure is an
+    // ordinary shared circuit past its amps: the Nfer pill on the wall and
+    // on the binder's map reads "2fer · OVER" in red (canvas-power
+    // _nferGangs), the tray's chip fills red past its figure, and the
+    // distro's breaker check counts it.
+    //
+    // CLEARED: `sig` is the screen as it was packed - pattern, voltage,
+    // breaker, splitter size, manual shares, and every run's cabinets and
+    // watts (_keptShareSig). The keep holds only while the screen still
+    // reads that. Any change that repacks the screen (its cabinets, watts,
+    // power settings, pattern, splitters, a share made or removed) leaves
+    // it stale: the walk packs normally, and the next layer commit drops
+    // it (pruneStaleKeptShares). A write through the manual store drops it
+    // at once (_ownPowerSplitters carries no `kept`), and so does turning
+    // the splitters off or changing their size. Undo puts it back with the
+    // state it belongs to. A change that only moves the packing % (a
+    // distro's system, 100% rated breakers) is no repack: a kept screen's
+    // circuits are what they were.
+
+    // Was `project` saved by a build that packed US circuits to 100%?
+    olderShowKeepsShares(project = this.project) {
+        return this.projectPredatesVersion(KEPT_SHARES_BEFORE, project);
+    }
+
+    // The kept circuits the walk takes for `layer`'s `count` runs, or null:
+    // no keep, a stale one (`sigOf()` is the screen now), or one that is
+    // not every run once in walk order. Null while keepOlderShowShares or
+    // the prune is probing, so the probe sees the screen's own pack.
+    _keptShares(layer, count, sigOf) {
+        if (this._keptShareProbe) return null;
+        const kept = layer && layer.powerSplitters && layer.powerSplitters.kept;
+        if (!kept || !Array.isArray(kept.groups) || typeof kept.sig !== 'string') return null;
+        const flat = kept.groups.flat();
+        if (flat.length !== count || flat.some((n, i) => n !== i + 1)
+                || kept.groups.some(g => !Array.isArray(g) || !g.length)) return null;
+        return kept.sig === sigOf() ? kept.groups : null;
+    }
+
+    // The kept circuits as the walk's result (_packPowerRuns' shape).
+    _packKeptRuns(runs, groups) {
+        const circuits = [], counts = [], runIds = [];
+        groups.forEach(g => {
+            circuits.push(g.flatMap(n => runs[n - 1].panels));
+            counts.push(g.map(n => runs[n - 1].panels.length));
+            runIds.push(g.slice());
+        });
+        return { circuits, runs: counts, runIds };
+    }
+
+    // What a keep is held to: the screen's automatic walk as it reads now,
+    // everything but the packing % (FNV-1a over the description, short
+    // enough to save). `runs` are the walk's runs, `manual` the applied
+    // manual shares, `layerOfPanel` the screen each cabinet sits on (a
+    // group packed as one wall walks its members' cabinets).
+    _keptShareSig(layer, pattern, runs, maxWays, manual, layerOfPanel) {
+        const text = JSON.stringify([
+            pattern, parseFloat(layer.powerVoltage) || 0, parseFloat(layer.powerAmperage) || 0,
+            maxWays, manual.merge, manual.split,
+            runs.map(r => [(Number(r.load) || 0).toFixed(3), r.panels.map(p => {
+                const on = layerOfPanel(p);
+                return `${on ? on.id : ''}:${p.row}:${p.col}`;
+            }).join(',')]),
+        ]);
+        let h = 0x811c9dc5;
+        for (let i = 0; i < text.length; i += 1) {
+            h ^= text.charCodeAt(i);
+            h = Math.imul(h, 0x01000193) >>> 0;
+        }
+        return `${runs.length}:${h.toString(16).padStart(8, '0')}`;
+    }
+
+    // `layer`'s automatic splitter walk without its keep: { sig, runIds },
+    // at `pct` of the breaker (null: the screen's own figure). Null when
+    // the screen does not walk shares (custom, splitters off, a group
+    // member packed on its owner) or a row or column cannot fit.
+    _keptShareWalk(layer, pct) {
+        const outerCap = this._capacityProbe;
+        const outerProbe = this._keptShareProbe;
+        const seen = new Map();
+        this._keptShareProbe = seen;
+        if (pct) this._capacityProbe = { pct };
+        try {
+            this.calculatePowerAssignments(layer);
+        } finally {
+            this._capacityProbe = outerCap;
+            this._keptShareProbe = outerProbe;
+        }
+        return seen.get(layer) || null;
+    }
+
+    _dropKeptShares(layer) {
+        const raw = layer && layer.powerSplitters;
+        if (!raw || !Object.prototype.hasOwnProperty.call(raw, 'kept')) return false;
+        const rest = { ...raw };
+        delete rest.kept;
+        layer.powerSplitters = rest;
+        return true;
+    }
+
+    // Opening an older show (olderShowKeepsShares): keep every screen's
+    // automatic shares as the old build packed them, at 100% of the
+    // breaker, where they differ from today's pack - that is, where a 2fer
+    // or 3fer that fit at 100% is past the limit now. Worked out afresh
+    // from the screens as they are (a keep already on one is redone), so
+    // a load may run it before and after the server's copy comes back.
+    // Unrecorded: the load's own history reset takes it. Returns the
+    // screens kept.
+    keepOlderShowShares() {
+        const screens = ((this.project && this.project.layers) || [])
+            .filter(l => l && (l.type || 'screen') === 'screen');
+        screens.forEach(l => this._dropKeptShares(l));
+        this._circuitTailCache = null;
+        const kept = [];
+        screens.forEach(layer => {
+            const then = this._keptShareWalk(layer, 1);
+            if (!then || !then.runIds.some(g => g.length > 1)) return;
+            // A row or column that cannot fit now has no circuits to keep:
+            // the screen says it cannot fit (_bCannotFit).
+            const now = this._keptShareWalk(layer, null);
+            if (!now || JSON.stringify(now.runIds) === JSON.stringify(then.runIds)) return;
+            layer.powerSplitters = { ...(layer.powerSplitters || {}),
+                kept: { groups: then.runIds.map(g => g.slice()), sig: then.sig } };
+            kept.push(layer);
+        });
+        this._circuitTailCache = null;
+        if (kept.length) {
+            sendClientLog('older_show_shares_kept', {
+                layers: kept.map(l => ({ id: l.id, circuits: l.powerSplitters.kept.groups.length })),
+            });
+        }
+        return kept;
+    }
+
+    // Drop every keep the screen no longer reads (a repack made it stale).
+    // Run by the layer commits (updateLayers / updateLayer) before they
+    // store anything; returns the screens it wrote.
+    pruneStaleKeptShares() {
+        const out = [];
+        ((this.project && this.project.layers) || []).forEach(layer => {
+            const kept = layer && layer.powerSplitters && layer.powerSplitters.kept;
+            if (!kept) return;
+            // the screen's walk as it reads now, its run count included
+            const now = this._keptShareWalk(layer, null);
+            const holds = !!now && now.sig === kept.sig && Array.isArray(kept.groups)
+                && kept.groups.flat().length === now.runIds.flat().length;
+            if (holds) return;
+            if (this._dropKeptShares(layer)) out.push(layer);
+        });
+        if (out.length) this._circuitTailCache = null;
+        return out;
+    }
+
     // The drawn path steps a (possibly merged) custom circuit covers - the
     // label sheets stamp every tile of a shared circuit with the ONE label,
     // so the sticker run for merged circuit `num` concatenates every member
@@ -5035,8 +5217,18 @@ class _Power {
                 }
                 const manual = this.appliedSplitterGroups(
                     layer, runs.map((_, i) => i + 1));
-                const packed = this._packPowerRuns(
+                // An older show's automatic shares, kept as it was saved
+                // (_keptShares): while the screen is the one they were
+                // packed on, the walk takes them as they are, over the
+                // limit or not, and the OVER flags read them.
+                const sigOf = () => this._keptShareSig(
+                    layer, pattern, runs, splitters.maxWays, manual, layerOfPanel);
+                const kept = this._keptShares(layer, runs.length, sigOf);
+                const packed = kept ? this._packKeptRuns(runs, kept) : this._packPowerRuns(
                     runs, wattsPerCircuit, splitters.maxWays, manual);
+                if (this._keptShareProbe) {
+                    this._keptShareProbe.set(layer, { sig: sigOf(), runIds: packed.runIds });
+                }
                 return this._mergeOverrideCircuits(layer, withOwners({
                     circuits: packed.circuits, runs: packed.runs,
                     runIds: packed.runIds, error: null }));

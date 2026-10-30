@@ -710,12 +710,15 @@ def set_slot_card(processor_id, index):
     return _state()
 
 
-def _check_ethernet_ports(card, device, value):
+def _check_ethernet_ports(card, device, value, proc=None):
     """Why `value` is not a list of ports this card may plug in at its own
     RJ45 (plugChoice), or None. Only the MX40 Pro and the
     H_16xRJ45+2xfiber take one, and only for their own ports."""
     limit = catalog.plug_choice_ports(device)
-    name = device.get('name', 'This card')
+    # The card as every message calls it: its typed name, else Card N on
+    # a card-based processor, else the unit (card_display_name).
+    name = (catalog.card_display_name(card, proc) if proc
+            else device.get('name', 'This card'))
     if not limit:
         return (f'{name} has no ports that plug in at both its own RJ45 '
                 f'and a breakout box.')
@@ -766,7 +769,8 @@ def update_card(processor_id, card_id):
     # PER PORT, CARD ETHERNET OR BOX (plugChoice), the whole list at once -
     # the card's "all ports on this OPT" shortcut sends it.
     if 'ethernetPorts' in data:
-        why = _check_ethernet_ports(card, device, data.get('ethernetPorts'))
+        why = _check_ethernet_ports(card, device, data.get('ethernetPorts'),
+                                    proc)
         if why:
             return jsonify({'error': why}), 400
     # A row under the bar's Mixed segment writes ONLY its card, and says
@@ -876,9 +880,9 @@ def update_card_port(processor_id, card_id, number):
             return jsonify({'error': "plug must be 'card' or 'box'"}), 400
         rport = next((p for p in (_resolved_card(card_id) or {})
                       .get('ports') or [] if p.get('number') == number), None)
-        why = _check_ethernet_ports(card, device, [number])
+        why = _check_ethernet_ports(card, device, [number], proc)
         if not why and not (rport and rport.get('plug')):
-            why = (f'Port {number} of {device.get("name", "this card")} has '
+            why = (f'Port {number} of {catalog.card_display_name(card, proc)} has '
                    f'no breakout box carrying it, so it plugs in at the '
                    f'card only.')
         if why:

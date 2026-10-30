@@ -282,6 +282,18 @@ FIXES
 - FIX: On the binder's data wiring sheets, a breakout box on an SX40 or
   another processor without cards no longer says slot 1. A named one
   reads XD B · SX40 S3 · trunk B, and an unnamed one reads XD B · trunk B.
+- FIX: A card you haven't named in an H series, MX2000 or MX6000 reads
+  Card 1, Card 2, Card 3 by the slot it's in, instead of its long model
+  name. That's in the tray, the processor's and the card's settings,
+  the redundancy picks and messages, and every binder sheet. A name you
+  type on a card still wins. The model is still listed where you pull
+  gear, on the binder's Cards table and its pull page, and under the
+  card's name in its settings.
+- FIX: The binder's Cards table says each card's redundancy the way the
+  app does, like 1:1, backed up by Card 2, Sequential or OPT Split,
+  instead of the raw setting names it printed before.
+- FIX: The binder's pull page lists a 1:1 backup card under Hardware
+  with the cards a screen runs on. Before, it was left off.
 - FIX: The enhanced H_4xfiber has all eight of its OPTs. OPT 1 to 4 carry
   its 40 ports and OPT 5 to 8 back them up or copy them, so a box can go on
   any of the eight and never adds ports. In Backup mode a new box brings

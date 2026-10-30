@@ -906,7 +906,7 @@ def test_a_return_lands_on_its_own_block_and_a_unit_replaces_the_card(page):
     CVT4K-S named BK. The signal half then has TWO discs - the primary
     "SR-1" on the run's FIRST PANEL, the return "BK-1" on its LAST - and
     TWO blocks, "CVT4K-S SR · SR · OPT 1-2" with socket 1 green and
-    "CVT4K-S BK · slot 2 · OPT 1-2" with socket 1 red; two runs, the
+    "CVT4K-S BK · Card 2 · OPT 1-2" with socket 1 red; two runs, the
     return's red and dashed - finely dashed into a hollow socket on the
     printer sheet."""
     pg, ids = page
@@ -938,14 +938,14 @@ def test_a_return_lands_on_its_own_block_and_a_unit_replaces_the_card(page):
         # each on the very panel its run begins / ends on, and the run of a
         # 4 x 3 wall ends on the bottom row: the return's disc is lower
         assert last['y'] > first['y'], (first, last)
-        assert [b['title'] for b in sig['blocks']] == ['CVT4K-S SR · SR · OPT 1-2', 'CVT4K-S BK · slot 2 · OPT 1-2'], sig['blocks']
+        assert [b['title'] for b in sig['blocks']] == ['CVT4K-S SR · SR · OPT 1-2', 'CVT4K-S BK · Card 2 · OPT 1-2'], sig['blocks']
         a, b = sig['blocks']
         assert len(a['sockets']) == 16 and len(b['sockets']) == 16
         assert [s['state'] for s in a['sockets']] == ['primary'] + ['free'] * 15
         assert [s['state'] for s in b['sockets']] == ['return'] + ['free'] * 15
         assert [(w['from'], w['device'], w['socket'], w['kind'], _c(w['colour'])) for w in sig['runs']] == [
             ('SR-1', 'CVT4K-S SR · SR · OPT 1-2', 1, 'primary', GREEN),
-            ('BK-1', 'CVT4K-S BK · slot 2 · OPT 1-2', 1, 'return', RED)]
+            ('BK-1', 'CVT4K-S BK · Card 2 · OPT 1-2', 1, 'return', RED)]
         s = sig['scale']
         assert [len(w['dash']) for w in sig['runs']] == [0, 2]
         assert [round(v / s, 2) for v in sig['runs'][1]['dash']] == RETURN_DASH

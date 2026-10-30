@@ -1264,13 +1264,18 @@ class _HardwareDock {
         const Word = this.unitWordTitle(word);
         // A card that is a unit of its own leads with its title - "QD 1"
         // for the QD-S on OUT 1 (owner, 2026-09-28) - the name its boxes
-        // wear ("QD 1 A").
-        const model = card.unitTitle
-            ? `${card.unitTitle} · ${card.deviceName}` : card.deviceName;
+        // wear ("QD 1 A"). A card on a card-based processor reads by its
+        // slot, "Card 2" (owner, 2026-10-29: "Card 1, 2, 3 etc instead of
+        // H_16"); the model is in its ⚙ and on the binder's Cards table,
+        // and the name typed on it is in the field beside.
+        const slotTitle = this.cardSlotTitle(proc, card);
+        const model = slotTitle || (card.unitTitle
+            ? `${card.unitTitle} · ${card.deviceName}` : card.deviceName);
         const head = this._dockBuildHandle(
             {
                 type: 'card', cardId: card.id,
-                title: (this.cardTypedName(proc, card) || card.unitTitle
+                title: (this.cardShortName(proc, card)
+                        || this.cardTypedName(proc, card) || card.unitTitle
                         || card.deviceName)
                     + cardTag,
             },
@@ -2043,7 +2048,7 @@ class _HardwareDock {
         this._dockWireDraggable(face, {
             type: 'port', cardId: card.id, port: port.number,
             title: port.label
-                || `${boxTitle || card.name || card.deviceName} `
+                || `${boxTitle || this.cardShortName(proc, card) || card.name || card.deviceName} `
                 + `port ${spoken}`,
         }, `port-${card.id}-${port.number}`);
 
@@ -2274,12 +2279,15 @@ class _HardwareDock {
             cardSel.style.minWidth = '0';
             const own = document.createElement('option');
             own.value = card.id;
-            own.textContent = card.name || proc.name || card.deviceName;
+            // a card on a card-based processor by its name, else "Card 2"
+            own.textContent = this.cardShortName(proc, card)
+                || card.name || proc.name || card.deviceName;
             cardSel.appendChild(own);
             this._otherCards(card.id).forEach(({ proc: p, card: c }) => {
                 const opt = document.createElement('option');
                 opt.value = c.id;
-                opt.textContent = c.name || p.name || c.deviceName;
+                opt.textContent = this.cardShortName(p, c)
+                    || c.name || p.name || c.deviceName;
                 if (picked && picked.cardId === c.id) opt.selected = true;
                 cardSel.appendChild(opt);
             });

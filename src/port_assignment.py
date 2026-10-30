@@ -260,6 +260,10 @@ def cards_in(processors):
                 # A card that is a unit of its own ("QD 1", a QD-S on OUT
                 # 1): messages call it that rather than "slot 1".
                 'unitTitle': card.get('unitTitle') or '',
+                # An unnamed card on a card-based processor (the H series,
+                # the MX2000, the MX6000) is "Card 3" by its slot, as the
+                # dock and the binder call it (owner, 2026-10-29).
+                'slotTitle': catalog.card_slot_title(card, proc),
                 # What a message calls it: 'card' on the H series, the
                 # MX2000 and the MX6000 only, else 'processor' ('QD' for a
                 # QD-S) - catalog.unit_word.
@@ -421,6 +425,8 @@ def _card_title(card):
         return card['name']
     if card['processorName'] and card.get('unitTitle'):
         return f"{card['processorName']} {card['unitTitle']}"
+    if card['processorName'] and card.get('slotTitle'):
+        return f"{card['processorName']} {card['slotTitle']}"
     if card['processorName']:
         return f"{card['processorName']} slot {(card['slot'] or 0) + 1}"
     return card['deviceName']

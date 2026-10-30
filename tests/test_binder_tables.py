@@ -175,15 +175,15 @@ def _column(page, heading):
 
 # ── 1. no cell is cut off ────────────────────────────────────────────────
 
-# _bFit cuts by APPENDING the ellipsis, so a cut string always ends in one.
-# The pull list's own summary of a long label set - "S1-3-1 … S1-2-6 (11)",
-# first, last and how many (app-pull-list.js) - is the one string that
-# carries an ellipsis on purpose, and it is whole.
-SUMMARY = re.compile(r'^\S.* … \S.* \(\d+\)$')
+# _bFit cuts by APPENDING the ellipsis, so a cut string always ends in one,
+# and only a trailing ellipsis is a cut. One inside a string is a fold the
+# app wrote on purpose and is whole: the pull list's summary of a long label
+# set, "S1-3-1 … S1-2-6 (11)", a run of siblings said by its ends, "SR A-1 …
+# A-4", and such a run as one line of a wrapped cell, "S1-3-1 … 3-6,".
 
 
 def _cut(text):
-    return text.endswith('…') or ('…' in text and not SUMMARY.match(text))
+    return text.endswith('…')
 
 
 def test_no_cell_on_any_sheet_is_cut_off(shows):

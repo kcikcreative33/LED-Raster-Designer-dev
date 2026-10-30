@@ -542,7 +542,7 @@ class _Processors {
         if (this.cardIsUnitFace(p, c)) {
             return p.name || p.deviceName || c.deviceName;
         }
-        return `${c.name || c.unitTitle || c.deviceName} in ${p.name || p.deviceName}`;
+        return `${this.cardShortName(p, c) || c.name || c.unitTitle || c.deviceName} in ${p.name || p.deviceName}`;
     }
 
     // Whether the vendor fixes this unit's pairing (Brompton's adjacent
@@ -617,12 +617,13 @@ class _Processors {
     }
 
     // A row's legend under the bar - one place, so the words a slot row
-    // wears can change in one place (a "Card 1" reading is pending).
-    // A chassis says its slot and the card in it, the slot counted from
-    // one; a standalone unit is its one card, read by its unit title.
+    // wears can change in one place. A chassis says its slot and the card
+    // in it, the slot counted from one - "Slot 2 · Card 2" where nobody
+    // named the card (cardShortName); a standalone unit is its one card,
+    // read by its unit title.
     _redRowLegend(proc, slot, card) {
         return proc.form === 'chassis'
-            ? `Slot ${slot.index + 1} · ${card.name || card.deviceName}`
+            ? `Slot ${slot.index + 1} · ${this.cardShortName(proc, card) || card.name || card.deviceName}`
             : this.dataUnitTitle(proc, card).title;
     }
 
@@ -1226,10 +1227,22 @@ class _Processors {
         const word = this.unitWordFor(proc, card);
         const Word = this.unitWordTitle(word);
         // A one-box unit's card IS the unit, so its gear is headed by the
-        // unit's one name; a slot card is headed by its own.
+        // unit's one name; a slot card is headed by its own - "Card 2" on
+        // a card-based processor where nobody named it (cardShortName).
         wrap.appendChild(this._popHeading(this.cardIsUnitFace(proc, card)
             ? this.dataUnitTitle(proc, card).title
-            : (card.name || card.deviceName)));
+            : (this.cardShortName(proc, card) || card.name || card.deviceName)));
+        // The model stands under a card-based processor's card heading:
+        // the card's own gear is where to look up which card it is.
+        if (this.procIsCardBased(proc) && card.deviceName) {
+            const model = document.createElement('div');
+            model.className = 'hw-pop-model';
+            model.textContent = card.deviceName;
+            model.style.fontSize = '12px';
+            model.style.color = 'var(--ps-dim, #c0c0c0)';
+            model.style.margin = '0 0 8px 0';
+            wrap.appendChild(model);
+        }
 
         // The two template fields share a wrapping line, the same reason
         // the old panel wrapped them: at popover width two fields fit
@@ -1919,6 +1932,30 @@ class _Processors {
         return (((rec || {}).name) || '').trim();
     }
 
+    // "CARD 3": what a card on a card-based processor is, by the slot it
+    // sits in, counted from one (owner, 2026-10-29: "we should show it as
+    // Card 1, 2, 3 etc instead of H_16 which gets confusing"). The slots
+    // before it may be empty - the card in slot 3 is Card 3. '' on every
+    // other processor (an SX40, an S8, an SQ200's QD-S never say card) and
+    // for a card in no slot. The server's card_slot_title.
+    cardSlotTitle(proc, card) {
+        if (!card || !this.procIsCardBased(proc)) return '';
+        const slot = (((proc || {}).slots) || [])
+            .find(s => s && s.card && s.card.id === card.id);
+        return slot ? `Card ${(slot.index || 0) + 1}` : '';
+    }
+
+    // THE NAME A CARD GOES BY ON A CARD-BASED PROCESSOR: the name somebody
+    // typed (it always wins), else Card N (cardSlotTitle) - never the
+    // model, which is said only where gear is pulled (the binder's Cards
+    // table and its pull page's Hardware). '' on every other processor, so
+    // a caller's own reading for those stays exactly as it was:
+    //     this.cardShortName(proc, card) || <the caller's old fallback>
+    cardShortName(proc, card) {
+        if (!card || !this.procIsCardBased(proc)) return '';
+        return this.cardTypedName(proc, card) || this.cardSlotTitle(proc, card);
+    }
+
     // THE UNIT A SOCKET SITS ON, NAMED ONCE (2026-09-09, off the live
     // show A binder: "IMAG SR IMAG SR · NovaPro UHD Jr · 16 ports").
     // A processor with no slots - a NovaPro UHD Jr, an S8 - carries
@@ -1940,8 +1977,9 @@ class _Processors {
         const slot = (((proc || {}).slots) || [])
             .find(s => s && s.card && s.card.id === card.id);
         const host = p || proc.deviceName || proc.id || '';
-        // A card that is a unit of its own goes by its title ("QD 1").
-        const part = c || card.unitTitle
+        // A card that is a unit of its own goes by its title ("QD 1"); an
+        // unnamed card on a card-based processor by its slot, "Card 3".
+        const part = this.cardShortName(proc, card) || c || card.unitTitle
             || (slot ? `slot ${(slot.index || 0) + 1}` : card.deviceName || '');
         const named = !!(p || c);
         if (!host || !part) return { title: host || part, named };
@@ -2483,6 +2521,18 @@ class _Processors {
         return word ? `${word} Split` : 'Split';
     }
 
+    // The word a redundancy shape wears on its chip under the processor's
+    // ⚙ - "1:1", "Sequential", "OPT Split", "Manual" - one spelling for
+    // the chips and every sheet that names a card's shape, never the
+    // stored id ("1to1", "halves"). '' for no shape.
+    _redundancyShapeLabel(card, mode) {
+        if (mode === '1to1') return '1:1';
+        if (mode === 'sequential') return 'Sequential';
+        if (mode === 'halves') return this._portShapeSplitLabel(card);
+        if (mode === 'manual') return 'Manual';
+        return mode && mode !== 'off' ? String(mode) : '';
+    }
+
     // The sentence the split's tip adds where the split really is the
     // trunks backing each other, and nothing at all where it is not.
     // Derived, never assumed: the ports fill the trunks in blocks of
@@ -2527,10 +2577,10 @@ class _Processors {
         const half = card.ceilingKnown && card.ceiling
             ? Math.floor(card.ceiling / 2) : null;
         const word = this.unitWordFor(proc, card);
-        [...(opts.pair ? [['1to1', '1:1',
+        [...(opts.pair ? [['1to1', this._redundancyShapeLabel(card, '1to1'),
           `1:1: another ${word} mirrors this one, port for port. `
           + 'Pick it under the chips.']] : []),
-         ['sequential', 'Sequential',
+         ['sequential', this._redundancyShapeLabel(card, 'sequential'),
           card.ceilingKnown && card.ceiling
               ? `1 backed by 2, 3 by 4 - ${shape.mode === 'sequential'
                   ? shape.usable : Math.ceil(card.ceiling / 2)} of `
@@ -2550,7 +2600,7 @@ class _Processors {
          // (2026-10-04), so its spans are the server's (halvesSpans) -
          // "Ports 26-40 carry the returns of 1-10, 21-25." - and the
          // trunk sentence only where no box is missing between boxes.
-         ['halves', this._portShapeSplitLabel(card), card.halvesSpans
+         ['halves', this._redundancyShapeLabel(card, 'halves'), card.halvesSpans
              ? `Ports ${card.halvesSpans.backs} carry the returns of `
                + `${card.halvesSpans.mains}.`
                + ((card.gaps || []).length ? ''
@@ -2560,7 +2610,7 @@ class _Processors {
                + `returns of 1-${half}.` + this._splitTrunkClause(card, half)
              : 'The back half of the ports are the front half’s '
                + 'returns.'],
-         ['manual', 'Manual',
+         ['manual', this._redundancyShapeLabel(card, 'manual'),
           'Each port picks its backup in its chip on the hardware dock. '
           + 'An unpicked port has no backup.'],
         ].forEach(([id, text, tip]) => {

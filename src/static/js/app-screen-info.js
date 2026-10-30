@@ -1502,7 +1502,9 @@ class _ScreenInfo {
         // _canvasGuardEdit): an edit that would take its screens past it is
         // put back here, before the PUT and before the undo step.
         if (typeof this._canvasGuardEdit === 'function' && !this._canvasGuardEdit()) return;
-        
+        // Kept 2fers this edit repacked go (app-power pruneStaleKeptShares).
+        if (typeof this.pruneStaleKeptShares === 'function') this.pruneStaleKeptShares();
+
         // Save state before update if requested
         if (saveHistory) {
             this.saveState(historyAction);
@@ -1685,6 +1687,13 @@ class _ScreenInfo {
         // and nothing is PUT or recorded (app-port-assignment
         // _canvasGuardEdit). Every layer commit funnels through here.
         if (typeof this._canvasGuardEdit === 'function' && !this._canvasGuardEdit()) return;
+
+        // An older show's kept 2fers that this edit repacked go (app-power
+        // pruneStaleKeptShares), and a screen that loses one rides along.
+        if (typeof this.pruneStaleKeptShares === 'function') {
+            const pruned = this.pruneStaleKeptShares().filter(l => !layers.includes(l));
+            if (pruned.length) layers = layers.concat(pruned);
+        }
 
         if (saveHistory) {
             this.saveState(historyAction);

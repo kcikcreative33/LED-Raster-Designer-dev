@@ -282,10 +282,11 @@ class _BinderWiring {
             if (!d) {
                 // The unit named ONCE and its model said once beside it -
                 // _bPortHome's unitTitle, the very string the Data sheet's
-                // band carries.
+                // band carries. A card going by Card N carries no model:
+                // the model is said where gear is pulled.
                 const title = home.box
                     ? [this._bBoxTitle(home.box), home.cardTitle, home.box.trunkTitle || ''].filter(Boolean).join(' · ')
-                    : [home.unitTitle, home.named ? home.card.deviceName : ''].filter(Boolean).join(' · ');
+                    : [home.unitTitle, home.named && !home.slotNamed ? home.card.deviceName : ''].filter(Boolean).join(' · ');
                 const n = home.box
                     ? (home.box.portCount || (home.box.ports || []).length)
                     : (home.card.ceiling || (home.card.ports || []).length);

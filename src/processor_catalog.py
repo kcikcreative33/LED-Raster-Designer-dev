@@ -158,16 +158,38 @@ def card_is_unit_face(card, proc):
     return bool((card or {}).get('fixed'))
 
 
+def card_slot_title(card, proc):
+    """What an unnamed card on a card-based processor is called: "Card 3"
+    for the card in slot 3, counted by the slot it sits in, so the slots
+    before it may be empty (owner, 2026-10-29: "we should show it as Card
+    1, 2, 3 etc instead of H_16 which gets confusing"). '' on every other
+    processor - an SX40, an S8, an SQ200's QD-S never say card - and for a
+    card in no slot. Works on raw and resolved trees alike. The client's
+    cardShortName, mirrored."""
+    if not card or not is_card_based(get_device((proc or {}).get('deviceId'))):
+        return ''
+    for slot in (proc or {}).get('slots') or []:
+        held = (slot or {}).get('card')
+        if held is card or (held and held.get('id') == card.get('id')):
+            try:
+                return f'Card {int(slot.get("index") or 0) + 1}'
+            except (TypeError, ValueError):
+                return ''
+    return ''
+
+
 def card_display_name(card, proc):
     """The name a card goes by in a message or a tag: its own typed name on
     a chassis, the unit's name for a one-box's fixed card, else its unit
-    title where the catalog words one (a QD-S is "QD 1" on OUT 1), else the
+    title where the catalog words one (a QD-S is "QD 1" on OUT 1), else
+    "Card N" on a card-based processor (card_slot_title), else the
     model."""
     if card_is_unit_face(card, proc):
         typed = ((proc or {}).get('name') or '').strip()
     else:
         typed = ((card or {}).get('name') or '').strip()
     return typed or card_unit_title(card, proc) \
+        or card_slot_title(card, proc) \
         or (card or {}).get('deviceName') \
         or (get_device((card or {}).get('deviceId')) or {}).get('name') \
         or (card or {}).get('id') or ''
@@ -4336,7 +4358,8 @@ def _apply_backup_mapping(processors, resolved):
         # says the local number, because that is the number a hand can find.
         mport['backedBy'] = {
             'processorId': tproc['id'], 'cardId': tcard['id'],
-            'cardTitle': tcard['name'] or tcard['deviceName'],
+            'cardTitle': (tcard['name'] or card_slot_title(tcard, tproc)
+                          or tcard['deviceName']),
             'boxTitle': box_title(target_id, tport),
             'port': t, 'localPort': tport['localNumber'],
             'label': tport['label'],
