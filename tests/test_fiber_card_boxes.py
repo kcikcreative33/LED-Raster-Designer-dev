@@ -139,7 +139,9 @@ def test_a_bare_card_has_no_port_and_each_box_adds_its_share(client,
     per_box = min(catalog.port_capacity(box)['count'], device['portsPerTrunk'])
     ceiling = catalog.port_capacity(card_device)['count']
     for n in range(1, device['trunks'] + 1):
-        resp = add_box(client, pid, cid, box)
+        # one box per OPT, no default backup pair: the enhanced card's OPT
+        # 5-8 back up OPT 1-4 (H15 Specifications V1.15.0 p.37)
+        resp = add_box(client, pid, cid, box, pair=False)
         assert resp.status_code == 201, resp.get_data(as_text=True)
         card = resolved_card(resp.get_json(), cid)
         assert numbers(card) == list(range(1, min(n * per_box, ceiling) + 1))

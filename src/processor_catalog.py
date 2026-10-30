@@ -939,6 +939,11 @@ def _fills_the_card(card_device, ceiling):
     trunks = card_device.get('trunks') or 0
     if not trunks or not ceiling:
         return []
+    # Only the primary OPTs carry ports of their own: an enhanced
+    # H_4xfiber's OPT 5-8 copy OPT 1-4, so a box is judged on four.
+    per = card_device.get('portsPerTrunk')
+    if per and ceiling >= per:
+        trunks = min(trunks, (ceiling + per - 1) // per)
     out = []
     for box in devices('cvt'):
         if vendor_mismatch(card_device, box) or box.get('legacy'):
@@ -3881,8 +3886,15 @@ def resolve_card(card, proc):
                     if (p['cvtId'] or p['plug'] == 'card')
                     and not p['beyondCeiling'])
     shortfall = None
+    # Every PRIMARY OPT spoken for: on a card whose later OPTs are copies
+    # (the enhanced H_4xfiber's OPT 5-8) a box there adds no port, so the
+    # card is done once its primaries are - the copies are not owed a box.
+    primary_trunks = (block_count if block_count and block_count < trunks
+                      else trunks)
+    primaries_full = (sum(1 for t in taken if t < primary_trunks)
+                      >= primary_trunks)
     if (cvts and ceiling and trunks
-            and used_trunks >= trunks
+            and primaries_full
             and delivered < ceiling
             # Only where the boxes are how the ports get out at all. On a card
             # whose OPTs copy its own RJ45s there is nothing short - the ports

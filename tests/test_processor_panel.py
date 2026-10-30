@@ -245,7 +245,9 @@ NOVASTAR_10G_TRUNKS = [
     ('novastar-novapro-uhd-jr', 4, 8, 'copy'),
     ('novastar-card-h-16xrj45-2xfiber', 2, 8, 'copy'),
     ('novastar-card-h-4xfiber', 4, 8, 'distinct'),
-    ('novastar-card-h-4xfiber-enhanced', 4, 10, 'distinct'),
+    # Eight OPTs: "8x 10G OPT Ports" (H15 Video Wall Splicer
+    # Specifications V1.15.0 p.37) - OPT 5-8 back up or copy OPT 1-4.
+    ('novastar-card-h-4xfiber-enhanced', 8, 10, 'distinct'),
     ('novastar-card-mx-4x10g', 4, 10, 'distinct'),
 ]
 
@@ -575,6 +577,10 @@ def test_the_conditions_the_table_records_are_carried_across():
     Pro is 40 or 20 by optical mode, and Brompton redundancy halves the usable
     count because a backup port consumes a port number rather than adding one."""
     assert catalog.port_capacity('novastar-card-h-4xfiber', 'independent')['count'] == 32
+    # Copy and Backup are both 16 (H15 Specifications V1.15.0 p.36); the old
+    # combined id copy-backup reads as Backup.
+    assert catalog.port_capacity('novastar-card-h-4xfiber', 'copy')['count'] == 16
+    assert catalog.port_capacity('novastar-card-h-4xfiber', 'backup')['count'] == 16
     assert catalog.port_capacity('novastar-card-h-4xfiber', 'copy-backup')['count'] == 16
     assert catalog.port_capacity('novastar-mx40-pro', '40-port')['count'] == 40
     assert catalog.port_capacity('novastar-mx40-pro', '20-port')['count'] == 20
@@ -951,22 +957,27 @@ def test_a_copper_only_card_takes_no_box_at_all(client):
     assert 'copper' in resp.get_json()['error']
 
 
-def test_the_enhanced_cards_backup_opts_are_not_offered_as_trunks(client):
-    """Eight 10G connectors, four primaries - OPT 5-8 back up OPT 1-4. Treating
-    the backups as usable would take eight boxes and imply 80 ports on a
-    40-port card, which is the same connector-counting trap as its port count,
-    one level down."""
+def test_the_enhanced_cards_backup_opts_never_add_ports(client):
+    """Eight 10G connectors, four primaries: "OPT 1 to OPT 4 serve as the
+    primary ports, and OPT 5 to OPT 8 serve as the backup ones" (H15 Video
+    Wall Splicer Specifications V1.15.0 p.37). Each is a real OPT a box can
+    hang off, so the card has eight trunks - but a box on OPT 5-8 delivers
+    OPT 1-4's ports again, never 41-80: 80 on a 40-port card would be the
+    same connector-counting trap as its port count, one level down. A
+    ninth box has no OPT left."""
     pid, card_id = with_card(client, 'novastar-h9',
                              'novastar-card-h-4xfiber-enhanced')
-    for _ in range(4):
+    for _ in range(8):
         assert client.post(f'/api/processors/{pid}/cards/{card_id}/cvts',
-                           json={'deviceId': 'novastar-cvt10'}).status_code == 201
+                           json={'deviceId': 'novastar-cvt10',
+                                 'pair': False}).status_code == 201
     resp = client.post(f'/api/processors/{pid}/cards/{card_id}/cvts',
                        json={'deviceId': 'novastar-cvt10'})
-    assert resp.status_code == 400, 'a backup OPT was offered as a fifth trunk'
+    assert resp.status_code == 400, 'a ninth box found an OPT'
     card = first_card(only(client.get('/api/processors').get_json()))
-    assert card['trunks'] == 4 and card['trunksUsed'] == 4
+    assert card['trunks'] == 8 and card['trunksUsed'] == 8
     assert card['ceiling'] == 40 and card['defined'] == 40
+    assert [b['firstPort'] for b in card['cvts'][4:]] == [1, 11, 21, 31]
 
 
 def test_a_backup_box_does_not_rename_the_ports_the_primary_named(client):
@@ -1190,14 +1201,16 @@ def test_the_same_boxes_on_a_plain_four_fiber_card_fall_short_of_nothing(client)
 
 
 def test_a_half_patched_card_is_not_reported_as_falling_short(client):
-    """One box on a four-OPT card is not a shortfall, it is a card someone has
-    not finished patching. Two OPTs are still free and the next box fills
-    them - nagging here would train people to ignore the message that matters."""
+    """One box on a card is not a shortfall, it is a card someone has not
+    finished patching. Its other primary OPTs are still free and the next box
+    fills them - nagging here would train people to ignore the message that
+    matters. (The enhanced card has eight OPTs, H15 Specifications V1.15.0
+    p.37, so one box leaves seven.)"""
     pid, card_id = with_card(client, 'novastar-h9',
                              'novastar-card-h-4xfiber-enhanced')
     state = add_boxes(client, pid, card_id, 1, 'novastar-cvt10')
     card = first_card(only(state))
-    assert card['trunksFree'] == 3
+    assert card['trunksFree'] == 7
     assert card['shortfall'] is None
 
 
@@ -1528,7 +1541,9 @@ def test_the_tree_round_trips_through_save_and_reload(client):
     assert proc['name'] == 'FOH'
     card = first_card(proc)
     assert card['name'] == 'SR'
-    assert card['mode'] == 'copy-backup'
+    # copy-backup is the old id of Backup (NovaStar's three modes, H15
+    # Specifications V1.15.0 p.36): stored and reloaded as the mode it named.
+    assert card['mode'] == 'backup'
     # the mode's count; the card's own ceiling follows its boxes
     # ("Follow the boxes", 2026-10-04) - one CVT10 pair, ports 1-8
     assert card['modeCeiling'] == 16, 'the stored mode was lost on reload'
@@ -5271,8 +5286,11 @@ async () => {
     const h9 = st.resolved[st.resolved.length - 1];
     await send(`/api/processors/${h9.id}/slots/0`, 'PUT',
                { deviceId: 'novastar-card-h-4xfiber' });
+    // A second four-OPT card (the enhanced card has eight OPTs since
+    // 2026-10-30 - H15 Specifications V1.15.0 p.37 - and in Backup a box
+    // brings its backup pair, so it no longer runs out of trunks here).
     st = await send(`/api/processors/${h9.id}/slots/1`, 'PUT',
-                    { deviceId: 'novastar-card-h-4xfiber-enhanced' });
+                    { deviceId: 'novastar-card-h-4xfiber' });
     const h9cards = st.resolved.find(p => p.id === h9.id)
         .slots.filter(s => s.card).map(s => s.card.id);
     const novaCard = h9cards[0];
