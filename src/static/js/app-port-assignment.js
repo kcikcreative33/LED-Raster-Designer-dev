@@ -119,6 +119,13 @@ class _PortAssignment {
                     // re-derives it.
                     platform: l.processorType || null,
                 };
+                // The screen this one mirrors (app-mirror-screens.js): its
+                // ports land on the copies of that screen's sockets, on
+                // the server. Sent only where set.
+                if (l.dataMirrorOf !== undefined && l.dataMirrorOf !== null
+                        && l.dataMirrorOf !== '') {
+                    scr.mirrorOf = String(l.dataMirrorOf);
+                }
                 if (capped && ports > 0) {
                     Object.assign(scr, this._linkCapFields(l, ports));
                 }
@@ -242,6 +249,10 @@ class _PortAssignment {
             const target = ((this.project && this.project.layers) || [])
                 .find(l => String(l.id) === String(body.layerId));
             if (target && this._lockedRefused(target)) return Promise.resolve();
+            // A mirror's ports follow its source's and are never placed or
+            // released on their own (the server refuses it too).
+            if (target && typeof this._mirrorRefused === 'function'
+                    && this._mirrorRefused(target)) return Promise.resolve();
         }
         const payload = Object.assign({ screens: this._assignmentScreens() },
                                       body || {});
@@ -270,7 +281,8 @@ class _PortAssignment {
                     this.renderPortAssignmentPanel();
                     // A link-cap refusal also speaks where the drop was
                     // made: nothing landed, and the strip may be folded.
-                    if ((data.linkCap || data.canvas)
+                    if ((data.linkCap || data.canvas || data.mirror
+                            || data.cardMix)
                             && typeof this._dockSay === 'function') {
                         this._dockSay(data.error);
                     }

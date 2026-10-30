@@ -58,6 +58,16 @@ class _History {
                 sendClientLog('multi_numbers_commit_failed', { action, error: String(e && e.message || e) });
             }
         }
+        // A mirror screen's data map is its source's (2026-10-30): copied
+        // onto it before the entry is taken, so undo, redo and save carry
+        // the map the canvas draws (app-mirror-screens.js).
+        if (typeof this._syncMirrorScreens === 'function') {
+            try {
+                this._syncMirrorScreens();
+            } catch (e) {
+                sendClientLog('mirror_sync_failed', { action, error: String(e && e.message || e) });
+            }
+        }
 
         const json = JSON.stringify(this.project, this._snapshotReplacer);
 

@@ -416,6 +416,10 @@ class _CustomRuns {
             this._showLockedError([owner, source].filter(l => l.locked));
             return;
         }
+        // A mirror screen's map is its source's and is never drawn on its
+        // own (app-mirror-screens.js) - refused out loud.
+        if (typeof this._mirrorRefused === 'function'
+                && this._mirrorRefused([owner, source])) return;
         this.ensureCustomFlowState(owner);
         const portNum = owner.customPortIndex || 1;
         if (!owner.customPortPaths[portNum]) owner.customPortPaths[portNum] = [];
@@ -978,6 +982,8 @@ class _CustomRuns {
             this._showLockedError([owner]);
             return false;
         }
+        if (!isPower && typeof this._mirrorRefused === 'function'
+                && this._mirrorRefused(owner)) return false;
         if (isPower) this.ensureCustomPowerState(owner);
         else this.ensureCustomFlowState(owner);
         const refill = !!(opts && opts.refill);

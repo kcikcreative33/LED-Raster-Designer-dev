@@ -1564,8 +1564,9 @@ class _HardwareDock {
         // the ⚙'s picker keeps the last pick per card; this is the same pick
         (this._procCvtPick = this._procCvtPick || {})[cardId] =
             inputs ? `${deviceId}:${inputs}` : deviceId;
-        this._processorRequest(
-            `/api/processors/${found.proc.id}/cards/${cardId}/cvts`, 'POST',
+        // A box landing on a copy OPT of a card that picks per box asks
+        // Mirror or Backup first (app-mirror-screens.js addBoxWithRole).
+        this.addBoxWithRole(found.proc, found.card,
             this._boxFitBody({ id: deviceId, addInputs: inputs }),
             'Add Breakout Box');
     }
@@ -1665,7 +1666,10 @@ class _HardwareDock {
         // "(backup)" is the backup PROCESSOR's word now (2026-09-25): a
         // loop's far box says what it is on its row ("· loop end"), and
         // only a copy box still wears a tag.
-        const tag = cvt.duplicateOf ? ' (copy)' : '';
+        // ...and a box on a copy OPT feeding a mirror screen says so: its
+        // sockets carry the mirror's runs, not the primary's again.
+        const tag = cvt.copyRole === 'mirror' ? ' (mirror)'
+            : (cvt.duplicateOf ? ' (copy)' : '');
         // Four boxes all reading "XD" are four sections nobody
         // can tell apart, so an unnamed box on a trunked card wears its
         // trunk letter - "XD A" - the letters the pairing rule
@@ -2200,6 +2204,24 @@ class _HardwareDock {
         }
         row.appendChild(who);
         wrap.appendChild(names);
+        // Where the port plugs in, where it has a choice (the MX40 Pro and
+        // the H_16xRJ45+2xfiber: the card's own RJ45 or the box on the OPT
+        // that carries it - app-mirror-screens.js).
+        const plug = typeof this._buildPortPlugStrip === 'function'
+            ? this._buildPortPlugStrip(proc, card, port) : null;
+        if (plug) wrap.appendChild(plug);
+        // A mirror socket says which primary it copies.
+        if (port.mirrorOf) {
+            const copy = document.createElement('div');
+            copy.style.fontSize = '11px';
+            copy.style.color = '#c8a04a';
+            copy.style.margin = '0 0 4px 0';
+            const primary = (card.ports || []).find(p => p.number === port.mirrorOf);
+            copy.textContent = `Copies ${primary && primary.label
+                ? primary.label : `port ${primary ? primary.localNumber : port.mirrorOf}`}`
+                + ' for a mirror screen.';
+            wrap.appendChild(copy);
+        }
 
         // The port's place in the redundancy mapping, stated where its
         // labels are edited. A consumed port says whose return it carries; a

@@ -1201,6 +1201,16 @@ def mirror_mismatch(source, mirror):
             or _cabinet_marks(a) != _cabinet_marks(b):
         return (f'{b_name} and {a_name} have different blank, hidden or '
                 f'half cabinets - {tail}')
+    # A run drawn across onto another screen's cabinets is not a map the
+    # mirror can copy cabinet for cabinet.
+    for entries in ((a.get('customPortPaths') or {}).values()
+                    if isinstance(a.get('customPortPaths'), dict) else []):
+        for e in entries or []:
+            if isinstance(e, dict) and e.get('layerId') not in (None, '') \
+                    and str(e.get('layerId')) != str(a.get('id')):
+                return (f'{a_name}\'s custom runs cross onto another '
+                        f'screen - a mirror screen copies a screen whose '
+                        f'runs stay on it.')
     return None
 
 
@@ -1228,6 +1238,9 @@ def mirror_set_refusal(project, layer, source_id):
     if copied_by:
         return (f'{copied_by[0].get("name") or "Another screen"} mirrors '
                 f'{name}, so {name} cannot mirror another screen.')
+    why = mirror_mismatch(source, layer)
+    if why:
+        return why
     # One copy OPT, one box, one screen plugged into it: a source has one
     # mirror.
     rival = next((l for l in layers if l is not layer
@@ -1237,9 +1250,6 @@ def mirror_set_refusal(project, layer, source_id):
         return (f'{rival.get("name") or "Another screen"} already mirrors '
                 f'{src_name} - a screen has one mirror, on its copy '
                 f'outputs.')
-    why = mirror_mismatch(source, layer)
-    if why:
-        return why
     from scr_project import crossing_groups
     for group, members in crossing_groups(project):
         ids = {str(m.get('id')) for m in members}

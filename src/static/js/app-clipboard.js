@@ -50,6 +50,9 @@ export const SCREEN_FEED_KEYS = [
 export function stripScreenFeeds(layer) {
     if (!layer || (layer.type || 'screen') !== 'screen') return layer;
     SCREEN_FEED_KEYS.forEach(k => { delete layer[k]; });
+    // Nor is a copy a mirror (2026-10-30): the source's copy outputs carry
+    // one mirror screen, and a copy would claim the same sockets.
+    delete layer.dataMirrorOf;
     return layer;
 }
 

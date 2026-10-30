@@ -723,6 +723,11 @@ def strip_copied_feeds(layer):
         return []
     if (layer.get('type') or 'screen') != 'screen':
         return []
+    # A copy is never a mirror either (mirror a screen, 2026-10-30): the
+    # source's copy outputs carry ONE mirror, and the copy would claim the
+    # same sockets. Not a feed key - it is the screen's data setting - so
+    # it goes without being reported among them.
+    layer.pop('dataMirrorOf', None)
     return [k for k in COPIED_SCREEN_FEED_KEYS if layer.pop(k, None) is not None]
 
 

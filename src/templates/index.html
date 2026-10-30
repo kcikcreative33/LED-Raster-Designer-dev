@@ -731,7 +731,22 @@
                         </div>
 
                         <p style="font-size: 11px; color: #888; margin: 4px 0 12px 0;">Click & drag the screen name to reposition</p>
-                        
+
+                        <!-- Mirror a screen (2026-10-30): this screen's data
+                             port map follows the picked screen's, cabinet for
+                             cabinet, and its runs land on the copy outputs of
+                             the card feeding that screen (NovaStar Copy mode;
+                             an MX40 Pro box set to Mirror). Filled and noted
+                             by updateMirrorScreenControl
+                             (app-mirror-screens.js). -->
+                        <div class="info-row" id="mirror-screen-row" style="margin-bottom: 4px;" data-tooltip="Mirror a screen, Pick the screen this one copies. Its data port map follows that screen's cabinet for cabinet and cannot be drawn on its own; its runs come off the copy outputs of the card feeding that screen. Both screens must be the same size and panel.">
+                            <label for="mirror-screen">Mirror a screen</label>
+                            <select id="mirror-screen" class="info-select" data-lrd-field="mirror-screen" style="width: 100%;">
+                                <option value="">None</option>
+                            </select>
+                        </div>
+                        <p id="mirror-screen-note" style="display: none; font-size: 11px; color: #888; margin: 0 0 8px 0;"></p>
+
                         <!-- Port Capacity Settings -->
                         <div style="margin-top: 15px; padding: 12px; background: #1a1a1a; border-radius: 6px; border: 1px solid #333;">
                             <label style="font-weight: 600; margin-bottom: 10px; display: block; color: #4A90E2;">Port Capacity</label>
@@ -3171,6 +3186,21 @@
                 <button id="group-lock-cancel" class="btn" style="background: #3a3a3a; padding: 8px 16px;">Cancel</button>
                 <button id="group-lock-unlock" class="btn" style="background: #3a3a3a; padding: 8px 16px;">Unlock it</button>
                 <button id="group-lock-lock" class="btn btn-primary" style="padding: 8px 16px;">Lock the whole group</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- A box going on a copy output of a card that picks per box (the MX40
+         Pro in 20-port mode): Mirror or Backup (app-mirror-screens.js
+         askCopyRole). -->
+    <div id="copy-role-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="background: #252525; border-radius: 8px; padding: 24px; max-width: 460px; margin: 80px auto; border: 1px solid #3a3a3a;">
+            <h2 style="margin-top: 0; color: #fff; margin-bottom: 8px; font-size: 18px;">Mirror or backup?</h2>
+            <div id="copy-role-text" style="color: #aaa; font-size: 12px; margin-bottom: 16px;"></div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                <button id="copy-role-cancel" class="btn" style="background: #3a3a3a; padding: 8px 16px;">Cancel</button>
+                <button id="copy-role-backup" class="btn" style="background: #3a3a3a; padding: 8px 16px;">Backup</button>
+                <button id="copy-role-mirror" class="btn btn-primary" style="padding: 8px 16px;">Mirror</button>
             </div>
         </div>
     </div>

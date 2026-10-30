@@ -141,6 +141,11 @@ class _Power {
         if (typeof this.updateGroupRouteControl === 'function') {
             this.updateGroupRouteControl();
         }
+        // ...and the "Mirror a screen" row (app-mirror-screens.js), which
+        // also dims the map controls while the shown screen is a mirror.
+        if (typeof this.updateMirrorScreenControl === 'function') {
+            this.updateMirrorScreenControl();
+        }
 
         if (!this.currentLayer) {
             return;

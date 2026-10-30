@@ -895,7 +895,8 @@ class _DockCableSheets {
                 return sec;
             }
         } else {
-            const tag = box.duplicateOf ? ' (copy)' : '';
+            const tag = box.copyRole === 'mirror' ? ' (mirror)'
+                : (box.duplicateOf ? ' (copy)' : '');
             head.appendChild(text('hw-dock-cable-fiber-cap', `Fiber · ${titleOf(box)}${tag}`));
         }
         const members = pair ? [pair.near, pair.far] : [box];

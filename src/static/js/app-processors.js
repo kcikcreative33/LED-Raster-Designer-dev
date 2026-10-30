@@ -1238,9 +1238,10 @@ class _Processors {
                 const fit = fits.find(d => keyOf(d) === picker.value);
                 if (!fit) return;
                 picks[card.id] = picker.value;
-                this._processorRequest(
-                    `/api/processors/${proc.id}/cards/${card.id}/cvts`, 'POST',
-                    this._boxFitBody(fit), 'Add Breakout Box');
+                // Mirror or Backup is asked first where the box lands on a
+                // copy OPT of a per-box card (app-mirror-screens.js).
+                this.addBoxWithRole(proc, card, this._boxFitBody(fit),
+                                    'Add Breakout Box');
             });
             if (fits.length) {
                 row.appendChild(picker);
@@ -1265,6 +1266,12 @@ class _Processors {
                 `${card.trunksUsed} / ${card.trunks} trunks, `
                 + `${card.portsPerTrunk} ports each`;
             wrap.appendChild(trunks);
+
+            // Per OPT, where the card's own RJ45s are carried out on it too
+            // (the MX40 Pro, the H_16xRJ45+2xfiber): all of one OPT's ports
+            // at the RJ45 or at its box, in one go (app-mirror-screens.js).
+            const plugRows = this._buildCardPlugRows(proc, card);
+            if (plugRows) wrap.appendChild(plugRows);
 
             // "16x RJ45 + 2x fiber, plus a breakout box" reads as if the ports
             // add up. They do not: the OPTs copy Ethernet 1-8 and 9-16, so a
@@ -1462,6 +1469,8 @@ class _Processors {
         wrap.appendChild(place);
 
         if (cvt.singleInput) wrap.appendChild(this._buildBoxInputsStrip(proc, cvt));
+        // A box on a copy OPT that picks per box: Mirror or Backup.
+        if (cvt.copyRoleChoice) wrap.appendChild(this._buildBoxCopyRoleStrip(proc, cvt));
 
         const info = document.createElement('div');
         info.style.fontSize = '11px';
@@ -1501,6 +1510,15 @@ class _Processors {
                 ? (primary.name || primary.deviceName) : 'the primary box';
             info.style.color = '#c8a04a';
             info.textContent += ` - backs up ${who}`;
+        } else if (cvt.copyRole === 'mirror') {
+            // A copy that feeds a mirror screen: sockets of its own,
+            // carrying the mirror's runs.
+            const primary = (card.cvts || []).find(c => c.id === cvt.mirrorOf);
+            const trunk = (card.trunkTitles || [])[cvt.copiesTrunk];
+            info.style.color = '#c8a04a';
+            info.textContent += ` - mirrors ${primary
+                ? (primary.name || primary.displayTitle || primary.deviceName)
+                : (trunk || 'its primary')} for a mirror screen`;
         } else if (cvt.duplicateOf) {
             // A copy trunk outside any backup pairing: the same ports
             // delivered a second time.

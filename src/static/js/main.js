@@ -41,6 +41,7 @@ import './app-screen-groups.js';
 import './app-processors.js';
 import './app-fiber.js';
 import './app-port-assignment.js';
+import './app-mirror-screens.js';
 import './app-dock.js';
 import './app-dock-cable-sheets.js';
 import './app-dock-sweep.js';
