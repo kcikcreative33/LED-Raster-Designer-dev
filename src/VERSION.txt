@@ -278,6 +278,10 @@ FIXES
   instead of the raw setting names it printed before.
 - FIX: The binder's pull page lists a 1:1 backup card under Hardware
   with the cards a screen runs on. Before, it was left off.
+- FIX: On a slow or busy computer, renaming a processor or changing one
+  of its cards could show the old setting again a moment later, even
+  though the change was saved. The newest change now always stays on
+  screen.
 
 v1.5.3 - October 21, 2026
 ----------------------------

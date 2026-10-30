@@ -140,6 +140,7 @@ def _saved(state, status=200, extra=None):
         # so it rides the reply the way the processor routes send it: the
         # client folds it in before its snapshot, and undo holds both.
         body.update({
+            'stateStamp': app.processor_state_stamp(),
             'processors': _processors(),
             'resolved': catalog.resolve_all(_processors()),
             'next_processor_seq':

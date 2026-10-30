@@ -81,6 +81,21 @@ class _Processors {
 
     _applyProcessorState(data) {
         if (!data || !data.resolved) return;
+        // AN OLDER ANSWER NEVER PUTS AN OLDER TREE BACK. The server numbers
+        // every reply that carries the tree before reading it
+        // (app.processor_state_stamp), so a lower number was read from an
+        // older tree: a refresh sent before a rename and answered after the
+        // rename's own reply put the old name back on the page (2026-10-30).
+        // A new `boot` is a restarted server, whose numbers start again.
+        const stamp = data.stateStamp;
+        if (stamp && typeof stamp.n === 'number') {
+            const last = this._processorStamp;
+            if (last && last.boot === stamp.boot && stamp.n < last.n) {
+                sendClientLog('processor_state_stale_dropped', { n: stamp.n, newest: last.n });
+                return;
+            }
+            this._processorStamp = { boot: stamp.boot, n: stamp.n };
+        }
         this._processorsResolved = data.resolved;
         this._processorsRaw = JSON.stringify(data.processors || []);
         // The connectors a data cable can be typed as, served with the

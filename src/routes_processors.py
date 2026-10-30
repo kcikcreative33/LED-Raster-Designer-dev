@@ -483,6 +483,8 @@ def _state(status=200, extra=None):
     app.current_project['is_pristine'] = False
     socketio.emit('project_updated', app.current_project)
     body = {
+        # first, before the tree is read (app.processor_state_stamp)
+        'stateStamp': app.processor_state_stamp(),
         'processors': _processors(),
         'resolved': catalog.resolve_all(_processors()),
         'next_processor_seq': app.current_project.get('next_processor_seq'),
@@ -538,6 +540,8 @@ def processor_catalog():
 @processors_bp.route('/api/processors', methods=['GET'])
 def get_processors():
     return jsonify({
+        # first, before the tree is read (app.processor_state_stamp)
+        'stateStamp': app.processor_state_stamp(),
         'processors': _processors(),
         'resolved': catalog.resolve_all(_processors()),
         # The connectors a data cable can be typed as (catalog

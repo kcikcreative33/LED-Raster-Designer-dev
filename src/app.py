@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify, make_response, send_from_directory
 from flask_socketio import SocketIO, emit
+import itertools
 import json
 import math
 import re
@@ -535,6 +536,23 @@ def _build_initial_project():
 
 
 current_project = _build_initial_project()
+
+# THE ORDER OF THE PROCESSOR TREE'S ANSWERS. Every reply that carries the
+# tree takes the next number BEFORE it reads the tree, so a reply with a
+# higher number was read from a tree at least as new. The page keeps the
+# newest it has applied and drops an older answer that arrives after it -
+# a read sent before a rename and answered after the rename's own reply put
+# the old name back on the page (2026-10-30). `boot` changes with the
+# server, so a restarted server's numbers starting over are not taken for
+# stale ones.
+_PROCESSOR_STAMP_BOOT = uuid.uuid4().hex[:12]
+# itertools.count's next() is one atomic step, so two request threads never
+# take the same number.
+_processor_stamps = itertools.count(1)
+
+
+def processor_state_stamp():
+    return {'boot': _PROCESSOR_STAMP_BOOT, 'n': next(_processor_stamps)}
 
 # Add a default layer on startup
 def initialize_default_layer():
