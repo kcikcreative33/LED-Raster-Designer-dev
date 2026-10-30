@@ -275,7 +275,7 @@ FIXES
   card's name in its settings.
 - FIX: The binder's Cards table says each card's redundancy the way the
   app does, like 1:1, backed up by Card 2, Sequential or OPT Split,
-  instead of 1to1, sequential or halves.
+  instead of the raw setting names it printed before.
 - FIX: The binder's pull page lists a 1:1 backup card under Hardware
   with the cards a screen runs on. Before, it was left off.
 
