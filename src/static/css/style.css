@@ -1334,7 +1334,10 @@ body { font-family: Arial, sans-serif; background: #1a1a1a; color: #e0e0e0; over
    folded section must keep working. !important because the Screens panel's
    content is display:flex by id above, which would otherwise outrank this. */
 .lrd-sec-collapsed > .panel-content,
-.lrd-sec-collapsed > .lrd-sec-body { display: none !important; }
+.lrd-sec-collapsed > .lrd-sec-body,
+/* a strip that sits outside the body but folds with it (a distro card's
+   OUTPUTS row, app-dock.js) */
+.lrd-sec-collapsed > .lrd-sec-folds { display: none !important; }
 /* a folded Screens panel must not keep its flex:1 slot as a big empty box */
 #right-sidebar > .panel.lrd-sec-collapsed { flex: 0 0 auto; }
 /* double-click toggles, so a stray double-click must not smear a text

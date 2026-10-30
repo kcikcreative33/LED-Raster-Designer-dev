@@ -2580,10 +2580,17 @@ class _HardwareDock {
         // sidebar's folded-glance bars generalized to an always-on line.
         const legs = this._dockDistroLegsLine(load);
         if (legs) unit.appendChild(legs);
-        // The OUTPUTS row rides under LEGS, outside the fold too: the
-        // connectors a folded distro offers are still what you reach for.
+        // The OUTPUTS row rides under LEGS, but it FOLDS with the card
+        // (owner, 2026-10-30: "When you minimize distro, we do not need to
+        // see the multi and l2130 stuff that you can drag since it is
+        // minimized"). It stays where it sits, between LEGS and the body,
+        // and .lrd-sec-folds hides it with the body (style.css), so a
+        // folded card offers no plug chip to drag or tab to.
         const outs = this._dockDistroOutputsRow(d);
-        if (outs) unit.appendChild(outs);
+        if (outs) {
+            outs.classList.add('lrd-sec-folds');
+            unit.appendChild(outs);
+        }
         const body = this._dockSectionBody(unit, head,
                                            `hwdock-distro-${d.id}`);
 

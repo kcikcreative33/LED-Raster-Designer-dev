@@ -319,6 +319,12 @@ FIXES
   tag keeps its place by the port's label and the percentage moves to the
   other side of the label, or beside it when there's no room, on the
   screen and in the binder.
+- FIX: A minimized distro in the tray shows only its header and legs. Its
+  outputs, like Multi 208 or L21-30, are hidden until you open it again,
+  so there's nothing to drag off a minimized distro.
+- FIX: Esc ends an Alt+click redraw or drops an Alt sweep of circuits in
+  Power, even when a box in the left panel still had the cursor. Before,
+  that box took the Esc and the circuit stayed selected.
 
 v1.5.3 - October 21, 2026
 ----------------------------

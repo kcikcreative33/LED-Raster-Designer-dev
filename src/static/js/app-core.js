@@ -343,13 +343,14 @@ export class LEDRasterApp {
     }
 
     // Whether `container`'s fold hides `el`: the fold hides exactly the
-    // section's body (.lrd-sec-body / .panel-content, style.css), so an
-    // element on the header or on anything the section carries outside
-    // its body stays visible through the fold.
+    // section's body (.lrd-sec-body / .panel-content, style.css) and any
+    // strip marked to fold with it (.lrd-sec-folds, a distro card's
+    // OUTPUTS row), so an element on the header or on anything else the
+    // section carries outside its body stays visible through the fold.
     _sectionFoldHides(container, el) {
-        const body = container.querySelector(
-            ':scope > .lrd-sec-body, :scope > .panel-content');
-        return !!(body && body.contains(el));
+        const parts = container.querySelectorAll(
+            ':scope > .lrd-sec-body, :scope > .panel-content, :scope > .lrd-sec-folds');
+        return [...parts].some(p => p.contains(el));
     }
 
     _setSectionCollapsed(container, collapsed) {
