@@ -314,6 +314,11 @@ FIXES
   any of those, and enhanced cards set to different modes can't load one
   screen. The app refuses that placement, or the mode change that would
   cause it, and says why.
+- FIX: On the Data view with Show Port Load % and Show Cable Tags both on,
+  a port's cable length no longer covers its load percentage. The cable
+  tag keeps its place by the port's label and the percentage moves to the
+  other side of the label, or beside it when there's no room, on the
+  screen and in the binder.
 
 v1.5.3 - October 21, 2026
 ----------------------------
