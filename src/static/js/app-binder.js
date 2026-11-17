@@ -5006,10 +5006,19 @@ class _Binder {
         ctx.stroke();
         this._bText(book, String(number), cx, cy + 11, { size: SZ.viewNumber, weight: 700, align: 'center' });
         const nx = cx + r + 22;
-        const label = this._bText(book, name, nx, cy + 2, { size: SZ.view, weight: 700, upper: true });
-        const ctxM = book.measureCtx;
-        ctxM.font = this._bFont(SZ.view, 700);
-        const ruleW = Math.max(240, Math.ceil(ctxM.measureText(label).width) + 40);
+        // The name and its rule stay inside `room` (the drawing's width
+        // from x; the sheet's drawing area where no room is given): a long
+        // name shrinks, then is cut, rather than running under the title
+        // block (owner, 2026-11-17: a letter Header/Footer sheet's
+        // "... · REAR VIEW" ran across the revisions).
+        const geoDa = book.geo && book.geo.da;
+        const roomW = Number.isFinite(room) ? room : (geoDa ? geoDa.x + geoDa.w - x : Infinity);
+        const avail = Number.isFinite(roomW) ? Math.max(120, roomW - (nx - x)) : null;
+        const fit = avail ? { maxWidth: avail, shrink: true } : {};
+        const opts = { size: SZ.view, weight: 700, upper: true, ...fit };
+        const label = this._bText(book, name, nx, cy + 2, opts);
+        const labelW = Math.ceil(this._bTextWidth(book, name, opts));
+        const ruleW = Math.min(avail || Infinity, Math.max(240, labelW + 40));
         ctx.fillStyle = INK;
         ctx.fillRect(nx, cy + 12, ruleW, 3);
         let noteText = null;
