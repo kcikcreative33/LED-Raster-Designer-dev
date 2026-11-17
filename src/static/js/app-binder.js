@@ -5233,15 +5233,26 @@ class _Binder {
         ctx.stroke();
         this._bText(book, String(number), cx, cy + 11, { size: SZ.viewNumber, weight: 700, align: 'center' });
         const nx = cx + r + 22;
-        const label = this._bText(book, name, nx, cy + 2, { size: SZ.view, weight: 700, upper: true });
+        // The name and its rule never run past the drawing area into the
+        // title block: on a small sheet, and above all on one drawn at its
+        // fill scale over 1 (a Header/Footer sheet at letter, owner
+        // 2026-11-17: the view title ran on under the Revisions table), the
+        // room to the drawing area's right edge - in this frame, so divided
+        // by the fill - is all it has. A name too long for it shrinks.
+        const da = book.geo.da;
+        const fs = book.fill ? book.fill.s : 1;
+        const roomR = Math.max(120, da.x + da.w / fs - nx);
+        const label = this._bText(book, name, nx, cy + 2, { size: SZ.view, weight: 700, upper: true,
+                                                            maxWidth: roomR, shrink: true,
+                                                            minSize: Math.max(12, SZ.view * 0.45) });
         const ctxM = book.measureCtx;
         ctxM.font = this._bFont(SZ.view, 700);
-        const ruleW = Math.max(240, Math.ceil(ctxM.measureText(label).width) + 40);
+        const ruleW = Math.min(roomR, Math.max(240, Math.ceil(ctxM.measureText(label).width) + 40));
         ctx.fillStyle = INK;
         ctx.fillRect(nx, cy + 12, ruleW, 3);
         let noteText = null;
         if (note) {
-            const maxWidth = Math.max(240, (Number.isFinite(room) ? room : Infinity) - (nx - x));
+            const maxWidth = Math.min(roomR, Math.max(240, (Number.isFinite(room) ? room : Infinity) - (nx - x)));
             noteText = this._bText(book, note, nx, cy + 44, { size: SZ.foot, weight: 400, maxWidth, shrink: true });
         }
         if (book.log && book.page && book.page.painting) {
