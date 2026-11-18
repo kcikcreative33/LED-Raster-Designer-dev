@@ -239,7 +239,8 @@ def _casing_of(out, run):
 def _socket_edge(b, sk, s):
     """Where a run lands on its socket: the socket's top under the wall (the
     run comes down into it), its foot over the wall (the run comes up)."""
-    return sk['y'] + SOCK * s if b.get('side') == 'top' else sk['y'] - SOCK * s
+    r = sk.get('r', SOCK * s)
+    return sk['y'] + r if b.get('side') == 'top' else sk['y'] - r
 
 
 def _check_runs(half, out=None):
@@ -561,7 +562,8 @@ def _check_blocks(half, box_h=BOX_H):
             assert b['x'] < sk['x'] < b['x'] + b['w'], (sk, b)
             want = b['y'] + b['h'] - SOCKET_DY * s if b['side'] == 'top' else b['y'] + SOCKET_DY * s
             assert abs(sk['y'] - want) < 0.01, (sk, b)
-            assert abs(sk['r'] - SOCK * s) < 0.01, sk
+            # SOCK, or smaller where a tight side closed its pitch
+            assert sk['r'] <= SOCK * s + 0.01, sk
         if b['side'] == 'top':
             assert b['titleY'] < min(sk['y'] - sk['r'] for sk in b['sockets']), ('the name over the numbers', b)
         else:
