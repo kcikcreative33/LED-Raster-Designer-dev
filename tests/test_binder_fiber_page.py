@@ -458,14 +458,17 @@ SHEET_IN = {'letter': (11, 8.5), 'a4': (11.69, 8.27), 'tabloid': (17, 11),
             'a3': (16.54, 11.69), 'archc': (24, 18), 'archd': (36, 24)}
 # app-binder.js: 200 px/in, the border's PAD, the title block, the drawing
 # area's pad, the table gap; app-binder-fiber.js: the drawing columns' gap
-PX_IN, PAD, TB_W, DA_PAD, COL_GAP, DRAW_GAP = 200, 50, 480, 30, 30, 70
+PX_IN, PAD, TB_W, DA_PAD, DA_FOOT, COL_GAP, DRAW_GAP = 200, 50, 480, 10, 30, 30, 70
 
 
 def _da(sheet, tb):
     w, h = SHEET_IN[sheet]
     W, H = w * PX_IN, h * PX_IN
     tbx = W - PAD - (TB_W if tb else 0)
-    return tbx - PAD - DA_PAD * 2, H - PAD * 2 - DA_PAD * 2
+    # (_bGeo: DA_PAD inside the border and DA_FOOT at its foot with the
+    # block on; with it off the drawing takes the sheet to PAD)
+    inset, foot = (DA_PAD, DA_FOOT) if tb else (0, 0)
+    return tbx - PAD - inset * 2, H - PAD * 2 - inset - foot
 
 
 def _overflow(plan, sheet, tb):
@@ -571,6 +574,8 @@ def test_that_much_fiber_never_runs_past_the_drawing_area(many, sheet):
     pg = many
     for n in (8, 16):
         assert pg.evaluate(MANY_JS, n) == n
+        # (a processor with no screen stays off the binder)
+        assert pg.evaluate(FEED_JS) == n
         for tb in (True, False):
             plan = [p for p in pg.evaluate(PLAN_JS, _opts(sheet=sheet, titleBlock=tb)) if p['kind'] == 'fiber']
             drawn = [t for p in plan for col in p['fiber']['procs'] for t in col]
