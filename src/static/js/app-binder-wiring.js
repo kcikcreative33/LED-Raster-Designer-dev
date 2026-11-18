@@ -168,6 +168,11 @@ const RAIL_BASE = 16, RAIL_GAP = 12, RAIL_MAX = 190;
 // The blocks: the socket disc, the pitch between sockets and its floor,
 // the block's padding, its height, the gaps, its corner.
 const SOCK = 10, PITCH = 32, MIN_PITCH = 21, PAD = 15;
+// A side whose boxes would need a second row at MIN_PITCH may close its
+// pitch as far as TIGHT_PITCH to hold them in one, its sockets and their
+// numbers shrinking with it (sockR): a second row costs the wall a box
+// and a channel of height, and on a wide wall that is half its size.
+const TIGHT_PITCH = 17;
 const BOX_H = 60, MIN_BOX_GAP = 16, ROW_GAP = 38, BOX_R = 7;
 // The name sits UNDER the numbers. A run comes down into its socket
 // from above, so anything on the line above the sockets is crossed -
@@ -690,9 +695,10 @@ class _BinderWiring {
             });
             return { lines: line, at };
         };
-        const rowWidthAt = (pitch) => devices.reduce((s, d) =>
+        const rowWidthOf = (list, pitch) => list.reduce((s, d) =>
             s + Math.max(d.n * Math.max(pitch, noteFloor(d)) + PAD * 2, capW(d) + PAD * 2, inContent(d) + PAD * 2), 0)
-            + MIN_BOX_GAP * Math.max(0, devices.length - 1);
+            + MIN_BOX_GAP * Math.max(0, list.length - 1);
+        const rowWidthAt = (pitch) => rowWidthOf(devices, pitch);
         // The pitch gives way before the layout does.
         let fit = PITCH;
         while (fit > MIN_PITCH && rowWidthAt(fit) > availW) fit -= 1;
@@ -700,8 +706,12 @@ class _BinderWiring {
         const boxW = (d) => Math.max(d.n * pitchOf(d) + PAD * 2, capW(d) + PAD * 2, inContent(d) + PAD * 2);
         // the lines under the caption: the most any box needs sets every
         // box's height on the sheet
-        const BOXH = BOX_H + IN_LINE * Math.max(0,
+        const boxHAt = () => BOX_H + IN_LINE * Math.max(0,
             ...devices.map(d => { const pl = inPlace(d, boxW(d)); return pl ? pl.lines : 0; }));
+        let BOXH = boxHAt();
+        // a socket's radius at a box's pitch: SOCK down to MIN_PITCH, and
+        // in step with the pitch below it
+        const sockR = (d) => SOCK * Math.min(1, pitchOf(d) / MIN_PITCH);
 
         // the block rows, greedily; the row count is what the wall's room
         // is measured against
@@ -826,6 +836,24 @@ class _BinderWiring {
         };
         const lean = new Map(devices.map(d => [d.key, leanOf(d.key)]));
         const sideOf = new Map(devices.map(d => [d.key, lean.get(d.key) < -0.01 * K ? 'top' : 'bottom']));
+        // ONE ROW A SIDE WHERE A TIGHTER PITCH GIVES IT (owner, 2026-11-18,
+        // of the MX2000 sheet whose eight boxes stood two rows deep over and
+        // under a wall drawn a third of the width: "the screen graphic is
+        // far too small. need to maximize led screen sizes"). Only where a
+        // side would otherwise need a second row, and only as far as one
+        // row on every side then fits.
+        {
+            const sideList = (s) => devices.filter(d => sideOf.get(d.key) === s);
+            const widest = (p) => Math.max(rowWidthOf(sideList('top'), p), rowWidthOf(sideList('bottom'), p));
+            if (pack(devices).length > 1 && widest(fit) > availW) {
+                let f = fit;
+                while (f > TIGHT_PITCH && widest(f) > availW) f -= 1;
+                if (widest(f) <= availW) {
+                    fit = f;
+                    BOXH = boxHAt();
+                }
+            }
+        }
         const rank = new Map(devices.map((d, i) => [d.key, i]));
         // Two breakouts whose circuits stand in the same column of the wall
         // have all but the same mean, and the tie-break only ever fired on an
@@ -952,7 +980,7 @@ class _BinderWiring {
                         const state = on ? (on.kind === 'power' ? 'power' : on.kind)
                                          : (d.sockets.get(k) === 'other' ? 'other' : 'free');
                         const note = on ? noteOf(on.stub.text, k) : (d.notes.get(k) || '');
-                        sockets.push({ n: k, x: sx, y: sy, r: SOCK * K,
+                        sockets.push({ n: k, x: sx, y: sy, r: sockR(d) * K,
                                        state, note: note || null, on: !!on,
                                        kind: on ? on.kind : null });
                     }
@@ -966,7 +994,7 @@ class _BinderWiring {
                                                       sub: inSub(d.inputs[gi]) * K })),
                     } : null;
                     blocks.push({ key: d.key, title: d.title, x: bx, y, w: w * K, h: BOXH * K,
-                                  side: bs,
+                                  side: bs, sockR: sockR(d) * K,
                                   titleY: y + (over ? TOP_TITLE_DY : TITLE_DY) * K,
                                   noteY: y + (over ? BOXH - NOTE_DY + NOTE_SZ * 0.72 : NOTE_DY) * K,
                                   inputs, row: ri, pitch: p * K, sockets,
@@ -1027,18 +1055,37 @@ class _BinderWiring {
                 if (!groups.has(k)) groups.set(k, { side: b.side, row: b.row, g, left: [], right: [] });
                 groups.get(k)[dir].push({ w, sx });
             }
-            for (const G of groups.values()) {
-                // furthest first: it takes the outermost vertical and the
-                // lane nearest the wall
-                G.left.sort((p, q) => p.sx - q.sx);
-                G.right.sort((p, q) => q.sx - p.sx);
-                const n = G.left.length + G.right.length;
-                const step = Math.min(LANE_STEP * K, (G.g[1] - G.g[0]) / (n + 1));
-                G.left.forEach((r, i) => plan.set(r.w, { via: G.g[0] + (i + 1) * step, lane: i, sx: r.sx,
-                    side: G.side, row: G.row }));
-                G.right.forEach((r, i) => plan.set(r.w, { via: G.g[1] - (i + 1) * step, lane: i, sx: r.sx,
-                    side: G.side, row: G.row }));
-                lanes[G.side] = Math.max(lanes[G.side], G.left.length, G.right.length);
+            // Groups whose stretches overlap are one bundle: a run to row 2
+            // comes up the same gap as the runs to row 1, so their verticals
+            // are handed out together, in the stretch every one of them can
+            // use. Bound right, the runs to the nearer row take the right
+            // end (their channel turns right, away from the runs going on
+            // past it), then the next row, and so on; bound left, the
+            // mirror. Within a row the run going furthest takes the
+            // outermost vertical and the channel lane nearest the wall.
+            const bundles = [];
+            for (const G of [...groups.values()].sort((p, q) => p.g[0] - q.g[0])) {
+                const B = bundles.find(x => x.side === G.side && G.g[0] < x.g[1] && G.g[1] > x.g[0]);
+                if (B) {
+                    B.g = [Math.max(B.g[0], G.g[0]), Math.min(B.g[1], G.g[1])];
+                    B.groups.push(G);
+                } else bundles.push({ side: G.side, g: G.g.slice(), groups: [G] });
+            }
+            for (const B of bundles) {
+                const left = [], right = [];
+                for (const G of B.groups.sort((p, q) => p.row - q.row)) {
+                    G.left.sort((p, q) => p.sx - q.sx);
+                    G.right.sort((p, q) => q.sx - p.sx);
+                    G.left.forEach((r, i) => left.push({ ...r, lane: i, row: G.row }));
+                    G.right.forEach((r, i) => right.push({ ...r, lane: i, row: G.row }));
+                    lanes[G.side] = Math.max(lanes[G.side], G.left.length, G.right.length);
+                }
+                const n = left.length + right.length;
+                const step = Math.min(LANE_STEP * K, Math.max(0, B.g[1] - B.g[0]) / (n + 1));
+                left.forEach((r, i) => plan.set(r.w, { via: B.g[0] + (i + 1) * step, lane: r.lane, sx: r.sx,
+                    side: B.side, row: r.row }));
+                right.forEach((r, i) => plan.set(r.w, { via: B.g[1] - (i + 1) * step, lane: r.lane, sx: r.sx,
+                    side: B.side, row: r.row }));
             }
             return { plan, lanes };
         };
@@ -1126,7 +1173,7 @@ class _BinderWiring {
                 const via = c && cy != null ? c : null;
                 const tx = via ? via.via : (socketX.get(w.device.key) || new Map()).get(w.socket);
                 const sty = !b ? bottom
-                    : T === 'top' ? b.y + (BOXH - SOCKET_DY + SOCK) * K : b.y + (SOCKET_DY - SOCK) * K;
+                    : T === 'top' ? b.y + (BOXH - SOCKET_DY) * K + b.sockR : b.y + SOCKET_DY * K - b.sockR;
                 const ty = via ? cy : sty;
                 const own = ownOf(disc);
                 const { edge, stub, cost } = this._bwExit(disc, wall, ink, own, pad, room, near);
@@ -1699,8 +1746,10 @@ class _BinderWiring {
                 const rim = sk.on ? (fill === WHITE ? INK : fill) : GREY_RING;
                 if (fill !== WHITE) this._bwSolid(ctx, sk.x, sk.y, sk.r, fill);
                 this._bwRing(ctx, sk.x, sk.y, sk.r, rim, SOCKET_RIM * K);
-                this._bText(book, String(sk.n), sk.x, sk.y + NUMBER_SZ * K * 0.375,
-                            { size: NUMBER_SZ * K, weight: 700, align: 'center',
+                // the number shrinks with a socket closed below SOCK
+                const nsz = NUMBER_SZ * K * Math.min(1, sk.r / (SOCK * K));
+                this._bText(book, String(sk.n), sk.x, sk.y + nsz * 0.375,
+                            { size: nsz, weight: 700, align: 'center',
                               color: sk.on ? (fill === WHITE ? INK : WHITE) : GREY_INK });
                 if (sk.note) {
                     this._bText(book, sk.note, sk.x, b.noteY != null ? b.noteY : b.y + NOTE_DY * K,
