@@ -734,7 +734,10 @@ class _BinderWiring {
         // along it and two lanes of air - a side with no boxes and no lanes
         // takes none - and the wall then grows into whatever is left.
         const laneNeed = (n) => (n + 2) * LANE_STEP;
-        const stackH = (n) => (n ? n * BOXH + (n - 1) * ROW_GAP : 0);
+        // the air between two block rows on one side: ROW_GAP, or more
+        // where the runs to the outer row need channels there (rowGapFor)
+        const rowGap = { top: ROW_GAP, bottom: ROW_GAP };
+        const stackH = (n, s) => (n ? n * BOXH + (n - 1) * rowGap[s] : 0);
         // the block rows on each side of the wall, counted out from it
         let rowsOn = { top: 0, bottom: 0 };
         const gapFor = (over, under) => ({
@@ -755,8 +758,8 @@ class _BinderWiring {
         // `rail` kept either side for the runs that come down a rail, and
         // all the height between the lanes. Between, the room is the mix.
         const wallAt = (gap, grow) => {
-            const head = stackH(rowsOn.top) + gap.top;
-            const tail = gap.bottom + stackH(rowsOn.bottom);
+            const head = stackH(rowsOn.top, 'top') + gap.top;
+            const tail = gap.bottom + stackH(rowsOn.bottom, 'bottom');
             const roomH = Math.max(40, A.h / K - head - tail - foot);
             const t = grow ? grow.t : 0;
             const baseH = Math.min(MAX_WALL_H, roomH);
@@ -919,8 +922,8 @@ class _BinderWiring {
             const wall = wallOf(Wc);
             const gap = Wc.gap;
             const rowYOf = (s, ri) => (s === 'top'
-                ? wall.y - (gap.top + BOXH + ri * (BOXH + ROW_GAP)) * K
-                : wall.y + wall.h + (gap.bottom + ri * (BOXH + ROW_GAP)) * K);
+                ? wall.y - (gap.top + BOXH + ri * (BOXH + rowGap.top)) * K
+                : wall.y + wall.h + (gap.bottom + ri * (BOXH + rowGap.bottom)) * K);
             const blocks = [];
             const socketX = new Map();
             arr.xRows.forEach((row) => {
@@ -975,6 +978,76 @@ class _BinderWiring {
             return { blocks, socketX, blockOf: new Map(blocks.map(b => [b.key, b])) };
         };
 
+        // THE RUNS TO A SECOND ROW OF BOXES GO BETWEEN THE BOXES OF THE
+        // FIRST (owner, 2026-11-18, of an MX2000 sheet with eight CVT10s,
+        // four a side, whose outer row's runs came straight down through
+        // the inner row's boxes: "there is overlapping on the wiring
+        // diagram page"). A run to a box in row ri > 0 leaves its lane by
+        // the wall at an x clear of every box nearer the wall on its side
+        // (`via`), crosses to the channel between row ri - 1 and row ri,
+        // and goes along that channel to its socket. Within one gap the
+        // runs bound left take its left end and those bound right its
+        // right end; the run going furthest takes the outermost vertical
+        // and the channel lane nearest the wall, so no two of them cross.
+        // A socket already in a clear gap is gone straight to, as before.
+        // Only x enters the plan, so it is made once per placement and the
+        // channels' lanes counted from it size the row gap.
+        const channelPlan = (blocks, socketX) => {
+            const plan = new Map();
+            const lanes = { top: 0, bottom: 0 };
+            const lo0 = A.x + 3 * K, hi0 = A.x + (PROTO_W - 3) * K;
+            const clear = 4 * K;
+            const groups = new Map();
+            for (const w of facts.wires) {
+                const b = blocks.find(x => x.key === w.device.key);
+                if (!b || !(b.row > 0)) continue;
+                const sx = (socketX.get(w.device.key) || new Map()).get(w.socket);
+                if (!Number.isFinite(sx)) continue;
+                // the free stretches of the width past the rows nearer
+                // the wall on this side
+                const cuts = blocks.filter(x => x.side === b.side && x.row < b.row)
+                    .map(x => [x.x - clear, x.x + x.w + clear]).sort((p, q) => p[0] - q[0]);
+                const free = [];
+                let at = lo0;
+                for (const [a, z] of cuts) {
+                    if (a > at) free.push([at, a]);
+                    at = Math.max(at, z);
+                }
+                if (hi0 > at) free.push([at, hi0]);
+                if (!free.length) continue;
+                const inside = free.find(([a, z]) => sx >= a && sx <= z);
+                if (inside) continue;
+                const gapI = free.reduce((best, g, i) => {
+                    const d = sx < g[0] ? g[0] - sx : sx - g[1];
+                    return best == null || d < best.d ? { i, d } : best;
+                }, null).i;
+                const g = free[gapI];
+                const dir = sx < g[0] ? 'left' : 'right';
+                const k = `${b.side}|${b.row}|${g[0]}|${g[1]}`;
+                if (!groups.has(k)) groups.set(k, { side: b.side, row: b.row, g, left: [], right: [] });
+                groups.get(k)[dir].push({ w, sx });
+            }
+            for (const G of groups.values()) {
+                // furthest first: it takes the outermost vertical and the
+                // lane nearest the wall
+                G.left.sort((p, q) => p.sx - q.sx);
+                G.right.sort((p, q) => q.sx - p.sx);
+                const n = G.left.length + G.right.length;
+                const step = Math.min(LANE_STEP * K, (G.g[1] - G.g[0]) / (n + 1));
+                G.left.forEach((r, i) => plan.set(r.w, { via: G.g[0] + (i + 1) * step, lane: i, sx: r.sx,
+                    side: G.side, row: G.row }));
+                G.right.forEach((r, i) => plan.set(r.w, { via: G.g[1] - (i + 1) * step, lane: i, sx: r.sx,
+                    side: G.side, row: G.row }));
+                lanes[G.side] = Math.max(lanes[G.side], G.left.length, G.right.length);
+            }
+            return { plan, lanes };
+        };
+        {
+            const pre = placeBlocks(W);
+            const { lanes } = channelPlan(pre.blocks, pre.socketX);
+            for (const s of ['top', 'bottom']) rowGap[s] = Math.max(ROW_GAP, (lanes[s] + 2) * LANE_STEP);
+        }
+
         // The discs on the wall and the runs that leave them. Taken as one
         // step so it can be done again with the discs the wall REALLY drew
         // and the lettering it REALLY laid down (the paint reads both off
@@ -984,6 +1057,22 @@ class _BinderWiring {
             const Wc = W2 || W;
             const wall = wallOf(Wc);
             const { blocks, socketX, blockOf } = placeBlocks(Wc);
+            const chan = channelPlan(blocks, socketX).plan;
+            // a channel lane's y: counted out from the inner row's edge,
+            // evenly through the gap between the two rows
+            const chanY = (c) => {
+                const inner = blocks.find(x => x.side === c.side && x.row === c.row - 1);
+                const outer = blocks.find(x => x.side === c.side && x.row === c.row);
+                if (!inner || !outer) return null;
+                const n = Math.max(1, ...[...chan.values()]
+                    .filter(o => o.side === c.side && o.row === c.row).map(o => o.lane + 1));
+                if (c.side === 'top') {
+                    const a = inner.y, z = outer.y + outer.h;
+                    return a - (a - z) * (c.lane + 1) / (n + 1);
+                }
+                const a = inner.y + inner.h, z = outer.y;
+                return a + (z - a) * (c.lane + 1) / (n + 1);
+            };
             const labels = letters || [];
             const pad = (RUN_W + CASE_EXTRA) / 2 * K;
             const discs = facts.stubs.map((st) => {
@@ -1030,9 +1119,15 @@ class _BinderWiring {
                 const b = blockOf.get(w.device.key);
                 const T = b ? b.side : 'bottom';
                 const near = T === 'top' ? 'top' : 'bottom';
-                const tx = (socketX.get(w.device.key) || new Map()).get(w.socket);
-                const ty = !b ? bottom
+                const c = chan.get(w) || null;
+                const cy = c ? chanY(c) : null;
+                // a run through a channel is laid out by the wall as a run
+                // to its gap; the channel and the socket are added at the end
+                const via = c && cy != null ? c : null;
+                const tx = via ? via.via : (socketX.get(w.device.key) || new Map()).get(w.socket);
+                const sty = !b ? bottom
                     : T === 'top' ? b.y + (BOXH - SOCKET_DY + SOCK) * K : b.y + (SOCKET_DY - SOCK) * K;
+                const ty = via ? cy : sty;
                 const own = ownOf(disc);
                 const { edge, stub, cost } = this._bwExit(disc, wall, ink, own, pad, room, near);
                 // is the socket already clear of the wall on the side this
@@ -1063,7 +1158,8 @@ class _BinderWiring {
                     const head = [tx, near === 'top' ? disc.y - dy : disc.y + dy];
                     straight = this._bwCost(head, [tx, ty], pad, ink, own) <= (cost || 0);
                 }
-                return { w, disc, tx, ty, edge, stub, side, out, T, near, straight };
+                return { w, disc, tx, ty, edge, stub, side, out, T, near, straight,
+                         via: via ? { sx: via.sx, sy: sty } : null };
             });
 
             // The rails, one per run that has to go along beside the wall,
@@ -1176,6 +1272,7 @@ class _BinderWiring {
                     pts.push([at, nearY()], [tx, nearY()]);
                 }
                 pts.push([tx, ty]);
+                if (p.via) pts.push([p.via.sx, ty], [p.via.sx, p.via.sy]);
                 return { kind: w.kind, from: w.stub.text, device: w.device.title, socket: w.socket,
                          colour, dash: pattern.map(v => v * K), width: RUN_W * K,
                          points: this._bwTidy(pts) };
